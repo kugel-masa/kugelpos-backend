@@ -1,0 +1,38 @@
+{
+    "sales_promo_strategies": [
+        {
+            "module": "app.services.strategies.sales_promo.sales_promo_sample",
+            "class": "SalesPromoSample",
+            "args": ["101"], 
+            "kwargs": {}
+        }
+    ],
+    "payment_strategies": [
+        {
+            "module": "app.services.strategies.payments.cash",
+            "class": "PaymentByCash",
+            "args": ["01"],
+            "kwargs": {}
+        },
+        {
+            "module": "app.services.strategies.payments.cashless",
+            "class": "PaymentByCashless",
+            "args": ["11"],
+            "kwargs": {}
+        },
+        {
+            "module": "app.services.strategies.payments.others",
+            "class": "PaymentByOthers",
+            "args": ["12"],
+            "kwargs": {}
+        }
+    ],
+    "receipt_data_strategies": [
+        {
+            "module": "app.services.strategies.receipt_data.receipt_data_sample",
+            "class": "ReceiptDataSample",
+            "args": ["default", "32"], 
+            "kwargs": {}
+        }
+    ]
+}

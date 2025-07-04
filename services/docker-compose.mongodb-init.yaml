@@ -1,0 +1,43 @@
+# MongoDB レプリカセット初期化用の補助サービス
+services:
+  mongodb-init:
+    image: mongo:7.0
+    container_name: mongodb-init
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - kugelpos_net
+    command: >
+      bash -c "
+        echo 'Waiting for MongoDB to be ready...';
+        sleep 5;
+        echo 'Initializing replica set...';
+        mongosh --host mongodb:27017 --eval '
+          try {
+            var status = rs.status();
+            print(\"Replica set already initialized\");
+            // Check if host needs to be updated
+            if (status.members[0].name !== \"mongodb:27017\") {
+              print(\"Updating replica set host...\");
+              var config = rs.conf();
+              config.members[0].host = \"mongodb:27017\";
+              rs.reconfig(config, {force: true});
+              print(\"Host updated to mongodb:27017\");
+            }
+          } catch (e) {
+            print(\"Initializing new replica set...\");
+            rs.initiate({
+              _id: \"rs0\",
+              members: [
+                {
+                  _id: 0,
+                  host: \"mongodb:27017\"
+                }
+              ]
+            });
+            print(\"Replica set initialized\");
+          }
+        ';
+        echo 'Replica set initialization complete';
+      "

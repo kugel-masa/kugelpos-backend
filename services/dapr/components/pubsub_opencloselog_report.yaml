@@ -1,0 +1,17 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub-opencloselog-report
+spec:
+  type: pubsub.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      #value: "localhost:6378"  # ローカル環境用
+      value: "redis:6379"    # Docker Compose 用
+    - name: redisPassword
+      value: ""               # パスワードなしの場合
+    - name: streamName
+      value: "topic-opencloselog"
+    - name: processingTimeout
+      value: "180s"

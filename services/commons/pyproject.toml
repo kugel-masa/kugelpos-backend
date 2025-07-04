@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kugel_common"
+dynamic = ["version"]
+description = ''
+# readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+keywords = []
+authors = [
+  { name = "kugel-masa", email = "154584630+kugel-masa@users.noreply.github.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "motor"
+]
+
+[project.urls]
+Documentation = "https://github.com/kugel-masa/kugel_common#readme"
+Issues = "https://github.com/kugel-masa/kugel_common/issues"
+Source = "https://github.com/kugel-masa/kugel_common"
+
+[tool.hatch.version]
+path = "src/kugel_common/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kugel_common"]
+include = [
+  "src/kugel_common/**",
+  "src/kugel_common/config/**",
+  "src/kugel_common/middleware/**",
+  "src/kugel_common/models/**",
+  "src/kugel_common/models/documents/**",
+  "src/kugel_common/models/repositories/**",
+  "src/kugel_common/schemas/**",
+  "src/kugel_common/utils/**",
+  "src/kugel_common/exceptions/**",
+  "src/kugel_common/receipt/**"
+]
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/kugel_common tests}"
+
+[tool.coverage.run]
+source_pkgs = ["kugel_common", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/kugel_common/__about__.py",
+]
+
+[tool.coverage.paths]
+kugel_common = ["src/kugel_common", "*/kugel_common/src/kugel_common"]
+tests = ["tests", "*/kugel_common/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.hatch.envs.test]
+dependencies=["pytest"]
+commands=["pytest tests"]

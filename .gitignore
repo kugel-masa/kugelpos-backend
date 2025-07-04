@@ -1,0 +1,40 @@
+# ignore .env file
+.env
+.env.test
+
+# docker-compose with dapr
+docker-compose-*
+
+# ignore pycache
+__pycache__/
+*.pyc
+
+# ignore all files in the directory
+data/*
+# ignore all files with the extension .csv
+*.csv
+# ignore all files with the extension .txt
+*.txt
+# ignore all files with the extension .log
+*.log
+# ignore all files with the extension .bak
+*.bak
+# ignore all files with the extension .pdf
+*.pdf
+# ignore all files with the extension .ps1
+*.ps1
+
+# ignore virtual environment
+venv/
+.venv/
+**/venv/
+**/.venv/
+
+# ignore wheel files and dist directories
+*.whl
+**/dist/
+**/commons/dist/
+
+# ignore claude files
+claude-*
+.claude/

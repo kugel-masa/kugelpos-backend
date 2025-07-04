@@ -1,0 +1,9 @@
+{
+    "report_makers": {
+        "sales": {
+            "module": "app.services.plugins.sales_report_maker",
+            "class": "SalesReportMaker",
+            "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
+        }
+    }
+} 

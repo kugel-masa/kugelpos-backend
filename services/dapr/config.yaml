@@ -1,0 +1,20 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: daprConfig
+spec:
+  tracing:
+    samplingRate: "1"
+  features:
+    - name: FeatureName
+      enabled: true
+  mtls:
+    enabled: false  # mTLS を無効にして HTTP 通信を許可
+  metrics:
+    enabled: true
+  secrets:
+    scopes:
+      - storeName: secretstore
+        defaultAccess: allow
+  nameResolution:
+    component: "mdns"  # サービスディスカバリのための mDNS を使用

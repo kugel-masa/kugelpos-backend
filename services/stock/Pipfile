@@ -1,0 +1,40 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = "*"
+uvicorn = "*"
+python-dotenv = "*"
+pydantic = "*"
+pydantic-settings = "*"
+motor = "*"
+pytz = "*"
+pytest = "*"
+pytest-asyncio = "*"
+python-jose = {extras = ["cryptography"], version = "*"}
+httpx = "*"
+aiohttp = "*"
+pydantic-xml = {extras = ["lxml"], version = "*"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.9-py3-none-any.whl"}
+lxml = "*"
+wcwidth = "*"
+debugpy = "*"
+requests = "*"
+pyjwt = "*"
+apscheduler = "*"
+websockets = "*"
+
+[dev-packages]
+flake8 = "*"
+black = "*"
+mypy = "*"
+
+[requires]
+python_version = "3.12"
+
+[scripts]
+lint = "flake8 app tests"
+format = "black app tests"
+typecheck = "mypy app"

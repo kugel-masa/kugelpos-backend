@@ -1,0 +1,24 @@
+# ignore .env file
+.env
+.env.deploy.dev
+
+# ignore pycache
+__pycache__/
+*.pyc
+
+# ignore all files in the directory
+data/*
+# ignore all files with the extension .csv
+*.csv
+# ignore all files with the extension .txt
+*.txt
+# ignore all files with the extension .log
+*.log
+# ignore all files with the extension .bak
+*.bak
+
+# ignore virtual environment
+venv/
+
+# ignore distribution files
+dist/

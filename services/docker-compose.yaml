@@ -1,0 +1,289 @@
+
+services:
+  account:
+    build:
+      context: ./account
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.account:latest
+    env_file:
+      - path: ./account/.env
+        required: false
+    ports:
+      - "8000:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  terminal:
+    build:
+      context: ./terminal
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.terminal:latest
+    env_file:
+      - path: ./terminal/.env
+        required: false
+    environment:
+      - BASE_URL_DAPR=http://localhost:3500/v1.0
+      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
+      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
+      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
+      - BASE_URL_REPORT=http://localhost:3500/v1.0/invoke/report/method/api/v1
+      - BASE_URL_JOURNAL=http://localhost:3500/v1.0/invoke/journal/method/api/v1
+      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - BASE_URL_STOCK=http://localhost:3500/v1.0/invoke/stock/method/api/v1
+    ports:
+      - "8001:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  master-data:
+    build:
+      context: ./master-data
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.master-data:latest
+    env_file:
+      - path: ./master-data/.env
+        required: false
+    environment:
+      - BASE_URL_DAPR=http://localhost:3500/v1.0
+      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+    ports:
+      - "8002:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  cart:
+    build:
+      context: ./cart
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.cart:latest
+    env_file:
+      - path: ./cart/.env
+        required: false
+    environment:
+      - BASE_URL_DAPR=http://localhost:3500/v1.0
+      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
+    ports:
+      - "8003:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  report:
+    build:
+      context: ./report
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.report:latest
+    env_file:
+      - path: ./report/.env
+        required: false
+    environment:
+      - BASE_URL_DAPR=http://localhost:3500/v1.0
+      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
+      - BASE_URL_JOURNAL=http://localhost:3500/v1.0/invoke/journal/method/api/v1
+    ports:
+      - "8004:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  journal:
+    build:
+      context: ./journal
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.journal:latest
+    env_file:
+      - path: ./journal/.env
+        required: false
+    environment:
+      - BASE_URL_DAPR=http://localhost:3500/v1.0
+      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
+    ports:
+      - "8005:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  stock:
+    build:
+      context: ./stock
+      dockerfile: Dockerfile
+    image: masakugel/kugelpos.stock:latest
+    env_file:
+      - path: ./stock/.env
+        required: false
+    environment:
+      - BASE_URL_DAPR=http://localhost:3500/v1.0
+      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
+      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
+    ports:
+      - "8006:8000"
+    networks:
+      - kugelpos_net
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  dapr_account:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "account", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - account
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:account"
+
+  dapr_terminal:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "terminal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - terminal
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:terminal"
+
+  dapr_master_data:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "master-data", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - master-data
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:master-data"
+
+  dapr_cart:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "cart", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - cart
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:cart"
+    environment:
+      - DAPR_PUBSUB_NAME=pubsub
+
+  dapr_report:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "report", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - report
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:report"
+
+  dapr_journal:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "journal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - journal
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:journal"
+
+  dapr_stock:
+    image: daprio/daprd:latest
+    command: ["./daprd", "-app-id", "stock", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
+    depends_on:
+      - stock
+      - redis
+    volumes:
+      - ./dapr/config.yaml:/dapr/config.yaml:ro
+      - ./dapr/components:/dapr/components
+    network_mode: "service:stock"
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    networks:
+      - kugelpos_net
+
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    hostname: mongodb
+    ports:
+      - "27017:27017"
+    command: mongod --replSet rs0 --bind_ip_all
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ../scripts/mongodb-init.js:/docker-entrypoint-initdb.d/01-init-replica.js:ro
+    networks:
+      - kugelpos_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  
+networks:
+  kugelpos_net:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  mongodb_config:

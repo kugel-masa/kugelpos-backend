@@ -1,0 +1,56 @@
+@startuml Kugel POS Azure Architecture Diagram
+
+!define AzurePuml https://raw.githubusercontent.com/plantuml-stdlib/Azure-PlantUML/master/dist
+!includeurl AzurePuml/AzureCommon.puml
+
+!includeurl AzurePuml/Databases/all.puml
+!includeurl AzurePuml/Containers/all.puml
+!includeurl AzurePuml/Networking/all.puml
+
+!procedure $AzureGroup($alias, $sprite, $label)
+rectangle "<color:AZURE_SYMBOL_COLOR><$sprite{scale=0.5}></color>\n$label" as $alias
+!endprocedure
+
+AzureLoadBalancer(lb, "load balancer", "Azure Load Balancer")
+
+$AzureGroup(containerenv, $AzureServiceEnvironment, "Container Environment") {
+    AzureContainerApp(journal, "journal service\nwith Dapr", "fastapi", "search journal data")
+    AzureContainerApp(report, "report service\nwith Dapr", "fastapi", "generate report data")
+    AzureContainerApp(cart, "cart service\nwith Dapr", "fastapi", "manage cart")
+    AzureContainerApp(master, "master service\nwith Dapr", "fastapi", "manage master data")
+    AzureContainerApp(terminal, "terminal service\nwith Dapr", "fastapi", "manage api key for terminal")
+    AzureContainerApp(account, "account service\nwith Dapr", "fastapi", "auth service")
+    AzureContainerApp(stock, "stock service\nwith Dapr", "fastapi", "manage inventory")
+}
+AzureCosmosDb(cosmosDbAlias, "MongoDB", "document database", "separate database for each service and tenant")
+AzureRedisCache(redisAlias, "Redis Cache", "cache via Dapr")
+
+actor "user" as user
+agent "frontend app" as client
+
+client --> lb
+
+lb --> journal
+lb --> report
+lb --> cart
+lb --> master
+lb --> terminal
+lb --> account
+lb --> stock
+
+journal --> cosmosDbAlias
+report --> cosmosDbAlias
+cart --> cosmosDbAlias
+master --> cosmosDbAlias
+terminal --> cosmosDbAlias
+account --> cosmosDbAlias
+stock --> cosmosDbAlias
+
+' Redis連携（Dapr経由）
+journal ..> redisAlias : "via Dapr"
+report ..> redisAlias : "via Dapr"
+cart ..> redisAlias : "via Dapr"
+terminal ..> redisAlias : "via Dapr"
+stock ..> redisAlias : "via Dapr"
+
+@enduml

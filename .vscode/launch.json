@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to FastAPI Debugpy",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                // Ensure the host is correct and accessible
+                "host": "localhost",
+                "port": 5678 // Verify this port matches the debugpy listener
+            },
+            "justMyCode": true
+        }
+    ]
+}
