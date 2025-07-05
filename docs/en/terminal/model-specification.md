@@ -2,367 +2,272 @@
 
 ## Overview
 
-Terminal Service manages the data models for POS terminals, stores, and cash operations in the Kugelpos POS system. The service handles terminal lifecycle management, staff authentication, business session control, and maintains comprehensive audit trails through various log collections.
-
-## Database Document Models
-
-### 1. TenantInfoDocument (Tenant Information)
-
-Main document for storing tenant and embedded store information.
-
-**Collection Name:** `info_tenant`
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | Unique identifier for the tenant |
-| tenant_name | string | ✓ | Display name of the tenant |
-| stores | array[StoreInfo] | ✓ | List of stores belonging to this tenant |
-| tags | array[string] | - | Additional tags for categorization |
-| _id | ObjectId | ✓ | MongoDB document ID (inherited) |
-| entry_datetime | datetime | ✓ | Document creation timestamp (inherited) |
-| last_update_datetime | datetime | - | Last update timestamp (inherited) |
-| shard_key | string | ✓ | Sharding key (inherited) |
-
-**Indexes:**
-- Unique index: tenant_id
-- Index: tags
-
-### 2. StoreInfo (Store Information - Embedded)
-
-Embedded document within TenantInfoDocument representing individual stores.
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| store_code | string | ✓ | Unique store code within tenant |
-| store_name | string | ✓ | Display name of the store |
-| status | string | - | Store status (Active/Inactive) |
-| business_date | string | - | Current business date (YYYYMMDD) |
-| tags | array[string] | - | Additional tags for categorization |
-| created_at | datetime | ✓ | Store creation timestamp |
-| updated_at | datetime | - | Last update timestamp |
-
-### 3. TerminalInfoDocument (Terminal Information)
-
-Document for storing individual terminal information. This model is defined in the commons library and shared across services.
-
-**Collection Name:** `info_terminal`
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| terminal_id | string | ✓ | Unique ID: {tenant_id}-{store_code}-{terminal_no} |
-| tenant_id | string | ✓ | Tenant that owns this terminal |
-| store_code | string | ✓ | Store where terminal is located |
-| terminal_no | integer | ✓ | Terminal number within store (1-999) |
-| description | string | - | Terminal description |
-| function_mode | string | ✓ | Current function mode |
-| status | string | ✓ | Terminal status (Idle/Opened/Closed) |
-| business_date | string | - | Current business date (YYYYMMDD) |
-| open_counter | integer | ✓ | Terminal open session counter |
-| business_counter | integer | ✓ | Business operation counter |
-| staff | StaffMasterDocument | - | Currently signed-in staff |
-| initial_amount | float | - | Initial cash amount |
-| physical_amount | float | - | Physical cash count |
-| api_key | string | ✓ | API key for authentication |
-| tags | array[string] | - | Additional tags |
-| _id | ObjectId | ✓ | MongoDB document ID (inherited) |
-| entry_datetime | datetime | ✓ | Creation timestamp (inherited) |
-| last_update_datetime | datetime | - | Update timestamp (inherited) |
-| shard_key | string | ✓ | Sharding key (inherited) |
-
-**Indexes:**
-- Unique index: terminal_id
-- Compound index: (tenant_id, store_code, terminal_no)
-- Index: api_key
-
-### 4. CashInOutLog (Cash Transaction Log)
-
-Document for recording cash drawer transactions.
-
-**Collection Name:** `log_cash_in_out`
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | Tenant identifier |
-| store_code | string | ✓ | Store code |
-| store_name | string | ✓ | Store name for display |
-| terminal_no | integer | ✓ | Terminal number |
-| staff_id | string | ✓ | Staff who performed transaction |
-| staff_name | string | ✓ | Staff name for display |
-| business_date | string | ✓ | Business date (YYYYMMDD) |
-| open_counter | integer | ✓ | Terminal open counter |
-| business_counter | integer | ✓ | Business counter |
-| generate_date_time | string | ✓ | Transaction timestamp |
-| amount | float | ✓ | Amount (positive=in, negative=out) |
-| description | string | - | Transaction description |
-| receipt_text | string | ✓ | Formatted receipt text |
-| journal_text | string | ✓ | Formatted journal text |
-| _id | ObjectId | ✓ | MongoDB document ID (inherited) |
-| entry_datetime | datetime | ✓ | Creation timestamp (inherited) |
-| last_update_datetime | datetime | - | Update timestamp (inherited) |
-| shard_key | string | ✓ | Sharding key (inherited) |
-
-**Indexes:**
-- Compound index: (tenant_id, store_code, terminal_no, business_date)
-- Index: generate_date_time
-
-### 5. OpenCloseLog (Terminal Session Log)
-
-Document for recording terminal open/close operations.
-
-**Collection Name:** `log_open_close`
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | Tenant identifier |
-| store_code | string | ✓ | Store code |
-| store_name | string | ✓ | Store name for display |
-| terminal_no | integer | ✓ | Terminal number |
-| staff_id | string | ✓ | Staff who performed operation |
-| staff_name | string | ✓ | Staff name for display |
-| business_date | string | ✓ | Business date (YYYYMMDD) |
-| open_counter | integer | ✓ | Terminal open counter |
-| business_counter | integer | ✓ | Business counter |
-| operation | string | ✓ | Operation type: 'open' or 'close' |
-| generate_date_time | string | ✓ | Operation timestamp |
-| terminal_info | TerminalInfoDocument | ✓ | Terminal state snapshot |
-| cart_transaction_count | integer | ✓ | Number of transactions in session |
-| cart_transaction_last_no | integer | - | Last transaction number |
-| cash_in_out_count | integer | ✓ | Number of cash operations |
-| cash_in_out_last_datetime | string | - | Last cash operation timestamp |
-| receipt_text | string | ✓ | Formatted receipt text |
-| journal_text | string | ✓ | Formatted journal text |
-| _id | ObjectId | ✓ | MongoDB document ID (inherited) |
-| entry_datetime | datetime | ✓ | Creation timestamp (inherited) |
-| last_update_datetime | datetime | - | Update timestamp (inherited) |
-| shard_key | string | ✓ | Sharding key (inherited) |
-
-**Indexes:**
-- Compound index: (tenant_id, store_code, terminal_no, business_date, operation)
-- Index: generate_date_time
-
-### 6. TerminallogDeliveryStatus (Event Delivery Tracking)
-
-Document for tracking pub/sub event delivery status.
-
-**Collection Name:** `status_terminal_delivery`
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| event_id | string | ✓ | Event UUID |
-| published_at | datetime | ✓ | Event publication timestamp |
-| status | string | ✓ | Delivery status |
-| tenant_id | string | ✓ | Tenant identifier |
-| store_code | string | ✓ | Store code |
-| terminal_no | integer | ✓ | Terminal number |
-| business_date | string | ✓ | Business date (YYYYMMDD) |
-| open_counter | integer | ✓ | Terminal open counter |
-| payload | object | ✓ | Event message body |
-| services | array[ServiceStatus] | ✓ | Service delivery statuses |
-| last_updated_at | datetime | ✓ | Last update timestamp |
-| _id | ObjectId | ✓ | MongoDB document ID (inherited) |
-| entry_datetime | datetime | ✓ | Creation timestamp (inherited) |
-| last_update_datetime | datetime | - | Update timestamp (inherited) |
-| shard_key | string | ✓ | Sharding key (inherited) |
-
-## API Request/Response Schemas
-
-All schemas inherit from `BaseSchemmaModel` which automatically converts field names from snake_case to camelCase for JSON serialization.
-
-### Terminal Management Schemas
-
-#### TerminalCreateRequest
-Request to create a new terminal.
-
-| Field Name (JSON) | Type | Required | Description |
-|-------------------|------|----------|-------------|
-| storeCode | string | ✓ | Store code where terminal will be created |
-| terminalNo | integer | ✓ | Terminal number (1-999) |
-| description | string | ✓ | Terminal description |
-
-#### TerminalUpdateRequest
-Request to update terminal information.
-
-| Field Name (JSON) | Type | Required | Description |
-|-------------------|------|----------|-------------|
-| description | string | ✓ | New terminal description |
-
-#### Terminal (Response)
-Terminal information response.
-
-| Field Name (JSON) | Type | Description |
-|-------------------|------|-------------|
-| terminalId | string | Unique terminal identifier |
-| tenantId | string | Tenant identifier |
-| storeCode | string | Store code |
-| terminalNo | integer | Terminal number |
-| description | string | Terminal description |
-| functionMode | string | Current function mode |
-| status | string | Terminal status |
-| businessDate | string | Current business date |
-| openCounter | integer | Open session counter |
-| businessCounter | integer | Business counter |
-| initialAmount | float | Initial cash amount |
-| physicalAmount | float | Physical cash count |
-| staff | object | Signed-in staff info |
-| apiKey | string | Terminal API key |
-| entryDatetime | string | Creation timestamp |
-| lastUpdateDatetime | string | Update timestamp |
-
-### Terminal Operation Schemas
-
-#### TerminalSignInRequest
-Request for staff sign-in.
-
-| Field Name (JSON) | Type | Required | Description |
-|-------------------|------|----------|-------------|
-| staffId | string | ✓ | Staff identifier |
-
-#### TerminalOpenRequest
-Request to open terminal for business.
-
-| Field Name (JSON) | Type | Required | Description |
-|-------------------|------|----------|-------------|
-| initialAmount | float | ✓ | Initial cash drawer amount |
-
-#### TerminalOpenResponse
-Response after terminal open.
-
-| Field Name (JSON) | Type | Description |
-|-------------------|------|-------------|
-| terminalId | string | Terminal identifier |
-| businessDate | string | Assigned business date |
-| openCounter | integer | Open session counter |
-| businessCounter | integer | Business counter |
-| initialAmount | float | Initial cash amount |
-| terminalInfo | object | Full terminal information |
-| receiptText | string | Formatted receipt text |
-| journalText | string | Formatted journal text |
-
-#### TerminalCloseRequest
-Request to close terminal.
-
-| Field Name (JSON) | Type | Required | Description |
-|-------------------|------|----------|-------------|
-| physicalAmount | float | ✓ | Counted cash amount |
-
-#### TerminalCloseResponse
-Response after terminal close.
-
-| Field Name (JSON) | Type | Description |
-|-------------------|------|-------------|
-| terminalId | string | Terminal identifier |
-| businessDate | string | Business date |
-| openCounter | integer | Open session counter |
-| businessCounter | integer | Business counter |
-| physicalAmount | float | Final cash amount |
-| terminalInfo | object | Full terminal information |
-| receiptText | string | Formatted receipt text |
-| journalText | string | Formatted journal text |
-
-### Cash Operation Schemas
-
-#### CashInOutRequest
-Request for cash drawer operations.
-
-| Field Name (JSON) | Type | Required | Description |
-|-------------------|------|----------|-------------|
-| amount | float | ✓ | Amount (positive=in, negative=out) |
-| description | string | - | Operation description |
-
-#### CashInOutResponse
-Response after cash operation.
-
-| Field Name (JSON) | Type | Description |
-|-------------------|------|-------------|
-| terminalId | string | Terminal identifier |
-| amount | float | Transaction amount |
-| description | string | Operation description |
-| receiptText | string | Formatted receipt text |
-| journalText | string | Formatted journal text |
-
-## Enumerations
-
-### Terminal Status
-- `Idle` - Terminal not opened for business
-- `Opened` - Terminal active and ready
-- `Closed` - Terminal closed for the day
-
-### Function Modes
-- `MainMenu` - Default display mode
-- `OpenTerminal` - Terminal opening operations
-- `Sales` - Sales transaction processing
-- `Returns` - Return transaction processing
-- `Void` - Transaction voiding
-- `Reports` - Report generation
-- `CloseTerminal` - Terminal closing operations
-- `Journal` - Transaction history viewing
-- `Maintenance` - System maintenance
-- `CashInOut` - Cash drawer operations
-
-### Store Status
-- `Active` - Store is operational
-- `Inactive` - Store is not operational
-
-### Delivery Status
-- `published` - Event published to pub/sub
-- `delivered` - All services received event
-- `partially_delivered` - Some services received event
-- `failed` - Delivery failed
-
-## Data Flow and Relationships
-
-### 1. Terminal Lifecycle
-```
-Terminal Creation → API Key Generation → Staff Sign-in → Terminal Open
-    ↓
-Daily Operations (Sales, Cash In/Out) → Terminal Close → New Business Date
+This document describes the data model specifications for the Terminal service, including MongoDB collection structures, schema definitions, and data flow.
+
+## Database Design
+
+### Database Name
+- `{tenant_id}_terminal` (e.g., `tenant001_terminal`)
+
+### Collections List
+
+| Collection Name | Purpose | Main Data |
+|----------------|---------|-----------|
+| tenant_info | Tenant information | Basic tenant and store information |
+| terminal_info | Terminal information | Terminal details and state management |
+| cash_in_out_log | Cash in/out log | Cash operation records |
+| open_close_log | Open/close log | Terminal open/close records |
+| terminallog_delivery_status | Delivery status | Event delivery tracking |
+
+## Detailed Schema Definitions
+
+### 1. tenant_info Collection
+
+Collection for managing tenant and store information. Stores are saved as embedded documents.
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "tenant_name": "string",
+  "stores": [
+    {
+      "store_code": "string",
+      "store_name": "string",
+      "status": "string (active/inactive)",
+      "business_date": "string (YYYYMMDD)",
+      "created_at": "datetime",
+      "updated_at": "datetime"
+    }
+  ],
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
 ```
 
-### 2. Multi-tenancy Structure
+### 2. terminal_info Collection
+
+Collection for managing terminal detailed information and current state.
+
+```json
+{
+  "_id": "ObjectId",
+  "terminal_id": "string (tenant_id-store_code-terminal_no)",
+  "tenant_id": "string",
+  "store_code": "string",
+  "terminal_no": "integer (1-999)",
+  "description": "string",
+  "function_mode": "string (MainMenu/Sales/etc)",
+  "status": "string (idle/opened/closed)",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "staff": {
+    "staff_id": "string",
+    "staff_name": "string"
+  },
+  "initial_amount": "decimal",
+  "physical_amount": "decimal",
+  "api_key": "string (hashed)",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+**Field Descriptions:**
+- `terminal_id`: Terminal unique identifier (format: tenant_id-store_code-terminal_no)
+- `function_mode`: Current function mode
+- `status`: Terminal business state
+- `open_counter`: Terminal open count
+- `business_counter`: Business operation counter
+- `api_key`: Terminal authentication API key (SHA-256 hashed)
+
+### 3. cash_in_out_log Collection
+
+Collection for storing cash in/out operation history.
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "cashinout_id": "string",
+  "staff_id": "string",
+  "staff_name": "string",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "operation_type": "string (cash_in/cash_out)",
+  "amount": "decimal",
+  "reason": "string",
+  "comment": "string",
+  "receipt_text": "string",
+  "journal_text": "string",
+  "generate_date_time": "string (ISO 8601)",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+### 4. open_close_log Collection
+
+Collection for storing terminal open/close operation history.
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "staff_id": "string",
+  "staff_name": "string",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "operation": "string (open/close)",
+  "generate_date_time": "string (ISO 8601)",
+  "terminal_info": {
+    "/* Terminal information snapshot */"
+  },
+  "cart_transaction_count": "integer",
+  "cart_transaction_last_no": "integer",
+  "cash_in_out_count": "integer",
+  "cash_in_out_last_datetime": "string",
+  "receipt_text": "string",
+  "journal_text": "string",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+### 5. terminallog_delivery_status Collection
+
+Collection for tracking event delivery status.
+
+```json
+{
+  "_id": "ObjectId",
+  "event_id": "string (UUID)",
+  "published_at": "datetime",
+  "status": "string (published/delivered/failed)",
+  "tenant_id": "string",
+  "store_code": "string",
+  "terminal_no": "integer",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "payload": {
+    "/* Event payload */"
+  },
+  "services": [
+    {
+      "service_name": "string",
+      "delivered": "boolean",
+      "delivered_at": "datetime"
+    }
+  ],
+  "last_updated_at": "datetime",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+## Index Definitions
+
+### tenant_info
+- Unique index: `tenant_id`
+
+### terminal_info
+- Unique index: `terminal_id`
+- Compound index: `tenant_id + store_code + terminal_no`
+- Single index: `api_key`
+
+### cash_in_out_log
+- Compound index: `tenant_id + store_code + terminal_no + business_date`
+- Single index: `generate_date_time`
+
+### open_close_log
+- Compound index: `tenant_id + store_code + terminal_no + business_date + operation`
+- Single index: `generate_date_time`
+
+### terminallog_delivery_status
+- Unique index: `event_id`
+- Compound index: `tenant_id + status + published_at`
+
+## Enumeration Definitions
+
+### Terminal Status (TerminalStatus)
+- `idle`: Initial state, before business start
+- `opened`: In business (opened)
+- `closed`: Business ended (closed)
+
+### Function Mode (FunctionMode)
+- `MainMenu`: Main menu
+- `OpenTerminal`: Terminal opening
+- `Sales`: Sales processing
+- `Returns`: Return processing
+- `Void`: Void processing
+- `Reports`: Report display
+- `CloseTerminal`: Terminal closing
+- `Journal`: Journal display
+- `Maintenance`: Maintenance
+- `CashInOut`: Cash in/out
+
+### Store Status (StoreStatus)
+- `active`: In business
+- `inactive`: Not in business
+
+### Delivery Status (DeliveryStatus)
+- `published`: Event published
+- `delivered`: Delivery completed
+- `partially_delivered`: Partial delivery
+- `failed`: Delivery failed
+
+## Data Flow
+
+### Terminal Lifecycle
+1. **Terminal Creation**: Create with tenant, store, and terminal number specified
+2. **API Key Generation**: Auto-generated and hashed for storage
+3. **Staff Sign-in**: Associate staff information with terminal
+4. **Opening Process**: Start business, set initial cash
+5. **Daily Operations**: Cash in/out, sales processing
+6. **Closing Process**: End business, confirm cash
+7. **Business Date Update**: Switch to next business day
+
+### Event Delivery Flow
+1. **Event Generation**: Generate events during open/close and cash operations
+2. **Dapr Pub/Sub**: Publish events asynchronously
+3. **Delivery Tracking**: Manage delivery status with delivery_status
+4. **Retry Control**: Background retry for undelivered events
+
+### Multi-tenant Structure
 ```
 Tenant
-  └── Stores (embedded)
-        └── Terminals (separate collection)
-              └── Transaction Logs
+├── Store (embedded)
+└── Terminal (separate collection)
+    ├── Cash in/out log
+    └── Open/close log
 ```
 
-### 3. Event Publishing Flow
-```
-Terminal Operation → Generate Log → Publish to Dapr → Track Delivery Status
-```
+## Security
 
-## Security Features
+### API Key Management
+- 32-byte secure random generation
+- SHA-256 hashing for storage
+- Used for terminal authentication
 
-1. **API Key Management**: 
-   - Generated using `secrets.token_urlsafe(32)`
-   - Stored securely in terminal document
-   - Used for terminal authentication
+### Data Isolation
+- Database isolation per tenant
+- Tenant ID validation for all operations
+- Prevention of cross-tenant access
 
-2. **Multi-tenant Isolation**:
-   - Separate databases per tenant
-   - Database name format: `{DB_NAME_PREFIX}_{tenant_id}`
-   - Tenant ID validation on all operations
+## Special Notes
 
-3. **Audit Trail**:
-   - All operations logged with timestamps
-   - Staff identification on all transactions
-   - Immutable log entries
-
-## Performance Considerations
-
-1. **Embedded Documents**: Stores are embedded within tenant documents to reduce queries
-2. **Indexes**: Optimized for common query patterns (by terminal, by date, by status)
-3. **Sharding**: Support for horizontal scaling via shard_key
-4. **Event Delivery**: Asynchronous pub/sub for scalability
+1. **Terminal ID Format**: Unified format `{tenant_id}-{store_code}-{terminal_no}`
+2. **Store Code Normalization**: Automatic conversion to uppercase (store001 → STORE001)
+3. **Background Jobs**: Periodic retry processing for undelivered events
+4. **Audit Trail**: All operations recorded with timestamps
+5. **Circuit Breaker**: Failure handling for external service calls
+6. **Event-driven**: Loosely coupled integration via Dapr pub/sub

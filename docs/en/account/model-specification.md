@@ -2,326 +2,256 @@
 
 ## Overview
 
-Account Service consists of data models for user authentication and account management, API schemas, and transformers that manage conversions between them. All models have strict type definitions and validation rules to ensure data integrity and security.
+This document provides detailed specifications for data models used in the Account service. All models are stored in MongoDB and operate in a multi-tenant environment.
 
-## Database Document Models
+## Database Configuration
 
-### 1. UserAccountDocument (User Account Document)
+### Database Name
+- Format: `db_account_{tenant_id}`
+- Example: `db_account_A1234`
+- Each tenant has an independent database
 
-Main document for storing user account information with secure credential management.
+### Collection List
+1. `user_accounts` - User account information
+2. `request_log` - API request logs (common)
 
-**Field Definitions:**
+## Model Definitions
 
-| Field Name | Type | Required | Description |
-|------------|------|----------|-------------|
-| username | string | ✓ | Unique username within tenant |
-| hashed_password | string | ✓ | BCrypt hashed password with salt |
-| tenant_id | string | ✓ | Tenant identifier for multi-tenant isolation |
-| is_superuser | bool | ✓ | Admin privileges flag (default: False) |
-| is_active | bool | ✓ | Account status flag (default: True) |
-| created_at | datetime | ✓ | Account creation timestamp |
-| updated_at | datetime | - | Last update timestamp |
-| last_login | datetime | - | Last successful login timestamp |
-| shard_key | string | ✓ | Sharding key (inherited from AbstractDocument) |
-| etag | string | ✓ | ETag for optimistic locking (inherited from AbstractDocument) |
+### 1. UserAccount (For API Requests)
 
-**Indexes:**
-- Compound unique index: (tenant_id, username) - Ensures unique usernames per tenant
-- Index: tenant_id
-- Index: is_active
-- Index: is_superuser
-
-**Collection Name:** "user_accounts"
-
-**Security Features:**
-- Plain text passwords never stored
-- BCrypt hashing with automatic salt generation
-- Tenant isolation at database level
-- Optimistic locking with ETag
-
-## API Request Schemas
-
-All schemas inherit from `BaseSchemaModel` and provide the following features:
-- Automatic camelCase conversion for JSON fields (snake_case → camelCase)
-- Pydantic validation with type safety
-- Secure password handling
-
-### 1. BaseUserAccount (Registration Request Schema)
-
-Base schema for user account creation requests.
-
-**Field Definitions:**
-
-| Field Name | Type | Required | Validation | Description |
-|------------|------|----------|------------|-------------|
-| username | string | ✓ | 3-50 chars, alphanumeric + underscore | Username for authentication |
-| password | string | ✓ | 8+ chars (configurable) | Plain text password (never stored) |
-| tenantId | string | - | 5 chars: 1 letter + 4 digits | Tenant identifier (auto-generated if not provided) |
-
-**Validation Rules:**
-- `username`: Must be unique within tenant, 3-50 characters, alphanumeric and underscore only
-- `password`: Minimum 8 characters, stored as BCrypt hash
-- `tenantId`: Format validation (A1234), auto-generated for superuser registration
-
-### 2. OAuth2PasswordRequestForm (Login Request)
-
-Standard OAuth2 password flow request for authentication.
-
-**Field Definitions:**
+**Implementation File**: app/api/v1/schemas.py:17-26  
+**Base Class**: BaseUserAccount (app/api/common/schemas.py:37-46)
 
 | Field Name | Type | Required | Description |
 |------------|------|----------|-------------|
-| username | string | ✓ | User's username |
-| password | string | ✓ | User's password |
-| client_id | string | ✓ | Tenant ID (used as OAuth2 client identifier) |
-| grant_type | string | - | OAuth2 grant type (default: "password") |
-| scope | string | - | OAuth2 scope (default: "") |
+| username | string | Yes | Username (login ID) |
+| password | string | Yes | Password (plain text) |
+| tenantId | string | No | Tenant ID (can be auto-generated) |
 
-**Usage Notes:**
-- Follows OAuth2 password flow standard
-- `client_id` field contains tenant ID for multi-tenant authentication
-- Form-encoded request body (application/x-www-form-urlencoded)
-
-## API Response Schemas
-
-### 1. BaseUserAccountInDB (User Account Response)
-
-Response schema for user account information with secure field handling.
-
-**Field Definitions:**
-
-| Field Name | Type | Description |
-|------------|------|-------------|
-| username | string | Username |
-| password | string | Always masked as "*****" for security |
-| tenantId | string | Tenant identifier |
-| isSuperuser | bool | Admin privileges flag |
-| isActive | bool | Account status |
-| createdAt | datetime | Account creation timestamp |
-| updatedAt | datetime (optional) | Last update timestamp |
-| lastLogin | datetime (optional) | Last successful login timestamp |
-
-**Security Features:**
-- `password` field always returns "*****" to prevent exposure
-- `hashedPassword` field never included in responses
-- Automatic timestamp management
-- CamelCase conversion for frontend compatibility
-
-### 2. BaseLoginResponse (Authentication Response)
-
-Response schema for successful authentication.
-
-**Field Definitions:**
-
-| Field Name | Type | Description |
-|------------|------|-------------|
-| access_token | string | JWT token for API authentication |
-| token_type | string | Token type ("bearer") |
-
-**Note:** This schema inherits from `BaseModel` (not `BaseSchemaModel`), so fields remain in snake_case format.
-
-**Token Structure:**
-The JWT token contains the following claims:
-- `sub`: Username
-- `tenant_id`: Tenant identifier
-- `is_superuser`: Admin privileges flag
-- `is_active`: Account status
-- `exp`: Token expiration timestamp
-- `iat`: Token issued at timestamp
-
-### 3. HealthCheckResponse (Health Check Response)
-
-Response schema for service health monitoring.
-
-**Field Definitions:**
-
-| Field Name | Type | Description |
-|------------|------|-------------|
-| status | string | Service status ("healthy", "unhealthy") |
-| database | string | Database connection status ("connected", "disconnected") |
-| timestamp | datetime | Health check timestamp |
-
-## JWT Token Model
-
-### JWT Claims Structure
-
-The JWT token payload contains the following standardized claims:
-
+**JSON Format Example**:
 ```json
 {
-  "sub": "username",           // Subject (username)
-  "tenant_id": "A1234",        // Tenant identifier
-  "is_superuser": false,       // Admin privileges
-  "is_active": true,           // Account status
-  "exp": 1640995200,           // Expiration timestamp
-  "iat": 1640991600            // Issued at timestamp
+  "username": "admin",
+  "password": "secure_password123",
+  "tenantId": "A1234"
+}
+```
+
+### 2. UserAccountInDB (For Database Storage)
+
+**Implementation File**: app/api/v1/schemas.py:29-38  
+**Base Class**: BaseUserAccountInDB (app/api/common/schemas.py:48-61)
+
+| Field Name | Type | Required | Default | Description |
+|------------|------|----------|---------|-------------|
+| username | string | Yes | - | Username |
+| password | string | Yes | "*****" | Masked display (not actually stored) |
+| hashed_password | string | Yes | - | bcrypt hashed password |
+| tenant_id | string | Yes | - | Tenant ID |
+| is_superuser | boolean | Yes | false | Super user flag |
+| is_active | boolean | Yes | true | Account active flag |
+| created_at | datetime | Yes | - | Creation date/time |
+| updated_at | datetime | No | null | Update date/time |
+| last_login | datetime | No | null | Last login date/time |
+
+**MongoDB Storage Format Example**:
+```json
+{
+  "_id": ObjectId("..."),
+  "username": "admin",
+  "password": "*****",
+  "hashed_password": "$2b$12$...",
+  "tenant_id": "A1234",
+  "is_superuser": true,
+  "is_active": true,
+  "created_at": ISODate("2025-01-05T10:30:00.000Z"),
+  "updated_at": null,
+  "last_login": ISODate("2025-01-05T11:00:00.000Z")
+}
+```
+
+### 3. LoginResponse (Token Response)
+
+**Implementation File**: app/api/v1/schemas.py:41-49  
+**Base Class**: BaseLoginResponse (app/api/common/schemas.py:63-71)
+
+| Field Name | Type | Required | Description |
+|------------|------|----------|-------------|
+| access_token | string | Yes | JWT access token |
+| token_type | string | Yes | Token type (always "bearer") |
+
+**JSON Format Example**:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+### 4. Sample (Demo Model)
+
+**Implementation File**: app/api/v1/schemas.py:52-60  
+**Base Class**: BaseSample (app/api/common/schemas.py:74-84)
+
+| Field Name | Type | Required | Description |
+|------------|------|----------|-------------|
+| tenantId | string | Yes | Tenant ID |
+| storeCode | string | Yes | Store code |
+| sampleId | string | Yes | Sample ID |
+| sampleName | string | Yes | Sample name |
+
+## Collection Details
+
+### 1. user_accounts Collection
+
+**Implementation File**: app/database/database_setup.py:41-58
+
+**Index**:
+```javascript
+{
+  "tenant_id": 1,
+  "username": 1
+}
+// unique: true
+```
+
+**Purpose**: Store user account information
+- Username is unique within each tenant
+- Store bcrypt hashed passwords
+- Distinguish between super users and regular users
+- Record last login time
+
+### 2. request_log Collection
+
+**Implementation File**: app/database/database_setup.py:61-80
+
+**Index**:
+```javascript
+{
+  "tenant_id": 1,
+  "store_code": 1,
+  "terminal_no": 1,
+  "request_info.accept_time": 1
+}
+// unique: true
+```
+
+**Purpose**: Store API request logs
+- Record all HTTP requests
+- Used as audit trail
+- Can be used for performance analysis
+
+## Data Type Conversion
+
+### camelCase Conversion
+**Implementation File**: app/api/common/schemas.py:23-30
+
+All API responses inherit from `BaseSchemaModel` and automatically convert from snake_case to camelCase.
+
+**Conversion Examples**:
+- `tenant_id` → `tenantId`
+- `is_superuser` → `isSuperuser`
+- `created_at` → `createdAt`
+- `last_login` → `lastLogin`
+- `hashed_password` → `hashedPassword` (not included in responses)
+
+### Date/Time Format
+- Stored and returned in ISO 8601 format
+- Timezone: UTC
+- Example: `2025-01-05T10:30:00.000Z`
+
+## Validation
+
+### Tenant ID
+**Implementation File**: app/dependencies/auth.py:207-210
+- Format: 1 uppercase letter + 4 digits
+- Regex: `^[A-Z][0-9]{4}$`
+- Examples: `A1234`, `B9999`
+- Generation logic: Random uppercase letter + number between 1000-9999
+
+### Password
+**Implementation File**: app/dependencies/auth.py:44-68
+- Hashed with bcrypt
+- Cost factor: Default (12)
+- Minimum length: No restriction (controlled at application level)
+- Verification: Compare plain text with hash using `verify_password()` function
+
+### Username
+- Maximum length: No restriction (controlled at application level)
+- Allowed characters: No restriction (controlled at application level)
+- Unique within each tenant (enforced by database index)
+
+## JWT Token Structure
+
+**Implementation File**: app/dependencies/auth.py:71-89
+
+### Token Payload
+```json
+{
+  "sub": "username",
+  "tenant_id": "A1234",
+  "is_superuser": true,
+  "exp": 1704456000
 }
 ```
 
 ### Token Configuration
+- `SECRET_KEY`: Secret key for JWT signing (environment variable)
+- `ALGORITHM`: JWT algorithm (default: "HS256")
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: Token expiration time (set via environment variable)
 
-**Environment Settings:**
-- `SECRET_KEY`: JWT signing secret
-- `ALGORITHM`: Signing algorithm (default: HS256)
-- `TOKEN_EXPIRE_MINUTES`: Token expiration time (default: 30 minutes)
+## OAuth2PasswordRequestForm
 
-## Data Flow and Relationships
+**Usage**: app/api/v1/account.py:57
 
-### 1. User Registration Flow
-```
-[API Request] → [Schema Validation] → [Password Hashing]
-    ↓
-[Tenant Validation/Generation] → [UserAccountDocument Creation]
-    ↓
-[Database Storage] → [Response Transformation] → [API Response]
-```
+| Field Name | Type | Required | Description |
+|------------|------|----------|-------------|
+| username | string | Yes | Username |
+| password | string | Yes | Password |
+| client_id | string | Yes | Used as tenant ID |
+| grant_type | string | No | "password" (default) |
+| scope | string | No | Scope (unused) |
 
-### 2. Authentication Flow
-```
-[Login Request] → [Credential Validation] → [User Lookup]
-    ↓
-[Password Verification] → [JWT Token Generation] → [Login Timestamp Update]
-    ↓
-[Token Response] → [API Response]
-```
+**Note**: OAuth2 standard `client_id` field is repurposed as tenant ID
 
-### 3. Token Validation Flow
-```
-[Incoming Request] → [JWT Token Extraction] → [Token Verification]
-    ↓
-[Claims Extraction] → [User Status Validation] → [Request Authorization]
-```
+## Security Considerations
 
-## Validation Rules
+1. **Password Protection**
+   - Plain text passwords are never stored
+   - Salted hashing with bcrypt (app/dependencies/auth.py:58-68)
+   - Masked with "*****" in responses
 
-### 1. Username Validation
-- **Length**: 3-50 characters
-- **Characters**: Alphanumeric and underscore only (regex: `^[a-zA-Z0-9_]+$`)
-- **Uniqueness**: Must be unique within tenant
-- **Case Sensitivity**: Case-sensitive usernames
+2. **Tenant Isolation**
+   - Complete separation at database level
+   - Cross-tenant access not possible
+   - Tenant ID validated for each operation
 
-### 2. Password Validation
-- **Minimum Length**: 8 characters (configurable via environment)
-- **Hashing**: BCrypt with automatic salt generation
-- **Storage**: Only hashed passwords stored in database
-- **Validation**: Plain text password validated against hash
+3. **Audit Logging**
+   - All requests recorded in request_log
+   - Unauthorized access tracking possible
 
-### 3. Tenant ID Validation
-- **Format**: 1 letter followed by 4 digits (e.g., "A1234")
-- **Generation**: Auto-generated if not provided during superuser registration
-- **Uniqueness**: Must be unique across all tenants
-- **Validation**: Regex pattern `^[A-Z][0-9]{4}$`
+4. **JWT Security**
+   - Stateless authentication
+   - Signed tokens
+   - Automatic expiration checking
 
-### 4. JWT Token Validation
-- **Signature**: Verified using secret key and algorithm
-- **Expiration**: Token must not be expired
-- **Claims**: Required claims must be present and valid
-- **User Status**: User must exist and be active
+## Database Setup
 
-## Security Features
+**Implementation File**: app/database/database_setup.py:101-118
 
-### 1. Password Security
-- **BCrypt Hashing**: Industry-standard password hashing with salt
-- **No Plain Text Storage**: Passwords never stored in plain text
-- **Secure Comparison**: Constant-time password verification
-- **Hash Strength**: Configurable work factor (default: 12 rounds)
+**Setup Process**:
+1. `execute()` function called when creating new tenant
+2. Required collections created:
+   - `create_user_account_collection()`: user_accounts collection
+   - `create_request_log_collection()`: request_log collection
+3. Indexes automatically configured
 
-### 2. Multi-tenant Isolation
-- **Database Separation**: Each tenant has dedicated database
-- **Access Control**: Cross-tenant access prevented at application level
-- **Unique Constraints**: Username uniqueness within tenant scope
-- **Data Isolation**: Complete separation of tenant data
+## Notes
 
-### 3. JWT Token Security
-- **Signed Tokens**: HMAC-SHA256 signature for integrity
-- **Expiration**: Configurable token lifetime
-- **Minimal Claims**: Only necessary information in payload
-- **Stateless**: No server-side session storage required
-
-### 4. Authentication Security
-- **Active User Check**: Inactive users cannot authenticate  
-- **Tenant Validation**: Tenant must exist for authentication
-- **Audit Logging**: Login attempts and authentication events logged
-- **Secure Endpoints**: Critical endpoints require proper authentication
-
-## Field Naming Conventions
-
-### 1. Database Models
-- **Convention**: snake_case (e.g., `is_superuser`)
-- **Reason**: Python and MongoDB standard naming
-- **Consistency**: Matches other services in the system
-
-### 2. API Schemas
-- **Convention**: camelCase (e.g., `isSuperuser`)
-- **Reason**: JavaScript/TypeScript frontend compatibility
-- **Conversion**: Automatic conversion via `BaseSchemaModel`
-
-### 3. Conversion Examples
-```
-Database: is_superuser → API: isSuperuser
-Database: created_at → API: createdAt
-Database: last_login → API: lastLogin
-Database: tenant_id → API: tenantId
-Database: hashed_password → API: (not exposed)
-```
-
-## Performance Optimization
-
-### 1. Database Optimization
-- **Indexes**: Optimized indexes on frequently queried fields
-- **Compound Indexes**: Efficient multi-field queries
-- **Connection Pooling**: Async connection management
-- **Query Optimization**: Efficient lookup patterns
-
-### 2. Authentication Optimization
-- **Password Hashing**: Balanced security vs performance
-- **Token Caching**: Stateless JWT reduces database lookups
-- **Async Operations**: Non-blocking I/O throughout service
-- **Minimal Payloads**: Compact token and response sizes
-
-### 3. Memory Management
-- **Lazy Loading**: Load user data only when needed
-- **Connection Reuse**: Efficient database connection pooling
-- **Garbage Collection**: Proper resource cleanup
-
-## Error Handling
-
-### 1. Validation Errors
-- **Pydantic Validation**: Automatic request validation
-- **Custom Validators**: Domain-specific validation rules
-- **Error Messages**: Clear, actionable error descriptions
-- **Field-level Errors**: Specific field validation feedback
-
-### 2. Authentication Errors
-- **Invalid Credentials**: Secure error messages (no user enumeration)
-- **Token Errors**: Detailed JWT validation error handling
-- **Permission Errors**: Clear authorization failure messages
-- **Account Status**: Inactive account error handling
-
-### 3. System Errors
-- **Database Errors**: Graceful database connection failure handling
-- **Service Errors**: Proper HTTP status code mapping
-- **Logging**: Comprehensive error logging for debugging
-- **Recovery**: Automatic retry and fallback mechanisms
-
-## Testing Strategy
-
-### 1. Unit Testing
-- **Model Validation**: Test all schema validation rules
-- **Password Hashing**: Verify secure password handling
-- **JWT Operations**: Test token generation and validation
-- **Business Logic**: Test user registration and authentication flows
-
-### 2. Integration Testing
-- **Database Operations**: Test all CRUD operations
-- **Authentication Flow**: End-to-end authentication testing
-- **Multi-tenant**: Test tenant isolation and security
-- **API Endpoints**: Comprehensive API testing
-
-### 3. Security Testing
-- **Password Security**: Test hashing and verification
-- **Token Security**: Test JWT token handling
-- **Access Control**: Test authorization and permissions
-- **Input Validation**: Test against malicious input
-
-This model specification provides a comprehensive understanding of the Account Service data structures, security implementation, and enables effective development and maintenance of the authentication system.
+1. **_id field**: Uses MongoDB's auto-generated ObjectId
+2. **Case sensitivity**: Username is case-sensitive
+3. **Deletion flag**: Logical deletion not implemented (managed with `is_active`)
+4. **Update history**: `updated_at` requires manual updating
+5. **Transactions**: Currently not implemented
+6. **Password change feature**: Currently not implemented
+7. **Migration**: Dedicated migration tool not implemented

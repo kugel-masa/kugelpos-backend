@@ -18,7 +18,7 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system built with 
 - **stock** (port 8006): Inventory management and stock tracking
 
 ### Key Technologies
-- **Python 3.10+** with FastAPI for REST APIs
+- **Python 3.12+** with FastAPI for REST APIs
 - **MongoDB** (Motor async driver) for persistence
 - **Redis** for caching and pub/sub messaging
 - **Dapr** for service mesh, state management, and pub/sub
@@ -31,8 +31,8 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system built with 
 
 ```bash
 # Clone the repository
-git clone https://github.com/kugel-masa/kugelpos.backendservices.git
-cd kugelpos.backendservices
+git clone https://github.com/kugel-masa/kugelpos-backend.git
+cd kugelpos-backend
 
 # Prepare .env files for each service (optional - services work with defaults)
 # Copy .env.sample to .env in each service directory if needed

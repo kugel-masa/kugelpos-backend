@@ -2,453 +2,355 @@
 
 ## 概要
 
-レポートサービスは、包括的なビジネスレポートの生成と、トランザクション、現金操作、ターミナル活動からのイベントログの管理を担当します。拡張可能なレポート生成のためのプラグインアーキテクチャを実装し、複雑なデータ処理にMongoDBアグリゲーションパイプラインを使用し、日次レポート生成前の完全性を保証するデータ検証メカニズムを含みます。このサービスは、マルチテナント分離を備えた堅牢なビジネスインテリジェンス機能を提供します。
+レポートサービスのデータモデル仕様書です。MongoDBのコレクション構造、スキーマ定義、およびデータフローについて説明します。
 
-## データベースドキュメントモデル
+## データベース設計
 
-すべてのドキュメントモデルは、監査、キャッシュ、シャーディング用の共通フィールドを提供する`AbstractDocument`を継承しています。
+### データベース名
+- `{tenant_id}_report` (例: `tenant001_report`)
 
-### AbstractDocument（基底クラス）
+### コレクション一覧
 
-すべてのドキュメントに共通機能を提供する基底クラス。
+| コレクション名 | 用途 | 主なデータ |
+|---------------|------|------------|
+| report_transactions | 取引ログ保存 | カートからの取引データ |
+| report_cashinout | 入出金ログ保存 | ターミナルからの入出金データ |
+| report_open_close | 開閉店ログ保存 | ターミナルからの開閉店データ |
+| report_daily_info | 日次情報保存 | 日次集計用のメタデータ |
+| report_aggregate_data | 集計データ保存 | 生成されたレポートデータ |
 
-**基底フィールド:**
+## 詳細スキーマ定義
 
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| shard_key | string | - | 水平スケーリング用のデータベースシャーディングキー |
-| created_at | datetime | - | ドキュメント作成タイムスタンプ |
-| updated_at | datetime | - | 最終更新タイムスタンプ |
-| cached_on | datetime | - | キャッシュ無効化用のキャッシュタイムスタンプ |
-| etag | string | - | 楽観的並行性制御用のエンティティタグ |
+### 1. report_transactions コレクション
 
-### 1. SalesReportDocument（一時的レポートデータ）
-
-APIレスポンス用の一時的ドキュメント構造（データベースに保存されない）。
-
-**目的:** セールスレポートAPIレスポンス用のオンデマンド生成
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | - | テナント識別子 |
-| store_code | string | - | 店舗コード |
-| store_name | string | - | 店舗表示名 |
-| terminal_no | integer | - | ターミナル番号（店舗レベルレポートの場合null） |
-| business_counter | integer | - | ビジネスカウンタ |
-| business_date | string | - | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | - | ターミナルセッションカウンタ |
-| report_scope | string | - | レポートスコープ（'flash'または'daily'） |
-| report_type | string | - | レポートタイプ（'sales'） |
-| sales_gross | SalesReportTemplate | - | 総売上メトリクス |
-| sales_net | SalesReportTemplate | - | 純売上メトリクス |
-| discount_for_lineitems | SalesReportTemplate | - | アイテムレベル割引メトリクス |
-| discount_for_subtotal | SalesReportTemplate | - | トランザクションレベル割引メトリクス |
-| returns | SalesReportTemplate | - | 返品トランザクションメトリクス |
-| taxes | array[TaxReportTemplate] | - | 税コード別の税金内訳 |
-| payments | array[PaymentReportTemplate] | - | 決済方法別内訳 |
-| cash | CashReportTemplate | - | 現金引き出し照合 |
-| receipt_text | string | - | フォーマットされたレシートテキスト |
-| journal_text | string | - | フォーマットされたジャーナルテキスト |
-| generate_date_time | string | - | レポート生成タイムスタンプ |
-| staff | StaffMasterDocument | - | 利用可能な場合のスタッフ情報 |
-
-### 2. CashInOutLog（現金操作記録）
-
-現金の入出金操作ログを格納するドキュメント。
-
-**コレクション名:** `log_cash_in_out`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | - | テナント識別子 |
-| store_code | string | - | 店舗コード |
-| store_name | string | - | 店舗表示名 |
-| terminal_no | integer | - | ターミナル番号 |
-| staff_id | string | - | 操作を実行したスタッフ識別子 |
-| staff_name | string | - | スタッフ表示名 |
-| business_date | string | - | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | - | ターミナルセッションカウンタ |
-| business_counter | integer | - | ビジネス操作カウンタ |
-| generate_date_time | string | - | イベントタイムスタンプ |
-| amount | float | - | 操作金額（現金入金は正、現金出金は負） |
-| description | string | - | 操作説明 |
-| receipt_text | string | - | フォーマットされたレシートテキスト |
-| journal_text | string | - | フォーマットされたジャーナルテキスト |
-
-**インデックス:**
-- 複合インデックス: (tenant_id, store_code, terminal_no, business_date)
-- インデックス: amount
-
-### 3. OpenCloseLog（ターミナルセッション記録）
-
-ターミナル開店/閉店操作ログを格納するドキュメント。
-
-**コレクション名:** `log_open_close`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | - | テナント識別子 |
-| store_code | string | - | 店舗コード |
-| store_name | string | - | 店舗表示名 |
-| terminal_no | integer | - | ターミナル番号 |
-| staff_id | string | - | 操作を実行したスタッフ識別子 |
-| staff_name | string | - | スタッフ表示名 |
-| business_date | string | - | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | - | ターミナルセッションカウンタ |
-| business_counter | integer | - | ビジネス操作カウンタ |
-| operation | string | - | 操作タイプ（'open'または'close'） |
-| generate_date_time | string | - | イベントタイムスタンプ |
-| terminal_info | TerminalInfoDocument | - | ターミナル状態情報 |
-| cart_transaction_count | integer | - | 閉店時のトランザクション数 |
-| cart_transaction_last_no | integer | - | 最後のトランザクション番号 |
-| cash_in_out_count | integer | - | 現金操作数 |
-| cash_in_out_last_datetime | string | - | 最後の現金操作タイムスタンプ |
-| receipt_text | string | - | フォーマットされたレシートテキスト |
-| journal_text | string | - | フォーマットされたジャーナルテキスト |
-
-**インデックス:**
-- 複合インデックス: (tenant_id, store_code, terminal_no, business_date, open_counter)
-- インデックス: operation
-
-### 4. DailyInfoDocument（日次レポート状況）
-
-日次レポート生成状況とデータ検証を追跡するドキュメント。
-
-**コレクション名:** `info_daily`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | - | テナント識別子 |
-| store_code | string | - | 店舗コード |
-| terminal_no | integer | - | ターミナル番号 |
-| business_date | string | - | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | - | ターミナルセッションカウンタ |
-| verified | boolean | - | データ検証状況 |
-| verified_update_time | string | - | 最終検証タイムスタンプ |
-| verified_message | string | - | 検証状況メッセージ |
-
-**目的:** 日次レポート生成適格性の検証状況を追跡
-
-**インデックス:**
-- ユニーク複合インデックス: (tenant_id, store_code, terminal_no, business_date)
-- インデックス: verified
-
-### 5. トランザクションログ（kugel_commonから）
-
-トランザクションデータはkugel_commonライブラリの`BaseTransaction`を使用。
-
-**コレクション名:** `log_tran`
-
-**使用される主要フィールド:**
-- 明細項目、支払い、税金を含む完全なトランザクション記録
-- 適切な集計のためのトランザクションタイプコード
-- ビジネス日付とカウンタ情報
-- レポート用の金額計算
-
-## 埋め込みドキュメントモデル
-
-### SalesReportTemplate
-
-売上メトリクスのテンプレート構造。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 説明 |
-|------------|------|-------------|
-| amount | float | 合計金額 |
-| quantity | integer | 合計アイテム数量 |
-| count | integer | トランザクション数 |
-
-### TaxReportTemplate
-
-税金内訳構造。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 説明 |
-|------------|------|-------------|
-| tax_name | string | 税金表示名 |
-| tax_amount | float | 徴収した税金合計 |
-| target_amount | float | 課税対象金額ベース |
-| target_quantity | integer | 課税対象アイテム数量 |
-
-### PaymentReportTemplate
-
-決済方法サマリー構造。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 説明 |
-|------------|------|-------------|
-| payment_name | string | 決済方法表示名 |
-| amount | float | 合計決済金額 |
-| count | integer | 決済トランザクション数 |
-
-### CashInOutReportTemplate
-
-現金操作サマリー構造。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 説明 |
-|------------|------|-------------|
-| amount | float | 合計現金操作金額 |
-| count | integer | 現金操作数 |
-
-### CashReportTemplate
-
-現金引き出し照合構造。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 説明 |
-|------------|------|-------------|
-| logical_amount | float | 計算された予想現金金額 |
-| physical_amount | float | 実際に数えた現金金額 |
-| difference_amount | float | 差異（実際 - 論理） |
-| cash_in | CashInOutReportTemplate | 現金入金操作サマリー |
-| cash_out | CashInOutReportTemplate | 現金出金操作サマリー |
-
-## APIリクエスト/レスポンススキーマ
-
-すべてのスキーマは、JSON直列化の際にsnake_caseからcamelCaseへの自動変換を提供する`BaseSchemaModel`を継承しています。
-
-### リクエストスキーマ
-
-#### レポート生成リクエスト（クエリパラメータ）
-レポート生成のリクエストパラメータ。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| reportScope | string | ✓ | レポートスコープ（'flash'または'daily'） |
-| reportType | string | ✓ | レポートタイプ（'sales'） |
-| businessDate | string | ✓ | ビジネス日付（YYYYMMDD） |
-| openCounter | integer | - | ターミナルセッションカウンタ |
-| businessCounter | integer | - | ビジネスカウンタ |
-| limit | integer | - | ページネーション制限（デフォルト: 100） |
-| page | integer | - | ページ番号（デフォルト: 1） |
-| sort | string | - | ソート条件（形式: "field1:1,field2:-1"） |
-
-#### テナント作成リクエスト
-テナントデータベースを作成するリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| tenantId | string | ✓ | テナント識別子 |
-
-### レスポンススキーマ
-
-#### BaseSalesReportResponse
-売上レポートレスポンス構造。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| terminalNo | integer | ターミナル番号（店舗レベルの場合null） |
-| businessDate | string | ビジネス日付（YYYYMMDD） |
-| openCounter | integer | ターミナルセッションカウンタ |
-| businessCounter | integer | ビジネスカウンタ |
-| salesGross | SalesReportTemplate | 総売上メトリクス |
-| salesNet | SalesReportTemplate | 純売上メトリクス |
-| discountForLineitems | SalesReportTemplate | アイテムレベル割引 |
-| discountForSubtotal | SalesReportTemplate | トランザクションレベル割引 |
-| returns | SalesReportTemplate | 返品メトリクス |
-| taxes | array[TaxReportTemplate] | 税金内訳 |
-| payments | array[PaymentReportTemplate] | 決済内訳 |
-| cash | CashBalanceReportTemplate | 現金照合 |
-| receiptText | string | フォーマットされたレシートテキスト |
-| journalText | string | フォーマットされたジャーナルテキスト |
-
-#### BaseTranResponse
-トランザクションデータレスポンス構造。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| terminalNo | integer | ターミナル番号 |
-| transactionNo | integer | トランザクション番号 |
-
-#### BaseTenantCreateResponse
-テナント作成レスポンス。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | 作成されたテナント識別子 |
-
-## プラグインアーキテクチャ
-
-### プラグインインターフェース
-```python
-class IReportPlugin(ABC):
-    @abstractmethod
-    async def generate_report(
-        self, store_code: str, terminal_no: int, business_counter: int,
-        business_date: str, open_counter: int, report_scope: str,
-        report_type: str, limit: int, page: int, sort: list[tuple[str, int]]
-    ) -> dict[str, any]:
-        """指定されたパラメータに基づいてレポートを生成"""
-        pass
-```
-
-### プラグイン設定
-プラグインは`plugins.json`で設定されます：
+取引ログを保存するコレクション。BaseTransactionをTransactionLogModelに変換して保存。
 
 ```json
 {
-    "report_makers": {
-        "sales": {
-            "module": "app.services.plugins.sales_report_maker",
-            "class": "SalesReportMaker",
-            "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
-        }
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "tran_id": "string",
+  "tran_seq": "integer",
+  "business_date": "string (YYYYMMDD)",
+  "business_counter": "integer",
+  "open_counter": "integer",
+  "transaction_type": "string (purchase/refund/exchange/void)",
+  "transaction_time": "datetime",
+  "void_flag": "boolean",
+  "items": [
+    {
+      "item_id": "string",
+      "item_name": "string",
+      "quantity": "integer",
+      "unit_price": "decimal",
+      "amount": "decimal",
+      "discount_amount": "decimal",
+      "tax_info": {
+        "tax_code": "string",
+        "tax_type": "string",
+        "tax_name": "string",
+        "target_amount": "decimal",
+        "tax_amount": "decimal"
+      }
     }
+  ],
+  "transaction_discount": "decimal",
+  "item_total": "decimal",
+  "excluded_tax_total": "decimal",
+  "included_tax_total": "decimal",
+  "tax_total": "decimal",
+  "discount_total": "decimal",
+  "total_amount": "decimal",
+  "payments": [
+    {
+      "payment_code": "string",
+      "payment_name": "string",
+      "amount": "decimal",
+      "change_amount": "decimal"
+    }
+  ],
+  "tax_aggregation": [
+    {
+      "tax_code": "string",
+      "tax_type": "string",
+      "tax_name": "string",
+      "item_count": "integer",
+      "target_amount": "decimal",
+      "tax_amount": "decimal"
+    }
+  ],
+  "staff_id": "string",
+  "customer_id": "string",
+  "event_id": "string",
+  "created_at": "datetime",
+  "updated_at": "datetime"
 }
 ```
 
-### 売上レポートプラグイン
-`SalesReportMaker`プラグインは、以下を行うための洗練されたMongoDBアグリゲーションパイプラインを実装します：
+### 2. report_cashinout コレクション
 
-1. **トランザクションデータの集計**: 適切な要因でタイプ別にトランザクションをグループ化
-   - 通常売上（101）: 要因 +1
-   - 返品売上（102）: 要因 -1
-   - 取消売上（201）: 要因 -1
-   - 取消返品（202）: 要因 +1
+入出金ログを保存するコレクション。
 
-2. **売上メトリクスの計算**: 総売上/純売上、割引、税金、決済を処理
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "cashinout_id": "string",
+  "business_date": "string (YYYYMMDD)",
+  "business_counter": "integer",
+  "open_counter": "integer",
+  "operation_type": "string (cash_in/cash_out)",
+  "operation_time": "datetime",
+  "amount": "decimal",
+  "reason": "string",
+  "staff_id": "string",
+  "comment": "string",
+  "event_id": "string",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
 
-3. **現金操作の統合**: トランザクションデータと現金入出金操作を結合
+### 3. report_open_close コレクション
 
-4. **フォーマット済み出力の生成**: 適切なフォーマットでレシートとジャーナルテキストを作成
+開閉店ログを保存するコレクション。
 
-## データ検証システム
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "business_date": "string (YYYYMMDD)",
+  "business_counter": "integer",
+  "open_counter": "integer",
+  "operation_type": "string (open/close)",
+  "operation_time": "datetime",
+  "cash_amount": "decimal",
+  "staff_id": "string",
+  "open_time": "datetime (closeの場合のみ)",
+  "close_time": "datetime (closeの場合のみ)",
+  "event_id": "string",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
 
-日次レポート生成前に、サービスは包括的な検証を実行します：
+### 4. report_daily_info コレクション
 
-### ターミナル状況検証
-- すべてのターミナルが適切に閉店されている必要
-- ターミナル状況をDailyInfoDocumentで追跡
-- 検証により不完全な日次レポートを防止
+日次情報を保存するコレクション。端末ごとの状態を管理。
 
-### トランザクション数検証
-- 閉店ログのトランザクション数が実際にログされたトランザクションと一致する必要
-- すべてのトランザクションが確実に考慮される
-- レポートでのデータ損失を防止
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "business_date": "string (YYYYMMDD)",
+  "terminal_info": [
+    {
+      "terminal_no": "integer",
+      "is_closed": "boolean",
+      "close_time": "datetime",
+      "transaction_count": "integer",
+      "cashinout_count": "integer",
+      "last_open_counter": "integer",
+      "last_business_counter": "integer"
+    }
+  ],
+  "all_terminals_closed": "boolean",
+  "daily_report_generated": "boolean",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
 
-### 現金操作検証
-- 現金操作数が期待値と一致する必要
-- 現金引き出し照合の精度を検証
-- 財務整合性を保証
+### 5. report_aggregate_data コレクション
 
-### イベント完全性検証
-- 必要なすべてのイベントタイプが存在する必要
-- pub/subメッセージ配信を検証
-- レポート用の完全なデータを保証
+集計データを保存する汎用コレクション。フラッシュ・日次両方のレポートを格納。
 
-## MongoDBアグリゲーションパイプライン
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer (nullは店舗合計)",
+  "business_date": "string (YYYYMMDD)",
+  "business_counter": "integer",
+  "open_counter": "integer (flashのみ)",
+  "report_scope": "string (flash/daily)",
+  "report_type": "string (sales/category/item)",
+  "report_data": {
+    "sales_gross": {
+      "item_count": "integer",
+      "transaction_count": "integer",
+      "total_amount": "decimal"
+    },
+    "sales_net": {
+      "item_count": "integer",
+      "transaction_count": "integer",
+      "total_amount": "decimal"
+    },
+    "discount_for_lineitems": {
+      "item_count": "integer",
+      "transaction_count": "integer",
+      "total_amount": "decimal"
+    },
+    "discount_for_subtotal": {
+      "item_count": "integer",
+      "transaction_count": "integer",
+      "total_amount": "decimal"
+    },
+    "returns": {
+      "item_count": "integer",
+      "transaction_count": "integer",
+      "total_amount": "decimal"
+    },
+    "taxes": [
+      {
+        "tax_code": "string",
+        "tax_type": "string",
+        "tax_name": "string",
+        "item_count": "integer",
+        "target_amount": "decimal",
+        "tax_amount": "decimal"
+      }
+    ],
+    "payments": [
+      {
+        "payment_code": "string",
+        "payment_name": "string",
+        "transaction_count": "integer",
+        "total_amount": "decimal"
+      }
+    ],
+    "cash": {
+      "cash_in_count": "integer",
+      "cash_in_amount": "decimal",
+      "cash_out_count": "integer",
+      "cash_out_amount": "decimal",
+      "net_cash_movement": "decimal"
+    },
+    "receipt_text": "string",
+    "journal_text": "string"
+  },
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
 
-### 売上レポートアグリゲーションパイプライン
+## インデックス定義
 
-サービスは売上計算のために洗練されたアグリゲーションパイプラインを使用：
+### report_transactions
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + tran_id` (ユニーク)
+- 複合インデックス: `tenant_id + store_code + business_date + open_counter`
+- 単一インデックス: `event_id` (ユニーク)
+- 単一インデックス: `created_at`
 
-1. **$match**: テナント、店舗、ターミナル、日付でフィルタリングし、キャンセルされたトランザクションを除外
-2. **$project**: 割引金額を計算し、配列からネストされたデータを抽出
-3. **$unwind**: 適切なグループ化のために税金と決済配列を展開
-4. **$group**: 複雑な数学演算でトランザクションタイプ別に集計
-5. **$sort**: 結果を順序付けし、ページネーションをサポート
-6. **$facet**: 複数の集計を並列処理
+### report_cashinout
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date`
+- 複合インデックス: `tenant_id + store_code + business_date + open_counter`
+- 単一インデックス: `event_id` (ユニーク)
+- 単一インデックス: `created_at`
 
-### トランザクションタイプ処理
-適切な計算要因で異なるトランザクションタイプを処理：
-- トランザクションタイプに基づいて正/負要因を適用
-- 返品と取消シナリオを正しく処理
-- すべての操作で財務精度を維持
+### report_open_close
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + operation_type`
+- 複合インデックス: `tenant_id + store_code + business_date + open_counter`
+- 単一インデックス: `event_id` (ユニーク)
+- 単一インデックス: `created_at`
 
-## イベント処理
+### report_daily_info
+- 複合インデックス: `tenant_id + store_code + business_date` (ユニーク)
+- 単一インデックス: `all_terminals_closed`
 
-### Dapr Pub/Sub統合
-Dapr pub/sub経由で他のサービスからイベントを受信：
+### report_aggregate_data
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + report_scope + report_type`
+- 複合インデックス: `tenant_id + store_code + business_date + open_counter + report_scope + report_type`
 
-#### トランザクションログイベント（`tranlog`）
-- カートサービスからの完全なトランザクションデータ
-- 明細項目、決済、税金、合計を含む
-- レポート集計用に処理
+## データフロー
 
-#### 現金ログイベント（`cashlog`）
-- ターミナルサービスからの現金入出金操作
-- 現金引き出し照合に使用
-- 日次レポートに統合
+### イベント駆動データフロー
 
-#### 開閉ログイベント（`opencloselog`）
-- ターミナルサービスからのターミナルセッションイベント
-- 検証用のターミナル状態を追跡
-- 日次レポート生成に必要
+1. **取引ログ処理**
+   - トピック: `tranlog_report`
+   - ソース: カートサービス
+   - 処理フロー:
+     1. BaseTransactionを受信
+     2. event_idで重複チェック（Dapr state store使用）
+     3. TransactionLogModelに変換
+     4. report_transactionsに保存
+     5. 集計データを更新
 
-### 冪等処理
-- 重複検出にDapr state storeを使用
-- `StateStoreManager`経由のサーキットブレーカーパターン
-- 信頼性のあるイベント処理を保証
+2. **入出金ログ処理**
+   - トピック: `cashlog_report`
+   - ソース: ターミナルサービス
+   - 処理フロー:
+     1. BaseCashInOutを受信
+     2. event_idで重複チェック
+     3. CashInOutLogModelに変換
+     4. report_cashinoutに保存
+     5. 現金移動集計を更新
 
-## ジャーナル統合
+3. **開閉店ログ処理**
+   - トピック: `opencloselog_report`
+   - ソース: ターミナルサービス
+   - 処理フロー:
+     1. BaseOpenCloseを受信
+     2. event_idで重複チェック
+     3. OpenCloseLogModelに変換
+     4. report_open_closeに保存
+     5. report_daily_infoを更新
 
-### 自動ジャーナル提出
-APIキー認証でレポートが要求された場合：
-- レポートが自動的にジャーナルサービスに送信される
-- 適切なトランザクションタイピング（FlashReport/DailyReport）を使用
-- 生成されたすべてのレポートの監査証跡を提供
-- フォーマット済みレシートとジャーナルテキストを含む
+### レポート生成フロー
 
-## マルチテナンシーとセキュリティ
+1. **フラッシュレポート**
+   - リアルタイムでイベントデータを集計
+   - 端末単位またはstore全体で生成
+   - report_aggregate_dataに保存（report_scope="flash"）
 
-### データベース分離
-- 各テナントは個別のデータベースを使用: `db_report_{tenant_id}`
-- テナント間の完全なデータ分離
-- すべての操作でテナント検証
+2. **日次レポート**
+   - 全端末の閉店確認後に生成
+   - report_daily_infoで状態管理
+   - データ検証（ログ数の一致確認）
+   - report_aggregate_dataに保存（report_scope="daily"）
 
-### 認証方法
-- **JWTトークン**: 管理アクセスとレポート管理用
-- **APIキー**: ターミナル操作と自動ジャーナル提出用
-- **サービス間**: ジャーナル統合用
+## プラグインアーキテクチャ
 
-### データ保護
-- テナント間のデータアクセスなし
-- 包括的な監査証跡
-- セキュアなイベント処理
+### レポートプラグインインターフェース
+```python
+class IReportPlugin(ABC):
+    async def generate_report(
+        self,
+        store_code: str,
+        terminal_no: int,
+        business_counter: int,
+        business_date: str,
+        open_counter: int,
+        report_scope: str,
+        report_type: str,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+    ) -> dict[str, any]
+```
 
-## パフォーマンス考慮事項
+### 実装済みプラグイン
+- **SalesReportPlugin**: 売上レポート生成
+- **CategoryReportPlugin**: カテゴリー別レポート（未実装）
+- **ItemReportPlugin**: 商品別レポート（未実装）
 
-1. **インデックス戦略**: レポートクエリとイベント処理用の最適化された複合インデックス
-2. **アグリゲーション最適化**: 効率のためのパイプライン段階順序付けとインデックス使用
-3. **イベント処理**: 冪等性保証付きの非同期処理
-4. **キャッシュ**: アグリゲーション結果とstate storeキャッシュの戦略的使用
-5. **ページネーション**: 大規模レポートデータセット用の効率的ページネーションサポート
+## 特記事項
 
-## 検証ルール
-
-### レポート生成検証
-- フラッシュレポート: ターミナル閉店要件なし
-- 日次レポート: すべてのターミナルが閉店として検証されている必要
-- ビジネス日付は有効形式（YYYYMMDD）である必要
-- レポートタイプは対応する登録済みプラグインを持つ必要
-
-### イベント処理検証
-- 冪等性のためイベントIDは一意である必要
-- すべての金額は非負である必要
-- タイムスタンプは有効なISO形式である必要
-- ターミナル参照は存在し有効である必要
-
-### データ整合性検証
-- トランザクション数は異なるログタイプ間で一致する必要
-- 現金計算は均衡する必要（開始額 + 操作 = 期待値）
-- 完全なレポートのためにすべての必要なイベントタイプが存在する必要
-
-この包括的なモデル仕様により、レポートサービスは拡張可能なプラグインアーキテクチャと堅牢なデータ検証メカニズムを備えた正確で信頼性の高いビジネスインテリジェンスを提供できます。
+1. **冪等性**: event_idによる重複防止とDapr state storeによる処理済み管理
+2. **マルチテナント**: データベース名にテナントIDを含む完全分離
+3. **パフォーマンス**: 適切なインデックスと集計データのキャッシュ
+4. **拡張性**: プラグインアーキテクチャによる新レポートタイプの追加
+5. **サーキットブレーカー**: DaprClientHelper経由で外部通信の障害対応
+6. **データ整合性**: 日次レポート生成前の厳密なデータ検証

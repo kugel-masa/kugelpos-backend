@@ -1,8 +1,8 @@
-# マスターデータサービスAPI仕様
+# マスターデータサービス API仕様
 
 ## 概要
 
-マスターデータサービスは、Kugelpos POSシステムの中央集権的なマスターデータ管理APIを提供します。商品カタログ、決済方法、税金ルール、プロモーション、スタッフ情報の管理と配信を処理し、システム全体で使用される基本データの一貫性を保証します。
+マスターデータサービスは、Kugelpos POSシステムの基幹となる参照データを管理するRESTful APIサービスです。スタッフ情報、商品マスター、支払方法、税金設定、システム設定などの静的データを一元管理し、他のサービスに提供します。
 
 ## ベースURL
 - ローカル環境: `http://localhost:8002`
@@ -13,22 +13,18 @@
 マスターデータサービスは2つの認証方法をサポートしています：
 
 ### 1. JWTトークン（Bearerトークン）
-- ヘッダーに含める: `Authorization: Bearer {token}`
-- トークン取得元: アカウントサービスの `/api/v1/accounts/token`
-- 管理操作に必要
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるマスターデータ管理
 
 ### 2. APIキー認証
-- ヘッダーに含める: `X-API-Key: {api_key}`
-- クエリパラメータを含める: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
-- POS端末からの読み取り専用アクセスに使用
+- ヘッダー: `X-API-Key: {api_key}`
+- 用途: 端末からのマスターデータ読み取り
 
 ## フィールド形式
 
-すべてのAPIリクエストとレスポンスは**camelCase**フィールド命名規則を使用します。サービスは`BaseSchemaModel`とトランスフォーマーを使用して、内部のsnake_caseと外部のcamelCase形式を自動的に変換します。
+すべてのAPIリクエスト/レスポンスは**camelCase**形式を使用します。
 
 ## 共通レスポンス形式
-
-すべてのエンドポイントは以下の形式でレスポンスを返します：
 
 ```json
 {
@@ -42,73 +38,12 @@
 
 ## APIエンドポイント
 
-### 商品管理
+### スタッフマスター管理
 
-#### 1. 商品一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/products`
+#### 1. スタッフ作成
+**POST** `/api/v1/tenants/{tenant_id}/staff`
 
-商品の一覧を取得します。ページネーションとフィルタリングをサポートします。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**クエリパラメータ:**
-- `category` (string, オプション): カテゴリーでフィルタ
-- `barcode` (string, オプション): バーコードで検索
-- `name` (string, オプション): 商品名で検索
-- `is_active` (boolean, オプション): アクティブ状態でフィルタ
-- `skip` (integer, デフォルト: 0): ページネーションオフセット
-- `limit` (integer, デフォルト: 20, 最大: 100): ページサイズ
-- `sort` (string, オプション): ソートフィールドと順序（例: "name:asc"）
-
-**リクエスト例:**
-```bash
-curl -X GET "http://localhost:8002/api/v1/tenants/tenant001/products?category=beverages&is_active=true&limit=50" \
-  -H "Authorization: Bearer {token}"
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "商品一覧を取得しました",
-  "data": {
-    "items": [
-      {
-        "productId": "prod_001",
-        "name": "コーヒー（ホット）",
-        "description": "ブレンドコーヒー",
-        "category": "beverages",
-        "subcategory": "hot_drinks",
-        "barcode": "4901234567890",
-        "sku": "BEV-001",
-        "price": 300.00,
-        "taxType": "standard",
-        "isActive": true,
-        "attributes": {
-          "size": "regular",
-          "temperature": "hot"
-        },
-        "imageUrl": "https://example.com/coffee.jpg",
-        "createdAt": "2024-01-01T10:00:00Z",
-        "updatedAt": "2024-01-05T15:30:00Z"
-      }
-    ],
-    "total": 150,
-    "skip": 0,
-    "limit": 50
-  },
-  "operation": "get_products"
-}
-```
-
-#### 2. 商品登録
-**POST** `/api/v1/tenants/{tenant_id}/products`
-
-新規商品を登録します。
-
-**認証:** JWTトークンが必要
+新規スタッフを登録します。
 
 **パスパラメータ:**
 - `tenant_id` (string, 必須): テナント識別子
@@ -116,500 +51,292 @@ curl -X GET "http://localhost:8002/api/v1/tenants/tenant001/products?category=be
 **リクエストボディ:**
 ```json
 {
-  "name": "アイスコーヒー",
-  "description": "アイスブレンドコーヒー",
-  "category": "beverages",
-  "subcategory": "cold_drinks",
-  "barcode": "4901234567897",
-  "sku": "BEV-002",
-  "price": 350.00,
-  "cost": 120.00,
-  "taxType": "standard",
-  "isActive": true,
-  "attributes": {
-    "size": "regular",
-    "temperature": "cold"
-  },
-  "imageUrl": "https://example.com/iced-coffee.jpg"
+  "staffId": "STF001",
+  "name": "山田太郎",
+  "pin": "1234",
+  "roles": ["cashier", "manager"]
 }
 ```
-
-**フィールド説明:**
-- `name` (string, 必須): 商品名
-- `description` (string, オプション): 商品説明
-- `category` (string, 必須): カテゴリー
-- `subcategory` (string, オプション): サブカテゴリー
-- `barcode` (string, 必須): バーコード（一意）
-- `sku` (string, 必須): 在庫管理単位（一意）
-- `price` (number, 必須): 販売価格
-- `cost` (number, オプション): 原価
-- `taxType` (string, 必須): 税区分（"standard", "reduced", "exempt"）
-- `isActive` (boolean, デフォルト: true): アクティブ状態
-- `attributes` (object, オプション): カスタム属性
-- `imageUrl` (string, オプション): 商品画像URL
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 201,
-  "message": "商品の登録に成功しました",
+  "message": "Staff created successfully",
   "data": {
-    "productId": "prod_002",
-    "name": "アイスコーヒー",
-    "barcode": "4901234567897",
-    "sku": "BEV-002",
-    "createdAt": "2024-01-10T10:00:00Z"
+    "staffId": "STF001",
+    "name": "山田太郎",
+    "roles": ["cashier", "manager"]
   },
-  "operation": "create_product"
+  "operation": "create_staff"
 }
 ```
 
-#### 3. 商品更新
-**PUT** `/api/v1/tenants/{tenant_id}/products/{product_id}`
+#### 2. スタッフ取得
+**GET** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
-既存商品の情報を更新します。
-
-**認証:** JWTトークンが必要
+特定のスタッフ情報を取得します。
 
 **パスパラメータ:**
 - `tenant_id` (string, 必須): テナント識別子
-- `product_id` (string, 必須): 商品ID
+- `staff_id` (string, 必須): スタッフID
 
-**リクエストボディ:**
-部分更新をサポートします。更新したいフィールドのみを含めます。
+#### 3. スタッフ一覧取得
+**GET** `/api/v1/tenants/{tenant_id}/staff`
 
-```json
-{
-  "price": 380.00,
-  "description": "プレミアムアイスコーヒー",
-  "attributes": {
-    "size": "large",
-    "temperature": "cold"
-  }
-}
-```
-
-#### 4. 商品検索
-**GET** `/api/v1/tenants/{tenant_id}/products/search`
-
-高度な検索条件で商品を検索します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
+スタッフ一覧を取得します。
 
 **クエリパラメータ:**
-- `q` (string, 必須): 検索キーワード
-- `fields` (string, オプション): 検索対象フィールド（カンマ区切り）
-- `price_min` (number, オプション): 最小価格
-- `price_max` (number, オプション): 最大価格
-- `categories` (string, オプション): カテゴリーフィルタ（カンマ区切り）
+- `page` (integer, デフォルト: 1): ページ番号
+- `limit` (integer, デフォルト: 100, 最大: 1000): ページサイズ
+- `sort` (string): ソート条件
 
-#### 5. 一括商品操作
-**POST** `/api/v1/tenants/{tenant_id}/products/bulk`
+#### 4. スタッフ更新
+**PUT** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
-複数商品の一括登録、更新、削除を実行します。
+スタッフ情報を更新します。
 
-**認証:** JWTトークンが必要
+#### 5. スタッフ削除
+**DELETE** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+
+スタッフを削除します。
+
+### 商品マスター管理
+
+#### 6. 商品作成
+**POST** `/api/v1/tenants/{tenant_id}/items`
+
+新規商品を登録します。
 
 **リクエストボディ:**
 ```json
 {
-  "operation": "upsert",
-  "products": [
-    {
-      "barcode": "4901234567890",
-      "name": "商品1",
-      "price": 100.00
-    },
-    {
-      "barcode": "4901234567891",
-      "name": "商品2",
-      "price": 200.00
-    }
-  ]
+  "itemCode": "ITEM001",
+  "description": "コーヒー（ホット）",
+  "shortDescription": "コーヒー",
+  "detailDescription": "ブレンドコーヒー",
+  "unitPrice": 300.00,
+  "unitCost": 100.00,
+  "categoryCode": "BEVERAGE",
+  "taxCode": "TAX_10",
+  "itemDetails": [
+    {"name": "size", "value": "regular"},
+    {"name": "temperature", "value": "hot"}
+  ],
+  "imageUrls": ["https://example.com/coffee.jpg"],
+  "isDiscountRestricted": false
 }
 ```
 
-**操作タイプ:**
-- `upsert`: 存在しない場合は作成、存在する場合は更新
-- `update`: 既存商品の更新のみ
-- `delete`: 商品の削除
+#### 7. 商品取得
+**GET** `/api/v1/tenants/{tenant_id}/items/{item_code}`
 
-### 決済方法管理
+特定の商品情報を取得します。
 
-#### 6. 決済方法一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/payments`
+#### 8. 商品一覧取得
+**GET** `/api/v1/tenants/{tenant_id}/items`
 
-利用可能な決済方法の一覧を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
+商品一覧を取得します。
 
 **クエリパラメータ:**
-- `is_active` (boolean, オプション): アクティブ状態でフィルタ
-- `type` (string, オプション): 決済タイプでフィルタ（"cash", "credit", "debit", "emoney", "qr"）
+- `page` (integer): ページ番号
+- `limit` (integer): ページサイズ
+- `sort` (string): ソート条件
+
+#### 9. 商品更新
+**PUT** `/api/v1/tenants/{tenant_id}/items/{item_code}`
+
+商品情報を更新します。
+
+#### 10. 商品削除
+**DELETE** `/api/v1/tenants/{tenant_id}/items/{item_code}`
+
+商品を削除します。
+
+### 商品店舗別マスター管理
+
+#### 11. 店舗別価格設定
+**POST** `/api/v1/tenants/{tenant_id}/item_stores`
+
+店舗固有の商品価格を設定します。
+
+**リクエストボディ:**
+```json
+{
+  "storeCode": "STORE001",
+  "itemCode": "ITEM001",
+  "storePrice": 280.00
+}
+```
+
+### 商品ブックマスター管理
+
+#### 12. 商品ブック取得
+**GET** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}`
+
+POS画面のUI階層（カテゴリー/タブ/ボタン）を取得します。
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "決済方法一覧を取得しました",
+  "message": "Item book retrieved successfully",
   "data": {
-    "items": [
+    "itemBookId": "BOOK001",
+    "title": "標準レイアウト",
+    "categories": [
       {
-        "paymentMethodId": "pm_001",
-        "code": "CASH",
-        "name": "現金",
-        "type": "cash",
-        "isActive": true,
-        "allowChange": true,
-        "minimumAmount": 1,
-        "maximumAmount": 1000000,
-        "fee": 0,
-        "feeType": "fixed",
-        "displayOrder": 1,
-        "icon": "cash-icon.png"
-      },
-      {
-        "paymentMethodId": "pm_002",
-        "code": "CREDIT_VISA",
-        "name": "クレジットカード（VISA）",
-        "type": "credit",
-        "isActive": true,
-        "allowChange": false,
-        "minimumAmount": 1000,
-        "feeRate": 3.25,
-        "feeType": "percentage",
-        "displayOrder": 2,
-        "icon": "visa-icon.png",
-        "settings": {
-          "processorId": "stripe",
-          "merchantId": "MERCHANT001"
-        }
+        "categoryNumber": 1,
+        "title": "ドリンク",
+        "tabs": [
+          {
+            "tabNumber": 1,
+            "title": "ホット",
+            "buttons": [
+              {
+                "posX": 0,
+                "posY": 0,
+                "sizeX": 1,
+                "sizeY": 1,
+                "itemCode": "ITEM001",
+                "title": "コーヒー",
+                "color": "#8B4513"
+              }
+            ]
+          }
+        ]
       }
-    ],
-    "total": 10
+    ]
   },
+  "operation": "get_item_book"
+}
+```
+
+### 支払方法マスター管理
+
+#### 13. 支払方法一覧取得
+**GET** `/api/v1/tenants/{tenant_id}/payments`
+
+利用可能な支払方法を取得します。
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Payment methods retrieved successfully",
+  "data": [
+    {
+      "paymentCode": "CASH",
+      "description": "現金",
+      "limitAmount": null,
+      "canRefund": true,
+      "canDepositOver": true,
+      "canChange": true
+    },
+    {
+      "paymentCode": "CREDIT",
+      "description": "クレジットカード",
+      "limitAmount": 1000000,
+      "canRefund": true,
+      "canDepositOver": false,
+      "canChange": false
+    }
+  ],
   "operation": "get_payment_methods"
 }
 ```
 
-#### 7. 決済方法登録
-**POST** `/api/v1/tenants/{tenant_id}/payments`
+### 設定マスター管理
 
-新規決済方法を登録します。
+#### 14. 設定値取得
+**GET** `/api/v1/tenants/{tenant_id}/settings/{name}/value`
 
-**認証:** JWTトークンが必要
+階層的な設定値を取得します（グローバル→店舗→端末の優先順位）。
 
-**リクエストボディ:**
-```json
-{
-  "code": "EMONEY_SUICA",
-  "name": "交通系電子マネー（Suica）",
-  "type": "emoney",
-  "isActive": true,
-  "allowChange": false,
-  "minimumAmount": 1,
-  "maximumAmount": 20000,
-  "feeRate": 2.5,
-  "feeType": "percentage",
-  "displayOrder": 5,
-  "icon": "suica-icon.png",
-  "settings": {
-    "terminalId": "TERM001",
-    "merchantCode": "MERCH001"
-  }
-}
-```
-
-### 税金ルール管理
-
-#### 8. 税金ルール一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/tax-rules`
-
-税金ルールの一覧を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
+**クエリパラメータ:**
+- `store_code` (string): 店舗コード
+- `terminal_no` (integer): 端末番号
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "税金ルール一覧を取得しました",
+  "message": "Setting value retrieved successfully",
   "data": {
-    "items": [
-      {
-        "taxRuleId": "tax_001",
-        "code": "STANDARD",
-        "name": "標準税率",
-        "rate": 10.0,
-        "type": "standard",
-        "calculationMethod": "exclusive",
-        "isDefault": true,
-        "effectiveFrom": "2019-10-01",
-        "effectiveTo": null,
-        "categories": ["general", "electronics", "clothing"]
-      },
-      {
-        "taxRuleId": "tax_002",
-        "code": "REDUCED",
-        "name": "軽減税率",
-        "rate": 8.0,
-        "type": "reduced",
-        "calculationMethod": "exclusive",
-        "isDefault": false,
-        "effectiveFrom": "2019-10-01",
-        "effectiveTo": null,
-        "categories": ["food", "beverages"]
-      }
-    ],
-    "total": 3
+    "name": "receipt_print_count",
+    "value": "2",
+    "scope": "store"
   },
-  "operation": "get_tax_rules"
+  "operation": "get_setting_value"
 }
 ```
 
-#### 9. 税金計算
-**POST** `/api/v1/tenants/{tenant_id}/tax-rules/calculate`
+### カテゴリーマスター管理
 
-商品リストに対する税金を計算します。
+#### 15. カテゴリー一覧取得
+**GET** `/api/v1/tenants/{tenant_id}/categories`
 
-**リクエストボディ:**
+商品カテゴリーの階層を取得します。
+
+### 税金マスター管理
+
+#### 16. 税金設定一覧取得
+**GET** `/api/v1/tenants/{tenant_id}/taxes`
+
+税率設定を取得します。
+
+**レスポンス例:**
 ```json
 {
-  "items": [
+  "success": true,
+  "code": 200,
+  "message": "Tax settings retrieved successfully",  
+  "data": [
     {
-      "productId": "prod_001",
-      "price": 300.00,
-      "quantity": 2,
-      "taxType": "standard"
+      "taxCode": "TAX_10",
+      "taxType": "STANDARD",
+      "taxName": "標準税率",
+      "rate": 10.0,
+      "roundDigit": 0,
+      "roundMethod": "ROUND"
     },
     {
-      "productId": "prod_002",
-      "price": 500.00,
-      "quantity": 1,
-      "taxType": "reduced"
+      "taxCode": "TAX_8",
+      "taxType": "REDUCED",
+      "taxName": "軽減税率",
+      "rate": 8.0,
+      "roundDigit": 0,
+      "roundMethod": "ROUND"
     }
   ],
-  "calculationMethod": "exclusive"
+  "operation": "get_tax_settings"
 }
 ```
 
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "税金計算が完了しました",
-  "data": {
-    "items": [
-      {
-        "productId": "prod_001",
-        "subtotal": 600.00,
-        "taxAmount": 60.00,
-        "total": 660.00,
-        "taxRate": 10.0
-      },
-      {
-        "productId": "prod_002",
-        "subtotal": 500.00,
-        "taxAmount": 40.00,
-        "total": 540.00,
-        "taxRate": 8.0
-      }
-    ],
-    "totalSubtotal": 1100.00,
-    "totalTax": 100.00,
-    "totalAmount": 1200.00
-  },
-  "operation": "calculate_tax"
-}
-```
+### システム管理
 
-### プロモーション管理
+#### 17. テナント初期化
+**POST** `/api/v1/tenants`
 
-#### 10. アクティブプロモーション取得
-**GET** `/api/v1/tenants/{tenant_id}/promotions/active`
-
-現在有効なプロモーションを取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**クエリパラメータ:**
-- `store_code` (string, オプション): 店舗コードでフィルタ
-- `datetime` (string, オプション): 特定日時での有効プロモーション（ISO 8601形式）
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "アクティブプロモーションを取得しました",
-  "data": {
-    "items": [
-      {
-        "promotionId": "promo_001",
-        "code": "SUMMER2024",
-        "name": "サマーセール2024",
-        "description": "夏の特別割引",
-        "type": "percentage_discount",
-        "value": 20.0,
-        "startDate": "2024-07-01T00:00:00Z",
-        "endDate": "2024-08-31T23:59:59Z",
-        "conditions": {
-          "minimumAmount": 3000,
-          "categories": ["clothing", "accessories"],
-          "maxUsagePerCustomer": 1
-        },
-        "priority": 10,
-        "isStackable": false
-      }
-    ],
-    "total": 5
-  },
-  "operation": "get_active_promotions"
-}
-```
-
-#### 11. プロモーション登録
-**POST** `/api/v1/tenants/{tenant_id}/promotions`
-
-新規プロモーションを登録します。
-
-**認証:** JWTトークンが必要
+新規テナントのマスターデータを初期化します。
 
 **リクエストボディ:**
 ```json
 {
-  "code": "BOGO2024",
-  "name": "Buy One Get One Free",
-  "description": "対象商品を1つ購入で1つ無料",
-  "type": "bogo",
-  "startDate": "2024-06-01T00:00:00Z",
-  "endDate": "2024-06-30T23:59:59Z",
-  "conditions": {
-    "products": ["prod_001", "prod_002"],
-    "quantity": 2
-  },
-  "stores": ["STORE001", "STORE002"],
-  "priority": 5,
-  "isStackable": true
+  "tenantId": "tenant001"
 }
 ```
-
-### スタッフ管理
-
-#### 12. スタッフ一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/staff`
-
-スタッフの一覧を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**クエリパラメータ:**
-- `store_code` (string, オプション): 店舗コードでフィルタ
-- `is_active` (boolean, オプション): アクティブ状態でフィルタ
-- `role` (string, オプション): 役職でフィルタ
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "スタッフ一覧を取得しました",
-  "data": {
-    "items": [
-      {
-        "staffId": "STF001",
-        "staffCode": "001",
-        "name": "山田太郎",
-        "role": "manager",
-        "stores": ["STORE001"],
-        "permissions": ["sales", "refund", "report", "cash_management"],
-        "isActive": true,
-        "email": "yamada@example.com",
-        "phone": "090-1234-5678",
-        "createdAt": "2024-01-01T10:00:00Z"
-      }
-    ],
-    "total": 25
-  },
-  "operation": "get_staff"
-}
-```
-
-#### 13. スタッフ登録
-**POST** `/api/v1/tenants/{tenant_id}/staff`
-
-新規スタッフを登録します。
 
 **認証:** JWTトークンが必要
 
-**リクエストボディ:**
-```json
-{
-  "staffCode": "002",
-  "name": "佐藤花子",
-  "role": "cashier",
-  "stores": ["STORE001", "STORE002"],
-  "permissions": ["sales", "refund"],
-  "email": "sato@example.com",
-  "phone": "090-9876-5432",
-  "pin": "1234"
-}
-```
-
-### データ同期
-
-#### 14. 端末用マスターデータ取得
-**GET** `/api/v1/terminals/{terminal_id}/master-data`
-
-端末用の完全なマスターデータセットを取得します。
-
-**パスパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**クエリパラメータ:**
-- `version` (string, オプション): 現在のデータバージョン（差分更新用）
-- `data_types` (string, オプション): 取得するデータタイプ（カンマ区切り）
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "マスターデータを取得しました",
-  "data": {
-    "version": "2024010110000001",
-    "products": [...],
-    "paymentMethods": [...],
-    "taxRules": [...],
-    "promotions": [...],
-    "staff": [...],
-    "categories": [...],
-    "settings": {...}
-  },
-  "operation": "get_master_data"
-}
-```
-
-### システムエンドポイント
-
-#### 15. ヘルスチェック
+#### 18. ヘルスチェック
 **GET** `/health`
 
-サービスヘルスと依存関係ステータスをチェックします。
-
-**リクエスト例:**
-```bash
-curl -X GET "http://localhost:8002/health"
-```
+サービスの健全性を確認します。
 
 **レスポンス例:**
 ```json
@@ -619,97 +346,43 @@ curl -X GET "http://localhost:8002/health"
   "message": "サービスは正常です",
   "data": {
     "status": "healthy",
-    "database": "connected",
-    "cache": "connected",
-    "timestamp": "2024-01-01T10:00:00Z"
+    "mongodb": "connected"
   },
   "operation": "health_check"
 }
 ```
 
-## エラーレスポンス
+## ページネーション
 
-APIは標準的なHTTPステータスコードと構造化されたエラーレスポンスを使用します：
+一覧取得エンドポイントは共通のページネーション形式をサポート：
 
+**レスポンスメタデータ:**
 ```json
 {
-  "success": false,
-  "code": 404,
-  "message": "指定された商品が見つかりません",
-  "data": null,
-  "operation": "get_product"
+  "metadata": {
+    "total": 150,
+    "page": 1,
+    "limit": 50,
+    "pages": 3
+  }
 }
 ```
 
-### 共通ステータスコード
-- `200` - 成功
-- `201` - 正常に作成されました
-- `400` - 不正なリクエスト（検証エラー）
-- `401` - 認証失敗
-- `403` - アクセス拒否
-- `404` - リソースが見つかりません
-- `409` - 競合（重複データなど）
-- `500` - 内部サーバーエラー
-
-### エラーコードシステム
+## エラーコード
 
 マスターデータサービスは30XXX範囲のエラーコードを使用します：
 
-- `30001` - 商品が見つかりません
-- `30002` - 無効な商品データ
-- `30003` - 重複するバーコード/SKU
-- `30004` - 決済方法エラー
-- `30005` - 税金計算エラー
-- `30006` - プロモーション適用エラー
-- `30007` - スタッフ認証エラー
-- `30008` - データ同期エラー
-- `30009` - 一括操作エラー
-- `30099` - 一般的なサービスエラー
+- `30001`: リソースが見つかりません
+- `30002`: 検証エラー
+- `30003`: 重複エラー
+- `30004`: 認証エラー
+- `30005`: 権限エラー
+- `30099`: 一般的なサービスエラー
 
-## データ形式
+## 特記事項
 
-### 日付と時刻
-- すべての日付時刻はISO 8601形式（UTC）
-- 日付のみ: `YYYY-MM-DD`
-- 日付時刻: `YYYY-MM-DDTHH:mm:ssZ`
-
-### 金額
-- すべての金額は小数点以下2桁までの数値
-- 通貨記号は含まない
-- 負の値は返品やディスカウントに使用
-
-### ページネーション
-- `skip`: オフセット（0から開始）
-- `limit`: 取得件数（最大100）
-- レスポンスには`total`が含まれる
-
-## キャッシング
-
-マスターデータサービスはDapr state storeを使用してデータをキャッシュします：
-
-- 商品データ: 5分間キャッシュ
-- 決済方法: 30分間キャッシュ
-- 税金ルール: 60分間キャッシュ
-- プロモーション: リアルタイム（キャッシュなし）
-
-キャッシュはデータ更新時に自動的に無効化されます。
-
-## レート制限
-
-現在、マスターデータサービスは明示的なレート制限を実装していませんが、以下の制限が追加される可能性があります：
-
-- 読み取り操作: 1分あたり600リクエスト
-- 書き込み操作: 1分あたり60リクエスト
-- 一括操作: 1分あたり10リクエスト
-
-## 注意事項
-
-1. **マルチテナント**: すべての操作はテナントスコープ内で実行
-2. **データ整合性**: 一括操作はトランザクション内で実行
-3. **バージョニング**: マスターデータのバージョン管理をサポート
-4. **CamelCase規約**: すべてのJSONフィールドはcamelCase形式を使用
-5. **非同期処理**: 大量データ操作は非同期で処理
-6. **監査ログ**: すべての変更操作は監査ログに記録
-7. **ソフトデリート**: データは物理削除されず、非アクティブ化
-
-マスターデータサービスは、Kugelpos POSシステムの基盤データ管理を提供し、データの一貫性、効率的な配信、柔軟な拡張性を保証します。
+1. **マルチテナント対応**: 全ての操作はテナントスコープ内で実行
+2. **階層的設定**: 設定値はグローバル→店舗→端末の優先順位で解決
+3. **PINハッシュ化**: スタッフPINはbcryptでハッシュ化して保存
+4. **ソフトデリート**: データは物理削除されず非アクティブ化
+5. **camelCase変換**: 内部snake_caseは自動的にcamelCaseに変換

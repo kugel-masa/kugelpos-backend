@@ -72,16 +72,16 @@ chmod +x quick_start.sh
 
 ### 1. 環境設定
 
-#### 必須環境変数
-以下の環境変数は、サービスを正常に実行するために設定する必要があります：
+#### 環境変数（開発環境では任意）
+サービスには開発用のデフォルト値が含まれていますが、カスタマイズすることも可能です：
 
-- `SECRET_KEY`: JWT署名用の秘密鍵（認証に必要）
-- `PUBSUB_NOTIFY_API_KEY`: Pub/Sub通知用のAPIキー（必須）
+- `SECRET_KEY`: JWT署名用の秘密鍵（デフォルト: "test-secret-key-for-development-only"）
+- `PUBSUB_NOTIFY_API_KEY`: Pub/Sub通知用のAPIキー（デフォルト値あり）
 
-⚠️ **重要**: 本番環境では、デフォルト値やサンプル値を絶対に使用しないでください！
+⚠️ **重要**: 本番環境では、これらの値を変更してください！
 
 ```bash
-# 必須環境変数を設定
+# 任意：開発用のカスタム環境変数を設定
 export SECRET_KEY="your-secure-secret-key-here"
 export PUBSUB_NOTIFY_API_KEY="your-api-key-here"
 

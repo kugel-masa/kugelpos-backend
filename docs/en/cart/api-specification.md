@@ -2,710 +2,534 @@
 
 ## Overview
 
-Cart Service is the core transaction processing service in the Kugelpos POS system. It manages shopping cart operations, handles payment processing, and coordinates transaction completion using a state machine pattern to ensure proper business logic flow.
+The Cart service is a microservice that manages shopping carts and transaction processing. It provides cart state management using state machine patterns, product operations, payment processing, and pluggable extension features.
 
-## Base URL
-- Local environment: `http://localhost:8003`
-- Production environment: `https://cart.{domain}`
+## Service Information
 
-## Authentication
-
-Cart Service supports API key authentication for POS terminal operations:
-
-### API Key Authentication
-- Include in header: `X-API-Key: {api_key}`
-- Include query parameter: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
-- Terminal must be in "Opened" status for cart operations
-
-## Field Format
-
-All API requests and responses use **camelCase** field naming conventions. The service uses `BaseSchemaModel` and transformers to automatically convert between internal snake_case and external camelCase formats.
-
-## Common Response Format
-
-All endpoints return responses in the following format:
-
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Operation completed successfully",
-  "data": { ... },
-  "operation": "function_name"
-}
-```
-
-## Cart States
-
-The cart follows a state machine pattern with the following states:
-- `Initial` - Cart just created
-- `Idle` - Empty cart ready for items
-- `EnteringItem` - Cart with items, allows modifications
-- `Paying` - Processing payments, limited operations
-- `Completed` - Transaction finalized
-- `Cancelled` - Transaction cancelled
+- **Port**: 8003
+- **Framework**: FastAPI
+- **Authentication**: API Key Authentication
+- **Database**: MongoDB (Motor async driver)
+- **State Management**: State Machine Pattern
+- **Plugin System**: Payment, sales promotion, and receipt data plugins
 
 ## API Endpoints
 
-### Cart Operations
+### 1. Root Endpoint
 
-#### 1. Create Cart
-**POST** `/api/v1/carts`
+**Path**: `/`  
+**Method**: GET  
+**Authentication**: Not required  
+**Description**: Service health check endpoint
 
-Create a new shopping cart for transaction processing.
-
-**Request Body:**
+**Response**:
 ```json
 {
-  "transactionType": 101,
-  "userId": "user001",
-  "userName": "John Doe"
+  "message": "Welcome to Kugel-POS Cart API. supoorted version: v1"
 }
 ```
 
-**Field Descriptions:**
-- `transactionType` (integer, optional): Transaction type code (default: 101)
-  - `101` - Normal sales
-  - `102` - Return sales
-- `userId` (string, optional): User/staff identifier
-- `userName` (string, optional): User/staff name
+**Implementation File**: app/main.py:68-76
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8003/api/v1/carts?terminal_id=tenant001-store001-001" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transactionType": 101,
-    "userId": "STF001",
-    "userName": "John Doe"
-  }'
+### 2. Health Check
+
+**Path**: `/health`  
+**Method**: GET  
+**Authentication**: Not required  
+**Description**: Check service health and dependency status
+
+**Response Model**: `HealthCheckResponse`
+```json
+{
+  "status": "healthy",
+  "service": "cart",
+  "version": "1.0.0",
+  "checks": {
+    "mongodb": {
+      "status": "healthy",
+      "details": {}
+    },
+    "dapr_sidecar": {
+      "status": "healthy",
+      "details": {}
+    },
+    "dapr_cartstore": {
+      "status": "healthy",
+      "details": {}
+    },
+    "dapr_pubsub_tranlog": {
+      "status": "healthy",
+      "details": {}
+    },
+    "background_jobs": {
+      "status": "healthy",
+      "details": {
+        "scheduler_running": true,
+        "job_count": 1,
+        "job_names": ["republish_undelivered_tranlog"]
+      }
+    }
+  }
+}
 ```
 
-**Response Example:**
+**Implementation File**: app/main.py:79-137
+
+## Cart API (/api/v1/carts)
+
+### 3. Create Cart
+
+**Path**: `/api/v1/carts`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Create a new shopping cart
+
+**Request Model**: `CartCreateRequest`
+```json
+{
+  "transactionType": "standard",
+  "userId": "STF001",
+  "userName": "山田太郎"
+}
+```
+
+**Response Model**: `ApiResponse[CartCreateResponse]`
 ```json
 {
   "success": true,
   "code": 201,
-  "message": "Cart created successfully",
+  "message": "Cart Created. cart_id: cart_20250105_001",
   "data": {
-    "cartId": "cart_123456789",
-    "status": "Idle",
-    "transactionType": 101,
-    "terminalId": "tenant001-store001-001",
-    "userId": "STF001",
-    "businessDate": "2024-01-01",
-    "createdAt": "2024-01-01T10:00:00Z"
+    "cartId": "cart_20250105_001"
   },
   "operation": "create_cart"
 }
 ```
 
-#### 2. Get Cart
-**GET** `/api/v1/carts/{cart_id}`
+**Error Responses**:
+- 400: Bad Request
+- 401: Unauthorized
+- 403: Forbidden
+- 422: Unprocessable Entity
+- 500: Internal Server Error
 
-Retrieve cart details including items, payments, and calculations.
+**Implementation Details** (app/api/v1/cart.py:32-82):
+- terminal_id is obtained through dependency injection
+- Initial state is "idle" when cart is created
+- User information is optional
 
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
+### 4. Get Cart
 
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
+**Path**: `/api/v1/carts/{cart_id}`  
+**Method**: GET  
+**Authentication**: Required (API Key)  
+**Description**: Get detailed cart information
 
-**Request Example:**
-```bash
-curl -X GET "http://localhost:8003/api/v1/carts/cart_123456789?terminal_id=tenant001-store001-001" \
-  -H "X-API-Key: {api_key}"
-```
+**Path Parameters**:
+- `cart_id`: string - Cart ID
 
-**Response Example:**
+**Response Model**: `ApiResponse[Cart]`
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Cart retrieved successfully",
+  "message": "Cart found. cart_id: cart_20250105_001",
   "data": {
-    "cartId": "cart_123456789",
-    "status": "EnteringItem",
-    "transactionType": 101,
-    "subtotalAmount": 100.00,
-    "discountAmount": 10.00,
-    "taxAmount": 9.00,
-    "totalAmount": 99.00,
-    "balanceAmount": 99.00,
-    "lineItems": [
-      {
-        "lineNo": 1,
-        "itemCode": "ITEM001",
-        "description": "Sample Product",
-        "quantity": 2.0,
-        "unitPrice": 50.00,
-        "amount": 100.00,
-        "discountAmount": 10.00,
-        "taxAmount": 9.00,
-        "isCancelled": false
-      }
-    ],
-    "payments": [],
-    "taxes": [
-      {
-        "taxCode": "TAX001",
-        "taxName": "Standard Tax",
-        "taxRate": 0.10,
-        "taxableAmount": 90.00,
-        "taxAmount": 9.00
-      }
-    ]
+    "cartId": "cart_20250105_001",
+    "status": "entering_item",
+    "terminalId": "A1234-STORE01-1",
+    "lineItems": [...],
+    "subtotalAmount": 1000.0,
+    "taxAmount": 100.0,
+    "totalAmount": 1100.0,
+    "balanceAmount": 1100.0
   },
   "operation": "get_cart"
 }
 ```
 
-#### 3. Cancel Cart
-**POST** `/api/v1/carts/{cart_id}/cancel`
+**Implementation Details** (app/api/v1/cart.py:84-128):
+- Model conversion via SchemasTransformerV1
 
-Cancel an entire cart (allowed in Initial, Idle, or EnteringItem states).
+### 5. Cancel Cart
 
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
+**Path**: `/api/v1/carts/{cart_id}/cancel`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Transition cart to cancelled state
 
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
+**Implementation Details** (app/api/v1/cart.py:131-172):
+- Can be cancelled from any state
+- No operations allowed after cancellation
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8003/api/v1/carts/cart_123456789/cancel?terminal_id=tenant001-store001-001" \
-  -H "X-API-Key: {api_key}"
+### 6. Add Items
+
+**Path**: `/api/v1/carts/{cart_id}/lineItems`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Add items to cart
+
+**Request Model**: `list[Item]`
+```json
+[
+  {
+    "barcode": "4901234567890",
+    "quantity": 2.0,
+    "unitPrice": 100.0
+  }
+]
 ```
 
-### Line Item Operations
+**Implementation Details** (app/api/v1/cart.py:175-220):
+- Bulk addition of multiple items possible
+- Automatic transition from idle to entering_item state
 
-#### 4. Add Line Item
-**POST** `/api/v1/carts/{cart_id}/lineItems`
+### 7. Cancel Item
 
-Add items to the shopping cart.
+**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Cancel a specific item
 
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
+**Path Parameters**:
+- `cart_id`: string - Cart ID
+- `lineNo`: integer - Line number (starts from 1)
 
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
+**Implementation Details** (app/api/v1/cart.py:223-266):
+- Sets cancellation flag (no physical deletion)
 
-**Request Body:**
+### 8. Update Unit Price
+
+**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`  
+**Method**: PATCH  
+**Authentication**: Required (API Key)  
+**Description**: Update item unit price
+
+**Request Model**: `ItemUnitPriceUpdateRequest`
 ```json
 {
-  "itemCode": "ITEM001",
-  "quantity": 2.0,
-  "unitPrice": null,
-  "overridePrice": false,
-  "overrideReason": null
+  "unitPrice": 150.0
 }
 ```
 
-**Field Descriptions:**
-- `itemCode` (string, required): Product item code
-- `quantity` (number, required): Quantity to add (positive number)
-- `unitPrice` (number, optional): Custom unit price (if overriding)
-- `overridePrice` (boolean, optional): Flag to override price
-- `overrideReason` (string, optional): Reason for price override
+**Implementation Details** (app/api/v1/cart.py:269-315):
+- Automatic recalculation after price change
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8003/api/v1/carts/cart_123456789/lineItems?terminal_id=tenant001-store001-001" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "itemCode": "ITEM001",
-    "quantity": 2.0
-  }'
-```
+### 9. Update Quantity
 
-#### 5. Cancel Line Item
-**POST** `/api/v1/carts/{cart_id}/lineItems/{line_no}/cancel`
+**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`  
+**Method**: PATCH  
+**Authentication**: Required (API Key)  
+**Description**: Update item quantity
 
-Cancel a specific line item (mark as cancelled, not removed).
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-- `line_no` (integer, required): Line item number
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-#### 6. Update Line Item Quantity
-**PATCH** `/api/v1/carts/{cart_id}/lineItems/{line_no}/quantity`
-
-Update the quantity of a line item.
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-- `line_no` (integer, required): Line item number
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Request Body:**
+**Request Model**: `ItemQuantityUpdateRequest`
 ```json
 {
   "quantity": 3.0
 }
 ```
 
-#### 7. Update Line Item Unit Price
-**PATCH** `/api/v1/carts/{cart_id}/lineItems/{line_no}/unitPrice`
+**Implementation Details** (app/api/v1/cart.py:318-364):
+- Automatic recalculation after quantity change
 
-Update the unit price of a line item.
+### 10. Add Item Discount
 
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-- `line_no` (integer, required): Line item number
+**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Apply discount to specific item
 
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Request Body:**
+**Request Model**: `list[DiscountRequest]`
 ```json
-{
-  "unitPrice": 45.00,
-  "overrideReason": "Manager discount"
-}
+[
+  {
+    "discountCode": "DISC10",
+    "discountAmount": 50.0,
+    "discountType": "amount"
+  }
+]
 ```
 
-#### 8. Add Line Item Discount
-**POST** `/api/v1/carts/{cart_id}/lineItems/{line_no}/discounts`
+**Implementation Details** (app/api/v1/cart.py:367-415):
+- Multiple discounts can be applied
 
-Apply discount to a specific line item.
+### 11. Calculate Subtotal
 
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-- `line_no` (integer, required): Line item number
+**Path**: `/api/v1/carts/{cart_id}/subtotal`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Calculate cart subtotal and tax
 
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
+**Implementation Details** (app/api/v1/cart.py:418-459):
+- Subtotal calculation after item entry
+- Transition from entering_item to paying state
 
-**Request Body:**
+### 12. Add Cart Discount
+
+**Path**: `/api/v1/carts/{cart_id}/discounts`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Apply discount to entire cart
+
+**Request Model**: `list[DiscountRequest]`
+
+**Implementation Details** (app/api/v1/cart.py:462-508):
+- Apply cart-level discounts
+
+### 13. Add Payment
+
+**Path**: `/api/v1/carts/{cart_id}/payments`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Add payment to cart
+
+**Request Model**: `list[PaymentRequest]`
 ```json
-{
-  "discountType": "amount",
-  "discountValue": 5.00,
-  "discountDetail": "Customer promotion"
-}
-```
-
-**Field Descriptions:**
-- `discountType` (string, required): Type of discount ("amount" or "percent")
-- `discountValue` (number, required): Discount value (amount in dollars or percentage)
-- `discountDetail` (string, optional): Discount detail or reason
-
-### Transaction Processing
-
-#### 9. Calculate Subtotal
-**POST** `/api/v1/carts/{cart_id}/subtotal`
-
-Calculate cart subtotal including taxes (required before payment).
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Subtotal calculated successfully",
-  "data": {
-    "subtotalAmount": 100.00,
-    "discountAmount": 10.00,
-    "taxAmount": 9.00,
-    "totalAmount": 99.00,
-    "taxes": [
-      {
-        "taxCode": "TAX001",
-        "taxName": "Standard Tax",
-        "taxRate": 0.10,
-        "taxableAmount": 90.00,
-        "taxAmount": 9.00
-      }
-    ]
-  },
-  "operation": "calculate_subtotal"
-}
-```
-
-#### 10. Add Cart Discount
-**POST** `/api/v1/carts/{cart_id}/discounts`
-
-Apply discount to entire cart.
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Request Body:**
-```json
-{
-  "discountType": "percent",
-  "discountValue": 10.0,
-  "discountDetail": "Member discount"
-}
-```
-
-#### 11. Process Payment
-**POST** `/api/v1/carts/{cart_id}/payments`
-
-Add payment to the cart.
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Request Body:**
-```json
-{
-  "paymentCode": "01",
-  "amount": 10000,
-  "detail": "Cash payment"
-}
-```
-
-**Field Descriptions:**
-- `paymentCode` (string, required): Payment method code
-  - `01` - Cash
-  - `11` - Cashless (Credit/Debit)
-  - `12` - Other payment methods
-- `amount` (integer, required): Payment amount in cents (e.g., 10000 = $100.00)
-- `detail` (string, optional): Payment detail or reference information
-
-**Request Example (Cash Payment):**
-```bash
-curl -X POST "http://localhost:8003/api/v1/carts/cart_123456789/payments?terminal_id=tenant001-store001-001" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
+[
+  {
     "paymentCode": "01",
-    "amount": 10000,
-    "detail": "Cash payment"
-  }'
-```
-
-#### 12. Finalize Transaction (Bill)
-**POST** `/api/v1/carts/{cart_id}/bill`
-
-Complete the transaction and generate receipt.
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Transaction completed successfully",
-  "data": {
-    "cartId": "cart_123456789",
-    "status": "Completed",
-    "transactionNo": "0001",
-    "receiptNo": "R0001",
-    "businessDate": "2024-01-01",
-    "totalAmount": 99.00,
-    "receiptText": "=== RECEIPT ===\n...",
-    "journalText": "Transaction Details\n...",
-    "timestamp": "2024-01-01T10:30:00Z"
-  },
-  "operation": "complete_transaction"
-}
-```
-
-#### 13. Resume Item Entry
-**POST** `/api/v1/carts/{cart_id}/resume-item-entry`
-
-Return from payment state to continue adding items.
-
-**Path Parameters:**
-- `cart_id` (string, required): Cart identifier
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-### Transaction Management
-
-#### 14. Query Transactions
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
-
-Search and retrieve historical transactions.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (string, required): Terminal number
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-- `business_date` (string, optional): Business date (YYYY-MM-DD)
-- `transaction_no` (string, optional): Transaction number
-- `skip` (integer, default: 0): Pagination offset
-- `limit` (integer, default: 20, max: 100): Page size
-
-**Request Example:**
-```bash
-curl -X GET "http://localhost:8003/api/v1/tenants/tenant001/stores/store001/terminals/001/transactions?terminal_id=tenant001-store001-001&business_date=2024-01-01" \
-  -H "X-API-Key: {api_key}"
-```
-
-#### 15. Get Transaction Details
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`
-
-Retrieve specific transaction details.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (string, required): Terminal number
-- `transaction_no` (string, required): Transaction number
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-- `business_date` (string, required): Business date (YYYY-MM-DD)
-
-#### 16. Void Transaction
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`
-
-Void a completed transaction (same terminal only).
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (string, required): Terminal number
-- `transaction_no` (string, required): Transaction number
-
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
-
-**Request Body:**
-```json
-{
-  "businessDate": "2024-01-01",
-  "voidReasonCode": "01",
-  "voidReason": "Customer request"
-}
-```
-
-**Field Descriptions:**
-- `businessDate` (string, required): Original transaction business date
-- `voidReasonCode` (string, optional): Void reason code
-- `voidReason` (string, optional): Void reason description
-
-#### 17. Process Return
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`
-
-Process a return from original transaction (any terminal in same store).
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (string, required): Original terminal number
-- `transaction_no` (string, required): Original transaction number
-
-**Query Parameters:**
-- `terminal_id` (string, required): Current terminal ID for authentication
-
-**Request Body:**
-```json
-{
-  "businessDate": "2024-01-01",
-  "returnItems": [
-    {
-      "lineNo": 1,
-      "quantity": 1.0,
-      "returnReasonCode": "01",
-      "returnReason": "Defective"
+    "paymentAmount": 1100.0,
+    "paymentDetails": {
+      "tenderedAmount": 2000.0
     }
-  ]
-}
+  }
+]
 ```
 
-**Field Descriptions:**
-- `businessDate` (string, required): Original transaction business date
-- `returnItems` (array, required): Items to return
-  - `lineNo` (integer, required): Original line item number
-  - `quantity` (number, required): Quantity to return
-  - `returnReasonCode` (string, optional): Return reason code
-  - `returnReason` (string, optional): Return reason description
+**Implementation Details** (app/api/v1/cart.py:511-556):
+- Multiple payment methods can be combined
+- Payment processing via plugin system
 
-#### 18. Update Delivery Status
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`
+### 14. Bill Transaction
 
-Update transaction log delivery status for event tracking.
+**Path**: `/api/v1/carts/{cart_id}/bill`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Complete cart and finalize transaction
 
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (string, required): Terminal number
-- `transaction_no` (string, required): Transaction number
+**Implementation Details** (app/api/v1/cart.py:559-601):
+- Transition from paying to completed state
+- Generate and publish transaction log
+- Generate receipt data
 
-**Query Parameters:**
-- `terminal_id` (string, required): Terminal ID for authentication
+### 15. Resume Item Entry
 
-**Request Body:**
+**Path**: `/api/v1/carts/{cart_id}/resume-item-entry`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Return from payment state to item entry state
+
+**Implementation Details** (app/api/v1/cart.py:604-646):
+- Return from paying to entering_item state
+- Clear payment information
+
+## Transaction API
+
+### 16. Get Transaction List
+
+**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`  
+**Method**: GET  
+**Authentication**: Required (API Key)  
+**Description**: Get list of transactions matching criteria
+
+**Query Parameters**:
+- `business_date`: string (YYYYMMDD) - Business date
+- `open_counter`: integer - Open counter
+- `transaction_type`: list[integer] - Transaction types
+- `receipt_no`: integer - Receipt number
+- `limit`: integer (default: 100) - Number of records
+- `page`: integer (default: 1) - Page number
+- `sort`: string - Sort conditions (e.g., "transaction_no:-1")
+- `include_cancelled`: boolean (default: false) - Include cancelled transactions
+
+**Implementation Details** (app/api/v1/tran.py:207-292)
+
+### 17. Get Transaction Details
+
+**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`  
+**Method**: GET  
+**Authentication**: Required (API Key)  
+**Description**: Get detailed information for a specific transaction
+
+**Implementation Details** (app/api/v1/tran.py:295-357)
+
+### 18. Void Transaction
+
+**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Void a transaction
+
+**Request Model**: `list[PaymentRequest]` - Payment methods for refund
+
+**Implementation Details** (app/api/v1/tran.py:360-438):
+- Can only be voided from the same terminal
+- Requires payment processing for refund
+
+### 19. Return Transaction
+
+**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Process transaction return
+
+**Request Model**: `list[PaymentRequest]` - Payment methods for refund
+
+**Implementation Details** (app/api/v1/tran.py:441-516):
+- Can only be returned from within the same store
+- Creates new transaction for return
+
+### 20. Update Delivery Status
+
+**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`  
+**Method**: POST  
+**Authentication**: Required (JWT or internal authentication)  
+**Description**: Update delivery status of transaction log
+
+**Request Model**: `DeliveryStatusUpdateRequest`
 ```json
 {
-  "businessDate": "2024-01-01",
   "eventId": "evt_123456",
-  "delivered": true
+  "service": "journal",
+  "status": "delivered",
+  "message": "Successfully processed"
 }
 ```
 
-### System Endpoints
+**Implementation Details** (app/api/v1/tran.py:520-594):
+- Endpoint for Pub/Sub notifications
+- Used for inter-service communication
 
-#### 19. Create Tenant
-**POST** `/api/v1/tenants`
+## Tenant API
 
-Initialize cart service for a new tenant.
+### 21. Create Tenant
 
-**Request Body:**
-```json
-{
-  "tenantId": "tenant001"
-}
-```
+**Path**: `/api/v1/tenants`  
+**Method**: POST  
+**Authentication**: Required (API Key)  
+**Description**: Set up database for new tenant
 
-**Authentication:** Requires JWT token
+**Implementation File**: app/api/v1/tenant.py
 
-#### 20. Health Check
-**GET** `/health`
+## Cache API
 
-Check service health and dependencies.
+### 22. Update Terminal Status
 
-**Request Example:**
-```bash
-curl -X GET "http://localhost:8003/health"
-```
+**Path**: `/api/v1/cache/terminal/status`  
+**Method**: PUT  
+**Authentication**: Required (API Key)  
+**Description**: Update terminal cache status
 
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Service is healthy",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected",
-    "dapr_sidecar": "connected",
-    "dapr_state_store": "connected",
-    "pubsub_topics": "available"
-  },
-  "operation": "health_check"
-}
-```
+**Implementation File**: app/api/v1/cache.py
 
-## Error Responses
+### 23. Clear Terminal Cache
 
-The API uses standard HTTP status codes and structured error responses:
+**Path**: `/api/v1/cache/terminal`  
+**Method**: DELETE  
+**Authentication**: Required (API Key)  
+**Description**: Clear terminal cache
 
-```json
-{
-  "success": false,
-  "code": 400,
-  "message": "Invalid cart state: Cannot add items in Paying state",
-  "data": null,
-  "operation": "add_line_item"
-}
-```
+**Implementation File**: app/api/v1/cache.py
 
-### Common Status Codes
-- `200` - Success
-- `201` - Created successfully
-- `400` - Bad request
-- `401` - Authentication error
-- `403` - Access denied
-- `404` - Resource not found
-- `409` - State conflict
-- `500` - Internal server error
+## State Machine
 
-### Error Code System
+### Cart State Transitions
 
-Cart Service uses error codes in the 30XXX range:
+**Implementation Directory**: app/services/states/
 
-- `30001` - Cart not found
-- `30002` - Invalid cart state for operation
-- `30003` - Line item not found
-- `30004` - Payment processing error
-- `30005` - Transaction not found
-- `30006` - Void operation not allowed
-- `30007` - Return processing error
-- `30008` - Invalid payment amount
-- `30009` - Terminal not opened
-- `30010` - Staff not signed in
-- `30099` - General cart service error
+1. **InitialState** → **IdleState**
+   - Initial transition when cart is created
 
-## Event Publishing
+2. **IdleState** → **EnteringItemState**
+   - When first item is added
 
-The cart service publishes events to the following Dapr pub/sub topics:
+3. **EnteringItemState** → **PayingState**
+   - When subtotal calculation is executed
 
-### Transaction Log Events
-- **Topic**: `topic-tranlog`
-- **Events**: Completed transactions, voids, returns
+4. **PayingState** → **CompletedState**
+   - When billing process is completed
 
-Event structure includes:
-- Transaction details
-- Line items
-- Payments
-- Receipt and journal text
+5. **PayingState** → **EnteringItemState**
+   - When item entry is resumed
 
-## Business Rules
-
-1. **Terminal Requirements**:
-   - Terminal must be in "Opened" status
-   - Staff must be signed in
-
-2. **State Transitions**:
-   - Items can only be added in Idle or EnteringItem states
-   - Payments only allowed after subtotal calculation
-   - Cannot modify cart in Completed or Cancelled states
-
-3. **Payment Rules**:
-   - Total payment must equal balance amount
-   - Cash payments calculate change automatically
-   - Multiple payment methods supported
-
-4. **Void Rules**:
-   - Only from same terminal that created transaction
-   - Only for completed transactions
-   - Creates reverse transaction
-
-5. **Return Rules**:
-   - Allowed from any terminal in same store
-   - Partial returns supported
-   - Original transaction must exist
+6. **Any State** → **CancelledState**
+   - When cancellation is processed
 
 ## Plugin System
 
-### Payment Strategies
-- **Cash (01)**: Handles physical cash with change
-- **Cashless (11)**: Credit/debit card processing
-- **Other (12)**: Alternative payment methods
+### Payment Plugins
 
-### Promotion Strategies
-- Extensible promotion system
-- Configured via `plugins.json`
+**Implementation Directory**: app/services/strategies/payments/
+
+- **PaymentByCash** (ID: "01"): Cash payment
+- **PaymentByCashless** (ID: "11"): Cashless payment
+- **PaymentByOthers** (ID: "12"): Other payment methods
+
+### Sales Promotion Plugins
+
+**Implementation Directory**: app/services/strategies/sales_promotions/
+
+- **SalesPromoSample** (ID: "101"): Sample sales promotion
+
+### Receipt Data Plugins
+
+**Implementation Directory**: app/services/strategies/receipt_data/
+
+- **ReceiptDataSample** (ID: "default", "32"): Receipt data generation
+
+## Scheduled Jobs
+
+### Republish Undelivered Messages
+
+**Implementation File**: app/cron/republish_undelivery_message.py
+
+- **Execution Interval**: Every 5 minutes
+- **Check Period**: Past 24 hours
+- **Failure Criteria**: More than 15 minutes elapsed
+- **Target**: Undelivered transaction logs
+
+## Event Publishing
+
+### Dapr Pub/Sub Topics
+
+1. **tranlog_report**: Transaction logs (for reporting)
+2. **tranlog_status**: Transaction status updates
+3. **cashlog_report**: Cash in/out logs
+4. **opencloselog_report**: Open/close logs
+
+## Error Codes
+
+Cart service uses the following error code system:
+- **30XXYY**: Cart service specific errors
+  - XX: Feature identifier
+  - YY: Specific error number
+
+## Middleware
+
+**Implementation File**: app/main.py
+
+1. **CORS** (lines 53-59): Allow access from all origins
+2. **Request Logging** (line 62): Log all HTTP requests
+3. **Exception Handler** (line 65): Unified error response format
+
+## Database
+
+### Collections
+- `carts`: Cart information
+- `terminal_counter`: Terminal counters
+- `tranlog`: Transaction logs
+- `transaction_status`: Transaction status
+
+### Cache
+- Uses Dapr State Store (cartstore)
+- Terminal information cache (TTL: 300 seconds)
 
 ## Notes
 
-1. **Cart ID**: Generated automatically as unique identifier
-2. **Transaction Numbers**: Sequential per terminal per business date
-3. **State Machine**: Enforces proper operation sequence
-4. **CamelCase Convention**: All JSON fields use camelCase
-5. **Timestamps**: All timestamps are in ISO 8601 format (UTC)
-6. **Amount Calculations**: All amounts are in decimal format
-7. **Idempotency**: Operations are designed to be idempotent where possible
+1. **API Key Authentication**: Required for all business endpoints
+2. **State Machine**: Only operations following state transition rules are allowed
+3. **Plugin Configuration**: Dynamic loading via plugins.json
+4. **Asynchronous Processing**: All DB operations are asynchronous
+5. **Event Publishing**: Asynchronous events via Dapr
+6. **Multi-tenancy**: Independent database per tenant
+7. **Cart Expiration**: 24 hours from creation

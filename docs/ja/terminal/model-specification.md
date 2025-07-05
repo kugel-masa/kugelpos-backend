@@ -1,368 +1,273 @@
-# ターミナルサービスモデル仕様
+# ターミナルサービス モデル仕様
 
 ## 概要
 
-ターミナルサービスは、Kugelpos POSシステムにおけるPOS端末、店舗、および現金操作のためのデータモデルを管理します。このサービスは、端末のライフサイクル管理、スタッフ認証、ビジネスセッション制御を処理し、様々なログコレクションを通じて包括的な監査証跡を維持します。
-
-## データベースドキュメントモデル
-
-### 1. TenantInfoDocument（テナント情報）
-
-テナントと埋め込み店舗情報を保存するためのメインドキュメント。
-
-**コレクション名:** `info_tenant`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナントの一意識別子 |
-| tenant_name | string | ✓ | テナントの表示名 |
-| stores | array[StoreInfo] | ✓ | このテナントに属する店舗のリスト |
-| tags | array[string] | - | 分類のための追加タグ |
-| _id | ObjectId | ✓ | MongoDBドキュメントID（継承） |
-| entry_datetime | datetime | ✓ | ドキュメント作成タイムスタンプ（継承） |
-| last_update_datetime | datetime | - | 最終更新タイムスタンプ（継承） |
-| shard_key | string | ✓ | シャーディングキー（継承） |
-
-**インデックス:**
-- ユニークインデックス: tenant_id
-- インデックス: tags
-
-### 2. StoreInfo（店舗情報 - 埋め込み）
-
-TenantInfoDocument内の埋め込みドキュメントで、個々の店舗を表します。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| store_code | string | ✓ | テナント内の一意の店舗コード |
-| store_name | string | ✓ | 店舗の表示名 |
-| status | string | - | 店舗ステータス（Active/Inactive） |
-| business_date | string | - | 現在のビジネス日付（YYYYMMDD） |
-| tags | array[string] | - | 分類のための追加タグ |
-| created_at | datetime | ✓ | 店舗作成タイムスタンプ |
-| updated_at | datetime | - | 最終更新タイムスタンプ |
-
-### 3. TerminalInfoDocument（端末情報）
-
-個々の端末情報を保存するためのドキュメント。このモデルはcommonsライブラリで定義され、サービス間で共有されます。
-
-**コレクション名:** `info_terminal`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| terminal_id | string | ✓ | 一意ID: {tenant_id}-{store_code}-{terminal_no} |
-| tenant_id | string | ✓ | この端末を所有するテナント |
-| store_code | string | ✓ | 端末が設置されている店舗 |
-| terminal_no | integer | ✓ | 店舗内の端末番号（1-999） |
-| description | string | - | 端末の説明 |
-| function_mode | string | ✓ | 現在の機能モード |
-| status | string | ✓ | 端末ステータス（Idle/Opened/Closed） |
-| business_date | string | - | 現在のビジネス日付（YYYYMMDD） |
-| open_counter | integer | ✓ | 端末オープンセッションカウンター |
-| business_counter | integer | ✓ | ビジネス操作カウンター |
-| staff | StaffMasterDocument | - | 現在サインインしているスタッフ |
-| initial_amount | float | - | 初期現金金額 |
-| physical_amount | float | - | 実際の現金カウント |
-| api_key | string | ✓ | 認証用APIキー |
-| tags | array[string] | - | 追加タグ |
-| _id | ObjectId | ✓ | MongoDBドキュメントID（継承） |
-| entry_datetime | datetime | ✓ | 作成タイムスタンプ（継承） |
-| last_update_datetime | datetime | - | 更新タイムスタンプ（継承） |
-| shard_key | string | ✓ | シャーディングキー（継承） |
-
-**インデックス:**
-- ユニークインデックス: terminal_id
-- 複合インデックス: (tenant_id, store_code, terminal_no)
-- インデックス: api_key
-
-### 4. CashInOutLog（現金取引ログ）
-
-レジドロワーの取引を記録するためのドキュメント。
-
-**コレクション名:** `log_cash_in_out`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| store_name | string | ✓ | 表示用店舗名 |
-| terminal_no | integer | ✓ | 端末番号 |
-| staff_id | string | ✓ | 取引を実行したスタッフ |
-| staff_name | string | ✓ | 表示用スタッフ名 |
-| business_date | string | ✓ | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | ✓ | 端末オープンカウンター |
-| business_counter | integer | ✓ | ビジネスカウンター |
-| generate_date_time | string | ✓ | 取引タイムスタンプ |
-| amount | float | ✓ | 金額（正=入金、負=出金） |
-| description | string | - | 取引の説明 |
-| receipt_text | string | ✓ | フォーマット済みレシートテキスト |
-| journal_text | string | ✓ | フォーマット済みジャーナルテキスト |
-| _id | ObjectId | ✓ | MongoDBドキュメントID（継承） |
-| entry_datetime | datetime | ✓ | 作成タイムスタンプ（継承） |
-| last_update_datetime | datetime | - | 更新タイムスタンプ（継承） |
-| shard_key | string | ✓ | シャーディングキー（継承） |
-
-**インデックス:**
-- 複合インデックス: (tenant_id, store_code, terminal_no, business_date)
-- インデックス: generate_date_time
-
-### 5. OpenCloseLog（端末セッションログ）
-
-端末の開店/閉店操作を記録するためのドキュメント。
-
-**コレクション名:** `log_open_close`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| store_name | string | ✓ | 表示用店舗名 |
-| terminal_no | integer | ✓ | 端末番号 |
-| staff_id | string | ✓ | 操作を実行したスタッフ |
-| staff_name | string | ✓ | 表示用スタッフ名 |
-| business_date | string | ✓ | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | ✓ | 端末オープンカウンター |
-| business_counter | integer | ✓ | ビジネスカウンター |
-| operation | string | ✓ | 操作タイプ: 'open' または 'close' |
-| generate_date_time | string | ✓ | 操作タイムスタンプ |
-| terminal_info | TerminalInfoDocument | ✓ | 端末状態のスナップショット |
-| cart_transaction_count | integer | ✓ | セッション中の取引数 |
-| cart_transaction_last_no | integer | - | 最後の取引番号 |
-| cash_in_out_count | integer | ✓ | 現金操作の数 |
-| cash_in_out_last_datetime | string | - | 最後の現金操作タイムスタンプ |
-| receipt_text | string | ✓ | フォーマット済みレシートテキスト |
-| journal_text | string | ✓ | フォーマット済みジャーナルテキスト |
-| _id | ObjectId | ✓ | MongoDBドキュメントID（継承） |
-| entry_datetime | datetime | ✓ | 作成タイムスタンプ（継承） |
-| last_update_datetime | datetime | - | 更新タイムスタンプ（継承） |
-| shard_key | string | ✓ | シャーディングキー（継承） |
-
-**インデックス:**
-- 複合インデックス: (tenant_id, store_code, terminal_no, business_date, operation)
-- インデックス: generate_date_time
-
-### 6. TerminallogDeliveryStatus（イベント配信追跡）
-
-pub/subイベントの配信ステータスを追跡するためのドキュメント。
-
-**コレクション名:** `status_terminal_delivery`
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| event_id | string | ✓ | イベントUUID |
-| published_at | datetime | ✓ | イベント公開タイムスタンプ |
-| status | string | ✓ | 配信ステータス |
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| terminal_no | integer | ✓ | 端末番号 |
-| business_date | string | ✓ | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | ✓ | 端末オープンカウンター |
-| payload | object | ✓ | イベントメッセージ本体 |
-| services | array[ServiceStatus] | ✓ | サービス配信ステータス |
-| last_updated_at | datetime | ✓ | 最終更新タイムスタンプ |
-| _id | ObjectId | ✓ | MongoDBドキュメントID（継承） |
-| entry_datetime | datetime | ✓ | 作成タイムスタンプ（継承） |
-| last_update_datetime | datetime | - | 更新タイムスタンプ（継承） |
-| shard_key | string | ✓ | シャーディングキー（継承） |
-
-## APIリクエスト/レスポンススキーマ
-
-すべてのスキーマは`BaseSchemmaModel`から継承し、JSONシリアライゼーション用にフィールド名をsnake_caseからcamelCaseに自動変換します。
-
-### 端末管理スキーマ
-
-#### TerminalCreateRequest
-新規端末を作成するリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| storeCode | string | ✓ | 端末を作成する店舗コード |
-| terminalNo | integer | ✓ | 端末番号（1-999） |
-| description | string | ✓ | 端末の説明 |
-
-#### TerminalUpdateRequest
-端末情報を更新するリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| description | string | ✓ | 新しい端末の説明 |
-
-#### Terminal（レスポンス）
-端末情報レスポンス。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| terminalId | string | 一意の端末識別子 |
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| terminalNo | integer | 端末番号 |
-| description | string | 端末の説明 |
-| functionMode | string | 現在の機能モード |
-| status | string | 端末ステータス |
-| businessDate | string | 現在のビジネス日付 |
-| openCounter | integer | オープンセッションカウンター |
-| businessCounter | integer | ビジネスカウンター |
-| initialAmount | float | 初期現金金額 |
-| physicalAmount | float | 実際の現金カウント |
-| staff | object | サインインしているスタッフ情報 |
-| apiKey | string | 端末APIキー |
-| entryDatetime | string | 作成タイムスタンプ |
-| lastUpdateDatetime | string | 更新タイムスタンプ |
-
-### 端末操作スキーマ
-
-#### TerminalSignInRequest
-スタッフサインインのリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| staffId | string | ✓ | スタッフ識別子 |
-
-#### TerminalOpenRequest
-ビジネス用端末を開くリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| initialAmount | float | ✓ | 初期レジドロワー金額 |
-
-#### TerminalOpenResponse
-端末オープン後のレスポンス。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| terminalId | string | 端末識別子 |
-| businessDate | string | 割り当てられたビジネス日付 |
-| openCounter | integer | オープンセッションカウンター |
-| businessCounter | integer | ビジネスカウンター |
-| initialAmount | float | 初期現金金額 |
-| terminalInfo | object | 完全な端末情報 |
-| receiptText | string | フォーマット済みレシートテキスト |
-| journalText | string | フォーマット済みジャーナルテキスト |
-
-#### TerminalCloseRequest
-端末を閉じるリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| physicalAmount | float | ✓ | カウントされた現金金額 |
-
-#### TerminalCloseResponse
-端末クローズ後のレスポンス。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| terminalId | string | 端末識別子 |
-| businessDate | string | ビジネス日付 |
-| openCounter | integer | オープンセッションカウンター |
-| businessCounter | integer | ビジネスカウンター |
-| physicalAmount | float | 最終現金金額 |
-| terminalInfo | object | 完全な端末情報 |
-| receiptText | string | フォーマット済みレシートテキスト |
-| journalText | string | フォーマット済みジャーナルテキスト |
-
-### 現金操作スキーマ
-
-#### CashInOutRequest
-レジドロワー操作のリクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| amount | float | ✓ | 金額（正=入金、負=出金） |
-| description | string | - | 操作の説明 |
-
-#### CashInOutResponse
-現金操作後のレスポンス。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| terminalId | string | 端末識別子 |
-| amount | float | 取引金額 |
-| description | string | 操作の説明 |
-| receiptText | string | フォーマット済みレシートテキスト |
-| journalText | string | フォーマット済みジャーナルテキスト |
-
-## 列挙型
-
-### 端末ステータス
-- `Idle` - ビジネス用に開かれていない端末
-- `Opened` - 端末がアクティブで準備完了
-- `Closed` - その日の端末が閉じられた
-
-### 機能モード
-- `MainMenu` - デフォルト表示モード
-- `OpenTerminal` - 端末開店操作
-- `Sales` - 販売取引処理
-- `Returns` - 返品取引処理
-- `Void` - 取引取消
-- `Reports` - レポート生成
-- `CloseTerminal` - 端末閉店操作
-- `Journal` - 取引履歴表示
-- `Maintenance` - システムメンテナンス
-- `CashInOut` - レジドロワー操作
-
-### 店舗ステータス
-- `Active` - 店舗は稼働中
-- `Inactive` - 店舗は非稼働
-
-### 配信ステータス
-- `published` - イベントがpub/subに公開された
-- `delivered` - すべてのサービスがイベントを受信
-- `partially_delivered` - 一部のサービスがイベントを受信
-- `failed` - 配信失敗
-
-## データフローと関係
-
-### 1. 端末ライフサイクル
-```
-端末作成 → APIキー生成 → スタッフサインイン → 端末オープン
-    ↓
-日次操作（販売、現金入出金） → 端末クローズ → 新ビジネス日付
+ターミナルサービスのデータモデル仕様書です。MongoDBのコレクション構造、スキーマ定義、およびデータフローについて説明します。
+
+## データベース設計
+
+### データベース名
+- `{tenant_id}_terminal` (例: `tenant001_terminal`)
+
+### コレクション一覧
+
+| コレクション名 | 用途 | 主なデータ |
+|---------------|------|------------|
+| tenant_info | テナント情報 | テナントと店舗の基本情報 |
+| terminal_info | 端末情報 | 端末の詳細と状態管理 |
+| cash_in_out_log | 現金入出金ログ | 現金操作の記録 |
+| open_close_log | 開閉店ログ | 端末の開閉店記録 |
+| terminallog_delivery_status | 配信ステータス | イベント配信の追跡 |
+
+## 詳細スキーマ定義
+
+### 1. tenant_info コレクション
+
+テナントと店舗情報を管理するコレクション。店舗は埋め込みドキュメントとして保存。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "tenant_name": "string",
+  "stores": [
+    {
+      "store_code": "string",
+      "store_name": "string",
+      "status": "string (active/inactive)",
+      "business_date": "string (YYYYMMDD)",
+      "created_at": "datetime",
+      "updated_at": "datetime"
+    }
+  ],
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
 ```
 
-### 2. マルチテナント構造
+### 2. terminal_info コレクション
+
+端末の詳細情報と現在状態を管理するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "terminal_id": "string (tenant_id-store_code-terminal_no)",
+  "tenant_id": "string",
+  "store_code": "string",
+  "terminal_no": "integer (1-999)",
+  "description": "string",
+  "function_mode": "string (MainMenu/Sales/etc)",
+  "status": "string (idle/opened/closed)",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "staff": {
+    "staff_id": "string",
+    "staff_name": "string"
+  },
+  "initial_amount": "decimal",
+  "physical_amount": "decimal",
+  "api_key": "string (hashed)",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+**フィールド説明:**
+- `terminal_id`: 端末の一意識別子（形式: tenant_id-store_code-terminal_no）
+- `function_mode`: 現在のファンクションモード
+- `status`: 端末の営業状態
+- `open_counter`: 開店回数カウンター
+- `business_counter`: ビジネス操作カウンター
+- `api_key`: 端末認証用APIキー（SHA-256ハッシュ化）
+
+### 3. cash_in_out_log コレクション
+
+現金入出金操作の履歴を保存するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "cashinout_id": "string",
+  "staff_id": "string",
+  "staff_name": "string",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "operation_type": "string (cash_in/cash_out)",
+  "amount": "decimal",
+  "reason": "string",
+  "comment": "string",
+  "receipt_text": "string",
+  "journal_text": "string",
+  "generate_date_time": "string (ISO 8601)",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+### 4. open_close_log コレクション
+
+端末の開閉店操作の履歴を保存するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "store_name": "string",
+  "terminal_no": "integer",
+  "staff_id": "string",
+  "staff_name": "string",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "operation": "string (open/close)",
+  "generate_date_time": "string (ISO 8601)",
+  "terminal_info": {
+    "/* 端末情報のスナップショット */"
+  },
+  "cart_transaction_count": "integer",
+  "cart_transaction_last_no": "integer",
+  "cash_in_out_count": "integer",
+  "cash_in_out_last_datetime": "string",
+  "receipt_text": "string",
+  "journal_text": "string",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+### 5. terminallog_delivery_status コレクション
+
+イベント配信の状態を追跡するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "event_id": "string (UUID)",
+  "published_at": "datetime",
+  "status": "string (published/delivered/failed)",
+  "tenant_id": "string",
+  "store_code": "string",
+  "terminal_no": "integer",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "payload": {
+    "/* イベントペイロード */"
+  },
+  "services": [
+    {
+      "service_name": "string",
+      "delivered": "boolean",
+      "delivered_at": "datetime"
+    }
+  ],
+  "last_updated_at": "datetime",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+## インデックス定義
+
+### tenant_info
+- ユニークインデックス: `tenant_id`
+
+### terminal_info
+- ユニークインデックス: `terminal_id`
+- 複合インデックス: `tenant_id + store_code + terminal_no`
+- 単一インデックス: `api_key`
+
+### cash_in_out_log
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date`
+- 単一インデックス: `generate_date_time`
+
+### open_close_log
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + operation`
+- 単一インデックス: `generate_date_time`
+
+### terminallog_delivery_status
+- ユニークインデックス: `event_id`
+- 複合インデックス: `tenant_id + status + published_at`
+
+## 列挙型定義
+
+### 端末状態（TerminalStatus）
+- `idle`: 初期状態、営業開始前
+- `opened`: 営業中（開店済み）
+- `closed`: 営業終了（閉店済み）
+
+### ファンクションモード（FunctionMode）
+- `MainMenu`: メインメニュー
+- `OpenTerminal`: 端末開店
+- `Sales`: 販売処理
+- `Returns`: 返品処理
+- `Void`: 取消処理
+- `Reports`: レポート表示
+- `CloseTerminal`: 端末閉店
+- `Journal`: ジャーナル表示
+- `Maintenance`: メンテナンス
+- `CashInOut`: 現金入出金
+
+### 店舗状態（StoreStatus）
+- `active`: 営業中
+- `inactive`: 非営業
+
+### 配信状態（DeliveryStatus）
+- `published`: イベント発行済み
+- `delivered`: 配信完了
+- `partially_delivered`: 部分配信
+- `failed`: 配信失敗
+
+## データフロー
+
+### 端末ライフサイクル
+1. **端末作成**: テナント・店舗・端末番号を指定して作成
+2. **APIキー生成**: 自動生成されハッシュ化して保存
+3. **スタッフサインイン**: スタッフ情報を端末に紐付け
+4. **開店処理**: 営業開始、初期現金設定
+5. **日中操作**: 現金入出金、販売処理
+6. **閉店処理**: 営業終了、現金確認
+7. **ビジネス日付更新**: 次営業日への切り替え
+
+### イベント配信フロー
+1. **イベント生成**: 開閉店、現金操作時にイベント生成
+2. **Dapr Pub/Sub**: 非同期でイベントを発行
+3. **配信追跡**: delivery_statusで配信状態を管理
+4. **再送制御**: 未配信イベントのバックグラウンド再送
+
+### マルチテナント構造
 ```
 テナント
-  └── 店舗（埋め込み）
-        └── 端末（別コレクション）
-              └── 取引ログ
+├── 店舗（埋め込み）
+└── 端末（別コレクション）
+    ├── 現金入出金ログ
+    └── 開閉店ログ
 ```
 
-### 3. イベント公開フロー
-```
-端末操作 → ログ生成 → Daprに公開 → 配信ステータス追跡
-```
+## セキュリティ
 
-## セキュリティ機能
+### APIキー管理
+- 32バイトのセキュアランダム生成
+- SHA-256でハッシュ化して保存
+- 端末認証に使用
 
-1. **APIキー管理**: 
-   - `secrets.token_urlsafe(32)`を使用して生成
-   - 端末ドキュメントに安全に保存
-   - 端末認証に使用
+### データ分離
+- テナント単位でデータベース分離
+- すべての操作でテナントID検証
+- クロステナントアクセス防止
 
-2. **マルチテナント分離**:
-   - テナントごとに個別のデータベース
-   - データベース名形式: `{DB_NAME_PREFIX}_{tenant_id}`
-   - すべての操作でテナントID検証
+## 特記事項
 
-3. **監査証跡**:
-   - すべての操作をタイムスタンプ付きでログ記録
-   - すべての取引でスタッフ識別
-   - 不変のログエントリ
-
-## パフォーマンスの考慮事項
-
-1. **埋め込みドキュメント**: クエリを削減するため、店舗はテナントドキュメント内に埋め込まれています
-2. **インデックス**: 一般的なクエリパターン（端末別、日付別、ステータス別）に最適化
-3. **シャーディング**: shard_keyによる水平スケーリングのサポート
-4. **イベント配信**: スケーラビリティのための非同期pub/sub
+1. **端末ID形式**: `{tenant_id}-{store_code}-{terminal_no}`で統一
+2. **店舗コード正規化**: 大文字に自動変換（store001 → STORE001）
+3. **バックグラウンドジョブ**: 未配信イベントの定期的な再送処理
+4. **監査証跡**: すべての操作をタイムスタンプ付きで記録
+5. **サーキットブレーカー**: 外部サービス呼び出しの障害対応
+6. **イベント駆動**: Dapr pub/subによる疎結合な連携

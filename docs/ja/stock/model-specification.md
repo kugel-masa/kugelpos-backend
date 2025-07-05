@@ -1,648 +1,280 @@
-# ストックサービス モデル仕様
+# 在庫サービス モデル仕様
 
 ## 概要
 
-ストックサービスは、リアルタイム在庫追跡、自動アラート、ポイントインタイム スナップショット、包括的な監査証跡を提供する洗練された在庫管理システムです。サービスは、Dapr pub/sub を介したイベント駆動の在庫更新、在庫アラート用のリアルタイム WebSocket 通知、自動スナップショット スケジューリング、エンタープライズグレードのマルチテナンシー サポートを実装しています。すべての操作は、高スループット POS 環境でのデータ整合性を保証するために、原子的一貫性、包括的な監査証跡、競合状態防止で設計されています。
-
-## データベースドキュメントモデル
-
-すべてのドキュメントモデルは、監査、キャッシュ、シャーディング用の共通フィールドを提供する`AbstractDocument`を継承しています。
-
-### AbstractDocument（基底クラス）
-
-すべてのドキュメントに共通機能を提供する基底クラス。
-
-**基底フィールド:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| shard_key | string | - | 水平スケーリング用のデータベースシャーディングキー |
-| created_at | datetime | - | ドキュメント作成タイムスタンプ |
-| updated_at | datetime | - | 最終更新タイムスタンプ |
-| cached_on | datetime | - | キャッシュ無効化用のキャッシュタイムスタンプ |
-| etag | string | - | 楽観的並行性制御用のエンティティタグ |
-
-### 1. StockDocument（プライマリ在庫ストレージ）
-
-発注管理機能を備えた現在の在庫レベルを追跡するメインドキュメント。
-
-**コレクション名:** `stocks`
-
-**目的:** アラート閾値管理を含むリアルタイム在庫追跡
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| item_code | string | ✓ | 商品/製品コード |
-| current_quantity | float | ✓ | 現在の在庫レベル（バックオーダー用に負の値を許可） |
-| minimum_quantity | float | ✓ | アラート用の最小在庫閾値（デフォルト: 0.0） |
-| reorder_point | float | ✓ | 自動アラート用の発注点閾値（デフォルト: 0.0） |
-| reorder_quantity | float | ✓ | 発注時の推奨数量（デフォルト: 0.0） |
-| last_transaction_id | string | - | この在庫を変更した最後のトランザクションへの参照 |
-
-**インデックス:**
-- ユニーク複合インデックス: (tenant_id, store_code, item_code)
-- インデックス: tenant_id
-- インデックス: store_code
-
-**ビジネスルール:**
-- 重量ベース商品の分数数量をサポート
-- バックオーダーシナリオ用の負の在庫を許可
-- 更新後の自動アラート評価
-
-### 2. StockUpdateDocument（包括的監査証跡）
-
-完全なコンテキストを含むすべての在庫変更の完全な履歴を追跡。
-
-**コレクション名:** `stock_updates`
-
-**目的:** すべての在庫変更の不変監査証跡
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| item_code | string | ✓ | 商品/製品コード |
-| update_type | UpdateType | ✓ | 在庫更新のタイプ（下記列挙型参照） |
-| quantity_change | float | ✓ | 符号付き数量変更（+/-） |
-| before_quantity | float | ✓ | 更新前の在庫レベル |
-| after_quantity | float | ✓ | 更新後の在庫レベル |
-| reference_id | string | - | トランザクション/操作参照ID |
-| timestamp | datetime | ✓ | 更新のUTCタイムスタンプ |
-| operator_id | string | - | 更新を実行したユーザー/システム |
-| note | string | - | オプションの説明ノート |
-
-**インデックス:**
-- 複合インデックス: (tenant_id, store_code, item_code, timestamp DESC)
-- インデックス: update_type
-- インデックス: timestamp DESC
-- インデックス: reference_id
-- 複合インデックス: (tenant_id, reference_id) トランザクション相関用
-
-**監査機能:**
-- 規制遵守のための不変記録
-- 完全な変更前/変更後状態追跡
-- ユーザー追跡による操作者説明責任
-- ソーストランザクションへのリンク参照ID
-
-### 3. StockSnapshotDocument（ポイントインタイム在庫）
-
-履歴分析用の完全な店舗在庫の定期的スナップショット。
-
-**コレクション名:** `stock_snapshots`
-
-**目的:** 自動保持管理付きのポイントインタイム在庫記録
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| total_items | integer | ✓ | 在庫内の異なる商品の総数 |
-| total_quantity | float | ✓ | すべての在庫数量の合計 |
-| stocks | array[StockSnapshotItem] | ✓ | 完全な在庫詳細 |
-| created_by | string | ✓ | スナップショットを作成したユーザーまたはシステム |
-| generate_date_time | string | ✓ | クエリフィルタリング用のISO形式タイムスタンプ |
-
-**インデックス:**
-- 複合インデックス: (tenant_id, store_code, created_at DESC)
-- 複合インデックス: (tenant_id, store_code, generate_date_time DESC)
-- TTLインデックス: created_at（設定可能な保持期間）
-
-**自動機能:**
-- TTLベースの自動クリーンアップ
-- テナントごとの設定可能な保持ポリシー
-- バックグラウンドジョブによるスケジュール作成
-
-### 4. StockSnapshotItem（埋め込み在庫記録）
-
-商品固有の在庫状態を含むStockSnapshotDocument内の埋め込みドキュメント。
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| item_code | string | ✓ | 商品/製品コード |
-| quantity | float | ✓ | スナップショット時の在庫数量 |
-| minimum_quantity | float | ✓ | スナップショット時の最小閾値 |
-| reorder_point | float | ✓ | スナップショット時の発注点 |
-| reorder_quantity | float | ✓ | スナップショット時の発注数量 |
-
-### 5. SnapshotScheduleDocument（自動スナップショット設定）
-
-自動スナップショット作成のテナントごと設定。
-
-**コレクション名:** `snapshot_schedules`
-
-**目的:** テナント固有の自動スナップショットスケジューリング
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子（ユニーク制約） |
-| enabled | boolean | ✓ | 自動スナップショットが有効かどうか |
-| schedule_interval | string | ✓ | 頻度: "daily"、"weekly"、"monthly" |
-| schedule_hour | integer | ✓ | 実行する時刻（0-23） |
-| schedule_minute | integer | ✓ | 実行する分（0-59） |
-| schedule_day_of_week | integer | - | 週次用の曜日（0=月曜日） |
-| schedule_day_of_month | integer | - | 月次用の月の日（1-31） |
-| retention_days | integer | ✓ | クリーンアップ前のスナップショット保持日数 |
-| target_stores | array[string] | ✓ | 店舗コードまたは全店舗用の["all"] |
-
-**インデックス:**
-- ユニークインデックス: tenant_id
-- インデックス: enabled
-
-### 6. StockAlertDocument（アラート状態追跡）
-
-通知スパムを防ぐためのアラートクールダウン状態を追跡。
-
-**コレクション名:** `stock_alerts`
-
-**目的:** アラートクールダウン管理と状態追跡
-
-**フィールド定義:**
-
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
-| item_code | string | ✓ | 商品/製品コード |
-| alert_type | string | ✓ | アラートタイプ: "minimum_stock"または"reorder_point" |
-| last_alert_time | datetime | ✓ | 最後にアラートが送信された時刻 |
-| cooldown_until | datetime | ✓ | クールダウンが終了するタイムスタンプ |
-
-**インデックス:**
-- ユニーク複合インデックス: (tenant_id, store_code, item_code, alert_type)
-- TTLインデックス: cooldown_until
-
-## 列挙型
-
-### UpdateType（在庫更新カテゴリ）
-
-すべてのタイプの在庫変更を分類するための包括的な列挙型。
-
-| 値 | 説明 | 数量への影響 | ソース |
-|-------|-------------|----------------|---------|
-| SALE | 通常の販売トランザクション | 減少 (-) | カートサービス |
-| RETURN | 顧客返品トランザクション | 増加 (+) | カートサービス |
-| VOID | 無効化/取消された販売 | 増加 (+) | カートサービス |
-| VOID_RETURN | 無効化された返品トランザクション | 減少 (-) | カートサービス |
-| PURCHASE | 在庫受領/調達 | 増加 (+) | 手動/インポート |
-| ADJUSTMENT | 手動在庫調整 | +/- | 手動 |
-| INITIAL | 初期在庫設定 | 設定 | 手動/インポート |
-| DAMAGE | 破損/劣化商品の廃棄 | 減少 (-) | 手動 |
-| TRANSFER_IN | 他の場所から受領した在庫 | 増加 (+) | 転送 |
-| TRANSFER_OUT | 他の場所に送った在庫 | 減少 (-) | 転送 |
-
-## APIリクエスト/レスポンススキーマ
-
-すべてのスキーマは、JSON直列化の際にsnake_caseからcamelCaseへの自動変換を提供する`BaseSchemaModel`を継承しています。
-
-### リクエストスキーマ
-
-#### StockUpdateRequest
-
-完全な監査証跡サポート付きの手動在庫調整リクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| quantityChange | float | ✓ | 符号付き数量変更（増加は正、減少は負） |
-| updateType | UpdateType | ✓ | 列挙型からの更新タイプ |
-| referenceId | string | - | トランザクションまたは操作参照ID |
-| operatorId | string | - | 更新を実行するユーザー |
-| note | string | - | オプションの説明ノート（最大500文字） |
-
-#### SetMinimumQuantityRequest
-
-アラート用の最小在庫閾値を設定。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| minimumQuantity | float | ✓ | 最小数量閾値（≥ 0） |
-
-#### SetReorderParametersRequest
-
-自動発注アラート用の発注点と数量を設定。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| reorderPoint | float | ✓ | 発注アラートをトリガーする数量（≥ 0） |
-| reorderQuantity | float | ✓ | 推奨発注数量（≥ 0） |
-
-#### CreateSnapshotRequest
-
-手動スナップショット作成リクエスト。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| createdBy | string | ✓ | スナップショットを作成するユーザーまたはシステム |
-
-#### SnapshotScheduleCreateRequest
-
-テナント用の自動スナップショットスケジューリングを設定。
-
-| フィールド名（JSON） | 型 | 必須 | 説明 |
-|-------------------|------|----------|-------------|
-| enabled | boolean | ✓ | 自動スナップショットの有効/無効 |
-| scheduleInterval | string | ✓ | "daily"、"weekly"、または"monthly" |
-| scheduleHour | integer | ✓ | 実行時刻（0-23） |
-| scheduleMinute | integer | ✓ | 実行分（0-59） |
-| scheduleDayOfWeek | integer | - | 週次用の曜日（0=月曜日） |
-| scheduleDayOfMonth | integer | - | 月次用の月の日（1-31） |
-| retentionDays | integer | ✓ | スナップショット保持期間 |
-| targetStores | array[string] | ✓ | 店舗コードまたは["all"] |
-
-### レスポンススキーマ
-
-#### StockResponse
-
-すべてのアラートパラメータを含む現在の在庫情報。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| itemCode | string | 商品/製品コード |
-| currentQuantity | float | 現在の在庫レベル |
-| minimumQuantity | float | 最小在庫閾値 |
-| reorderPoint | float | 発注点閾値 |
-| reorderQuantity | float | 推奨発注数量 |
-| lastUpdated | string | 最終更新タイムスタンプ（ISO形式） |
-| lastTransactionId | string | 最後のトランザクション参照 |
-
-#### StockUpdateResponse
-
-完全な監査情報を含む在庫更新履歴エントリ。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| itemCode | string | 商品/製品コード |
-| updateType | string | 更新タイプ |
-| quantityChange | float | 数量変更量 |
-| beforeQuantity | float | 更新前の在庫 |
-| afterQuantity | float | 更新後の在庫 |
-| referenceId | string | 利用可能な場合の参照ID |
-| timestamp | string | 更新タイムスタンプ（ISO形式） |
-| operatorId | string | 利用可能な場合の操作者ID |
-| note | string | 利用可能な場合のノート |
-
-#### StockSnapshotResponse
-
-要約統計付きの完全な在庫スナップショット。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| totalItems | integer | 商品の総数 |
-| totalQuantity | float | 総在庫数量 |
-| stocks | array[StockSnapshotItemResponse] | 詳細商品在庫 |
-| createdBy | string | スナップショット作成者 |
-| createdAt | string | 作成タイムスタンプ（ISO形式） |
-| generateDateTime | string | フィルタリング用の生成タイムスタンプ |
-
-#### SnapshotScheduleResponse
-
-自動スナップショットスケジュール設定。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| tenantId | string | テナント識別子 |
-| enabled | boolean | 自動スナップショットが有効かどうか |
-| scheduleInterval | string | スケジュール頻度 |
-| scheduleHour | integer | 実行時刻 |
-| scheduleMinute | integer | 実行分 |
-| scheduleDayOfWeek | integer | 週次用の曜日 |
-| scheduleDayOfMonth | integer | 月次用の月の日 |
-| retentionDays | integer | スナップショット保持期間 |
-| targetStores | array[string] | 対象店舗コード |
-
-#### WebSocketAlertMessage
-
-WebSocket接続を介して送信されるリアルタイムアラートメッセージ。
-
-| フィールド名（JSON） | 型 | 説明 |
-|-------------------|------|-------------|
-| type | string | アラートタイプ: "minimum_stock"または"reorder_point" |
-| tenantId | string | テナント識別子 |
-| storeCode | string | 店舗コード |
-| itemCode | string | 商品/製品コード |
-| currentQuantity | float | 現在の在庫レベル |
-| threshold | float | アラート閾値（minimum_quantityまたはreorder_point） |
-| timestamp | string | アラートタイムスタンプ（ISO形式） |
-
-## イベント駆動アーキテクチャ
-
-### Dapr Pub/Sub統合
-
-サービスは、包括的な冪等性とエラー処理を備えたイベント駆動アーキテクチャを介して在庫更新を処理します。
-
-#### トランザクションログイベント（`topic-tranlog`）
-- **ソース**: カートサービス
-- **ルート**: `/api/v1/tranlog`
-- **コンテンツ**: 明細項目を含む完全なトランザクションデータ
-- **処理**: 各トランザクション項目の在庫レベルを更新
-
-#### イベント処理パイプライン
-
-**1. メッセージ受信と検証:**
-- Dapr pub/sub経由でトランザクションイベントを受信
-- メッセージ構造を検証してevent_idを抽出
-- 必須フィールドとデータ整合性をチェック
-
-**2. 冪等性管理:**
-- 重複event_idについてDaprステートストアをチェック
-- すでに処理されている場合はスキップ
-- 厳密に一度の処理セマンティクスを保証
-
-**3. 在庫更新処理:**
-- 各トランザクション項目を原子的に処理
-- 異なるトランザクションタイプ（販売、返品、無効）を処理
-- 取消されたトランザクションと個別の取消項目をサポート
-- 競合状態防止のためにMongoDB findAndModifyを使用して在庫を更新
-
-**4. アラート評価:**
-- 最小在庫と発注点閾値をチェック
-- 閾値を超えた場合のリアルタイムWebSocketアラートを送信
-- スパムを防ぐためのアラートクールダウンを実装
-
-**5. 確認応答とステータス:**
-- カートサービスに処理ステータスを送信
-- Daprステートストアにイベント処理状態を保存
-- 処理エラーを処理して報告
-
-### トランザクションタイプ処理
-
-**販売トランザクション（タイプ101）:**
-- 商品数量分の在庫を減少
-- トランザクション内の取消項目を処理
-- 部分取消をサポート
-
-**返品トランザクション（タイプ102）:**
-- 返品数量分の在庫を増加
-- 取消された返品を処理
-
-**無効トランザクション（タイプ201、202）:**
-- 元のトランザクションの影響を逆転
-- 無効販売: 在庫を増加
-- 無効返品: 在庫を減少
-
-## リアルタイムWebSocketアラートシステム
+在庫サービスのデータモデル仕様書です。MongoDBのコレクション構造、スキーマ定義、およびデータフローについて説明します。
+
+## データベース設計
+
+### データベース名
+- `{tenant_id}_stock` (例: `tenant001_stock`)
+
+### コレクション一覧
+
+| コレクション名 | 用途 | 主なデータ |
+|---------------|------|------------|
+| stock | 現在在庫レベル | 商品別の在庫数量と発注情報 |
+| stock_update | 在庫更新履歴 | すべての在庫変更の監査証跡 |
+| stock_snapshot | 在庫スナップショット | 特定時点の在庫状態 |
+| snapshot_schedule | スナップショットスケジュール | 自動スナップショット設定 |
+
+## 詳細スキーマ定義
+
+### 1. stock コレクション
+
+現在の在庫レベルと発注管理情報を保存するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "item_code": "string",
+  "current_quantity": "decimal",
+  "minimum_quantity": "decimal",
+  "reorder_point": "decimal",
+  "reorder_quantity": "decimal",
+  "last_transaction_id": "string",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+**フィールド説明:**
+- `current_quantity`: 現在の在庫数量（マイナス可）
+- `minimum_quantity`: 最小在庫アラート閾値
+- `reorder_point`: 発注点アラート閾値
+- `reorder_quantity`: 推奨発注数量
+- `last_transaction_id`: 最後に在庫を変更した取引ID
+
+### 2. stock_update コレクション
+
+在庫更新の完全な履歴を保存するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "item_code": "string",
+  "update_type": "string (SALE/RETURN/VOID/VOID_RETURN/PURCHASE/ADJUSTMENT/INITIAL/DAMAGE/TRANSFER_IN/TRANSFER_OUT)",
+  "quantity_change": "decimal",
+  "before_quantity": "decimal",
+  "after_quantity": "decimal",
+  "reference_id": "string",
+  "operator_id": "string",
+  "note": "string",
+  "timestamp": "datetime",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+**更新タイプ説明:**
+- `SALE`: 販売による減少
+- `RETURN`: 返品による増加
+- `VOID`: 販売取消による増加
+- `VOID_RETURN`: 返品取消による減少
+- `PURCHASE`: 仕入による増加
+- `ADJUSTMENT`: 手動調整
+- `INITIAL`: 初期在庫設定
+- `DAMAGE`: 破損による減少
+- `TRANSFER_IN`: 他店舗からの移動入庫
+- `TRANSFER_OUT`: 他店舗への移動出庫
+
+### 3. stock_snapshot コレクション
+
+特定時点の在庫状態を保存するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "store_code": "string",
+  "total_items": "integer",
+  "total_quantity": "decimal",
+  "stocks": [
+    {
+      "item_code": "string",
+      "quantity": "decimal",
+      "minimum_quantity": "decimal",
+      "reorder_point": "decimal",
+      "reorder_quantity": "decimal"
+    }
+  ],
+  "created_by": "string",
+  "generate_date_time": "string (ISO 8601)",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+### 4. snapshot_schedule コレクション
+
+自動スナップショットのスケジュール設定を保存するコレクション。
+
+```json
+{
+  "_id": "ObjectId",
+  "tenant_id": "string",
+  "daily": {
+    "enabled": "boolean",
+    "time": "string (HH:mm)",
+    "timezone": "string"
+  },
+  "weekly": {
+    "enabled": "boolean",
+    "day_of_week": "integer (0-6)",
+    "time": "string (HH:mm)",
+    "timezone": "string"
+  },
+  "monthly": {
+    "enabled": "boolean",
+    "day_of_month": "integer (1-31)",
+    "time": "string (HH:mm)",
+    "timezone": "string"
+  },
+  "retention_days": "integer",
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+## インデックス定義
+
+### stock
+- ユニーク複合インデックス: `tenant_id + store_code + item_code`
+- 複合インデックス: `tenant_id + store_code + minimum_quantity`
+- 複合インデックス: `tenant_id + store_code + reorder_point`
+
+### stock_update
+- 複合インデックス: `tenant_id + store_code + item_code + timestamp`
+- 複合インデックス: `tenant_id + reference_id`
+- 単一インデックス: `update_type`
+- 単一インデックス: `timestamp`
+
+### stock_snapshot
+- 複合インデックス: `tenant_id + store_code + created_at`
+- 複合インデックス: `tenant_id + store_code + generate_date_time`
+- TTLインデックス: `created_at` (retention_daysに基づく自動削除)
+
+### snapshot_schedule
+- ユニークインデックス: `tenant_id`
+
+## データフロー
+
+### イベント駆動データフロー
+
+1. **取引ログ処理**
+   - トピック: `tranlog_stock`
+   - ソース: カートサービス
+   - 処理フロー:
+     1. BaseTransactionを受信
+     2. event_idで重複チェック（Dapr state store使用）
+     3. 各明細項目の在庫を更新
+     4. stock_updateに履歴を記録
+     5. アラート評価とWebSocket通知
+     6. カートサービスに処理完了通知
+
+2. **在庫アラート**
+   - 在庫更新時に閾値チェック
+   - WebSocketで接続クライアントに通知
+   - アラートクールダウンで重複防止
+
+### スナップショット管理
+
+1. **手動スナップショット**
+   - API経由で即座に作成
+   - 全在庫の現在状態を記録
+
+2. **自動スナップショット**
+   - スケジューラーによる定期実行
+   - 日次/週次/月次の設定可能
+   - 保持期間による自動削除
+
+## WebSocketリアルタイム通知
 
 ### 接続管理
+- エンドポイント: `/ws/{tenant_id}/{store_code}`
+- JWT認証必須（30秒以内）
+- テナント・店舗単位でグループ化
 
-**WebSocketエンドポイント:** `/ws/alerts/{tenant_id}/{store_code}`
+### アラートタイプ
 
-**認証:**
-- 接続にJWTトークン検証が必要
-- テナント/店舗アクセス検証
-- 無効なトークンでの自動接続終了
+1. **最小在庫アラート**
+```json
+{
+  "type": "low_stock",
+  "itemCode": "ITEM001",
+  "itemName": "商品001",
+  "currentQuantity": 15,
+  "minimumQuantity": 20,
+  "timestamp": "2024-01-01T12:00:00Z"
+}
+```
 
-**接続グループ化:**
-- テナントと店舗別に接続を整理
-- すべての店舗接続への放送機能
-- 切断時の自動クリーンアップ
+2. **発注点アラート**
+```json
+{
+  "type": "reorder_alert",
+  "itemCode": "ITEM001",
+  "itemName": "商品001",
+  "currentQuantity": 25,
+  "reorderPoint": 30,
+  "reorderQuantity": 50,
+  "timestamp": "2024-01-01T12:00:00Z"
+}
+```
 
-### アラートタイプとトリガー
+## 原子性とデータ整合性
 
-**最小在庫アラート:**
-- トリガー条件: `current_quantity < minimum_quantity` AND `minimum_quantity > 0`
-- メッセージタイプ: "minimum_stock"
-- 閾値: minimum_quantity値
+### 在庫更新の原子性
+- MongoDB `findOneAndUpdate`による原子的更新
+- 更新と履歴記録の一貫性保証
+- 楽観的ロックによる同時更新制御
 
-**発注点アラート:**
-- トリガー条件: `current_quantity <= reorder_point` AND `reorder_point > 0`
-- メッセージタイプ: "reorder_point"
-- 閾値: reorder_point値
+### 冪等性
+- event_idによる重複処理防止
+- Dapr state storeでの処理済み管理
+- メッセージ再送に対する耐性
 
-### アラートクールダウンシステム
+## スケジューラーアーキテクチャ
 
-**クールダウン管理:**
-- 同じ商品/タイプの組み合わせでの重複アラートを防止
-- デフォルトクールダウン: 60秒（`ALERT_COOLDOWN_SECONDS`で設定可能）
-- minimum_stockとreorder_pointアラートの個別クールダウン
-- TTLインデックスによる期限切れクールダウン記録の自動クリーンアップ
+### スナップショットスケジューラー
+- APSchedulerベースの実装
+- テナント単位のジョブ管理
+- 動的なスケジュール更新
+- 分散環境での重複実行防止
 
-**初期アラート配信:**
-- 新しいWebSocket接続は現在のアラートをすぐに受信
-- 切断中に見逃したアラートをキャッチアップするのに役立つ
-- 現在閾値を下回っている商品のみのアラートを送信
+### スケジュール設定
+```python
+{
+  "daily": {
+    "enabled": True,
+    "time": "02:00",
+    "timezone": "Asia/Tokyo"
+  },
+  "weekly": {
+    "enabled": False,
+    "day_of_week": 0,  # 0=月曜日
+    "time": "02:00",
+    "timezone": "Asia/Tokyo"
+  },
+  "monthly": {
+    "enabled": True,
+    "day_of_month": 1,
+    "time": "02:00",
+    "timezone": "Asia/Tokyo"
+  },
+  "retention_days": 90
+}
+```
 
-## 自動スナップショットスケジューリング
+## 特記事項
 
-### バックグラウンドスケジューラーサービス
-
-**MultiTenantSnapshotScheduler:**
-- APSchedulerベースのバックグラウンドサービス
-- テナントごとのジョブ管理
-- 同時実行防止のための分散ロック
-- ランタイム中の動的スケジュール更新
-
-### スケジュール管理
-
-**サポートされる間隔:**
-- **日次**: 指定時刻に1日1回実行
-- **週次**: 特定の曜日に実行
-- **月次**: 特定の月の日に実行
-
-**ジョブ設定:**
-- テナントごとの個別スケジュール
-- 設定可能な実行時刻（時/分）
-- 対象店舗選択（全店舗または特定店舗）
-- 失敗時の自動リトライ
-
-**動的更新:**
-- スケジュールのランタイム追加/削除
-- 設定変更時の自動ジョブ再スケジューリング
-- ジョブクリーンアップ付きのグレースフル シャットダウン
-
-### スナップショット保持管理
-
-**TTLベースクリーンアップ:**
-- retention_days設定に基づく自動削除
-- MongoDBのTTLインデックスが自動的にクリーンアップを処理
-- コンプライアンス要件に対応したテナントごとの設定
-
-**保持ポリシー:**
-- デフォルト保持: 90日
-- テナントごとの設定可能
-- 保持期間変更時の即座クリーンアップ
-
-## データ一貫性と原子性
-
-### 競合状態防止
-
-**原子的在庫更新:**
-- 原子的更新のためのMongoDB findAndModify操作
-- 新しい商品のアップサート機能
-- 単一操作での変更前/変更後数量追跡
-- 高並行性シナリオでの更新損失を防止
-
-**楽観的ロック:**
-- AbstractDocumentによるETagベースの楽観的ロック
-- 同時変更の上書きを防止
-- 指数バックオフによる自動リトライ
-
-### トランザクション一貫性
-
-**MongoDBトランザクション:**
-- 単一トランザクションでの在庫更新と監査証跡作成
-- 失敗時のロールバック機能
-- コレクション間のデータ一貫性を保証
-
-**冪等処理:**
-- イベントID追跡による重複処理防止
-- 分散冪等性のためのDaprステートストア
-- メッセージ再配信のグレースフル処理
-
-## マルチテナンシーとセキュリティ
-
-### データベース分離
-
-**テナント分離:**
-- テナントごとの個別MongoDBデータベース: `db_stock_{tenant_id}`
-- テナント間の完全なデータ分離
-- すべての操作でのテナント検証
-- テナント識別子でのシャードキープレフィックス
-
-**テナントごとのコレクション構造:**
-各テナントデータベースには以下が含まれます：
-- `stocks`: 現在の在庫レベル
-- `stock_updates`: 監査証跡
-- `stock_snapshots`: 履歴スナップショット
-- `snapshot_schedules`: 自動化設定
-- `stock_alerts`: アラートクールダウン追跡
-
-### 認証と認可
-
-**マルチモーダル認証:**
-- **JWTトークン**: テナントクレーム付きのプライマリ認証
-- **APIキー**: 外部統合のレガシーサポート
-- **WebSocket認証**: トークンベースのWebSocketセキュリティ
-
-**サービス間通信:**
-- カートサービス通信用のサービストークン
-- Dapr pub/subセキュリティ統合
-- 外部サービス呼び出し用のサーキットブレーカーパターン
-
-### セキュリティ機能
-
-**データ保護:**
-- テナント間のデータアクセス不可
-- 入力検証とサニタイゼーション
-- すべての変更の監査証跡
-- セキュアなWebSocket接続
-
-**アクセス制御:**
-- テナントベースのデータフィルタリング
-- 店舗レベルのアクセス制限
-- 操作レベルの認可チェック
-
-## パフォーマンス最適化
-
-### インデックス戦略
-
-**クエリ最適化:**
-- マルチフィールドクエリ用の複合インデックス
-- 水平スケーリング用のテナントベースシャーディング
-- 時間的クエリ用のタイムスタンプインデックス
-- トランザクション相関用の参照IDインデックス
-
-**インデックス保守:**
-- 定期的なインデックス分析と最適化
-- 自動データクリーンアップ用のTTLインデックス
-- 条件付きクエリ用の部分インデックス
-
-### キャッシュとパフォーマンス
-
-**WebSocket接続プーリング:**
-- 効率的な接続管理
-- グループベースのメッセージ放送
-- 自動接続クリーンアップ
-
-**データベース最適化:**
-- Motorドライバーでの接続プーリング
-- アグリゲーションパイプライン最適化
-- 大きな結果セット用の投影制限
-
-### スケーラビリティ機能
-
-**水平スケーリング:**
-- テナントベースのデータベースシャーディング
-- ステートレスサービス設計
-- ロードバランシング機能
-- 独立したサービススケーリング
-
-**バックグラウンド処理:**
-- 非同期イベント処理
-- バックグラウンドジョブスケジューリング
-- キューベースのタスク管理
-
-## 検証ルール
-
-### 在庫数量検証
-
-**ビジネスルール:**
-- `current_quantity`: バックオーダーサポート用の負の値を許可
-- `minimum_quantity`: 0以上である必要
-- `reorder_point`: 0以上である必要
-- `reorder_quantity`: 0以上である必要
-- `quantity_change`: 正と負の値を許可
-
-**データ整合性:**
-- 原子的更新により一貫性を保証
-- 変更前/変更後数量検証
-- トランザクション相関用の参照ID検証
-
-### APIリクエスト検証
-
-**入力検証:**
-- 文字列長制限の実施
-- 数値範囲検証
-- 更新タイプの列挙値検証
-- 必須フィールド検証
-
-**セキュリティ検証:**
-- テナントアクセス認可
-- 店舗アクセス制限
-- セキュリティ用の入力サニタイゼーション
-
-## エラー処理とモニタリング
-
-### 例外管理
-
-**構造化エラー処理:**
-- 在庫操作用のカスタム例外階層
-- レスポンス内の詳細なエラーコンテキスト
-- 失敗時のトランザクションロールバック
-
-**エラー回復:**
-- 一時的な失敗の自動リトライ
-- 永続的な失敗用のデッドレターキュー
-- 外部サービス用のサーキットブレーカーパターン
-
-### ヘルスモニタリング
-
-**サービスヘルスチェック:**
-- データベース接続性監視
-- Daprサイドカーヘルス検証
-- WebSocket接続ヘルス
-- バックグラウンドジョブステータス監視
-
-**パフォーマンスメトリクス:**
-- 在庫更新レイテンシ追跡
-- アラート配信パフォーマンス
-- スナップショット作成タイミング
-- データベースクエリパフォーマンス
-
-この包括的なモデル仕様は、リアルタイム機能、自動化された操作、包括的な監査証跡、エンタープライズグレードの信頼性を備えた洗練された在庫管理システムとしてのストックサービスの役割を実証しています。イベント駆動処理、WebSocketアラート、自動スケジューリング、堅牢なマルチテナンシーの組み合わせは、現代のPOS在庫管理のためのスケーラブルな基盤を提供します。
+1. **マイナス在庫**: バックオーダー対応のためマイナス在庫を許可
+2. **マルチテナント**: データベースレベルでの完全分離
+3. **監査証跡**: すべての在庫変更を完全に記録
+4. **パフォーマンス**: 適切なインデックスによる高速クエリ
+5. **拡張性**: 水平スケーリングに対応した設計
+6. **レジリエンス**: サーキットブレーカーパターンの実装

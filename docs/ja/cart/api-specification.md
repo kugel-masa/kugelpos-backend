@@ -1,734 +1,535 @@
-# カートサービスAPI仕様
+# Cart Service API 仕様書
 
 ## 概要
 
-カートサービスは、Kugelpos POSシステムのショッピングカートとトランザクション処理APIを提供します。ステートマシンパターンによるトランザクション管理、動的な商品操作、プラグイン可能な決済処理、リアルタイムの価格計算を処理し、POSシステムの中核となる販売機能を実現します。
+Cart サービスは、ショッピングカートとトランザクション処理を管理するマイクロサービスです。ステートマシンパターンによるカート状態管理、商品操作、決済処理、プラグイン可能な拡張機能を提供します。
 
-## ベースURL
-- ローカル環境: `http://localhost:8003`
-- 本番環境: `https://cart.{domain}`
+## サービス情報
 
-## 認証
+- **ポート**: 8003
+- **フレームワーク**: FastAPI
+- **認証方式**: API キー認証
+- **データベース**: MongoDB (Motor 非同期ドライバー)
+- **状態管理**: ステートマシンパターン
+- **プラグインシステム**: 決済・販促・レシートデータ
 
-カートサービスはAPIキー認証を使用します：
+## API エンドポイント
 
-- ヘッダーに含める: `X-API-Key: {api_key}`
-- クエリパラメータを含める: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
-- すべてのエンドポイントで必須
+### 1. ルートエンドポイント
 
-## フィールド形式
+**パス**: `/`  
+**メソッド**: GET  
+**認証**: 不要  
+**説明**: サービスの稼働確認用エンドポイント
 
-すべてのAPIリクエストとレスポンスは**camelCase**フィールド命名規則を使用します。サービスは`BaseSchemaModel`とトランスフォーマーを使用して、内部のsnake_caseと外部のcamelCase形式を自動的に変換します。
-
-## 共通レスポンス形式
-
-すべてのエンドポイントは以下の形式でレスポンスを返します：
-
+**レスポンス**:
 ```json
 {
-  "success": true,
-  "code": 200,
-  "message": "操作が正常に完了しました",
-  "data": { ... },
-  "operation": "function_name"
+  "message": "Welcome to Kugel-POS Cart API. supoorted version: v1"
 }
 ```
 
-## カート状態
+**実装ファイル**: app/main.py:68-76
 
-カートは以下の状態を持ちます：
+### 2. ヘルスチェック
 
-| 状態 | 説明 | 許可される操作 |
-|------|------|----------------|
-| initial | 初期状態 | カート初期化 |
-| idle | アイドル（商品なし） | 商品追加 |
-| entering_item | 商品入力中 | 商品操作、チェックアウト |
-| paying | 支払い処理中 | 決済追加、完了、キャンセル |
-| completed | 取引完了 | 読み取りのみ |
-| cancelled | キャンセル済み | 読み取りのみ |
+**パス**: `/health`  
+**メソッド**: GET  
+**認証**: 不要  
+**説明**: サービスの健全性と依存関係の状態を確認
 
-## APIエンドポイント
-
-### カート管理
-
-#### 1. カート作成
-**POST** `/api/v1/carts`
-
-新規ショッピングカートを作成します。
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**リクエストボディ:**
+**レスポンスモデル**: `HealthCheckResponse`
 ```json
 {
-  "staffId": "STF001",
-  "userName": "山田太郎",
-  "customerId": "CUST001"
+  "status": "healthy",
+  "service": "cart",
+  "version": "1.0.0",
+  "checks": {
+    "mongodb": {
+      "status": "healthy",
+      "details": {}
+    },
+    "dapr_sidecar": {
+      "status": "healthy",
+      "details": {}
+    },
+    "dapr_cartstore": {
+      "status": "healthy",
+      "details": {}
+    },
+    "dapr_pubsub_tranlog": {
+      "status": "healthy",
+      "details": {}
+    },
+    "background_jobs": {
+      "status": "healthy",
+      "details": {
+        "scheduler_running": true,
+        "job_count": 1,
+        "job_names": ["republish_undelivered_tranlog"]
+      }
+    }
+  }
 }
 ```
 
-**フィールド説明:**
-- `staffId` (string, オプション): スタッフID
-- `userName` (string, オプション): ユーザー名
-- `customerId` (string, オプション): 顧客ID
+**実装ファイル**: app/main.py:79-137
 
-**リクエスト例:**
-```bash
-curl -X POST "http://localhost:8003/api/v1/carts?terminal_id=tenant001-STORE001-1" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "staffId": "STF001",
-    "userName": "山田太郎"
-  }'
+## Cart API (/api/v1/carts)
+
+### 3. カート作成
+
+**パス**: `/api/v1/carts`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 新規ショッピングカートを作成
+
+**リクエストモデル**: `CartCreateRequest`
+```json
+{
+  "transactionType": "standard",
+  "userId": "STF001",
+  "userName": "山田太郎"
+}
 ```
 
-**レスポンス例:**
+**レスポンスモデル**: `ApiResponse[CartCreateResponse]`
 ```json
 {
   "success": true,
   "code": 201,
-  "message": "カートの作成に成功しました",
+  "message": "Cart Created. cart_id: cart_20250105_001",
   "data": {
-    "cartId": "cart_20240101_001",
-    "terminalId": "tenant001-STORE001-1",
-    "state": "idle",
-    "businessDate": "2024-01-01",
-    "businessCounter": 100,
-    "openCounter": 1,
-    "transactionNo": "0001",
-    "items": [],
-    "subtotal": 0.00,
-    "taxAmount": 0.00,
-    "totalAmount": 0.00,
-    "createdAt": "2024-01-01T10:00:00Z"
+    "cartId": "cart_20250105_001"
   },
   "operation": "create_cart"
 }
 ```
 
-#### 2. カート情報取得
-**GET** `/api/v1/carts/{cart_id}`
+**エラーレスポンス**:
+- 400: Bad Request
+- 401: Unauthorized
+- 403: Forbidden
+- 422: Unprocessable Entity
+- 500: Internal Server Error
 
-カートの詳細情報を取得します。
+**実装詳細** (app/api/v1/cart.py:32-82):
+- terminal_id は依存性注入で取得
+- カート作成時に初期状態は "idle"
+- ユーザー情報はオプション
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
+### 4. カート取得
 
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
+**パス**: `/api/v1/carts/{cart_id}`  
+**メソッド**: GET  
+**認証**: 必須（API キー）  
+**説明**: カートの詳細情報を取得
 
-**リクエスト例:**
-```bash
-curl -X GET "http://localhost:8003/api/v1/carts/cart_20240101_001?terminal_id=tenant001-STORE001-1" \
-  -H "X-API-Key: {api_key}"
-```
+**パスパラメータ**:
+- `cart_id`: string - カートID
 
-**レスポンス例:**
+**レスポンスモデル**: `ApiResponse[Cart]`
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "カート情報を取得しました",
+  "message": "Cart found. cart_id: cart_20250105_001",
   "data": {
-    "cartId": "cart_20240101_001",
-    "terminalId": "tenant001-STORE001-1",
-    "state": "entering_item",
-    "businessDate": "2024-01-01",
-    "transactionNo": "0001",
-    "items": [
-      {
-        "itemId": "item_001",
-        "productId": "prod_001",
-        "barcode": "4901234567890",
-        "name": "コーヒー（ホット）",
-        "price": 300.00,
-        "quantity": 2,
-        "subtotal": 600.00,
-        "taxType": "standard",
-        "taxRate": 10.0,
-        "taxAmount": 60.00,
-        "discount": 0.00,
-        "total": 660.00
-      }
-    ],
-    "subtotal": 600.00,
-    "discountAmount": 0.00,
-    "taxAmount": 60.00,
-    "totalAmount": 660.00,
-    "itemCount": 1,
-    "totalQuantity": 2,
-    "payments": [],
-    "createdAt": "2024-01-01T10:00:00Z",
-    "updatedAt": "2024-01-01T10:05:00Z"
+    "cartId": "cart_20250105_001",
+    "status": "entering_item",
+    "terminalId": "A1234-STORE01-1",
+    "lineItems": [...],
+    "subtotalAmount": 1000.0,
+    "taxAmount": 100.0,
+    "totalAmount": 1100.0,
+    "balanceAmount": 1100.0
   },
   "operation": "get_cart"
 }
 ```
 
-### 商品操作
+**実装詳細** (app/api/v1/cart.py:84-128):
+- SchemasTransformerV1 でモデル変換
 
-#### 3. 商品追加
-**POST** `/api/v1/carts/{cart_id}/items`
+### 5. カートキャンセル
 
-カートに商品を追加します。
+**パス**: `/api/v1/carts/{cart_id}/cancel`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: カートをキャンセル状態に遷移
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
+**実装詳細** (app/api/v1/cart.py:131-172):
+- 任意の状態からキャンセル可能
+- キャンセル後は操作不可
 
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
+### 6. 商品追加
 
-**リクエストボディ:**
+**パス**: `/api/v1/carts/{cart_id}/lineItems`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: カートに商品を追加
+
+**リクエストモデル**: `list[Item]`
 ```json
-{
-  "barcode": "4901234567890",
-  "quantity": 2,
-  "price": 300.00
-}
-```
-
-**フィールド説明:**
-- `barcode` (string, 必須): 商品バーコード
-- `quantity` (number, デフォルト: 1): 数量
-- `price` (number, オプション): 手動価格（価格変更権限が必要）
-
-**リクエスト例:**
-```bash
-curl -X POST "http://localhost:8003/api/v1/carts/cart_20240101_001/items?terminal_id=tenant001-STORE001-1" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
+[
+  {
     "barcode": "4901234567890",
-    "quantity": 2
-  }'
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "商品をカートに追加しました",
-  "data": {
-    "itemId": "item_001",
-    "productId": "prod_001",
-    "barcode": "4901234567890",
-    "name": "コーヒー（ホット）",
-    "price": 300.00,
-    "quantity": 2,
-    "subtotal": 600.00,
-    "taxAmount": 60.00,
-    "total": 660.00,
-    "cartTotals": {
-      "subtotal": 600.00,
-      "taxAmount": 60.00,
-      "totalAmount": 660.00
-    }
-  },
-  "operation": "add_item"
-}
-```
-
-#### 4. 商品更新
-**PUT** `/api/v1/carts/{cart_id}/items/{item_id}`
-
-カート内の商品情報を更新します。
-
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-- `item_id` (string, 必須): アイテムID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**リクエストボディ:**
-```json
-{
-  "quantity": 3,
-  "discountDetail": {
-    "amount": 50,
-    "reason": "商品割引"
+    "quantity": 2.0,
+    "unitPrice": 100.0
   }
+]
+```
+
+**実装詳細** (app/api/v1/cart.py:175-220):
+- 複数商品の一括追加可能
+- idle 状態から entering_item 状態へ自動遷移
+
+### 7. 商品キャンセル
+
+**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 特定の商品をキャンセル
+
+**パスパラメータ**:
+- `cart_id`: string - カートID
+- `lineNo`: integer - 行番号（1から開始）
+
+**実装詳細** (app/api/v1/cart.py:223-266):
+- キャンセルフラグをセット（物理削除なし）
+
+### 8. 単価更新
+
+**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`  
+**メソッド**: PATCH  
+**認証**: 必須（API キー）  
+**説明**: 商品の単価を更新
+
+**リクエストモデル**: `ItemUnitPriceUpdateRequest`
+```json
+{
+  "unitPrice": 150.0
 }
 ```
 
-**フィールド説明:**
-- `quantity` (number, オプション): 新しい数量
-- `discountDetail` (object, オプション): 商品レベル割引
-  - `amount` (integer, 必須): 割引金額
-  - `reason` (string, 必須): 割引理由
-- `price` (number, オプション): 新しい価格（権限必要）
+**実装詳細** (app/api/v1/cart.py:269-315):
+- 価格変更後、自動的に再計算
 
-#### 5. 商品削除
-**DELETE** `/api/v1/carts/{cart_id}/items/{item_id}`
+### 9. 数量更新
 
-カートから商品を削除します。
+**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`  
+**メソッド**: PATCH  
+**認証**: 必須（API キー）  
+**説明**: 商品の数量を更新
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-- `item_id` (string, 必須): アイテムID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-### チェックアウトと決済
-
-#### 6. チェックアウト開始
-**POST** `/api/v1/carts/{cart_id}/checkout`
-
-チェックアウトプロセスを開始し、カートを支払い状態に遷移します。
-
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**リクエストボディ:**
+**リクエストモデル**: `ItemQuantityUpdateRequest`
 ```json
 {
-  "customerId": "CUST001",
-  "promotions": ["PROMO001", "PROMO002"]
+  "quantity": 3.0
 }
 ```
 
-**フィールド説明:**
-- `customerId` (string, オプション): 顧客ID（ポイント利用など）
-- `promotions` (array[string], オプション): 適用するプロモーションコード
+**実装詳細** (app/api/v1/cart.py:318-364):
+- 数量変更後、自動的に再計算
 
-**レスポンス例:**
+### 10. 商品割引追加
+
+**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 特定商品に割引を適用
+
+**リクエストモデル**: `list[DiscountRequest]`
 ```json
-{
-  "success": true,
-  "code": 200,
-  "message": "チェックアウトを開始しました",
-  "data": {
-    "cartId": "cart_20240101_001",
-    "state": "paying",
-    "subtotal": 1000.00,
-    "appliedPromotions": [
-      {
-        "promotionId": "PROMO001",
-        "name": "10%割引",
-        "discountAmount": 100.00
-      }
-    ],
-    "discountAmount": 100.00,
-    "taxAmount": 90.00,
-    "totalAmount": 990.00,
-    "paymentDue": 990.00
-  },
-  "operation": "start_checkout"
-}
-```
-
-#### 7. 決済追加
-**POST** `/api/v1/carts/{cart_id}/payments`
-
-カートに決済を追加します。
-
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**リクエストボディ:**
-```json
-{
-  "paymentCode": "CASH",
-  "amount": 1000,
-  "detail": {
-    "tenderedAmount": 1000,
-    "reference": "現金支払い"
+[
+  {
+    "discountCode": "DISC10",
+    "discountAmount": 50.0,
+    "discountType": "amount"
   }
-}
+]
 ```
 
-**フィールド説明:**
-- `paymentCode` (string, 必須): 決済方法コード
-- `amount` (integer, 必須): 決済金額（整数）
-- `detail` (object, オプション): 決済詳細情報
-  - `tenderedAmount` (integer, 現金時必須): 受取金額
-  - `reference` (string, オプション): 決済参照情報
+**実装詳細** (app/api/v1/cart.py:367-415):
+- 複数割引の適用可能
 
-**レスポンス例:**
+### 11. 小計計算
+
+**パス**: `/api/v1/carts/{cart_id}/subtotal`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: カートの小計と税額を計算
+
+**実装詳細** (app/api/v1/cart.py:418-459):
+- 商品入力後の小計計算
+- entering_item 状態から paying 状態へ遷移
+
+### 12. カート割引追加
+
+**パス**: `/api/v1/carts/{cart_id}/discounts`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: カート全体に割引を適用
+
+**リクエストモデル**: `list[DiscountRequest]`
+
+**実装詳細** (app/api/v1/cart.py:462-508):
+- カートレベルの割引適用
+
+### 13. 支払い追加
+
+**パス**: `/api/v1/carts/{cart_id}/payments`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: カートに支払いを追加
+
+**リクエストモデル**: `list[PaymentRequest]`
 ```json
-{
-  "success": true,
-  "code": 201,
-  "message": "決済を追加しました",
-  "data": {
-    "paymentId": "pay_001",
-    "paymentCode": "CASH",
-    "paymentMethodName": "現金",
-    "amount": 990,
-    "tenderedAmount": 1000,
-    "changeAmount": 10,
-    "status": "approved",
-    "remainingAmount": 0,
-    "canComplete": true
-  },
-  "operation": "add_payment"
-}
-```
-
-#### 8. 取引完了
-**POST** `/api/v1/carts/{cart_id}/complete`
-
-取引を完了し、レシートを生成します。
-
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**リクエストボディ:**
-```json
-{
-  "printReceipt": true,
-  "emailReceipt": "customer@example.com"
-}
-```
-
-**フィールド説明:**
-- `printReceipt` (boolean, デフォルト: true): レシート印刷フラグ
-- `emailReceipt` (string, オプション): 電子レシート送信先
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "取引が完了しました",
-  "data": {
-    "cartId": "cart_20240101_001",
-    "state": "completed",
-    "transactionNo": "0001",
-    "receiptNo": "R000001",
-    "totalAmount": 990.00,
-    "changeAmount": 10.00,
-    "completedAt": "2024-01-01T10:15:00Z",
-    "receipt": {
-      "text": "=== レシート ===\n...",
-      "printed": true,
-      "emailed": true
-    },
-    "journal": {
-      "text": "=== ジャーナル ===\n...",
-      "sent": true
+[
+  {
+    "paymentCode": "01",
+    "paymentAmount": 1100.0,
+    "paymentDetails": {
+      "tenderedAmount": 2000.0
     }
-  },
-  "operation": "complete_transaction"
-}
+  }
+]
 ```
 
-### カート操作
+**実装詳細** (app/api/v1/cart.py:511-556):
+- 複数決済方法の併用可能
+- プラグインシステムによる決済処理
 
-#### 9. カートキャンセル
-**POST** `/api/v1/carts/{cart_id}/cancel`
+### 14. 会計処理
 
-カートをキャンセルします。
+**パス**: `/api/v1/carts/{cart_id}/bill`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: カートを完了状態にして取引を確定
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
+**実装詳細** (app/api/v1/cart.py:559-601):
+- paying 状態から completed 状態へ遷移
+- トランザクションログの生成と発行
+- レシートデータの生成
 
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
+### 15. 商品入力再開
 
-**リクエストボディ:**
-```json
-{
-  "reason": "顧客都合によるキャンセル",
-  "supervisorId": "SUP001"
-}
-```
+**パス**: `/api/v1/carts/{cart_id}/resume-item-entry`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 支払い状態から商品入力状態に戻る
 
-**フィールド説明:**
-- `reason` (string, 必須): キャンセル理由
-- `supervisorId` (string, 支払い後は必須): 承認者ID
+**実装詳細** (app/api/v1/cart.py:604-646):
+- paying 状態から entering_item 状態へ戻る
+- 支払い情報をクリア
 
-#### 10. カート保留
-**POST** `/api/v1/carts/{cart_id}/suspend`
+## Transaction API
 
-カートを保留状態にします。
+### 16. 取引一覧取得
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
+**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`  
+**メソッド**: GET  
+**認証**: 必須（API キー）  
+**説明**: 条件に合致する取引一覧を取得
 
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
+**クエリパラメータ**:
+- `business_date`: string (YYYYMMDD) - 営業日
+- `open_counter`: integer - オープンカウンター
+- `transaction_type`: list[integer] - 取引タイプ
+- `receipt_no`: integer - レシート番号
+- `limit`: integer (デフォルト: 100) - 取得件数
+- `page`: integer (デフォルト: 1) - ページ番号
+- `sort`: string - ソート条件（例: "transaction_no:-1"）
+- `include_cancelled`: boolean (デフォルト: false) - キャンセル済み含む
 
-**リクエストボディ:**
-```json
-{
-  "note": "顧客が追加商品を取りに行っています"
-}
-```
+**実装詳細** (app/api/v1/tran.py:207-292)
 
-#### 11. カート再開
-**POST** `/api/v1/carts/{cart_id}/resume`
+### 17. 取引詳細取得
 
-保留中のカートを再開します。
+**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`  
+**メソッド**: GET  
+**認証**: 必須（API キー）  
+**説明**: 特定の取引の詳細情報を取得
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
+**実装詳細** (app/api/v1/tran.py:295-357)
 
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
+### 18. 取引取消
 
-### 状態管理
+**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 取引を取消処理
 
-#### 12. カート状態取得
-**GET** `/api/v1/carts/{cart_id}/state`
+**リクエストモデル**: `list[PaymentRequest]` - 返金用の支払い方法
 
-カートの現在の状態を取得します。
+**実装詳細** (app/api/v1/tran.py:360-438):
+- 同一端末からのみ取消可能
+- 取消用の支払い処理が必要
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
+### 19. 返品処理
 
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
+**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 取引の返品処理
 
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "カート状態を取得しました",
-  "data": {
-    "currentState": "entering_item",
-    "allowedTransitions": ["checkout", "cancel", "suspend"],
-    "stateHistory": [
-      {
-        "state": "initial",
-        "timestamp": "2024-01-01T10:00:00Z"
-      },
-      {
-        "state": "idle",
-        "timestamp": "2024-01-01T10:00:01Z"
-      },
-      {
-        "state": "entering_item",
-        "timestamp": "2024-01-01T10:05:00Z"
-      }
-    ]
-  },
-  "operation": "get_cart_state"
-}
-```
+**リクエストモデル**: `list[PaymentRequest]` - 返金用の支払い方法
 
-### その他の操作
+**実装詳細** (app/api/v1/tran.py:441-516):
+- 同一店舗内からのみ返品可能
+- 返品用の新規取引を作成
 
-#### 13. 価格再計算
-**POST** `/api/v1/carts/{cart_id}/recalculate`
+### 20. 配信状態更新
 
-カートの価格を再計算します（プロモーション変更時など）。
+**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`  
+**メソッド**: POST  
+**認証**: 必須（JWT または内部認証）  
+**説明**: トランザクションログの配信状態を更新
 
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-#### 14. レシート再印刷
-**POST** `/api/v1/carts/{cart_id}/reprint-receipt`
-
-完了した取引のレシートを再印刷します。
-
-**パスパラメータ:**
-- `cart_id` (string, 必須): カートID
-
-**クエリパラメータ:**
-- `terminal_id` (string, 必須): 端末ID
-
-**リクエストボディ:**
-```json
-{
-  "reason": "顧客要求",
-  "copyNumber": 1
-}
-```
-
-### システムエンドポイント
-
-#### 15. ヘルスチェック
-**GET** `/health`
-
-サービスヘルスと依存関係ステータスをチェックします。
-
-**リクエスト例:**
-```bash
-curl -X GET "http://localhost:8003/health"
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "サービスは正常です",
-  "data": {
-    "status": "healthy",
-    "database": "connected",
-    "stateStore": "connected",
-    "pubsub": "connected",
-    "timestamp": "2024-01-01T10:00:00Z"
-  },
-  "operation": "health_check"
-}
-```
-
-## イベント通知（Dapr Pub/Sub）
-
-### トランザクションログイベント
-**トピック:** `tranlog_report`
-
-取引完了時に発行されるイベント：
+**リクエストモデル**: `DeliveryStatusUpdateRequest`
 ```json
 {
   "eventId": "evt_123456",
-  "tenantId": "tenant001",
-  "storeCode": "STORE001",
-  "terminalNo": 1,
-  "transactionNo": "0001",
-  "transactionType": 101,
-  "businessDate": "2024-01-01",
-  "businessCounter": 100,
-  "openCounter": 1,
-  "receiptNo": "R000001",
-  "amount": 990.00,
-  "quantity": 2,
-  "staffId": "STF001",
-  "receiptText": "=== レシート ===\n...",
-  "journalText": "=== ジャーナル ===\n...",
-  "timestamp": "2024-01-01T10:15:00Z"
+  "service": "journal",
+  "status": "delivered",
+  "message": "Successfully processed"
 }
 ```
 
-### ステータス更新イベント
-**トピック:** `tranlog_status`
+**実装詳細** (app/api/v1/tran.py:520-594):
+- Pub/Sub 通知用エンドポイント
+- サービス間通信で使用
 
-カート状態変更時に発行されるイベント：
-```json
-{
-  "eventId": "evt_789012",
-  "cartId": "cart_20240101_001",
-  "terminalId": "tenant001-STORE001-1",
-  "previousState": "idle",
-  "newState": "entering_item",
-  "timestamp": "2024-01-01T10:05:00Z"
-}
-```
+## Tenant API
 
-## エラーレスポンス
+### 21. テナント作成
 
-APIは標準的なHTTPステータスコードと構造化されたエラーレスポンスを使用します：
+**パス**: `/api/v1/tenants`  
+**メソッド**: POST  
+**認証**: 必須（API キー）  
+**説明**: 新規テナントのデータベースセットアップ
 
-```json
-{
-  "success": false,
-  "code": 404,
-  "message": "指定されたカートが見つかりません",
-  "data": null,
-  "operation": "get_cart"
-}
-```
+**実装ファイル**: app/api/v1/tenant.py
 
-### 共通ステータスコード
-- `200` - 成功
-- `201` - 正常に作成されました
-- `400` - 不正なリクエスト（検証エラー）
-- `401` - 認証失敗
-- `403` - アクセス拒否
-- `404` - リソースが見つかりません
-- `409` - 競合（無効な状態遷移など）
-- `500` - 内部サーバーエラー
+## Cache API
 
-### エラーコードシステム
+### 22. ターミナルステータス更新
 
-カートサービスは40XXX範囲のエラーコードを使用します：
+**パス**: `/api/v1/cache/terminal/status`  
+**メソッド**: PUT  
+**認証**: 必須（API キー）  
+**説明**: ターミナルキャッシュのステータスを更新
 
-- `40001` - カートが見つかりません
-- `40002` - 無効な状態遷移
-- `40003` - 商品が見つかりません
-- `40004` - 在庫不足
-- `40005` - 決済処理エラー
-- `40006` - 決済金額不足
-- `40007` - プロモーション適用エラー
-- `40008` - 税金計算エラー
-- `40009` - タイムアウトエラー
-- `40099` - 一般的なサービスエラー
+**実装ファイル**: app/api/v1/cache.py
 
-## 決済方法コード
+### 23. ターミナルキャッシュクリア
 
-標準的な決済方法コード：
+**パス**: `/api/v1/cache/terminal`  
+**メソッド**: DELETE  
+**認証**: 必須（API キー）  
+**説明**: ターミナルキャッシュをクリア
 
-| コード | 説明 | 釣銭 |
-|--------|------|------|
-| CASH | 現金 | 可 |
-| CREDIT_VISA | VISAカード | 不可 |
-| CREDIT_MASTER | Masterカード | 不可 |
-| CREDIT_JCB | JCBカード | 不可 |
-| EMONEY_SUICA | Suica | 不可 |
-| EMONEY_PASMO | PASMO | 不可 |
-| QR_PAYPAY | PayPay | 不可 |
-| QR_LINEPAY | LINE Pay | 不可 |
+**実装ファイル**: app/api/v1/cache.py
 
-## データ形式
+## ステートマシン
 
-### 金額
-- すべての金額は小数点以下2桁までの数値
-- 税込み/税抜きは設定により決定
-- 負の値は返品や割引に使用
+### カート状態遷移
 
-### 数量
-- 小数点対応（0.001単位まで）
-- 重量販売商品に対応
+**実装ディレクトリ**: app/services/states/
 
-### 日付時刻
-- ISO 8601形式（UTC）
-- `YYYY-MM-DDTHH:mm:ssZ`
+1. **InitialState** → **IdleState**
+   - カート作成時の初期遷移
 
-## パフォーマンス
+2. **IdleState** → **EnteringItemState**
+   - 最初の商品追加時
 
-### タイムアウト
-- カート操作: 30秒
-- 決済処理: 60秒
-- 外部サービス連携: 30秒
+3. **EnteringItemState** → **PayingState**
+   - 小計計算実行時
 
-### 制限事項
-- カートあたり最大商品数: 1000
-- 同時カート数: 端末あたり10
-- カート有効期限: 24時間
+4. **PayingState** → **CompletedState**
+   - 会計処理完了時
 
-## セキュリティ
+5. **PayingState** → **EnteringItemState**
+   - 商品入力再開時
 
-### 認証
-- すべてのエンドポイントでAPIキー必須
-- 端末IDの一致確認
+6. **任意の状態** → **CancelledState**
+   - キャンセル処理時
 
-### データ保護
-- 決済情報の暗号化
-- PCI DSS準拠
-- センシティブデータのマスキング
+## プラグインシステム
 
-### 監査
-- すべての操作のログ記録
-- 状態遷移の追跡
-- エラーの詳細記録
+### 決済プラグイン
+
+**実装ディレクトリ**: app/services/strategies/payments/
+
+- **PaymentByCash** (ID: "01"): 現金決済
+- **PaymentByCashless** (ID: "11"): キャッシュレス決済
+- **PaymentByOthers** (ID: "12"): その他決済
+
+### 販促プラグイン
+
+**実装ディレクトリ**: app/services/strategies/sales_promotions/
+
+- **SalesPromoSample** (ID: "101"): サンプル販促
+
+### レシートデータプラグイン
+
+**実装ディレクトリ**: app/services/strategies/receipt_data/
+
+- **ReceiptDataSample** (ID: "default", "32"): レシートデータ生成
+
+## 定期実行ジョブ
+
+### 未配信メッセージ再送信
+
+**実装ファイル**: app/cron/republish_undelivery_message.py
+
+- **実行間隔**: 5分ごと
+- **チェック期間**: 過去24時間
+- **失敗判定**: 15分以上経過
+- **対象**: 未配信のトランザクションログ
+
+## イベント発行
+
+### Dapr Pub/Sub トピック
+
+1. **tranlog_report**: トランザクションログ（レポート用）
+2. **tranlog_status**: トランザクションステータス更新
+3. **cashlog_report**: 現金入出金ログ
+4. **opencloselog_report**: 開局/閉局ログ
+
+## エラーコード
+
+Cart サービスでは以下のエラーコード体系を使用：
+- **30XXYY**: Cart サービス固有のエラー
+  - XX: 機能識別子
+  - YY: 具体的なエラー番号
+
+## ミドルウェア
+
+**実装ファイル**: app/main.py
+
+1. **CORS** (53-59行目): 全オリジンからのアクセスを許可
+2. **リクエストログ** (62行目): 全HTTPリクエストをログ記録
+3. **例外ハンドラー** (65行目): 統一されたエラーレスポンス形式
+
+## データベース
+
+### コレクション
+- `carts`: カート情報
+- `terminal_counter`: 端末カウンター
+- `tranlog`: トランザクションログ
+- `transaction_status`: トランザクションステータス
+
+### キャッシュ
+- Dapr State Store (cartstore) を使用
+- ターミナル情報のキャッシュ（TTL: 300秒）
 
 ## 注意事項
 
-1. **ステートマシン**: カート状態に応じた操作制限
-2. **冪等性**: 重要な操作は冪等性を保証
-3. **トランザクション**: データ整合性の保証
-4. **CamelCase規約**: すべてのJSONフィールドはcamelCase形式を使用
-5. **非同期処理**: イベント発行は非同期
-6. **プラグイン**: 決済方法とプロモーションは動的ロード
-7. **マルチテナント**: テナント間の完全な分離
-
-カートサービスは、Kugelpos POSシステムの販売処理の中核を提供し、柔軟なトランザクション管理と拡張可能なビジネスロジックを実現します。
+1. **API キー認証**: 全てのビジネスエンドポイントで必須
+2. **ステートマシン**: 状態遷移ルールに従った操作のみ許可
+3. **プラグイン設定**: plugins.json で動的ロード
+4. **非同期処理**: 全ての DB 操作は非同期
+5. **イベント発行**: Dapr 経由での非同期イベント
+6. **マルチテナント**: テナントごとに独立したデータベース
+7. **カート有効期限**: 作成から24時間

@@ -72,16 +72,16 @@ If you prefer to run the setup steps manually:
 
 ### 1. Environment setup
 
-#### Required Environment Variables
-The following environment variables must be set for the services to run properly:
+#### Environment Variables (Optional for Development)
+The services include default values for development, but you may want to customize them:
 
-- `SECRET_KEY`: JWT signing secret key (required for authentication)
-- `PUBSUB_NOTIFY_API_KEY`: API key for Pub/Sub notifications (required)
+- `SECRET_KEY`: JWT signing secret key (default: "test-secret-key-for-development-only")
+- `PUBSUB_NOTIFY_API_KEY`: API key for Pub/Sub notifications (has default value)
 
-⚠️ **Important**: Never use default or sample values in production environments!
+⚠️ **Important**: Change these values in production environments!
 
 ```bash
-# Set required environment variables
+# Optional: Set custom environment variables for development
 export SECRET_KEY="your-secure-secret-key-here"
 export PUBSUB_NOTIFY_API_KEY="your-api-key-here"
 

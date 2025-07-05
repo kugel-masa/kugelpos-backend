@@ -1,8 +1,8 @@
-# レポートサービスAPI仕様
+# レポートサービス API仕様
 
 ## 概要
 
-レポートサービスは、Kugelpos POSシステムの売上レポートと分析APIを提供します。日次・期間レポートの生成、リアルタイムKPI追跡、スケジュール実行、レポート配信を処理し、包括的なビジネスインテリジェンス機能を実現します。
+レポートサービスは、Kugelpos POSシステムの各種レポート生成機能を提供します。売上レポート、カテゴリー別レポート、商品別レポートなどを生成し、リアルタイム（flash）および日次（daily）の集計データを提供します。プラグインアーキテクチャにより、レポートタイプを拡張可能な設計となっています。
 
 ## ベースURL
 - ローカル環境: `http://localhost:8004`
@@ -13,22 +13,18 @@
 レポートサービスは2つの認証方法をサポートしています：
 
 ### 1. JWTトークン（Bearerトークン）
-- ヘッダーに含める: `Authorization: Bearer {token}`
-- トークン取得元: アカウントサービスの `/api/v1/accounts/token`
-- 管理操作とレポート生成に必要
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるレポート閲覧・生成
 
 ### 2. APIキー認証
-- ヘッダーに含める: `X-API-Key: {api_key}`
-- クエリパラメータを含める: `terminal_id={tenant_id}_{store_code}_{terminal_no}`
-- 端末からの基本レポートアクセスに使用
+- ヘッダー: `X-API-Key: {api_key}`
+- 用途: 端末からのレポート取得（ジャーナル連携あり）
 
 ## フィールド形式
 
-すべてのAPIリクエストとレスポンスは**camelCase**フィールド命名規則を使用します。サービスは`BaseSchemaModel`とトランスフォーマーを使用して、内部のsnake_caseと外部のcamelCase形式を自動的に変換します。
+すべてのAPIリクエスト/レスポンスは**camelCase**形式を使用します。
 
 ## 共通レスポンス形式
-
-すべてのエンドポイントは以下の形式でレスポンスを返します：
 
 ```json
 {
@@ -42,487 +38,164 @@
 
 ## レポートタイプ
 
-標準的なレポートタイプ：
-
 | タイプID | 名称 | 説明 |
 |----------|------|------|
-| daily_sales | 日次売上レポート | 日別の売上集計 |
-| payment_summary | 決済方法別集計 | 決済方法ごとの利用状況 |
-| product_sales | 商品売上分析 | 商品別売上ランキング |
-| hourly_analysis | 時間帯分析 | 時間帯別売上パターン |
-| staff_performance | スタッフ実績 | スタッフ別販売実績 |
-| category_analysis | カテゴリー分析 | カテゴリー別売上 |
-| monthly_summary | 月次サマリー | 月間業績総括 |
-| custom | カスタムレポート | ユーザー定義レポート |
+| sales | 売上レポート | 売上金額、取引数等の基本集計 |
+| category | カテゴリーレポート | カテゴリー別売上集計（未実装） |
+| item | 商品レポート | 商品別売上集計（未実装） |
+
+## レポート範囲
+
+| 範囲ID | 名称 | 説明 |
+|--------|------|------|
+| flash | フラッシュレポート | リアルタイム集計（現在のセッション） |
+| daily | 日次レポート | 日単位の集計（要全端末閉店） |
 
 ## APIエンドポイント
 
-### レポート生成
+### 1. 店舗レポート取得
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/reports`
 
-#### 1. レポート生成
-**POST** `/api/v1/tenants/{tenant_id}/reports/generate`
-
-指定されたタイプとパラメータでレポートを生成します。
+店舗全体のレポートを取得します。
 
 **パスパラメータ:**
 - `tenant_id` (string, 必須): テナント識別子
-
-**リクエストボディ:**
-```json
-{
-  "reportType": "daily_sales",
-  "parameters": {
-    "storeCode": "STORE001",
-    "businessDate": "20240101",
-    "includeDetails": true
-  },
-  "format": "pdf",
-  "async": false
-}
-```
-
-**フィールド説明:**
-- `reportType` (string, 必須): レポートタイプID
-- `parameters` (object, 必須): レポート生成パラメータ
-- `format` (string, デフォルト: "pdf"): 出力形式（pdf/excel/csv/json）
-- `async` (boolean, デフォルト: false): 非同期生成フラグ
-
-**共通パラメータ:**
-- `storeCode` (string/array): 店舗コード（複数指定可）
-- `businessDate` (string): ビジネス日付（YYYYMMDD）
-- `dateFrom` (string): 開始日
-- `dateTo` (string): 終了日
-- `includeDetails` (boolean): 詳細データ含有
-
-**リクエスト例:**
-```bash
-curl -X POST "http://localhost:8004/api/v1/tenants/tenant001/reports/generate" \
-  -H "Authorization: Bearer {token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "reportType": "daily_sales",
-    "parameters": {
-      "storeCode": "STORE001",
-      "businessDate": "20240101"
-    },
-    "format": "pdf"
-  }'
-```
-
-**同期レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "レポートが生成されました",
-  "data": {
-    "reportId": "rpt_20240101_001",
-    "reportType": "daily_sales",
-    "status": "completed",
-    "createdAt": "2024-01-02T01:00:00Z",
-    "fileUrl": "/api/v1/reports/rpt_20240101_001/download",
-    "expiresAt": "2024-01-09T01:00:00Z",
-    "metadata": {
-      "pageCount": 5,
-      "fileSize": 1048576,
-      "format": "pdf"
-    }
-  },
-  "operation": "generate_report"
-}
-```
-
-**非同期レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 202,
-  "message": "レポート生成を開始しました",
-  "data": {
-    "reportId": "rpt_20240101_002",
-    "status": "processing",
-    "estimatedTime": 30,
-    "statusUrl": "/api/v1/reports/rpt_20240101_002/status"
-  },
-  "operation": "generate_report_async"
-}
-```
-
-#### 2. レポート取得
-**GET** `/api/v1/tenants/{tenant_id}/reports/{report_id}`
-
-生成済みレポートの情報を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `report_id` (string, 必須): レポートID
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "レポート情報を取得しました",
-  "data": {
-    "reportId": "rpt_20240101_001",
-    "reportType": "daily_sales",
-    "reportName": "日次売上レポート - 2024年1月1日",
-    "status": "completed",
-    "parameters": {
-      "storeCode": "STORE001",
-      "businessDate": "20240101"
-    },
-    "format": "pdf",
-    "createdAt": "2024-01-02T01:00:00Z",
-    "completedAt": "2024-01-02T01:00:30Z",
-    "fileUrl": "/api/v1/reports/rpt_20240101_001/download",
-    "expiresAt": "2024-01-09T01:00:00Z",
-    "createdBy": "user001",
-    "summary": {
-      "totalSales": 125000.00,
-      "transactionCount": 150,
-      "averageTicket": 833.33
-    }
-  },
-  "operation": "get_report"
-}
-```
-
-#### 3. レポートダウンロード
-**GET** `/api/v1/tenants/{tenant_id}/reports/{report_id}/download`
-
-レポートファイルをダウンロードします。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `report_id` (string, 必須): レポートID
-
-**レスポンス:**
-- Content-Type: application/pdf（またはレポート形式に応じる）
-- Content-Disposition: attachment; filename="report_20240101.pdf"
-- バイナリファイルデータ
-
-#### 4. レポート一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/reports`
-
-レポートの一覧を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**クエリパラメータ:**
-- `reportType` (string, オプション): レポートタイプでフィルタ
-- `storeCode` (string, オプション): 店舗コードでフィルタ
-- `dateFrom` (string, オプション): 作成日開始
-- `dateTo` (string, オプション): 作成日終了
-- `status` (string, オプション): ステータスでフィルタ
-- `skip` (integer, デフォルト: 0): ページネーションオフセット
-- `limit` (integer, デフォルト: 20, 最大: 100): ページサイズ
-- `sort` (string, デフォルト: "createdAt:-1"): ソート順（フィールド名:1 昇順、フィールド名:-1 降順）
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "レポート一覧を取得しました",
-  "data": {
-    "items": [
-      {
-        "reportId": "rpt_20240101_001",
-        "reportType": "daily_sales",
-        "reportName": "日次売上レポート - 20240101",
-        "status": "completed",
-        "format": "pdf",
-        "createdAt": "2024-01-02T01:00:00Z",
-        "fileSize": 1048576,
-        "storeCode": "STORE001"
-      }
-    ],
-    "total": 150,
-    "skip": 0,
-    "limit": 20
-  },
-  "operation": "list_reports"
-}
-```
-
-### レポートタイプ管理
-
-#### 5. 利用可能なレポートタイプ取得
-**GET** `/api/v1/reports/types`
-
-利用可能なレポートタイプの一覧を取得します。
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "レポートタイプ一覧を取得しました",
-  "data": {
-    "items": [
-      {
-        "typeId": "daily_sales",
-        "name": "日次売上レポート",
-        "description": "日別の売上、取引数、決済方法別集計",
-        "category": "sales",
-        "parameters": [
-          {
-            "name": "storeCode",
-            "type": "string",
-            "required": true,
-            "description": "店舗コード"
-          },
-          {
-            "name": "businessDate",
-            "type": "date",
-            "required": true,
-            "description": "ビジネス日付"
-          }
-        ],
-        "formats": ["pdf", "excel", "csv"],
-        "estimatedTime": 30,
-        "sample": "/api/v1/reports/types/daily_sales/sample"
-      }
-    ]
-  },
-  "operation": "list_report_types"
-}
-```
-
-### スケジュール管理
-
-#### 6. スケジュール作成
-**POST** `/api/v1/tenants/{tenant_id}/schedules`
-
-レポートの自動生成スケジュールを作成します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**リクエストボディ:**
-```json
-{
-  "name": "日次売上レポート自動生成",
-  "reportType": "daily_sales",
-  "parameters": {
-    "storeCode": ["STORE001", "STORE002"],
-    "includeDetails": true
-  },
-  "schedule": {
-    "type": "cron",
-    "expression": "0 1 * * *",
-    "timezone": "Asia/Tokyo"
-  },
-  "delivery": {
-    "email": {
-      "enabled": true,
-      "recipients": ["manager@example.com"],
-      "subject": "日次売上レポート - {date}"
-    },
-    "storage": {
-      "enabled": true,
-      "provider": "google_drive",
-      "folder": "/reports/daily"
-    }
-  },
-  "format": "pdf",
-  "isActive": true
-}
-```
-
-**フィールド説明:**
-- `name` (string, 必須): スケジュール名
-- `reportType` (string, 必須): レポートタイプ
-- `parameters` (object, 必須): レポートパラメータ
-- `schedule` (object, 必須): スケジュール設定
-  - `type` (string): "cron" または "interval"
-  - `expression` (string): Cron式（cronタイプ）
-  - `interval` (integer): 間隔（分）（intervalタイプ）
-  - `timezone` (string): タイムゾーン
-- `delivery` (object, オプション): 配信設定
-- `format` (string): 出力形式
-- `isActive` (boolean): 有効/無効
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "スケジュールが作成されました",
-  "data": {
-    "scheduleId": "sch_001",
-    "name": "日次売上レポート自動生成",
-    "nextRun": "2024-01-02T01:00:00Z",
-    "createdAt": "2024-01-01T10:00:00Z"
-  },
-  "operation": "create_schedule"
-}
-```
-
-#### 7. スケジュール一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/schedules`
-
-スケジュールの一覧を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**クエリパラメータ:**
-- `isActive` (boolean, オプション): アクティブ状態でフィルタ
-- `reportType` (string, オプション): レポートタイプでフィルタ
-
-#### 8. スケジュール更新
-**PUT** `/api/v1/tenants/{tenant_id}/schedules/{schedule_id}`
-
-既存のスケジュールを更新します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `schedule_id` (string, 必須): スケジュールID
-
-#### 9. スケジュール削除
-**DELETE** `/api/v1/tenants/{tenant_id}/schedules/{schedule_id}`
-
-スケジュールを削除します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `schedule_id` (string, 必須): スケジュールID
-
-### レポート配信
-
-#### 10. レポート送信
-**POST** `/api/v1/tenants/{tenant_id}/reports/{report_id}/send`
-
-生成済みレポートを送信します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `report_id` (string, 必須): レポートID
-
-**リクエストボディ:**
-```json
-{
-  "method": "email",
-  "recipients": ["user@example.com"],
-  "subject": "売上レポート",
-  "message": "本日の売上レポートを送付します。"
-}
-```
-
-**フィールド説明:**
-- `method` (string, 必須): 送信方法（email/webhook）
-- `recipients` (array[string], 必須): 送信先
-- `subject` (string, email時必須): 件名
-- `message` (string, オプション): メッセージ
-
-### リアルタイムデータ
-
-#### 11. 現在のKPI取得
-**GET** `/api/v1/tenants/{tenant_id}/kpi/current`
-
-現在のKPI値を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-**クエリパラメータ:**
-- `storeCode` (string, 必須): 店舗コード
-- `metrics` (string, オプション): 取得する指標（カンマ区切り）
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "KPIデータを取得しました",
-  "data": {
-    "timestamp": "2024-01-01T15:30:00Z",
-    "storeCode": "STORE001",
-    "metrics": {
-      "todaySales": 75000.00,
-      "transactionCount": 89,
-      "averageTicket": 842.70,
-      "itemsSold": 215,
-      "customerCount": 85,
-      "conversionRate": 95.5,
-      "targetAchievement": 75.0,
-      "hourlyTrend": [
-        {"hour": 9, "sales": 5000},
-        {"hour": 10, "sales": 8000},
-        {"hour": 11, "sales": 12000}
-      ]
-    }
-  },
-  "operation": "get_current_kpi"
-}
-```
-
-#### 12. WebSocketダッシュボード接続
-**WebSocket** `/ws/dashboard`
-
-リアルタイムダッシュボードデータのWebSocket接続。
-
-**接続パラメータ:**
-- `token` (string, 必須): JWTトークン
-- `tenant_id` (string, 必須): テナントID
 - `store_code` (string, 必須): 店舗コード
 
-**メッセージ形式:**
+**クエリパラメータ:**
+- `report_scope` (string, 必須): レポート範囲（flash/daily）
+- `report_type` (string, 必須): レポートタイプ（sales）
+- `business_date` (string, 必須): ビジネス日付（YYYYMMDD）
+- `open_counter` (integer): 開店カウンター（flashレポート時）
+- `business_counter` (integer): ビジネスカウンター
+- `limit` (integer, デフォルト: 100): ページサイズ
+- `page` (integer, デフォルト: 1): ページ番号
+- `sort` (string): ソート条件
+
+**レスポンス例（売上レポート）:**
 ```json
 {
-  "type": "kpi_update",
+  "success": true,
+  "code": 200,
+  "message": "Sales report fetched successfully",
   "data": {
-    "timestamp": "2024-01-01T15:30:00Z",
-    "sales": 75000.00,
-    "transactions": 89
-  }
+    "tenantId": "tenant001",
+    "storeCode": "STORE001",
+    "storeName": "店舗001",
+    "terminalNo": null,
+    "businessDate": "20240101",
+    "reportScope": "daily",
+    "reportType": "sales",
+    "salesGross": {
+      "itemCount": 500,
+      "transactionCount": 150,
+      "totalAmount": 125000.00
+    },
+    "salesNet": {
+      "itemCount": 495,
+      "transactionCount": 148,
+      "totalAmount": 120000.00
+    },
+    "discountForLineitems": {
+      "itemCount": 20,
+      "transactionCount": 15,
+      "totalAmount": -2000.00
+    },
+    "discountForSubtotal": {
+      "itemCount": 0,
+      "transactionCount": 10,
+      "totalAmount": -1000.00
+    },
+    "returns": {
+      "itemCount": 5,
+      "transactionCount": 2,
+      "totalAmount": -2000.00
+    },
+    "taxes": [
+      {
+        "taxCode": "TAX_10",
+        "taxType": "STANDARD",
+        "taxName": "標準税率",
+        "itemCount": 400,
+        "targetAmount": 100000.00,
+        "taxAmount": 10000.00
+      },
+      {
+        "taxCode": "TAX_8",
+        "taxType": "REDUCED",
+        "taxName": "軽減税率",
+        "itemCount": 100,
+        "targetAmount": 25000.00,
+        "taxAmount": 2000.00
+      }
+    ],
+    "payments": [
+      {
+        "paymentCode": "CASH",
+        "paymentName": "現金",
+        "transactionCount": 100,
+        "totalAmount": 80000.00
+      },
+      {
+        "paymentCode": "CREDIT",
+        "paymentName": "クレジット",
+        "transactionCount": 50,
+        "totalAmount": 45000.00
+      }
+    ],
+    "cash": {
+      "cashInCount": 5,
+      "cashInAmount": 10000.00,
+      "cashOutCount": 3,
+      "cashOutAmount": -5000.00,
+      "netCashMovement": 5000.00
+    },
+    "receiptText": "=== 日次売上レポート ===\n...",
+    "journalText": "=== 日次売上レポート ===\n..."
+  },
+  "operation": "get_report_for_store"
 }
 ```
 
-### データエクスポート
+### 2. 端末レポート取得
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports`
 
-#### 13. 一括データエクスポート
-**POST** `/api/v1/tenants/{tenant_id}/export`
-
-指定条件でデータを一括エクスポートします。
+特定端末のレポートを取得します。
 
 **パスパラメータ:**
 - `tenant_id` (string, 必須): テナント識別子
+- `store_code` (string, 必須): 店舗コード
+- `terminal_no` (integer, 必須): 端末番号
+
+**クエリパラメータ:**
+店舗レポートと同じ
+
+### 3. トランザクション受信（REST）
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
+
+直接トランザクションデータを送信するRESTエンドポイント。
+
+**リクエストボディ:**
+kugel_commonのBaseTransaction構造に準拠したトランザクションデータ
+
+### 4. テナント作成
+**POST** `/api/v1/tenants`
+
+新規テナント用のレポートサービスを初期化します。
 
 **リクエストボディ:**
 ```json
 {
-  "dataType": "transactions",
-  "dateFrom": "2024-01-01",
-  "dateTo": "2024-01-31",
-  "storeCode": ["STORE001", "STORE002"],
-  "format": "csv",
-  "compression": "zip"
+  "tenantId": "tenant001"
 }
 ```
 
-**フィールド説明:**
-- `dataType` (string, 必須): データタイプ（transactions/products/customers）
-- `dateFrom` (string, 必須): 開始日
-- `dateTo` (string, 必須): 終了日
-- `storeCode` (array[string], オプション): 店舗コード
-- `format` (string, 必須): 出力形式
-- `compression` (string, オプション): 圧縮形式
+**認証:** JWTトークンが必要
 
-### システムエンドポイント
-
-#### 14. ヘルスチェック
+### 5. ヘルスチェック
 **GET** `/health`
 
-サービスヘルスと依存関係ステータスをチェックします。
-
-**リクエスト例:**
-```bash
-curl -X GET "http://localhost:8004/health"
-```
+サービスの健全性を確認します。
 
 **レスポンス例:**
 ```json
@@ -532,101 +205,101 @@ curl -X GET "http://localhost:8004/health"
   "message": "サービスは正常です",
   "data": {
     "status": "healthy",
-    "database": "connected",
-    "cache": "connected",
-    "scheduler": "running",
-    "timestamp": "2024-01-01T10:00:00Z"
+    "mongodb": "connected"
   },
   "operation": "health_check"
 }
 ```
 
-## イベント受信（Dapr Pub/Sub）
+## イベント処理エンドポイント（Dapr Pub/Sub）
 
-### トランザクションログイベント
+### 6. 取引ログハンドラー
+**POST** `/api/v1/tranlog`
+
 **トピック:** `tranlog_report`
 
-取引データを受信してリアルタイム集計を更新：
+カートサービスからの取引ログを処理します。
+
+### 7. 入出金ログハンドラー
+**POST** `/api/v1/cashlog`
+
+**トピック:** `cashlog_report`
+
+ターミナルサービスからの入出金ログを処理します。
+
+### 8. 開閉店ログハンドラー
+**POST** `/api/v1/opencloselog`
+
+**トピック:** `opencloselog_report`
+
+ターミナルサービスからの開閉店ログを処理します。
+
+## レポート構造詳細
+
+### SalesReportTemplate
+売上集計の基本構造：
 ```json
 {
-  "eventId": "evt_123456",
-  "tenantId": "tenant001",
-  "storeCode": "STORE001",
-  "terminalNo": 1,
-  "transactionNo": "0001",
-  "transactionType": 101,
-  "businessDate": "20240101",
-  "amount": 990.00,
-  "items": [...],
-  "timestamp": "2024-01-01T10:15:00Z"
+  "itemCount": 100,          // 商品数
+  "transactionCount": 50,    // 取引数
+  "totalAmount": 10000.00    // 金額合計
 }
 ```
 
-## エラーレスポンス
-
-APIは標準的なHTTPステータスコードと構造化されたエラーレスポンスを使用します：
-
+### TaxReportTemplate
+税金集計構造：
 ```json
 {
-  "success": false,
-  "code": 404,
-  "message": "指定されたレポートが見つかりません",
-  "data": null,
-  "operation": "get_report"
+  "taxCode": "TAX_10",
+  "taxType": "STANDARD",
+  "taxName": "標準税率",
+  "itemCount": 100,
+  "targetAmount": 10000.00,   // 課税対象額
+  "taxAmount": 1000.00        // 税額
 }
 ```
 
-### 共通ステータスコード
-- `200` - 成功
-- `201` - 正常に作成されました
-- `202` - 受理されました（非同期処理）
-- `400` - 不正なリクエスト
-- `401` - 認証失敗
-- `403` - アクセス拒否
-- `404` - リソースが見つかりません
-- `500` - 内部サーバーエラー
+### PaymentReportTemplate
+支払方法別集計構造：
+```json
+{
+  "paymentCode": "CASH",
+  "paymentName": "現金",
+  "transactionCount": 50,
+  "totalAmount": 10000.00
+}
+```
 
-### エラーコードシステム
+### CashReportTemplate
+現金入出金集計構造：
+```json
+{
+  "cashInCount": 5,           // 入金回数
+  "cashInAmount": 10000.00,   // 入金額
+  "cashOutCount": 3,          // 出金回数
+  "cashOutAmount": -5000.00,  // 出金額
+  "netCashMovement": 5000.00  // 純移動額
+}
+```
 
-レポートサービスは60XXX範囲のエラーコードを使用します：
+## エラーコード
 
-- `60001` - レポートタイプが見つかりません
-- `60002` - レポート生成エラー
-- `60003` - データ不足エラー
-- `60004` - 権限不足
-- `60005` - スケジュール設定エラー
-- `60006` - 配信エラー
-- `60007` - テンプレートエラー
-- `60008` - 集計エラー
-- `60009` - エクスポートエラー
-- `60099` - 一般的なサービスエラー
+レポートサービスは40XXX範囲のエラーコードを使用します：
 
-## レート制限
+- `40001`: レポートデータが見つかりません
+- `40002`: 端末が閉店していません（日次レポート時）
+- `40003`: データ期間エラー
+- `40004`: 無効なレポートタイプ
+- `40005`: 無効なレポート範囲
+- `40099`: 一般的なサービスエラー
 
-レポートサービスは以下のレート制限を実装しています：
+## 特記事項
 
-- レポート生成: 1分あたり10リクエスト
-- データエクスポート: 1時間あたり5リクエスト
-- KPI取得: 1秒あたり10リクエスト
-- 一般的なAPI: 1分あたり100リクエスト
-
-## キャッシング
-
-レポートデータは以下のようにキャッシュされます：
-
-- 完了レポート: 7日間
-- KPIデータ: 5分間
-- 集計結果: 1時間
-- レポートタイプ情報: 24時間
-
-## 注意事項
-
-1. **非同期処理**: 大きなレポートは非同期で生成
-2. **ファイル有効期限**: 生成されたファイルは7日後に削除
-3. **同時実行制限**: テナントあたり5つの同時レポート生成
-4. **CamelCase規約**: すべてのJSONフィールドはcamelCase形式を使用
-5. **タイムゾーン**: すべての日時はUTC（特に指定がない限り）
-6. **データ保持**: 生レポートデータは90日間保持
-7. **マルチテナント**: 完全なテナント分離を実施
-
-レポートサービスは、Kugelpos POSシステムのビジネスインテリジェンス機能を提供し、データ駆動型の意思決定と業績管理を支援します。
+1. **日次レポートの前提条件**: 全端末が閉店していることが必要
+2. **データ検証**: 日次レポート生成前に以下を検証
+   - 全端末のクローズログ存在確認
+   - 入出金ログ数の一致確認
+   - 取引ログ数の一致確認
+3. **冪等性**: イベントIDによる重複処理防止
+4. **プラグイン拡張**: 新しいレポートタイプはプラグインで追加可能
+5. **ジャーナル連携**: APIキー認証時はレポートをジャーナルに自動送信

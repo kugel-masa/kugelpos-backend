@@ -10,11 +10,8 @@ The Cart Service implements three main strategy types:
 
 ### 1. Sales Promotion Strategies
 
-Located in `strategies/promotions/` directory, these strategies handle different types of sales promotions that can be applied to a cart, such as:
-- Discounts
-- Buy-one-get-one-free offers
-- Bundle deals
-- Loyalty programs
+Located in `strategies/sales_promo/` directory, these strategies handle different types of sales promotions that can be applied to a cart. Currently includes:
+- SalesPromoSample (basic promotion implementation)
 
 ### 2. Payment Strategies
 
@@ -27,7 +24,7 @@ Each payment method has its own validation rules and processing logic while shar
 
 ### 3. Receipt Data Strategies
 
-Located in `strategies/receipts/` directory, these strategies handle different formats and content for receipt generation.
+Located in `strategies/receipt_data/` directory, these strategies handle different formats and content for receipt generation.
 
 ## Configuration: plugins.json
 

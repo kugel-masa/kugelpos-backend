@@ -2,7 +2,7 @@
 
 ## Overview
 
-Terminal Service manages POS terminals, stores, and cash operations in the Kugelpos POS system. It provides endpoints for terminal lifecycle management, staff authentication, business session control, and multi-tenant store administration with comprehensive audit trails.
+The Terminal service provides tenant management, store management, and terminal management capabilities for the Kugelpos POS system. It implements terminal lifecycle management, cash in/out operations, staff management, and basic functions required for store operations.
 
 ## Base URL
 - Local environment: `http://localhost:8001`
@@ -10,25 +10,22 @@ Terminal Service manages POS terminals, stores, and cash operations in the Kugel
 
 ## Authentication
 
-Terminal Service supports two authentication methods:
+The Terminal service supports two authentication methods:
 
 ### 1. JWT Token (Bearer Token)
-- Include in header: `Authorization: Bearer {token}`
-- Obtain token from: Account Service's `/api/v1/accounts/token`
-- Required for administrative operations and tenant management
+- Header: `Authorization: Bearer {token}`
+- Purpose: Tenant, store, and terminal management operations by administrators
 
-### 2. API Key Authentication
-- Include in header: `X-API-Key: {api_key}`
-- Include query parameter: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
-- Used for POS terminal operations
+### 2. Terminal ID + API Key Authentication
+- Header: `X-API-Key: {api_key}`
+- Query parameter: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
+- Purpose: Terminal operations (sign-in, opening, cash management, etc.)
 
 ## Field Format
 
-All API requests and responses use **camelCase** field naming conventions. The service uses `BaseSchemaModel` and transformers to automatically convert between internal snake_case and external camelCase formats.
+All API requests/responses use **camelCase** format.
 
 ## Common Response Format
-
-All endpoints return responses in the following format:
 
 ```json
 {
@@ -40,58 +37,176 @@ All endpoints return responses in the following format:
 }
 ```
 
-## Enumerations
+## Terminal States
 
-### Terminal Status
-- `Idle` - Terminal is not opened for business
-- `Opened` - Terminal is active and ready for operations
-- `Closed` - Terminal has been closed for the day
+| State | Description |
+|-------|-------------|
+| idle | Initial state, before business start |
+| opened | In business (opened) |
+| closed | Business ended (closed) |
 
-### Function Modes
-- `MainMenu` - Default display mode
-- `OpenTerminal` - Terminal opening operations
-- `Sales` - Sales transaction processing
-- `Returns` - Return transaction processing
-- `Void` - Transaction voiding
-- `Reports` - Report generation
-- `CloseTerminal` - Terminal closing operations
-- `Journal` - Transaction history viewing
-- `Maintenance` - System maintenance
-- `CashInOut` - Cash drawer operations
+## Function Modes
+
+| Mode | Description |
+|------|-------------|
+| MainMenu | Main menu |
+| OpenTerminal | Terminal opening |
+| Sales | Sales processing |
+| Returns | Return processing |
+| Void | Void processing |
+| Reports | Report display |
+| CloseTerminal | Terminal closing |
+| Journal | Journal display |
+| Maintenance | Maintenance |
+| CashInOut | Cash in/out |
 
 ## API Endpoints
 
-### 1. Create Terminal
-**POST** `/api/v1/terminals`
+### Tenant Management
 
-Create a new POS terminal device with store association.
+#### 1. Create Tenant
+**POST** `/api/v1/tenants`
+
+Creates a new tenant and initializes each service.
+
+**Authentication:** JWT token required
 
 **Request Body:**
 ```json
 {
-  "storeCode": "store001",
-  "terminalNo": 1,
-  "description": "Front Counter Terminal"
+  "tenantId": "tenant001",
+  "tenantName": "Sample Corporation"
 }
 ```
 
-**Field Descriptions:**
-- `storeCode` (string, required): Store code where the terminal will be created
-- `terminalNo` (integer, required): Terminal number unique within the store (1-999)
-- `description` (string, required): Terminal description
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 201,
+  "message": "Tenant created successfully",
+  "data": {
+    "tenantId": "tenant001",
+    "tenantName": "Sample Corporation",
+    "createdAt": "2024-01-01T10:00:00Z"
+  },
+  "operation": "create_tenant"
+}
+```
 
-**Note:** The tenant ID is extracted from the JWT authentication token, not from the request body.
+#### 2. Get Tenant Information
+**GET** `/api/v1/tenants/{tenant_id}`
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/terminals" \
-  -H "Authorization: Bearer {token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "storeCode": "store001",
-    "terminalNo": 1,
-    "description": "Front Counter Terminal"
-  }'
+Retrieves detailed tenant information.
+
+**Path Parameters:**
+- `tenant_id` (string, required): Tenant identifier
+
+#### 3. Update Tenant
+**PUT** `/api/v1/tenants/{tenant_id}`
+
+Updates tenant information.
+
+**Request Body:**
+```json
+{
+  "tenantName": "Sample Corporation (Updated)"
+}
+```
+
+#### 4. Delete Tenant
+**DELETE** `/api/v1/tenants/{tenant_id}`
+
+Deletes tenant and related data.
+
+### Store Management
+
+#### 5. Add Store
+**POST** `/api/v1/tenants/{tenant_id}/stores`
+
+Adds a new store to the tenant.
+
+**Request Body:**
+```json
+{
+  "storeCode": "STORE001",
+  "storeName": "Main Store"
+}
+```
+
+#### 6. Get Store List
+**GET** `/api/v1/tenants/{tenant_id}/stores`
+
+Retrieves list of stores for the tenant.
+
+**Query Parameters:**
+- `page` (integer, default: 1): Page number
+- `limit` (integer, default: 100): Page size
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Stores retrieved successfully",
+  "data": {
+    "stores": [
+      {
+        "storeCode": "STORE001",
+        "storeName": "Main Store",
+        "status": "active",
+        "businessDate": "2024-01-01",
+        "createdAt": "2024-01-01T10:00:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 100
+  },
+  "operation": "list_stores"
+}
+```
+
+#### 7. Get Store Information
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Retrieves detailed information for a specific store.
+
+#### 8. Update Store
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Updates store information.
+
+**Request Body:**
+```json
+{
+  "storeName": "Main Store (Updated)",
+  "status": "active",
+  "businessDate": "2024-01-02"
+}
+```
+
+#### 9. Delete Store
+**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Deletes a store.
+
+### Terminal Management
+
+#### 10. Create Terminal
+**POST** `/api/v1/terminals`
+
+Creates a new terminal.
+
+**Authentication:** JWT token required
+
+**Request Body:**
+```json
+{
+  "storeCode": "STORE001",
+  "terminalNo": 1,
+  "description": "Register #1"
+}
 ```
 
 **Response Example:**
@@ -101,173 +216,63 @@ curl -X POST "http://localhost:8001/api/v1/terminals" \
   "code": 201,
   "message": "Terminal created successfully",
   "data": {
-    "terminalId": "tenant001-store001-001",
+    "terminalId": "tenant001-STORE001-1",
     "tenantId": "tenant001",
-    "storeCode": "store001",
+    "storeCode": "STORE001",
     "terminalNo": 1,
-    "description": "Front Counter Terminal",
-    "status": "Idle",
-    "functionMode": "MainMenu",
-    "apiKey": "term_k3y_a1b2c3d4e5f6...",
+    "description": "Register #1",
+    "status": "idle",
+    "apiKey": "sk_live_1234567890abcdef",
     "createdAt": "2024-01-01T10:00:00Z"
   },
   "operation": "create_terminal"
 }
 ```
 
-### 2. Get Terminal List
+#### 11. Get Terminal List
 **GET** `/api/v1/terminals`
 
-Retrieve list of terminals with pagination and filtering.
+Retrieves list of terminals.
+
+**Authentication:** JWT token required
 
 **Query Parameters:**
-- `tenant_id` (string, optional): Filter by tenant ID
-- `store_code` (string, optional): Filter by store code
-- `terminal_id` (string, optional): Terminal ID for API key authentication
-- `skip` (integer, default: 0): Number of items to skip
-- `limit` (integer, default: 10, max: 100): Maximum number of items to return
+- `page` (integer, default: 1): Page number
+- `limit` (integer, default: 100): Page size
+- `store_code` (string): Filter by store code
+- `status` (string): Filter by status
 
-**Request Example:**
-```bash
-curl -X GET "http://localhost:8001/api/v1/terminals?tenant_id=tenant001&store_code=store001&skip=0&limit=20" \
-  -H "Authorization: Bearer {token}"
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Terminals retrieved successfully",
-  "data": {
-    "items": [
-      {
-        "terminalId": "tenant001-store001-001",
-        "tenantId": "tenant001",
-        "storeCode": "store001",
-        "terminalNo": 1,
-        "description": "Front Counter Terminal",
-        "status": "Opened",
-        "functionMode": "Sales",
-        "businessDate": "2024-01-01",
-        "staff": {
-          "staffId": "STF001",
-          "name": "John Doe"
-        },
-        "openCounter": 1,
-        "businessCounter": 100
-      }
-    ],
-    "total": 5,
-    "skip": 0,
-    "limit": 20
-  },
-  "operation": "get_terminals"
-}
-```
-
-### 3. Get Terminal Details
+#### 12. Get Terminal Information
 **GET** `/api/v1/terminals/{terminal_id}`
 
-Retrieve detailed information for a specific terminal.
+Retrieves detailed terminal information.
 
 **Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier (format: tenant_id-store_code-terminal_no)
+- `terminal_id` (string, required): Terminal ID (format: tenant_id-store_code-terminal_no)
 
-**Query Parameters:**
-- `terminal_id` (string, optional): Terminal ID for API key authentication
-
-**Request Example:**
-```bash
-curl -X GET "http://localhost:8001/api/v1/terminals/tenant001-store001-001" \
-  -H "Authorization: Bearer {token}"
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Terminal retrieved successfully",
-  "data": {
-    "terminalId": "tenant001-store001-001",
-    "tenantId": "tenant001",
-    "storeCode": "store001",
-    "terminalNo": 1,
-    "description": "Front Counter Terminal",
-    "status": "Opened",
-    "functionMode": "Sales",
-    "businessDate": "2024-01-01",
-    "openCounter": 1,
-    "businessCounter": 100,
-    "staff": {
-      "staffId": "STF001",
-      "name": "John Doe",
-      "signInTime": "2024-01-01T09:00:00Z"
-    },
-    "initialAmount": 500.00,
-    "physicalAmount": null,
-    "tags": ["POS", "Front"]
-  },
-  "operation": "get_terminal"
-}
-```
-
-### 4. Delete Terminal
+#### 13. Delete Terminal
 **DELETE** `/api/v1/terminals/{terminal_id}`
 
-Delete a terminal (must be in Idle status).
+Deletes a terminal.
 
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+**Authentication:** JWT token required
 
-**Request Example:**
-```bash
-curl -X DELETE "http://localhost:8001/api/v1/terminals/tenant001-store001-001" \
-  -H "Authorization: Bearer {token}"
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Terminal deleted successfully",
-  "data": null,
-  "operation": "delete_terminal"
-}
-```
-
-### 5. Update Terminal Description
+#### 14. Update Terminal Description
 **PATCH** `/api/v1/terminals/{terminal_id}/description`
 
-Update the terminal's description.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Updates terminal description.
 
 **Request Body:**
 ```json
 {
-  "description": "Main Checkout Terminal"
+  "description": "Register #1 (Maintenance Complete)"
 }
 ```
 
-**Request Example:**
-```bash
-curl -X PATCH "http://localhost:8001/api/v1/terminals/tenant001-store001-001/description" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{"description": "Main Checkout Terminal"}'
-```
-
-### 6. Update Function Mode
+#### 15. Update Function Mode
 **PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
 
-Update the terminal's operational mode.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Updates terminal function mode.
 
 **Request Body:**
 ```json
@@ -276,104 +281,45 @@ Update the terminal's operational mode.
 }
 ```
 
-**Field Descriptions:**
-- `functionMode` (string, required): One of the valid function modes
+### Terminal Operations
 
-**Request Example:**
-```bash
-curl -X PATCH "http://localhost:8001/api/v1/terminals/tenant001-store001-001/function_mode" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{"functionMode": "Sales"}'
-```
-
-### 7. Staff Sign-in
+#### 16. Staff Sign-in
 **POST** `/api/v1/terminals/{terminal_id}/sign-in`
 
-Sign in a staff member to the terminal.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Staff signs into the terminal.
 
 **Request Body:**
 ```json
 {
-  "staffCode": "STF001",
-  "pin": "1234"
+  "staffId": "STAFF001",
+  "staffName": "Yamada Taro"
 }
 ```
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/terminals/tenant001-store001-001/sign-in" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "staffCode": "STF001",
-    "pin": "1234"
-  }'
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Staff signed in successfully",
-  "data": {
-    "staff": {
-      "staffId": "STF001",
-      "name": "John Doe",
-      "signInTime": "2024-01-01T09:00:00Z"
-    }
-  },
-  "operation": "sign_in"
-}
-```
-
-### 8. Staff Sign-out
+#### 17. Staff Sign-out
 **POST** `/api/v1/terminals/{terminal_id}/sign-out`
 
-Sign out the currently signed-in staff member.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
-
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/terminals/tenant001-store001-001/sign-out" \
-  -H "X-API-Key: {api_key}"
-```
-
-### 9. Open Terminal
-**POST** `/api/v1/terminals/{terminal_id}/open`
-
-Open the terminal for business operations.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Staff signs out of the terminal.
 
 **Request Body:**
 ```json
 {
-  "businessDate": "2024-01-01",
-  "initialAmount": 500.00
+  "staffId": "STAFF001"
 }
 ```
 
-**Field Descriptions:**
-- `businessDate` (string, required): Business date in YYYY-MM-DD format
-- `initialAmount` (number, optional): Opening cash drawer amount
+#### 18. Open Terminal
+**POST** `/api/v1/terminals/{terminal_id}/open`
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/terminals/tenant001-store001-001/open" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "businessDate": "2024-01-01",
-    "initialAmount": 500.00
-  }'
+Opens the terminal for business.
+
+**Request Body:**
+```json
+{
+  "staffId": "STAFF001",
+  "staffName": "Yamada Taro",
+  "cashAmount": 50000
+}
 ```
 
 **Response Example:**
@@ -383,233 +329,102 @@ curl -X POST "http://localhost:8001/api/v1/terminals/tenant001-store001-001/open
   "code": 200,
   "message": "Terminal opened successfully",
   "data": {
-    "terminalId": "tenant001-store001-001",
-    "status": "Opened",
+    "terminalId": "tenant001-STORE001-1",
+    "status": "opened",
     "businessDate": "2024-01-01",
     "openCounter": 1,
-    "businessCounter": 100,
-    "initialAmount": 500.00,
-    "receiptText": "=== TERMINAL OPEN ===\n...",
-    "journalText": "Terminal Open\n..."
+    "openTime": "2024-01-01T09:00:00Z",
+    "receiptText": "=== OPEN ===\n...",
+    "journalText": "Terminal open processing\n..."
   },
   "operation": "open_terminal"
 }
 ```
 
-### 10. Close Terminal
+#### 19. Close Terminal
 **POST** `/api/v1/terminals/{terminal_id}/close`
 
-Close the terminal and end the business session.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Closes the terminal for business.
 
 **Request Body:**
 ```json
 {
-  "physicalAmount": 1250.00
+  "staffId": "STAFF001",
+  "staffName": "Yamada Taro",
+  "cashAmount": 125000
 }
 ```
 
-**Field Descriptions:**
-- `physicalAmount` (number, optional): Physical cash count at closing
+### Cash Management
 
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/terminals/tenant001-store001-001/close" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{"physicalAmount": 1250.00}'
-```
-
-### 11. Cash In Operation
+#### 20. Cash In
 **POST** `/api/v1/terminals/{terminal_id}/cash-in`
 
-Record cash added to the drawer.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Deposits cash.
 
 **Request Body:**
 ```json
 {
-  "amount": 100.00,
-  "reason": "Float Addition",
-  "note": "Additional change required"
+  "amount": 10000,
+  "reason": "Change replenishment",
+  "staffId": "STAFF001",
+  "staffName": "Yamada Taro",
+  "comment": "Afternoon change replenishment"
 }
 ```
 
-**Field Descriptions:**
-- `amount` (number, required): Amount to add (must be positive)
-- `reason` (string, optional): Reason for cash in
-- `note` (string, optional): Additional notes
-
-**Request Example:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/terminals/tenant001-store001-001/cash-in" \
-  -H "X-API-Key: {api_key}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount": 100.00,
-    "reason": "Float Addition"
-  }'
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Cash in completed successfully",
+  "data": {
+    "cashInOutId": "CI-20240101-001",
+    "amount": 10000,
+    "receiptText": "=== CASH IN ===\n...",
+    "journalText": "Cash in processing\n..."
+  },
+  "operation": "cash_in"
+}
 ```
 
-### 12. Cash Out Operation
+#### 21. Cash Out
 **POST** `/api/v1/terminals/{terminal_id}/cash-out`
 
-Record cash removed from the drawer.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Withdraws cash.
 
 **Request Body:**
 ```json
 {
-  "amount": 50.00,
-  "reason": "Bank Deposit",
-  "note": "Daily deposit"
+  "amount": 50000,
+  "reason": "Sales collection",
+  "staffId": "STAFF001",
+  "staffName": "Yamada Taro",
+  "comment": "Intermediate collection"
 }
 ```
 
-**Field Descriptions:**
-- `amount` (number, required): Amount to remove (must be positive)
-- `reason` (string, optional): Reason for cash out
-- `note` (string, optional): Additional notes
+### System Management
 
-### 13. Update Delivery Status
+#### 22. Update Delivery Status
 **POST** `/api/v1/terminals/{terminal_id}/delivery-status`
 
-Update the delivery status of published events.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal identifier
+Updates event delivery status (internal use).
 
 **Request Body:**
 ```json
 {
   "eventId": "evt_123456",
+  "eventType": "cashlog",
   "delivered": true
 }
 ```
 
-## Tenant Management Endpoints
-
-### 14. Create Tenant
-**POST** `/api/v1/tenants`
-
-Create a new tenant with initial setup.
-
-**Request Body:**
-```json
-{
-  "tenantId": "tenant001",
-  "tenantName": "Example Retail Store",
-  "tenantNameLocal": "サンプル小売店"
-}
-```
-
-**Authentication:** Requires JWT token
-
-### 15. Get Tenant Details
-**GET** `/api/v1/tenants/{tenant_id}`
-
-Retrieve tenant information and store list.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-
-### 16. Update Tenant
-**PUT** `/api/v1/tenants/{tenant_id}`
-
-Update tenant information.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-
-**Request Body:**
-```json
-{
-  "tenantName": "Updated Store Name",
-  "tenantNameLocal": "更新された店舗名"
-}
-```
-
-### 17. Delete Tenant
-**DELETE** `/api/v1/tenants/{tenant_id}`
-
-Delete a tenant (requires no active terminals).
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-
-## Store Management Endpoints
-
-### 18. Add Store
-**POST** `/api/v1/tenants/{tenant_id}/stores`
-
-Add a new store to a tenant.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-
-**Request Body:**
-```json
-{
-  "storeCode": "store001",
-  "storeName": "Downtown Branch",
-  "storeNameLocal": "ダウンタウン支店",
-  "address": "123 Main St",
-  "phone": "555-0123"
-}
-```
-
-### 19. Get Store List
-**GET** `/api/v1/tenants/{tenant_id}/stores`
-
-Retrieve all stores for a tenant.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-
-### 20. Get Store Details
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-Retrieve specific store information.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-
-### 21. Update Store
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-Update store information.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-
-### 22. Delete Store
-**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-Delete a store (requires no active terminals).
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-
-## System Endpoints
-
 ### 23. Health Check
 **GET** `/health`
 
-Check service health and dependencies.
-
-**Request Example:**
-```bash
-curl -X GET "http://localhost:8001/health"
-```
+Checks service health.
 
 **Response Example:**
 ```json
@@ -619,95 +434,44 @@ curl -X GET "http://localhost:8001/health"
   "message": "Service is healthy",
   "data": {
     "status": "healthy",
-    "mongodb": "connected",
-    "dapr_sidecar": "connected",
-    "pubsub_topics": "available",
-    "background_jobs": "running"
+    "mongodb": "connected"
   },
   "operation": "health_check"
 }
 ```
 
-## Error Responses
+## Event Notifications (Dapr Pub/Sub)
 
-The API uses standard HTTP status codes and structured error responses:
+### Cash In/Out Events
+**Topic:** `cashlog_report`
 
-```json
-{
-  "success": false,
-  "code": 404,
-  "message": "Terminal not found: tenant001-store001-001",
-  "data": null,
-  "operation": "get_terminal"
-}
-```
+Events published during cash in/out operations.
 
-### Common Status Codes
-- `200` - Success
-- `201` - Created successfully
-- `400` - Bad request
-- `401` - Authentication error
-- `403` - Access denied
-- `404` - Resource not found
-- `409` - Conflict (e.g., terminal already exists)
-- `500` - Internal server error
+### Open/Close Events
+**Topic:** `opencloselog_report`
 
-### Error Code System
+Events published during terminal open/close operations.
 
-Terminal Service uses error codes in the 20XXX range:
+## Error Codes
 
-- `20001` - Terminal not found
-- `20002` - Terminal already exists
-- `20003` - Invalid terminal status for operation
-- `20004` - Staff authentication failed
-- `20005` - Cash operation error
-- `20006` - Tenant operation error
-- `20007` - Store operation error
-- `20008` - Invalid function mode
-- `20099` - General terminal service error
+Terminal service uses error codes in the 20XXX range:
 
-## Event Publishing
+- `20001`: Tenant not found
+- `20002`: Store not found
+- `20003`: Terminal not found
+- `20004`: Terminal already exists
+- `20005`: Invalid terminal state
+- `20006`: Staff not found
+- `20007`: Invalid API key
+- `20008`: Terminal already opened
+- `20009`: Terminal not opened
+- `20099`: General service error
 
-The terminal service publishes events to the following Dapr pub/sub topics:
+## Special Notes
 
-### Cash Operation Events
-- **Topic**: `topic-cashlog`
-- **Events**: Cash in/out operations
-
-### Terminal Session Events
-- **Topic**: `topic-opencloselog`
-- **Events**: Terminal open/close operations
-
-## Receipt and Journal Text
-
-Cash operations and terminal open/close operations generate:
-- **Receipt Text**: Formatted text for customer receipts
-- **Journal Text**: Detailed internal audit trail text
-
-## Business Rules
-
-1. **Terminal Status Transitions**:
-   - Idle → Opened (via open operation)
-   - Opened → Closed (via close operation)
-   - Closed → Idle (automatic)
-
-2. **Operation Restrictions**:
-   - Staff must be signed in for most operations
-   - Terminal must be opened for cash operations
-   - Cannot delete terminal unless in Idle status
-   - Cannot open terminal if already opened
-
-3. **Multi-tenancy**:
-   - All operations are tenant-scoped
-   - API keys are terminal-specific
-   - Cross-tenant operations are prohibited
-
-## Notes
-
-1. **Terminal ID Format**: Always `{tenant_id}-{store_code}-{terminal_no}`
-2. **Terminal Number**: Padded to 3 digits (e.g., 001, 002, 999)
-3. **CamelCase Convention**: All JSON fields use camelCase
-4. **Timestamps**: All timestamps are in ISO 8601 format (UTC)
-5. **API Key**: Generated automatically when terminal is created
-6. **Authentication**: Use JWT for management, API key for terminal operations
-7. **Idempotency**: Terminal creation is idempotent based on terminal ID
+1. **Terminal ID Format**: Uses `{tenant_id}-{store_code}-{terminal_no}` format
+2. **API Key**: Auto-generated during terminal creation and stored as hash
+3. **Background Jobs**: Periodic retransmission of undelivered messages
+4. **Multi-tenancy**: Complete isolation at database level
+5. **Event-driven**: Asynchronous event delivery via Dapr pub/sub
+6. **Circuit Breaker**: Failure handling for external service calls
