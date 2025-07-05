@@ -173,12 +173,17 @@ Cart サービスは、ショッピングカートとトランザクション処
 ```json
 [
   {
-    "barcode": "4901234567890",
+    "itemCode": "4901234567890",
     "quantity": 2.0,
     "unitPrice": 100.0
   }
 ]
 ```
+
+**フィールド説明**:
+- `itemCode`: string - 商品コード（必須）
+- `quantity`: number - 数量（必須）
+- `unitPrice`: number - 単価（オプション）
 
 **実装詳細** (app/api/v1/cart.py:175-220):
 - 複数商品の一括追加可能

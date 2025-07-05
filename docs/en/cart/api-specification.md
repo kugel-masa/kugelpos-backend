@@ -173,12 +173,17 @@ The Cart service is a microservice that manages shopping carts and transaction p
 ```json
 [
   {
-    "barcode": "4901234567890",
+    "itemCode": "4901234567890",
     "quantity": 2.0,
     "unitPrice": 100.0
   }
 ]
 ```
+
+**Field Descriptions**:
+- `itemCode`: string - Item code (required)
+- `quantity`: number - Quantity (required)
+- `unitPrice`: number - Unit price (optional)
 
 **Implementation Details** (app/api/v1/cart.py:175-220):
 - Bulk addition of multiple items possible
