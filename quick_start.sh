@@ -33,8 +33,36 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Step 2: Build and distribute kugel_common (includes pipenv rebuild)
-echo "Step 2: Building and distributing kugel_common..."
+# Step 2a: Check and install hatch if needed
+echo "Step 2a: Checking for hatch..."
+if ! command -v hatch &> /dev/null; then
+    echo "hatch not found. Installing hatch..."
+    
+    # Try to install using pip (preferred method)
+    if command -v pip &> /dev/null; then
+        echo "Installing hatch using pip..."
+        pip install hatch
+    elif command -v pip3 &> /dev/null; then
+        echo "Installing hatch using pip3..."
+        pip3 install hatch
+    else
+        echo "Error: pip is not available. Please install pip first."
+        exit 1
+    fi
+    
+    # Verify installation
+    if ! command -v hatch &> /dev/null; then
+        echo "Error: hatch installation failed!"
+        exit 1
+    else
+        echo "hatch successfully installed!"
+    fi
+else
+    echo "hatch is already installed."
+fi
+
+# Step 2b: Build and distribute kugel_common (includes pipenv rebuild)
+echo "Step 2b: Building and distributing kugel_common..."
 ./scripts/update_common_and_rebuild.sh
 
 # Check if update_common_and_rebuild.sh was successful
