@@ -123,12 +123,6 @@ chmod +x ./scripts/make_scripts_executable.sh
 ./scripts/build.sh --parallel
 ```
 
-
-## Documentation
-
-- [HTTP Communication Patterns](docs/en/HTTP_COMMUNICATION.md) - Unified HTTP client usage and patterns
-- [API Documentation](http://localhost:8000/docs) - Auto-generated OpenAPI docs (when services are running)
-
 ## Development
 
 ### Local Development Without Docker
