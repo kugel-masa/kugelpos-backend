@@ -122,7 +122,7 @@ class TextHelper:
         if target_width <= 0:
             return suffix[:max_width]
         
-        # Truncate character by character from the end
+        # Accumulate characters from the start until the target width is reached
         result = ""
         current_width = 0
         
