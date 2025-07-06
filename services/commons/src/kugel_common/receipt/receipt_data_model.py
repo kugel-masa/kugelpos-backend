@@ -124,7 +124,7 @@ class PrintData(BaseXmlModel, tag="PrintData"):
                         case Constants.ALIGN_SPLIT:
                             len_item2 = wcwidth.wcswidth(item2)
                             width_item1 = int(width) - len_item2
-                            text += TextHelper.fixed_left(item1, width_item1)
+                            text += TextHelper.fixed_left(item1, width_item1, truncate=True)
                             text += item2
                 elif line.type == Constants.TYPE_LINE:
                     text += "".center(int(width), "-")

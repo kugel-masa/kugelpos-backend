@@ -14,5 +14,5 @@
 # SPDX-FileCopyrightText: 2024-present kugel-masa <masa@kugel.cloud>
 #
 # SPDX-License-Identifier: MIT
-__version__ = "0.1.9"
+__version__ = "0.1.12"
 
