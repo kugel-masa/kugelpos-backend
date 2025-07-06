@@ -72,7 +72,7 @@ class TestTextHelper:
         # Text shorter than width - should pad
         result = TextHelper.fixed_left("Hello", 10)
         assert result == "Hello     "
-        assert len(result) == 10
+        assert wcwidth.wcswidth(result) == 10
         
         # Text longer than width - no truncation by default
         result = TextHelper.fixed_left("Very long text", 5)
