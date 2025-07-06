@@ -155,12 +155,11 @@ class TextHelper:
         Returns:
             Left-aligned text padded with spaces to the specified width
         """
-        if truncate and wcwidth.wcswidth(text) > width:
-            text = TextHelper.truncate_text(text, width)
-            
         current_width = wcwidth.wcswidth(text)
         if current_width is None:
             current_width = 0
+        if truncate and current_width > width:
+            text = TextHelper.truncate_text(text, width)
         padding = max(0, width - current_width)
         return text + " " * padding
 
