@@ -79,7 +79,7 @@ class TranPayment(BaseTranPayment):
     pass
 
 
-class TrantTax(BaseTranTax):
+class TranTax(BaseTranTax):
     """
     API v1 model for transaction tax information.
     Extends the base tax model with additional v1-specific tax properties.

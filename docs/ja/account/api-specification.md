@@ -24,7 +24,7 @@ Account サービスは、ユーザー認証とJWT トークン管理を提供�
 **レスポンス**:
 ```json
 {
-  "message": "Welcome to Kugel-POS Auth API. supoorted version: v1"
+  "message": "Welcome to Kugel-POS Auth API. supported version: v1"
 }
 ```
 

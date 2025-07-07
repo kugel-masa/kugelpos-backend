@@ -86,10 +86,9 @@
 ```json
 {
   "success": true,
-  "code": 201,
+  "code": 200,
   "message": "Transaction received successfully. tenant_id: tenant001, store_code: store001, terminal_no: 1",
   "data": {
-    "journalId": "507f1f77bcf86cd799439011",
     "tenantId": "tenant001",
     "storeCode": "store001",
     "terminalNo": 1,
@@ -135,13 +134,11 @@
   "message": "Journals found successfully. tenant_id: tenant001, store_code: store001",
   "data": [
     {
-      "journalId": "507f1f77bcf86cd799439011",
       "tenantId": "tenant001",
       "storeCode": "store001",
       "terminalNo": 1,
       "transactionNo": "0001",
       "transactionType": 101,
-      "transactionTypeName": "通常売上",
       "businessDate": "2024-01-01",
       "businessCounter": 100,
       "openCounter": 1,
@@ -199,13 +196,7 @@
   "code": 201,
   "message": "テナント作成が完了しました: tenant001",
   "data": {
-    "tenantId": "tenant001",
-    "collectionsCreated": [
-      "journal",
-      "log_tran",
-      "log_cash_in_out",
-      "log_open_close"
-    ]
+    "tenantId": "tenant001"
   },
   "operation": "create_tenant"
 }
@@ -259,11 +250,15 @@
 ## ソートオプション
 
 利用可能なソートフィールド:
-- `generateDateTime`: 生成日時（デフォルト: -1）
+- `terminalNo`: 端末番号
 - `businessDate`: ビジネス日付
 - `transactionNo`: トランザクション番号
 - `receiptNo`: レシート番号
+- `generateDateTime`: 生成日時
 - `amount`: 金額
+
+デフォルトソート順:
+- `terminalNo:1, businessDate:1, receiptNo:1`（端末番号、ビジネス日付、レシート番号の昇順）
 
 方向:
 - `1`: 昇順
@@ -271,17 +266,31 @@
 
 ## エラーコード
 
-ジャーナルサービスは50XXX範囲のエラーコードを使用します：
+ジャーナルサービスは410XX-411XX範囲のエラーコードを使用します：
 
-- `50001`: ジャーナルエントリー作成エラー
-- `50002`: ジャーナル検索エラー
-- `50003`: トランザクションログ処理エラー
-- `50004`: 現金ログ処理エラー
-- `50005`: 端末ログ処理エラー
-- `50006`: データ検証エラー
-- `50007`: 外部サービス通信エラー
-- `50008`: 重複イベント処理
-- `50099`: 一般的なジャーナルサービスエラー
+### ジャーナル基本操作関連 (4100X)
+- `410001`: ジャーナルが見つかりません
+- `410002`: ジャーナルのバリデーションエラー
+- `410003`: ジャーナル作成エラー
+- `410004`: ジャーナル検索エラー
+- `410005`: ジャーナルフォーマットエラー
+- `410006`: ジャーナル日付エラー
+- `410007`: ジャーナルデータエラー
+
+### ジャーナル検証関連 (4101X)
+- `410101`: 端末が見つかりません
+- `410102`: 店舗が見つかりません
+- `410103`: 必要なログが欠落しています
+- `410104`: ログシーケンスエラー
+- `410105`: トランザクション検証エラー
+
+### その他のジャーナル関連 (411XX)
+- `411001`: レシート生成エラー
+- `411002`: ジャーナルテキスト生成エラー
+- `411003`: エクスポートエラー
+- `411004`: インポートエラー
+- `411005`: トランザクションレシートエラー
+- `411006`: 外部サービスエラー
 
 ## 特記事項
 

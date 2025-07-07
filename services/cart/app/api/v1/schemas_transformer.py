@@ -2,7 +2,7 @@
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.models.documents.cart_document import CartDocument
 from app.api.common.schemas_transformer import SchemasTransformer
-from app.api.v1.schemas import Tran, Cart, TranLineItem, TranPayment, TrantTax
+from app.api.v1.schemas import Tran, Cart, TranLineItem, TranPayment, TranTax
 
 
 class SchemasTransformerV1(SchemasTransformer):
@@ -40,7 +40,7 @@ class SchemasTransformerV1(SchemasTransformer):
         """
         return super().transform_payments(payments)
 
-    def transform_taxes(self, taxes: list[CartDocument.Tax]) -> list[TrantTax]:
+    def transform_taxes(self, taxes: list[CartDocument.Tax]) -> list[TranTax]:
         """
         Transform taxes to v1 API schema models.
 
@@ -51,14 +51,14 @@ class SchemasTransformerV1(SchemasTransformer):
             taxes: List of tax information from the cart document
 
         Returns:
-            List of v1 TrantTax objects for API responses with additional fields
+            List of v1 TranTax objects for API responses with additional fields
         """
         return_tax = super().transform_taxes(taxes)
 
         # Add fields for V1 schema
         for tax in return_tax:
             tax_doc = self.__find_tax_by_no(taxes, tax.tax_no)
-            tax = TrantTax(**tax.model_dump())  # Cast to CartTax from BaseCartTax
+            tax = TranTax(**tax.model_dump())  # Cast to CartTax from BaseCartTax
             tax.tax_code = tax_doc.tax_code
             tax.tax_target_amount = tax_doc.target_amount
             tax.tax_target_quantity = tax_doc.target_quantity

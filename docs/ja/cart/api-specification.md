@@ -25,7 +25,7 @@ Cart サービスは、ショッピングカートとトランザクション処
 **レスポンス**:
 ```json
 {
-  "message": "Welcome to Kugel-POS Cart API. supoorted version: v1"
+  "message": "Welcome to Kugel-POS Cart API. supported version: v1"
 }
 ```
 
