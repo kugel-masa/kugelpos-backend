@@ -454,18 +454,59 @@ Events published during terminal open/close operations.
 
 ## Error Codes
 
-Terminal service uses error codes in the 20XXX range:
+Terminal service uses error codes in the 406XX-407XX range:
 
-- `20001`: Tenant not found
-- `20002`: Store not found
-- `20003`: Terminal not found
-- `20004`: Terminal already exists
-- `20005`: Invalid terminal state
-- `20006`: Staff not found
-- `20007`: Invalid API key
-- `20008`: Terminal already opened
-- `20009`: Terminal not opened
-- `20099`: General service error
+### Terminal Basic Operation Related (4060XX)
+- `406001`: Terminal not found
+- `406002`: Terminal already exists
+- `406003`: Terminal status error
+- `406004`: Sign in/out error
+- `406005`: Sign in required
+- `406006`: Invalid credentials
+- `406007`: Terminal open error
+- `406008`: Terminal close error
+- `406009`: Terminal already opened
+- `406010`: Terminal already closed
+- `406011`: Terminal is busy
+- `406012`: Function mode error
+- `406013`: Terminal not signed in
+- `406014`: Already signed in
+- `406015`: Terminal is signed out
+
+### Cash Handling Related (4061XX)
+- `406101`: Cash in/out error
+- `406102`: Invalid amount
+- `406103`: Cash drawer closed
+- `406104`: Amount exceeds maximum
+- `406105`: Amount below minimum
+- `406106`: Physical amount mismatch
+
+### Tenant Related (4070XX)
+- `407001`: Tenant not found
+- `407002`: Tenant already exists
+- `407003`: Tenant update error
+- `407004`: Tenant delete error
+- `407005`: Tenant configuration error
+- `407006`: Tenant creation error
+
+### Store Related (4071XX)
+- `407101`: Store not found
+- `407102`: Store already exists
+- `407103`: Store update error
+- `407104`: Store delete error
+- `407105`: Store configuration error
+- `407106`: Business date error
+
+### External Service Related (4072XX)
+- `407201`: External service error
+- `407202`: Master data service error
+- `407203`: Cart service error
+- `407204`: Journal service error
+- `407205`: Report service error
+
+### Other Errors (4073XX)
+- `407301`: Internal processing error
+- `407399`: Unexpected error
 
 ## Special Notes
 

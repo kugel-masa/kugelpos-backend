@@ -284,14 +284,33 @@ Cash in/out aggregation structure:
 
 ## Error Codes
 
-Report service uses error codes in the 40XXX range:
+Report service uses error codes in the 412XX-413XX range:
 
-- `40001`: Report data not found
-- `40002`: Terminal not closed (for daily reports)
-- `40003`: Data period error
-- `40004`: Invalid report type
-- `40005`: Invalid report scope
-- `40099`: General service error
+### Report Basic Operation Related (4120X)
+- `412001`: Report not found
+- `412002`: Report validation error
+- `412003`: Report generation error
+- `412004`: Invalid report type
+- `412005`: Invalid report scope
+- `412006`: Report date error
+- `412007`: Report data error
+
+### Report Verification Related (4121XX)
+- `412101`: Terminal not closed
+- `412102`: Required logs missing
+- `412103`: Log count mismatch
+- `412104`: Transaction log missing
+- `412105`: Cash in/out log missing
+- `412106`: Open/close log missing
+- `412107`: Data verification failed
+
+### Other Report Related (413XX)
+- `413001`: Receipt generation error
+- `413002`: Journal generation error
+- `413003`: Export error
+- `413004`: Import error
+- `413005`: Daily info error
+- `413006`: External service error
 
 ## Special Notes
 

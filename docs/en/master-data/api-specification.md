@@ -157,14 +157,17 @@ Deletes a product.
 ### Store-specific Product Master Management
 
 #### 11. Set Store-specific Price
-**POST** `/api/v1/tenants/{tenant_id}/item_stores`
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
 Sets store-specific product pricing.
+
+**Path Parameters:**
+- `tenant_id` (string, required): Tenant identifier
+- `store_code` (string, required): Store code
 
 **Request Body:**
 ```json
 {
-  "storeCode": "STORE001",
   "itemCode": "ITEM001",
   "storePrice": 280.00
 }
@@ -370,19 +373,32 @@ List retrieval endpoints support common pagination format:
 
 ## Error Codes
 
-Master Data service uses error codes in the 30XXX range:
+Master Data service uses error codes in the 405XX range:
 
-- `30001`: Resource not found
-- `30002`: Validation error
-- `30003`: Duplicate error
-- `30004`: Authentication error
-- `30005`: Authorization error
-- `30099`: General service error
+### Basic Errors (4050X)
+- `405001`: Master data validation error
+- `405002`: Master data not found
+- `405003`: Master data already exists
+- `405004`: Cannot create master data
+- `405005`: Cannot update master data
+- `405006`: Cannot delete master data
+
+### Product Master Related (4051XX)
+- `405101`: Product not found
+- `405102`: Product code duplicate
+- `405103`: Invalid product price
+- `405104`: Invalid product tax rate
+
+### Other Master Related
+- `405201`: Price not found
+- `405301`: Customer not found
+- `405401`: Store not found
+- `405501`: Department not found
 
 ## Special Notes
 
 1. **Multi-tenant Support**: All operations are executed within tenant scope
 2. **Hierarchical Settings**: Setting values are resolved with priority: global → store → terminal
-3. **PIN Hashing**: Staff PINs are hashed with bcrypt before storage
-4. **Soft Delete**: Data is deactivated rather than physically deleted
+3. **Staff PIN**: Currently stored as plain text (hashing planned for future)
+4. **Delete Operation**: Currently performs physical deletion (some master data managed with logical delete flag)
 5. **camelCase Conversion**: Internal snake_case is automatically converted to camelCase

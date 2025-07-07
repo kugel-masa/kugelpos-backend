@@ -86,10 +86,9 @@ Creates a new journal entry.
 ```json
 {
   "success": true,
-  "code": 201,
+  "code": 200,
   "message": "Transaction received successfully. tenant_id: tenant001, store_code: store001, terminal_no: 1",
   "data": {
-    "journalId": "507f1f77bcf86cd799439011",
     "tenantId": "tenant001",
     "storeCode": "store001",
     "terminalNo": 1,
@@ -135,13 +134,11 @@ Searches journal entries with multiple criteria.
   "message": "Journals found successfully. tenant_id: tenant001, store_code: store001",
   "data": [
     {
-      "journalId": "507f1f77bcf86cd799439011",
       "tenantId": "tenant001",
       "storeCode": "store001",
       "terminalNo": 1,
       "transactionNo": "0001",
       "transactionType": 101,
-      "transactionTypeName": "Standard sale",
       "businessDate": "2024-01-01",
       "businessCounter": 100,
       "openCounter": 1,
@@ -199,13 +196,7 @@ Initializes journal service for a new tenant.
   "code": 201,
   "message": "Tenant creation completed: tenant001",
   "data": {
-    "tenantId": "tenant001",
-    "collectionsCreated": [
-      "journal",
-      "log_tran",
-      "log_cash_in_out",
-      "log_open_close"
-    ]
+    "tenantId": "tenant001"
   },
   "operation": "create_tenant"
 }
@@ -259,11 +250,15 @@ Processes terminal open/close logs from the Terminal service.
 ## Sort Options
 
 Available sort fields:
-- `generateDateTime`: Generation date/time (default: -1)
+- `terminalNo`: Terminal number
 - `businessDate`: Business date
 - `transactionNo`: Transaction number
 - `receiptNo`: Receipt number
+- `generateDateTime`: Generation date/time
 - `amount`: Amount
+
+Default sort order:
+- `terminalNo:1, businessDate:1, receiptNo:1` (terminal number, business date, receipt number ascending)
 
 Direction:
 - `1`: Ascending
@@ -271,17 +266,31 @@ Direction:
 
 ## Error Codes
 
-Journal service uses error codes in the 50XXX range:
+Journal service uses error codes in the 410XX-411XX range:
 
-- `50001`: Journal entry creation error
-- `50002`: Journal search error
-- `50003`: Transaction log processing error
-- `50004`: Cash log processing error
-- `50005`: Terminal log processing error
-- `50006`: Data validation error
-- `50007`: External service communication error
-- `50008`: Duplicate event processing
-- `50099`: General journal service error
+### Journal Basic Operation Related (4100X)
+- `410001`: Journal not found
+- `410002`: Journal validation error
+- `410003`: Journal creation error
+- `410004`: Journal search error
+- `410005`: Journal format error
+- `410006`: Journal date error
+- `410007`: Journal data error
+
+### Journal Verification Related (4101X)
+- `410101`: Terminal not found
+- `410102`: Store not found
+- `410103`: Required logs missing
+- `410104`: Log sequence error
+- `410105`: Transaction validation error
+
+### Other Journal Related (411XX)
+- `411001`: Receipt generation error
+- `411002`: Journal text generation error
+- `411003`: Export error
+- `411004`: Import error
+- `411005`: Transaction receipt error
+- `411006`: External service error
 
 ## Special Notes
 

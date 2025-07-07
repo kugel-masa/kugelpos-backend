@@ -24,7 +24,7 @@ The Account service is a microservice that provides user authentication and JWT 
 **Response**:
 ```json
 {
-  "message": "Welcome to Kugel-POS Auth API. supoorted version: v1"
+  "message": "Welcome to Kugel-POS Auth API. supported version: v1"
 }
 ```
 

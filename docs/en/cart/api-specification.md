@@ -25,7 +25,7 @@ The Cart service is a microservice that manages shopping carts and transaction p
 **Response**:
 ```json
 {
-  "message": "Welcome to Kugel-POS Cart API. supoorted version: v1"
+  "message": "Welcome to Kugel-POS Cart API. supported version: v1"
 }
 ```
 

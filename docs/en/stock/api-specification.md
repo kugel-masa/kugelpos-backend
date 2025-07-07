@@ -269,9 +269,9 @@ Retrieves items that have reached reorder point.
 Receives stock alerts in real-time.
 
 **Connection Steps:**
-1. Establish WebSocket connection
-2. Send JWT authentication message: `{"type": "auth", "token": "JWT_TOKEN"}`
-3. Receive alert messages
+1. Establish WebSocket connection (JWT token must be provided as query parameter)
+   - URL example: `/ws/{tenant_id}/{store_code}?token=JWT_TOKEN`
+2. Receive alert messages
 
 **Alert Message Example:**
 ```json
@@ -423,7 +423,7 @@ Checks service health.
 ### 18. Transaction Log Handler
 **POST** `/api/v1/tranlog`
 
-**Topic:** `tranlog_stock`
+**Topic:** `topic-tranlog`
 
 Processes transaction logs from Cart service and updates stock.
 
@@ -434,15 +434,15 @@ Returns Dapr subscription configuration.
 
 ## Error Codes
 
-Stock service uses error codes in the 50XXX range:
+Stock service uses error codes in the 41XXX range:
 
-- `50001`: Stock item not found
-- `50002`: Insufficient stock
-- `50003`: Invalid update type
-- `50004`: Invalid quantity
-- `50005`: Snapshot not found
-- `50006`: Schedule configuration error
-- `50099`: General service error
+- `41401`: Stock item not found
+- `41402`: Insufficient stock
+- `41403`: Invalid update type
+- `41404`: Invalid quantity
+- `41405`: Snapshot not found
+- `41406`: Schedule configuration error
+- `41499`: General service error
 
 ## Special Notes
 
@@ -450,5 +450,5 @@ Stock service uses error codes in the 50XXX range:
 2. **Negative Stock**: Allows negative stock to support backorders
 3. **Alert Cooldown**: Alerts for the same item are limited to 60-second intervals
 4. **Idempotency**: Duplicate processing prevention by event ID
-5. **WebSocket Authentication**: Authentication required within 30 seconds of connection
+5. **WebSocket Authentication**: Token must be provided as query parameter during connection
 6. **Snapshot Retention**: Default retention period is 90 days
