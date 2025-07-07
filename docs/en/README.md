@@ -4,16 +4,21 @@ English documentation index for the Kugelpos POS system, organized by category.
 
 ## 📋 Table of Contents
 
-- [General Documentation](#general-documentation)
-- [Common Functions](#common-functions)
-- [Service Documentation](#service-documentation)
-  - [Account Service](#account-service)
-  - [Cart Service](#cart-service)
-  - [Journal Service](#journal-service)
-  - [Master Data Service](#master-data-service)
-  - [Report Service](#report-service)
-  - [Stock Service](#stock-service)
-  - [Terminal Service](#terminal-service)
+- [Kugelpos Documentation Index](#kugelpos-documentation-index)
+  - [📋 Table of Contents](#-table-of-contents)
+  - [General Documentation](#general-documentation)
+  - [Common Functions](#common-functions)
+  - [Service Documentation](#service-documentation)
+    - [Account Service](#account-service)
+    - [Cart Service](#cart-service)
+    - [Journal Service](#journal-service)
+    - [Master Data Service](#master-data-service)
+    - [Report Service](#report-service)
+    - [Stock Service](#stock-service)
+    - [Terminal Service](#terminal-service)
+  - [📝 Additional Information](#-additional-information)
+    - [Documentation Conventions](#documentation-conventions)
+    - [Related Links](#related-links)
 
 ---
 
@@ -25,7 +30,6 @@ Documentation about the overall system architecture and design.
 - [**Configuration Priority**](general/configuration-priority.md) - Environment variables and configuration file priorities
 - [**Design Patterns**](general/design-patterns.md) - Design patterns used in the system
 - [**Error Code Specification**](general/error_code_spec.md) - Error code system and list
-- [**Frontend Guide**](general/frontend_guide.md) - Guide for frontend developers
 - [**HTTP Communication**](general/http-communication.md) - Inter-service HTTP communication conventions
 
 ## Common Functions

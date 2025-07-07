@@ -4,16 +4,21 @@ Kugelpos POSシステムの日本語ドキュメント一覧です。各カテ�
 
 ## 📋 目次
 
-- [一般ドキュメント](#一般ドキュメント)
-- [共通機能](#共通機能)
-- [サービス別ドキュメント](#サービス別ドキュメント)
-  - [Account サービス](#account-サービス)
-  - [Cart サービス](#cart-サービス)
-  - [Journal サービス](#journal-サービス)
-  - [Master Data サービス](#master-data-サービス)
-  - [Report サービス](#report-サービス)
-  - [Stock サービス](#stock-サービス)
-  - [Terminal サービス](#terminal-サービス)
+- [Kugelpos ドキュメント一覧](#kugelpos-ドキュメント一覧)
+  - [📋 目次](#-目次)
+  - [一般ドキュメント](#一般ドキュメント)
+  - [共通機能](#共通機能)
+  - [サービス別ドキュメント](#サービス別ドキュメント)
+    - [Account サービス](#account-サービス)
+    - [Cart サービス](#cart-サービス)
+    - [Journal サービス](#journal-サービス)
+    - [Master Data サービス](#master-data-サービス)
+    - [Report サービス](#report-サービス)
+    - [Stock サービス](#stock-サービス)
+    - [Terminal サービス](#terminal-サービス)
+  - [📝 補足情報](#-補足情報)
+    - [ドキュメント規約](#ドキュメント規約)
+    - [関連リンク](#関連リンク)
 
 ---
 
@@ -25,7 +30,6 @@ Kugelpos POSシステムの日本語ドキュメント一覧です。各カテ�
 - [**設定優先順位**](general/configuration-priority.md) - 環境変数と設定ファイルの優先順位
 - [**デザインパターン**](general/design-patterns.md) - システムで使用されている設計パターン
 - [**エラーコード仕様**](general/error_code_spec.md) - エラーコード体系と一覧
-- [**フロントエンドガイド**](general/frontend_guide.md) - フロントエンド開発者向けガイド
 - [**HTTP通信仕様**](general/http-communication.md) - サービス間のHTTP通信規約
 
 ## 共通機能
