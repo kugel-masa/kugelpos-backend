@@ -12,6 +12,7 @@ from kugel_common.enums import TaxType
 
 from app.exceptions import (
     ServiceException,
+    CartCannotCreateException,
     CartCannotSaveException,
     CartNotFoundException,
     NotFoundException,
@@ -213,7 +214,7 @@ class CartService(ICartService):
                 item_master=item_master,
             )
             if cart is None:
-                raise Exception("Failed to create cart")
+                raise CartCannotCreateException("Failed to create cart", logger)
         except Exception as e:
             message = f"Failed to create cart, transaction_type: {transaction_type}, user_id: {user_id}, user_name: {user_name}"
             raise CartCannotSaveException(message, logger, e) from e
