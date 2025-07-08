@@ -9,7 +9,8 @@ for test_file in \
     tests/test_cart.py \
     tests/test_void_return.py \
     tests/test_transaction_status_repository.py \
-    tests/test_tran_service_status.py
+    tests/test_tran_service_status.py \
+    tests/test_payment_cashless_error.py
 do
     pipenv run pytest $test_file
 done

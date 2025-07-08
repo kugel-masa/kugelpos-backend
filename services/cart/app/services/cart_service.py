@@ -19,6 +19,8 @@ from app.exceptions import (
     ItemNotFoundException,
     StrategyPluginException,
     BalanceZeroException,
+    BalanceMinusException,
+    DepositOverException,
     BalanceGreaterThanZeroException,
     TerminalStatusException,
     SignInOutException,
@@ -597,6 +599,9 @@ class CartService(ICartService):
                 cart_doc = await pay_strategy.pay(
                     cart_doc, add_payment["payment_code"], add_payment["amount"], add_payment["detail"]
                 )
+            except (BalanceZeroException, BalanceMinusException, DepositOverException) as e:
+                # Re-raise business logic exceptions as-is
+                raise e
             except Exception as e:
                 message = f"Failed to pay, payment_code: {add_payment['payment_code']}, amount: {add_payment['amount']}"
                 raise ServiceException(message, logger, e) from e
