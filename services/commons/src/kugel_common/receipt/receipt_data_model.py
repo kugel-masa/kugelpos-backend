@@ -68,7 +68,7 @@ class Line(BaseXmlModel, tag="Line"):
         if item1_original is not None and item2 is not None:
             max_width = 32
             item2_width = wcwidth.wcswidth(item2)
-            item1_max_width = max_width - item2_width - 1
+            item1_max_width = max(0, max_width - item2_width - 1)
             data['item1'] = TextHelper.fixed_left(item1_original, item1_max_width, truncate=True)
         
         super().__init__(**data)
