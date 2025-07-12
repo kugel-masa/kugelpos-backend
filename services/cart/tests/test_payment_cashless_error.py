@@ -147,9 +147,9 @@ async def test_cashless_payment_with_detailed_receipt_info(http_client):
     print(f"Response status: {response.status_code}")
     print(f"Response body: {response.text}")
     
-    # This is where we expect the 500 error
-    if response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
-        print("Reproduced the 500 error!")
+    # This is where we expect the 406 error
+    if response.status_code == status.HTTP_406_NOT_ACCEPTABLE:
+        print("Reproduced the 406 error!")
         print(f"Error details: {response.json()}")
         
         # For debugging, let's also check the cart status
