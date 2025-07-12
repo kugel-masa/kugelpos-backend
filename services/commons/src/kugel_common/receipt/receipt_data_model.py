@@ -55,9 +55,23 @@ class Line(BaseXmlModel, tag="Line"):
     """
     type: str = attr()
     align: Optional[str] = attr(default=None)
-    description: Optional[str] = None
-    item1: Optional[str] = element(tag="Item1", default=None, exclude_if_none=True)
-    item2: Optional[str] = element(tag="Item2", default=None, exclude_if_none=True)
+    description: Optional[str] = element(tag="Description", default=None)
+    item1: Optional[str] = element(tag="Item1", default=None)
+    item2: Optional[str] = element(tag="Item2", default=None)
+    
+    def __init__(self, **data):
+        # Store original item1 value
+        item1_original = data.get('item1')
+        item2 = data.get('item2')
+        
+        # Adjust item1 if both item1 and item2 are present
+        if item1_original is not None and item2 is not None:
+            max_width = 32
+            item2_width = wcwidth.wcswidth(item2)
+            item1_max_width = max(0, max_width - item2_width - 1)
+            data['item1'] = TextHelper.fixed_left(item1_original, item1_max_width, truncate=True)
+        
+        super().__init__(**data)
 
 # TableRow model
 class TableRow(BaseXmlModel, tag="tr"):
@@ -122,10 +136,8 @@ class PrintData(BaseXmlModel, tag="PrintData"):
                         case Constants.ALIGN_RIGHT:
                             text += TextHelper.fixed_right(desc, int(width))
                         case Constants.ALIGN_SPLIT:
-                            len_item2 = wcwidth.wcswidth(item2)
-                            width_item1 = int(width) - len_item2
-                            text += TextHelper.fixed_left(item1, width_item1)
-                            text += item2
+                            # item1は既に調整済みなので、スペースを追加
+                            text += item1 + " " + item2
                 elif line.type == Constants.TYPE_LINE:
                     text += "".center(int(width), "-")
                 elif line.type == Constants.TYPE_BYTE:

@@ -12,12 +12,15 @@ from kugel_common.enums import TaxType
 
 from app.exceptions import (
     ServiceException,
+    CartCannotCreateException,
     CartCannotSaveException,
     CartNotFoundException,
     NotFoundException,
     ItemNotFoundException,
     StrategyPluginException,
     BalanceZeroException,
+    BalanceMinusException,
+    DepositOverException,
     BalanceGreaterThanZeroException,
     TerminalStatusException,
     SignInOutException,
@@ -213,10 +216,10 @@ class CartService(ICartService):
                 item_master=item_master,
             )
             if cart is None:
-                raise Exception("Failed to create cart")
+                raise Exception("failed to create cart, cart is None")
         except Exception as e:
             message = f"Failed to create cart, transaction_type: {transaction_type}, user_id: {user_id}, user_name: {user_name}"
-            raise CartCannotSaveException(message, logger, e) from e
+            raise CartCannotCreateException(message, logger, e) from e
 
         # Save to cache
         await self.__cache_cart_async(cart_doc=cart, cart_status=CartStatus.Idle, isNew=True)
@@ -596,6 +599,9 @@ class CartService(ICartService):
                 cart_doc = await pay_strategy.pay(
                     cart_doc, add_payment["payment_code"], add_payment["amount"], add_payment["detail"]
                 )
+            except (BalanceZeroException, BalanceMinusException, DepositOverException) as e:
+                # Re-raise business logic exceptions as-is
+                raise e
             except Exception as e:
                 message = f"Failed to pay, payment_code: {add_payment['payment_code']}, amount: {add_payment['amount']}"
                 raise ServiceException(message, logger, e) from e
