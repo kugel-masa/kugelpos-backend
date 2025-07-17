@@ -14,7 +14,11 @@ echo "Environment variables set: SECRET_KEY, PUBSUB_NOTIFY_API_KEY"
 # Step 0: Clean up orphaned containers
 echo "Step 0: Cleaning up orphaned containers..."
 cd services
-docker-compose down --remove-orphans 2>/dev/null || true
+if command -v docker-compose &> /dev/null; then
+    docker-compose down --remove-orphans 2>/dev/null || true
+elif docker compose version &> /dev/null; then
+    docker compose down --remove-orphans 2>/dev/null || true
+fi
 cd ..
 
 # Step 1: Set execute permission for make_scripts_executable.sh and run it
