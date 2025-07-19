@@ -8,28 +8,38 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 # Navigate to services directory
 cd "$PROJECT_ROOT/services" || exit 1
 
+# Check if docker-compose is available
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+elif docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    echo "Error: docker-compose is not installed. Please install Docker Compose."
+    exit 1
+fi
+
 echo "Stopping existing containers..."
-docker-compose down
+$DOCKER_COMPOSE down
 
 echo "Starting MongoDB..."
-docker-compose up -d mongodb
+$DOCKER_COMPOSE up -d mongodb
 
 echo "Waiting for MongoDB to be healthy..."
-until docker-compose ps mongodb | grep -q "healthy"; do
+until $DOCKER_COMPOSE ps mongodb | grep -q "healthy"; do
   echo "Waiting for MongoDB health check..."
   sleep 5
 done
 
 echo "Initializing MongoDB replica set..."
-docker-compose -f docker-compose.yaml -f docker-compose.mongodb-init.yaml run --rm mongodb-init
+$DOCKER_COMPOSE -f docker-compose.yaml -f docker-compose.mongodb-init.yaml run --rm mongodb-init
 
 echo "Starting all services..."
-docker-compose up -d
+$DOCKER_COMPOSE up -d
 
 echo "All services started!"
 echo ""
 echo "To check service status:"
-echo "  docker-compose ps"
+echo "  $DOCKER_COMPOSE ps"
 echo ""
 echo "To view logs:"
-echo "  docker-compose logs -f [service-name]"
+echo "  $DOCKER_COMPOSE logs -f [service-name]"

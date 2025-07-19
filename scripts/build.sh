@@ -30,8 +30,12 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SERVICES_DIR="$PROJECT_ROOT/services"
 
 # Check if docker-compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    print_error "docker-compose is not installed. Please install it first."
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+elif docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    print_error "docker-compose is not installed. Please install Docker Compose."
     exit 1
 fi
 
@@ -78,10 +82,10 @@ done
 # Build services
 if [ -z "$SERVICES" ]; then
     print_info "Building all services..."
-    docker-compose build $BUILD_ARGS
+    $DOCKER_COMPOSE build $BUILD_ARGS
 else
     print_info "Building specific services: $SERVICES"
-    docker-compose build $BUILD_ARGS $SERVICES
+    $DOCKER_COMPOSE build $BUILD_ARGS $SERVICES
 fi
 
 # Check if build was successful
