@@ -9,6 +9,25 @@
 
 set -e  # Exit on error
 
+# Default values
+INCREMENT_VERSION=false
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --increment-version|-i) INCREMENT_VERSION=true ;;
+        --help|-h) 
+            echo "Usage: $0 [OPTIONS]"
+            echo "Options:"
+            echo "  --increment-version, -i  Increment the patch version before building"
+            echo "  --help, -h              Show this help message"
+            exit 0
+            ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,8 +55,16 @@ print_info "Starting commons update and rebuild process..."
 
 # Step 1: Build and distribute commons package
 print_info "Building commons package..."
+if [ "$INCREMENT_VERSION" = true ]; then
+    print_info "Version will be incremented"
+    BUILD_ARGS="--increment-version"
+else
+    print_info "Version will NOT be incremented"
+    BUILD_ARGS=""
+fi
+
 if [ -f "$SCRIPT_DIR/run_build_common.sh" ]; then
-    "$SCRIPT_DIR/run_build_common.sh"
+    "$SCRIPT_DIR/run_build_common.sh" $BUILD_ARGS
 else
     print_error "run_build_common.sh not found!"
     exit 1
@@ -68,28 +95,33 @@ VERSION=$(echo "$WHEEL_FILENAME" | sed -n 's/kugel_common-\([0-9]\+\.[0-9]\+\.[0
 print_info "Latest kugel_common version: $VERSION"
 print_info "Wheel file: $WHEEL_FILENAME"
 
-# Step 3: Update all service Pipfiles
-SERVICES=("account" "terminal" "master-data" "cart" "report" "journal" "stock")
+# Step 3: Update all service Pipfiles (only if version was incremented)
+if [ "$INCREMENT_VERSION" = true ]; then
+    print_info "Updating Pipfiles with new version..."
+    SERVICES=("account" "terminal" "master-data" "cart" "report" "journal" "stock")
 
-for service in "${SERVICES[@]}"; do
-    print_info "Updating $service Pipfile..."
-    PIPFILE="$PROJECT_ROOT/services/$service/Pipfile"
-    
-    if [ -f "$PIPFILE" ]; then
-        # Check if kugel_common is already in Pipfile
-        if grep -q "kugel_common" "$PIPFILE"; then
-            # Update existing entry
-            sed -i "s|kugel_common = {file = \"commons/dist/kugel_common-[0-9.]*-py3-none-any\.whl\"}|kugel_common = {file = \"commons/dist/kugel_common-${VERSION}-py3-none-any.whl\"}|" "$PIPFILE"
-            print_info "  Updated $service Pipfile with version $VERSION"
+    for service in "${SERVICES[@]}"; do
+        print_info "Updating $service Pipfile..."
+        PIPFILE="$PROJECT_ROOT/services/$service/Pipfile"
+        
+        if [ -f "$PIPFILE" ]; then
+            # Check if kugel_common is already in Pipfile
+            if grep -q "kugel_common" "$PIPFILE"; then
+                # Update existing entry
+                sed -i "s|kugel_common = {file = \"commons/dist/kugel_common-[0-9.]*-py3-none-any\.whl\"}|kugel_common = {file = \"commons/dist/kugel_common-${VERSION}-py3-none-any.whl\"}|" "$PIPFILE"
+                print_info "  Updated $service Pipfile with version $VERSION"
+            else
+                # Add new entry before [dev-packages] section
+                sed -i "/\[dev-packages\]/i kugel_common = {file = \"commons/dist/kugel_common-${VERSION}-py3-none-any.whl\"}\n" "$PIPFILE"
+                print_info "  Added kugel_common to $service Pipfile with version $VERSION"
+            fi
         else
-            # Add new entry before [dev-packages] section
-            sed -i "/\[dev-packages\]/i kugel_common = {file = \"commons/dist/kugel_common-${VERSION}-py3-none-any.whl\"}\n" "$PIPFILE"
-            print_info "  Added kugel_common to $service Pipfile with version $VERSION"
+            print_warning "$service Pipfile not found at $PIPFILE"
         fi
-    else
-        print_warning "$service Pipfile not found at $PIPFILE"
-    fi
-done
+    done
+else
+    print_info "Version not incremented, skipping Pipfile updates"
+fi
 
 # Step 4: Run rebuild_pipenv.sh to rebuild all environments
 print_info "Rebuilding all pipenv environments..."
@@ -101,4 +133,8 @@ else
 fi
 
 print_info "Process completed successfully!"
-print_info "All services have been updated to use kugel_common version $VERSION"
+if [ "$INCREMENT_VERSION" = true ]; then
+    print_info "All services have been updated to use kugel_common version $VERSION"
+else
+    print_info "Commons library rebuilt with version $VERSION (unchanged)"
+fi
