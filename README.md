@@ -16,6 +16,12 @@ Kugelpos is a comprehensive POS (Point of Sale) backend service designed for ret
 ![Architecture Diagram](docs/diagrams/azure_architecture_diagram.svg)
 
 ## Prerequisites
+
+For detailed installation instructions of prerequisite tools, please refer to:
+- 📚 [Installation Guide (English)](install/install_doc.md)
+- 🇯🇵 [Installation Guide (Japanese)](install/install_doc_ja.md)
+
+Required tools:
 - Docker and Docker Compose
 - Python 3.12 or higher
 - pipenv (for Python dependency management)

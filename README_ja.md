@@ -16,6 +16,12 @@ Kugelposは小売業向けの包括的なPOS（Point of Sale）バックエン�
 ![Architecture Diagram](docs/diagrams/azure_architecture_diagram.svg)
 
 ## 前提条件
+
+前提となるツール群の詳細なインストール手順については、以下を参照してください：
+- 📚 [インストールガイド（英語）](install/install_doc.md)
+- 🇯🇵 [インストールガイド（日本語）](install/install_doc_ja.md)
+
+必要なツール：
 - Docker と Docker Compose
 - Python 3.12以上
 - pipenv（Python依存関係管理用）
