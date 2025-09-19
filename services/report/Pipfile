@@ -17,7 +17,7 @@ python-jose = {extras = ["cryptography"], version = "*"}
 httpx = "*"
 aiohttp = "*"
 pydantic-xml = {extras = ["lxml"], version = "*"}
-kugel_common = {file = "commons/dist/kugel_common-0.1.9-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.18-py3-none-any.whl"}
 lxml = "*"
 wcwidth = "*"
 debugpy = "*"

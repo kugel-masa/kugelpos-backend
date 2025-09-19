@@ -1,0 +1,59 @@
+# Multi-stage build for production
+# Stage 1: Builder
+FROM python:3.12.11 as builder
+
+WORKDIR /app
+
+# Install pipenv
+RUN pip install --no-cache-dir pipenv
+
+# Copy dependency files
+COPY Pipfile Pipfile.lock ./
+# Note: commons/dist must be present in the build context
+# The build script should handle copying it or use a broader context
+COPY commons/dist ./commons/dist
+
+# Install dependencies to a virtual environment
+RUN PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy --ignore-pipfile
+
+# Stage 2: Runtime
+FROM python:3.12-slim
+
+# Install only necessary runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    locales \
+    && echo "ja_JP.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen ja_JP.UTF-8 \
+    && update-locale LANG=ja_JP.UTF-8 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
+
+# Set locale
+ENV LC_ALL=ja_JP.UTF-8
+ENV LANG=ja_JP.UTF-8
+ENV LANGUAGE=ja_JP.UTF-8
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Add .venv/bin to PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy only necessary application files
+COPY app/ ./app/
+COPY run.py ./
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+# Use the virtual environment's uvicorn
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
