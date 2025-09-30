@@ -1,6 +1,6 @@
 # Multi-stage build for production
 # Stage 1: Builder
-FROM python:3.12.11 as builder
+FROM python:3.12.11 AS builder
 
 WORKDIR /app
 

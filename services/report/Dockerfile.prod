@@ -1,6 +1,6 @@
 # Multi-stage build for production
 # Stage 1: Builder
-FROM python:3.12.11 as builder
+FROM python:3.12.11 AS builder
 
 WORKDIR /app
 
@@ -55,5 +55,5 @@ USER appuser
 
 EXPOSE 8000
 
-# Use the virtual environment's uvicorn
+# Use run.py to start the application
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
