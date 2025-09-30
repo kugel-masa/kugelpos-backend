@@ -5,10 +5,12 @@ This helps debug why journal entries are not being created.
 """
 import asyncio
 import os
+import pytest
 from httpx import AsyncClient
 from datetime import datetime
 
 
+@pytest.mark.asyncio
 async def test_api_key_journal_integration():
     # Get environment variables
     tenant_id = os.environ.get("TENANT_ID", "kugel")

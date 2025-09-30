@@ -1,0 +1,395 @@
+services:
+  # Infrastructure services
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_DATABASE: admin
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    command: mongod --replSet rs0 --bind_ip_all
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kugelpos-network
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kugelpos-network
+
+  # Application services using production images
+  account:
+    image: kugelpos-account:prod
+    container_name: kugelpos-account-prod
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_account
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  account-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-account-dapr-prod
+    restart: always
+    network_mode: "service:account"
+    depends_on:
+      - account
+    command:
+      [
+        "./daprd",
+        "-app-id", "account",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+  terminal:
+    image: kugelpos-terminal:prod
+    container_name: kugelpos-terminal-prod
+    restart: always
+    ports:
+      - "8001:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_terminal
+      BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
+      BASE_URL_CART: http://cart:8000/api/v1
+      BASE_URL_REPORT: http://report:8000/api/v1
+      BASE_URL_JOURNAL: http://journal:8000/api/v1
+      BASE_URL_TERMINAL: http://terminal:8000/api/v1
+      BASE_URL_STOCK: http://stock:8000/api/v1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  terminal-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-terminal-dapr-prod
+    restart: always
+    network_mode: "service:terminal"
+    depends_on:
+      - terminal
+    command:
+      [
+        "./daprd",
+        "-app-id", "terminal",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+  master-data:
+    image: kugelpos-master-data:prod
+    container_name: kugelpos-master-data-prod
+    restart: always
+    ports:
+      - "8002:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_master
+      BASE_URL_TERMINAL: http://terminal:8000/api/v1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  master-data-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-master-data-dapr-prod
+    restart: always
+    network_mode: "service:master-data"
+    depends_on:
+      - master-data
+    command:
+      [
+        "./daprd",
+        "-app-id", "master-data",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+  cart:
+    image: kugelpos-cart:prod
+    container_name: kugelpos-cart-prod
+    restart: always
+    ports:
+      - "8003:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_cart
+      BASE_URL_TERMINAL: http://terminal:8000/api/v1
+      BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
+      USE_TERMINAL_CACHE: "True"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  cart-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-cart-dapr-prod
+    restart: always
+    network_mode: "service:cart"
+    depends_on:
+      - cart
+    command:
+      [
+        "./daprd",
+        "-app-id", "cart",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+  report:
+    image: kugelpos-report:prod
+    container_name: kugelpos-report-prod
+    restart: always
+    ports:
+      - "8004:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_report
+      BASE_URL_TERMINAL: http://terminal:8000/api/v1
+      BASE_URL_CART: http://cart:8000/api/v1
+      BASE_URL_JOURNAL: http://journal:8000/api/v1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  report-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-report-dapr-prod
+    restart: always
+    network_mode: "service:report"
+    depends_on:
+      - report
+    command:
+      [
+        "./daprd",
+        "-app-id", "report",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+  journal:
+    image: kugelpos-journal:prod
+    container_name: kugelpos-journal-prod
+    restart: always
+    ports:
+      - "8005:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_journal
+      BASE_URL_TERMINAL: http://terminal:8000/api/v1
+      BASE_URL_CART: http://cart:8000/api/v1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  journal-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-journal-dapr-prod
+    restart: always
+    network_mode: "service:journal"
+    depends_on:
+      - journal
+    command:
+      [
+        "./daprd",
+        "-app-id", "journal",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+  stock:
+    image: kugelpos-stock:prod
+    container_name: kugelpos-stock-prod
+    restart: always
+    ports:
+      - "8006:8000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      DAPR_HTTP_PORT: 3500
+      LOG_LEVEL: INFO
+      DB_NAME_PREFIX: db_stock
+      BASE_URL_TERMINAL: http://terminal:8000/api/v1
+      BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
+      BASE_URL_CART: http://cart:8000/api/v1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kugelpos-network
+    user: appuser
+
+  stock-dapr:
+    image: daprio/daprd:latest
+    container_name: kugelpos-stock-dapr-prod
+    restart: always
+    network_mode: "service:stock"
+    depends_on:
+      - stock
+    command:
+      [
+        "./daprd",
+        "-app-id", "stock",
+        "-app-port", "8000",
+        "-dapr-http-port", "3500",
+        "-dapr-grpc-port", "50001",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    volumes:
+      - ./dapr/components:/components:ro
+
+networks:
+  kugelpos-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  mongo_config:
+  redis_data:
