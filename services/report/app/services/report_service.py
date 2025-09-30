@@ -636,7 +636,7 @@ class ReportService:
                 "receiptNo": 0,  # Reports don't have receipt numbers
                 "amount": 0.0,  # Will be set from report data if available
                 "quantity": 0,  # Will be set from report data if available
-                "staffId": requesting_staff_id or None,  # Use actual staff ID if available
+                "staffId": requesting_staff_id or "SYSTEM",  # Default to SYSTEM when no staff
                 "userId": None,  # Set to None as requested
                 "journalText": journal_text,
                 "receiptText": receipt_text,
