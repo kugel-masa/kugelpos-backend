@@ -34,6 +34,10 @@ class Settings(
     MONGODB_URI: str = Field(default="mongodb://localhost:27017/?replicaSet=rs0")
     DB_NAME_PREFIX: str = Field(default="db_master_data")
 
+    # gRPC settings
+    USE_GRPC: bool = Field(default=False, description="Enable gRPC server")
+    GRPC_PORT: int = Field(default=50051, description="gRPC server port")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_ignore_empty=True,  # Ignore empty values from .env file

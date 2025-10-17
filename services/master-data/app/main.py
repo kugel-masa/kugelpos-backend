@@ -54,6 +54,10 @@ from app.api.v1.category_master import router as v1_category_master_router
 from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.tax_master import router as v1_tax_master_router
 from app.config.settings import settings
+from app.grpc.server import start_grpc_server, stop_grpc_server
+
+# gRPC server instance (global variable)
+grpc_server = None
 
 # Create a FastAPI instance with API documentation URLs enabled
 app = FastAPI(
@@ -188,6 +192,12 @@ async def startup_event():
         logger.error(f"Error connecting to the database: {e}")
         raise e
 
+    # Start gRPC server if enabled
+    if settings.USE_GRPC:
+        global grpc_server
+        grpc_server = await start_grpc_server(settings.GRPC_PORT)
+        logger.info(f"gRPC server enabled on port {settings.GRPC_PORT}")
+
     # add startup tasks here
 
 
@@ -204,6 +214,10 @@ async def close_event():
     This ensures that all resources are properly released when the application terminates.
     """
     logger.info("closing the application")
+
+    # Stop gRPC server if running
+    if grpc_server:
+        await stop_grpc_server(grpc_server)
 
     logger.info("Closing the database connection")
     await db_helper.close_client_async()

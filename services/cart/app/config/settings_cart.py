@@ -20,3 +20,17 @@ class CartSettings(BaseSettings):
     TERMINAL_CACHE_TTL_SECONDS: int = 300
     # Use terminal cache to avoid frequent database queries
     USE_TERMINAL_CACHE: bool = True
+
+    # gRPC settings
+    USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
+    GRPC_TIMEOUT: float = Field(default=5.0, description="gRPC request timeout in seconds")
+    MASTER_DATA_GRPC_URL: str = Field(
+        default="master-data:50051",
+        description="Master-data gRPC server URL"
+    )
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+
+# Create settings instance
+cart_settings = CartSettings()

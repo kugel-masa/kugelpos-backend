@@ -25,7 +25,9 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-  "motor"
+  "motor",
+  "grpcio>=1.60.0",
+  "grpcio-tools>=1.60.0"
 ]
 
 [project.urls]
@@ -48,7 +50,8 @@ include = [
   "src/kugel_common/schemas/**",
   "src/kugel_common/utils/**",
   "src/kugel_common/exceptions/**",
-  "src/kugel_common/receipt/**"
+  "src/kugel_common/receipt/**",
+  "src/kugel_common/grpc/**"
 ]
 
 [tool.hatch.envs.types]

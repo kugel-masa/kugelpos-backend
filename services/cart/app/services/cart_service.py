@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from typing import Any
+from typing import Any, Union
 from logging import getLogger
 
 # Get logger instance
@@ -32,6 +32,7 @@ from app.models.repositories.terminal_counter_repository import (
 )
 from app.models.repositories.tax_master_repository import TaxMasterRepository
 from app.models.repositories.item_master_web_repository import ItemMasterWebRepository
+from app.models.repositories.item_master_grpc_repository import ItemMasterGrpcRepository
 from app.models.repositories.payment_master_web_repository import (
     PaymentMasterWebRepository,
 )
@@ -79,7 +80,7 @@ class CartService(ICartService):
         terminal_counter_repo: TerminalCounterRepository,
         settings_master_repo: SettingsMasterWebRepository,
         tax_master_repo: TaxMasterRepository,
-        item_master_repo: ItemMasterWebRepository,
+        item_master_repo: Union[ItemMasterWebRepository, ItemMasterGrpcRepository],
         payment_master_repo: PaymentMasterWebRepository,
         store_info_repo: StoreInfoWebRepository,
         tran_service: TranService,

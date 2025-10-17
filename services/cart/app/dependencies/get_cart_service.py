@@ -80,8 +80,8 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         TransactionStatusRepository,
     )
 
-    from app.models.repositories.item_master_web_repository import (
-        ItemMasterWebRepository,
+    from app.models.repositories.item_master_repository_factory import (
+        create_item_master_repository,
     )
     from app.models.repositories.payment_master_web_repository import (
         PaymentMasterWebRepository,
@@ -109,7 +109,7 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         db=db_common, terminal_info=terminal_info  # use common db
     )
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
-    item_master_repo = ItemMasterWebRepository(
+    item_master_repo = create_item_master_repository(
         tenant_id=tenant_id,
         store_code=terminal_info.store_code,
         terminal_info=terminal_info,
