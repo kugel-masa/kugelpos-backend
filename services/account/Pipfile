@@ -15,7 +15,7 @@ pytest = "*"
 pytest-asyncio = "*"
 python-jose = {extras = ["cryptography"], version = "*"}
 passlib = {extras = ["bcrypt"], version = "*"}
-kugel_common = {file = "commons/dist/kugel_common-0.1.30-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.31-py3-none-any.whl"}
 
 bcrypt = "==3.2.0"
 python-multipart = "*"
