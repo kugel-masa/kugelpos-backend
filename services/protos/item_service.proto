@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package item_service;
+
+service ItemService {
+  rpc GetItemDetail(ItemDetailRequest) returns (ItemDetailResponse);
+}
+
+message ItemDetailRequest {
+  string tenant_id = 1;
+  string store_code = 2;
+  string item_code = 3;
+  string terminal_id = 4;
+}
+
+message ItemDetailResponse {
+  string item_code = 1;
+  string item_name = 2;
+  int32 price = 3;
+  int32 tax_rate = 4;
+  string category_code = 5;
+  string barcode = 6;
+  bool is_active = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  string tax_code = 10;  // Tax code as string (e.g., "01", "02")
+}
