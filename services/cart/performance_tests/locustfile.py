@@ -26,7 +26,6 @@ Test can be run in two modes:
 """
 
 from locust import HttpUser, task, between, events
-import os
 import time
 import logging
 from config import PerformanceTestConfig
@@ -54,6 +53,7 @@ class CartPerformanceUser(HttpUser):
 
         self.api_key = config.api_key
         self.tenant_id = config.tenant_id
+        self.terminal_id = f"{config.tenant_id}-5678-9"
         self.items_per_cart = config.items_per_cart
         self.item_add_interval = config.item_add_interval
         self.post_cancel_wait = config.post_cancel_wait
@@ -105,20 +105,20 @@ class CartPerformanceUser(HttpUser):
             cart_id if successful, None otherwise
         """
         create_req = {
-            "transaction_type": "sales",
+            "transaction_type": 101,  # 101 = sales
             "user_id": f"perf_user_{int(time.time())}",
             "user_name": "Performance Test User"
         }
 
         with self.client.post(
-            "/api/v1/carts",
+            f"/api/v1/carts?terminal_id={self.terminal_id}",
             json=create_req,
             headers=self.headers,
             catch_response=True,
             name="POST /api/v1/carts (Create Cart)"
         ) as response:
             if response.status_code == 201:
-                cart_id = response.json()["data"]["cart_id"]
+                cart_id = response.json()["data"]["cartId"]
                 response.success()
                 logger.debug(f"Cart created: {cart_id}")
                 return cart_id
@@ -142,7 +142,7 @@ class CartPerformanceUser(HttpUser):
             }]
 
             with self.client.post(
-                f"/api/v1/carts/{cart_id}/lineItems",
+                f"/api/v1/carts/{cart_id}/lineItems?terminal_id={self.terminal_id}",
                 json=item_data,
                 headers=self.headers,
                 catch_response=True,
@@ -168,7 +168,7 @@ class CartPerformanceUser(HttpUser):
             cart_id: The cart ID to cancel
         """
         with self.client.post(
-            f"/api/v1/carts/{cart_id}/cancel",
+            f"/api/v1/carts/{cart_id}/cancel?terminal_id={self.terminal_id}",
             headers=self.headers,
             catch_response=True,
             name="POST /api/v1/carts/[cart_id]/cancel (Cancel Cart)"
@@ -183,7 +183,7 @@ class CartPerformanceUser(HttpUser):
 
 
 @events.test_start.add_listener
-def on_test_start(environment, **kwargs):
+def on_test_start(environment, **_kwargs):
     """
     Called when the test starts
     """
@@ -199,7 +199,7 @@ def on_test_start(environment, **kwargs):
 
 
 @events.test_stop.add_listener
-def on_test_stop(environment, **kwargs):
+def on_test_stop(environment, **_kwargs):
     """
     Called when the test stops
     """
