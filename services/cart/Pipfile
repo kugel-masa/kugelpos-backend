@@ -30,6 +30,7 @@ apscheduler = "*"
 flake8 = "*"
 black = "*"
 mypy = "*"
+locust = "*"
 
 [requires]
 python_version = "3.12"
