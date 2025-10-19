@@ -1,6 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from kugel_common.exceptions import RepositoryException, NotFoundException
-from kugel_common.utils.http_client_helper import get_service_client
+from kugel_common.utils.http_client_helper import get_pooled_client
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.documents.item_master_document import ItemMasterDocument
 from app.config.settings import settings
@@ -79,31 +79,32 @@ class ItemMasterWebRepository:
             )
             return item
 
-        async with get_service_client("master-data") as client:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {"terminal_id": self.terminal_info.terminal_id}
-            endpoint = f"/tenants/{self.tenant_id}/stores/{self.store_code}/items/{item_code}/details"
+        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
+        client = await get_pooled_client("master-data")
+        headers = {"X-API-KEY": self.terminal_info.api_key}
+        params = {"terminal_id": self.terminal_info.terminal_id}
+        endpoint = f"/tenants/{self.tenant_id}/stores/{self.store_code}/items/{item_code}/details"
 
-            try:
-                response_data = await client.get(endpoint, params=params, headers=headers)
-            except Exception as e:
-                if hasattr(e, "status_code") and e.status_code == 404:
-                    message = f"item not found for id {item_code}"
-                    raise NotFoundException(
-                        message=message,
-                        collection_name="item web",
-                        find_key=item_code,
-                        logger=logger,
-                        original_exception=e,
-                    )
-                else:
-                    message = f"Request error for id {item_code}"
-                    raise RepositoryException(
-                        message=message, collection_name="item web", logger=logger, original_exception=e
-                    )
+        try:
+            response_data = await client.get(endpoint, params=params, headers=headers)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                message = f"item not found for id {item_code}"
+                raise NotFoundException(
+                    message=message,
+                    collection_name="item web",
+                    find_key=item_code,
+                    logger=logger,
+                    original_exception=e,
+                )
+            else:
+                message = f"Request error for id {item_code}"
+                raise RepositoryException(
+                    message=message, collection_name="item web", logger=logger, original_exception=e
+                )
 
-            logger.debug(f"response: {response_data}")
+        logger.debug(f"response: {response_data}")
 
-            item = ItemMasterDocument(**response_data.get("data"))
-            self.item_master_documents.append(item)
-            return item
+        item = ItemMasterDocument(**response_data.get("data"))
+        self.item_master_documents.append(item)
+        return item

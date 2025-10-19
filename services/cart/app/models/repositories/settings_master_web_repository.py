@@ -2,7 +2,7 @@
 from logging import getLogger
 
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
-from kugel_common.utils.http_client_helper import get_service_client
+from kugel_common.utils.http_client_helper import get_pooled_client
 from kugel_common.exceptions import RepositoryException
 from app.models.documents.settings_master_document import SettingsMasterDocument
 from app.config.settings import settings
@@ -66,35 +66,36 @@ class SettingsMasterWebRepository:
         Raises:
             RepositoryException: If there's an error communicating with the API
         """
-        async with get_service_client("master-data") as client:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {
-                "store_code": self.store_code,
-                "terminal_no": self.terminal_no,
-                "terminal_id": self.terminal_info.terminal_id,
-            }
-            endpoint = f"/tenants/{self.tenant_id}/settings"
+        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
+        client = await get_pooled_client("master-data")
+        headers = {"X-API-KEY": self.terminal_info.api_key}
+        params = {
+            "store_code": self.store_code,
+            "terminal_no": self.terminal_no,
+            "terminal_id": self.terminal_info.terminal_id,
+        }
+        endpoint = f"/tenants/{self.tenant_id}/settings"
 
-            try:
-                response_data = await client.get(endpoint, params=params, headers=headers)
-            except Exception as e:
-                if hasattr(e, "status_code") and e.status_code == 404:
-                    message = f"settings not found: {e.status_code}"
-                    logger.info(message)
-                    response_data = {"success": False, "data": None}
-                else:
-                    message = f"Request error: {e}"
-                    raise RepositoryException(message, logger)
-
-            logger.debug(f"response: {response_data}")
-
-            if response_data.get("success") and response_data.get("data"):
-                self.settings_master_documents = [
-                    SettingsMasterDocument(**setting) for setting in response_data.get("data")
-                ]
+        try:
+            response_data = await client.get(endpoint, params=params, headers=headers)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                message = f"settings not found: {e.status_code}"
+                logger.info(message)
+                response_data = {"success": False, "data": None}
             else:
-                self.settings_master_documents = []
-            return self.settings_master_documents
+                message = f"Request error: {e}"
+                raise RepositoryException(message, logger)
+
+        logger.debug(f"response: {response_data}")
+
+        if response_data.get("success") and response_data.get("data"):
+            self.settings_master_documents = [
+                SettingsMasterDocument(**setting) for setting in response_data.get("data")
+            ]
+        else:
+            self.settings_master_documents = []
+        return self.settings_master_documents
 
     # get settings value by name
     async def get_settings_value_by_name_async(self, name: str) -> SettingsMasterDocument:
@@ -121,27 +122,28 @@ class SettingsMasterWebRepository:
         if setting_doc is not None:
             return setting_doc
 
-        async with get_service_client("master-data") as client:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {
-                "store_code": self.store_code,
-                "terminal_no": self.terminal_no,
-                "terminal_id": self.terminal_info.terminal_id,
-            }
-            endpoint = f"/tenants/{self.tenant_id}/settings/{name}/value"
+        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
+        client = await get_pooled_client("master-data")
+        headers = {"X-API-KEY": self.terminal_info.api_key}
+        params = {
+            "store_code": self.store_code,
+            "terminal_no": self.terminal_no,
+            "terminal_id": self.terminal_info.terminal_id,
+        }
+        endpoint = f"/tenants/{self.tenant_id}/settings/{name}/value"
 
-            try:
-                response_data = await client.get(endpoint, params=params, headers=headers)
-            except Exception as e:
-                if hasattr(e, "status_code") and e.status_code == 404:
-                    message = f"setting not found for name {name}: {e.status_code}"
-                    return None
-                    # raise NotFoundException(message, name, logger)
-                else:
-                    message = f"Request error for name {name}: {e}"
-                    raise RepositoryException(message, logger)
+        try:
+            response_data = await client.get(endpoint, params=params, headers=headers)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                message = f"setting not found for name {name}: {e.status_code}"
+                return None
+                # raise NotFoundException(message, name, logger)
+            else:
+                message = f"Request error for name {name}: {e}"
+                raise RepositoryException(message, logger)
 
-            logger.debug(f"response: {response_data}")
-            return_doc = SettingsMasterDocument(name=name, value=response_data.get("data").get("value"))
-            self.settings_master_documents.append(return_doc)
-            return return_doc
+        logger.debug(f"response: {response_data}")
+        return_doc = SettingsMasterDocument(name=name, value=response_data.get("data").get("value"))
+        self.settings_master_documents.append(return_doc)
+        return return_doc

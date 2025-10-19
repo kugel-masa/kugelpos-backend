@@ -75,42 +75,43 @@ async def get_tran_service_for_pubsub_notification(
 
     if terminal_info is None:
         # Get terminal info from terminal service using JWT token
-        from kugel_common.utils.http_client_helper import get_service_client
+        from kugel_common.utils.http_client_helper import get_pooled_client
         from kugel_common.utils.service_auth import create_service_token
         from datetime import datetime, timedelta, timezone
         from jose import jwt
 
         logger.debug("DEBUG: Terminal not in cache, calling terminal service")
 
-        async with get_service_client(service_name="terminal") as client:
-            # Use the JWT token from the auth_info if available
-            headers = {}
-            if auth_info.get("auth_type") == "jwt":
-                # Create a service token for inter-service communication
-                service_token = create_service_token(tenant_id=tenant_id, service_name="cart-service")
-                headers["Authorization"] = f"Bearer {service_token}"
-                logger.debug("DEBUG: Created JWT token for terminal service")
+        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
+        client = await get_pooled_client(service_name="terminal")
+        # Use the JWT token from the auth_info if available
+        headers = {}
+        if auth_info.get("auth_type") == "jwt":
+            # Create a service token for inter-service communication
+            service_token = create_service_token(tenant_id=tenant_id, service_name="cart-service")
+            headers["Authorization"] = f"Bearer {service_token}"
+            logger.debug("DEBUG: Created JWT token for terminal service")
 
-            try:
-                logger.debug(f"DEBUG: Calling terminal service with headers: {headers}")
-                logger.debug(f"DEBUG: Terminal service endpoint: /terminals/{terminal_id}")
+        try:
+            logger.debug(f"DEBUG: Calling terminal service with headers: {headers}")
+            logger.debug(f"DEBUG: Terminal service endpoint: /terminals/{terminal_id}")
 
-                response_data = await client.get(endpoint=f"/terminals/{terminal_id}", headers=headers)
+            response_data = await client.get(endpoint=f"/terminals/{terminal_id}", headers=headers)
 
-                logger.debug(f"Terminal service response: {response_data}")
+            logger.debug(f"Terminal service response: {response_data}")
 
-                # Transform the response to TerminalInfoDocument
-                from kugel_common.security import transform_terminal_info
+            # Transform the response to TerminalInfoDocument
+            from kugel_common.security import transform_terminal_info
 
-                terminal_info = transform_terminal_info(response_data["data"])
+            terminal_info = transform_terminal_info(response_data["data"])
 
-                # Cache the terminal info
-                _terminal_cache.set(terminal_id, terminal_info)
+            # Cache the terminal info
+            _terminal_cache.set(terminal_id, terminal_info)
 
-            except Exception as e:
-                logger.error(f"Failed to get terminal info from terminal service: {e}")
-                logger.error(f"Error type: {type(e)}, Error details: {str(e)}")
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Terminal not found: {terminal_id}")
+        except Exception as e:
+            logger.error(f"Failed to get terminal info from terminal service: {e}")
+            logger.error(f"Error type: {type(e)}, Error details: {str(e)}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Terminal not found: {terminal_id}")
 
     # Create TranService
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
