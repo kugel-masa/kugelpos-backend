@@ -14,7 +14,7 @@ pytz = "*"
 pytest = "*"
 pytest-asyncio = "*"
 python-jose = {extras = ["cryptography"], version = "*"}
-kugel_common = {file = "commons/dist/kugel_common-0.1.31-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.32-py3-none-any.whl"}
 
 httpx = "*"
 aiohttp = "*"
