@@ -21,6 +21,10 @@ class CartSettings(BaseSettings):
     # Use terminal cache to avoid frequent database queries
     USE_TERMINAL_CACHE: bool = True
 
+    # Item master cache settings
+    ITEM_CACHE_TTL_SECONDS: int = Field(default=300, description="Item cache TTL in seconds (default: 5 minutes)")
+    USE_ITEM_CACHE: bool = Field(default=True, description="Use item cache to avoid redundant API/gRPC calls")
+
     # gRPC settings
     USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
     GRPC_TIMEOUT: float = Field(default=5.0, description="gRPC request timeout in seconds")

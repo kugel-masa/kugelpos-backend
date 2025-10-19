@@ -19,7 +19,9 @@ Maintains compatibility with HTTP-based repository interface.
 """
 
 import grpc
+import time
 from datetime import datetime
+from typing import List, Tuple
 from kugel_common.grpc import item_service_pb2, item_service_pb2_grpc
 from kugel_common.exceptions import RepositoryException, NotFoundException
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
@@ -32,7 +34,11 @@ logger = getLogger(__name__)
 
 
 class ItemMasterGrpcRepository:
-    """gRPC-based repository for item master data"""
+    """
+    gRPC-based repository for item master data.
+
+    Cached items expire after ITEM_CACHE_TTL_SECONDS.
+    """
 
     def __init__(
         self,
@@ -57,7 +63,12 @@ class ItemMasterGrpcRepository:
         self.tenant_id = tenant_id
         self.store_code = store_code
         self.terminal_info = terminal_info
-        self.item_master_documents = item_master_documents
+        # Cache stores (ItemMasterDocument, timestamp) tuples
+        self._item_cache: List[Tuple[ItemMasterDocument, float]] = []
+        # Initialize cache with pre-loaded documents if provided
+        if item_master_documents:
+            current_time = time.time()
+            self._item_cache = [(doc, current_time) for doc in item_master_documents]
 
     def set_item_master_documents(self, item_master_documents: list):
         """
@@ -66,14 +77,36 @@ class ItemMasterGrpcRepository:
         Args:
             item_master_documents: List of item master documents to cache
         """
-        self.item_master_documents = item_master_documents
+        current_time = time.time()
+        self._item_cache = [(doc, current_time) for doc in item_master_documents]
+
+    @property
+    def item_master_documents(self) -> List[ItemMasterDocument]:
+        """
+        Get list of cached item documents (for backward compatibility).
+
+        Returns:
+            List of ItemMasterDocument objects (without timestamps)
+        """
+        return [doc for doc, _ in self._item_cache]
+
+    @item_master_documents.setter
+    def item_master_documents(self, documents: list):
+        """
+        Set item master documents (for backward compatibility).
+
+        Args:
+            documents: List of ItemMasterDocument objects
+        """
+        if documents:
+            self.set_item_master_documents(documents)
 
     async def get_item_by_code_async(self, item_code: str) -> ItemMasterDocument:
         """
         Get an item by its code from cache or via gRPC.
 
-        First checks if the item exists in the cache, and if not, fetches it via gRPC.
-        The fetched item is then added to the cache for future use.
+        First checks if the item exists in the cache and is not expired, and if not, fetches it via gRPC.
+        The fetched item is then added to the cache for future use with current timestamp.
 
         Args:
             item_code: The code of the item to retrieve
@@ -85,16 +118,22 @@ class ItemMasterGrpcRepository:
             NotFoundException: If the item could not be found
             RepositoryException: If there's an error communicating via gRPC
         """
-        if self.item_master_documents is None:
-            self.item_master_documents = []
+        # Check cache only if caching is enabled
+        if cart_settings.USE_ITEM_CACHE:
+            current_time = time.time()
+            # Remove expired entries and find the requested item
+            self._item_cache = [
+                (doc, ts) for doc, ts in self._item_cache
+                if current_time - ts < cart_settings.ITEM_CACHE_TTL_SECONDS
+            ]
 
-        # First check if item exists in cache
-        item = next((item for item in self.item_master_documents if item.item_code == item_code), None)
-        if item is not None:
-            logger.info(
-                f"ItemMasterGrpcRepository.get_item_by_code: item_code->{item_code} in cache"
-            )
-            return item
+            # Search for item in cache
+            for doc, ts in self._item_cache:
+                if doc.item_code == item_code:
+                    logger.info(
+                        f"ItemMasterGrpcRepository.get_item_by_code: item_code->{item_code} found in cache"
+                    )
+                    return doc
 
         # Fetch via gRPC
         try:
@@ -134,8 +173,11 @@ class ItemMasterGrpcRepository:
                 is_deleted=not response.is_active,
             )
 
-            # Add to cache
-            self.item_master_documents.append(item)
+            # Add to cache only if caching is enabled
+            if cart_settings.USE_ITEM_CACHE:
+                self._item_cache.append((item, time.time()))
+                logger.debug(f"Added item {item_code} to cache via gRPC")
+
             logger.info(f"ItemMasterGrpcRepository.get_item_by_code: fetched item_code->{item_code} via gRPC")
             return item
 

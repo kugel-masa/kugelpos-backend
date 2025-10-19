@@ -207,6 +207,7 @@ services:
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       USE_TERMINAL_CACHE: "True"
+      USE_ITEM_CACHE: "false"  # Disable item cache for production testing
       USE_GRPC: ${USE_GRPC:-true}
       GRPC_TIMEOUT: ${GRPC_TIMEOUT:-5.0}
       MASTER_DATA_GRPC_URL: master-data:50051
