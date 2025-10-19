@@ -59,9 +59,9 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}"
 
 # Test patterns: users and duration
-#TEST_PATTERNS=(3 5 10 15)
-TEST_PATTERNS=(1 3)
-TEST_DURATION="3m"
+TEST_PATTERNS=(1 5 10 15 20)
+#TEST_PATTERNS=(1 3)
+TEST_DURATION="10m"
 
 # Function to print section header
 print_header() {
