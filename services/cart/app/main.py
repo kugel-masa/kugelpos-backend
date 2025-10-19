@@ -181,6 +181,12 @@ async def close_event():
 
     await close_all_clients()
 
+    # Close Dapr state store session
+    logger.info("Closing Dapr state store session")
+    from app.utils.dapr_statestore_session_helper import close_dapr_statestore_session
+
+    await close_dapr_statestore_session()
+
     # add shutdown tasks here
     logger.info("Application closed")
 

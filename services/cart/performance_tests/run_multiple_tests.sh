@@ -60,8 +60,8 @@ BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}"
 
 # Test patterns: users and duration
 #TEST_PATTERNS=(3 5 10 15)
-TEST_PATTERNS=(1)
-TEST_DURATION="10m"
+TEST_PATTERNS=(1 3)
+TEST_DURATION="3m"
 
 # Function to print section header
 print_header() {
