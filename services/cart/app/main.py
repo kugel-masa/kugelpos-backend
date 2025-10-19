@@ -187,10 +187,11 @@ async def close_event():
 
     await close_dapr_statestore_session()
 
-    # Note: gRPC channels in ItemMasterGrpcRepository are instance-level and created per request.
-    # They will be automatically closed during garbage collection when repository instances
-    # are disposed. For explicit cleanup, the close() method should be called on each instance.
-    logger.info("gRPC channels will be closed during garbage collection")
+    # Close gRPC channels
+    logger.info("Closing gRPC channels")
+    from app.utils.grpc_channel_helper import close_master_data_grpc_channels
+
+    await close_master_data_grpc_channels()
 
     # add shutdown tasks here
     logger.info("Application closed")

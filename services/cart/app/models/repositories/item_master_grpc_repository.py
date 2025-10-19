@@ -20,13 +20,12 @@ Maintains compatibility with HTTP-based repository interface.
 
 import grpc
 from datetime import datetime
-from typing import Optional
 from kugel_common.grpc import item_service_pb2, item_service_pb2_grpc
-from kugel_common.utils.grpc_client_helper import GrpcClientHelper
 from kugel_common.exceptions import RepositoryException, NotFoundException
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.documents.item_master_document import ItemMasterDocument
 from app.config.settings_cart import cart_settings
+from app.utils.grpc_channel_helper import get_master_data_grpc_stub
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -50,23 +49,15 @@ class ItemMasterGrpcRepository:
             store_code: The store code
             terminal_info: Terminal information document
             item_master_documents: Optional list of pre-loaded item documents for caching
+
+        Note:
+            gRPC channels are managed at module level via grpc_channel_helper.
+            This eliminates 100-300ms gRPC channel creation overhead per request.
         """
         self.tenant_id = tenant_id
         self.store_code = store_code
         self.terminal_info = terminal_info
         self.item_master_documents = item_master_documents
-        self.grpc_helper = GrpcClientHelper(
-            target=cart_settings.MASTER_DATA_GRPC_URL,
-            options=[
-                ('grpc.max_send_message_length', 10 * 1024 * 1024),
-                ('grpc.max_receive_message_length', 10 * 1024 * 1024),
-            ]
-        )
-
-        # Instance-level channel and stub for connection pooling
-        # Eliminates 100-300ms gRPC channel creation overhead per request
-        self._channel: Optional[grpc.aio.Channel] = None
-        self._stub: Optional[item_service_pb2_grpc.ItemServiceStub] = None
 
     def set_item_master_documents(self, item_master_documents: list):
         """
@@ -76,42 +67,6 @@ class ItemMasterGrpcRepository:
             item_master_documents: List of item master documents to cache
         """
         self.item_master_documents = item_master_documents
-
-    async def _get_stub(self) -> item_service_pb2_grpc.ItemServiceStub:
-        """
-        Get or create a shared gRPC stub with channel pooling.
-
-        Creates a persistent channel on first use and reuses it for all subsequent requests.
-        This eliminates the 100-300ms channel creation overhead per request.
-
-        Returns:
-            ItemServiceStub: A gRPC stub for ItemService
-
-        Raises:
-            RepositoryException: If channel creation fails
-        """
-        if self._channel is None or self._stub is None:
-            try:
-                # Create channel via helper (this uses connection pooling internally)
-                self._channel = await self.grpc_helper.get_channel()
-
-                # Create stub (reused for all requests)
-                self._stub = item_service_pb2_grpc.ItemServiceStub(self._channel)
-
-                logger.info(
-                    f"Created new gRPC channel for master-data service "
-                    f"(tenant={self.tenant_id}, store={self.store_code})"
-                )
-            except Exception as e:
-                message = "Failed to create gRPC channel for master-data service"
-                raise RepositoryException(
-                    message=message,
-                    collection_name="item grpc",
-                    logger=logger,
-                    original_exception=e,
-                )
-
-        return self._stub
 
     async def get_item_by_code_async(self, item_code: str) -> ItemMasterDocument:
         """
@@ -143,8 +98,8 @@ class ItemMasterGrpcRepository:
 
         # Fetch via gRPC
         try:
-            # Use shared stub with connection pooling (eliminates 100-300ms overhead)
-            stub = await self._get_stub()
+            # Use module-level shared stub (eliminates 100-300ms overhead per request)
+            stub = await get_master_data_grpc_stub(self.tenant_id, self.store_code)
 
             request = item_service_pb2.ItemDetailRequest(
                 tenant_id=self.tenant_id,
@@ -210,26 +165,3 @@ class ItemMasterGrpcRepository:
                 logger=logger,
                 original_exception=e,
             )
-
-    async def close(self) -> None:
-        """
-        Close the gRPC channel and release resources.
-
-        Should be called when the repository is no longer needed,
-        typically during application shutdown or when the repository instance is disposed.
-        """
-        if self._channel is not None:
-            try:
-                await self._channel.close()
-                logger.info(
-                    f"Closed gRPC channel for master-data service "
-                    f"(tenant={self.tenant_id}, store={self.store_code})"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Error closing gRPC channel: {e}",
-                    exc_info=True
-                )
-            finally:
-                self._channel = None
-                self._stub = None
