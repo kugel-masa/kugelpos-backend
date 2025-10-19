@@ -50,7 +50,7 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_account
-      UVICORN_WORKERS: 1
+      UVICORN_WORKERS: 2
     depends_on:
       mongodb:
         condition: service_healthy
@@ -104,7 +104,7 @@ services:
       BASE_URL_JOURNAL: http://journal:8000/api/v1
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_STOCK: http://stock:8000/api/v1
-      UVICORN_WORKERS: 1
+      UVICORN_WORKERS: 2
     depends_on:
       mongodb:
         condition: service_healthy
@@ -206,11 +206,11 @@ services:
       DB_NAME_PREFIX: db_cart
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
-      USE_TERMINAL_CACHE: "False"
+      USE_TERMINAL_CACHE: "True"
       USE_GRPC: ${USE_GRPC:-false}
       GRPC_TIMEOUT: ${GRPC_TIMEOUT:-5.0}
       MASTER_DATA_GRPC_URL: master-data:50051
-      UVICORN_WORKERS: 16
+      UVICORN_WORKERS: 4
     depends_on:
       mongodb:
         condition: service_healthy
@@ -261,7 +261,7 @@ services:
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
       BASE_URL_JOURNAL: http://journal:8000/api/v1
-      UVICORN_WORKERS: 1
+      UVICORN_WORKERS: 2
     depends_on:
       mongodb:
         condition: service_healthy
@@ -311,7 +311,7 @@ services:
       DB_NAME_PREFIX: db_journal
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
-      UVICORN_WORKERS: 1
+      UVICORN_WORKERS: 2
     depends_on:
       mongodb:
         condition: service_healthy
@@ -362,7 +362,7 @@ services:
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
-      UVICORN_WORKERS: 1
+      UVICORN_WORKERS: 2
     depends_on:
       mongodb:
         condition: service_healthy

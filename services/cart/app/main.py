@@ -181,6 +181,18 @@ async def close_event():
 
     await close_all_clients()
 
+    # Close Dapr state store session
+    logger.info("Closing Dapr state store session")
+    from app.utils.dapr_statestore_session_helper import close_dapr_statestore_session
+
+    await close_dapr_statestore_session()
+
+    # Close gRPC channels
+    logger.info("Closing gRPC channels")
+    from app.utils.grpc_channel_helper import close_master_data_grpc_channels
+
+    await close_master_data_grpc_channels()
+
     # add shutdown tasks here
     logger.info("Application closed")
 

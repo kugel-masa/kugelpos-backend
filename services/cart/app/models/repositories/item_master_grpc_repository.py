@@ -21,11 +21,11 @@ Maintains compatibility with HTTP-based repository interface.
 import grpc
 from datetime import datetime
 from kugel_common.grpc import item_service_pb2, item_service_pb2_grpc
-from kugel_common.utils.grpc_client_helper import GrpcClientHelper
 from kugel_common.exceptions import RepositoryException, NotFoundException
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.documents.item_master_document import ItemMasterDocument
 from app.config.settings_cart import cart_settings
+from app.utils.grpc_channel_helper import get_master_data_grpc_stub
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -49,18 +49,15 @@ class ItemMasterGrpcRepository:
             store_code: The store code
             terminal_info: Terminal information document
             item_master_documents: Optional list of pre-loaded item documents for caching
+
+        Note:
+            gRPC channels are managed at module level via grpc_channel_helper.
+            This eliminates 100-300ms gRPC channel creation overhead per request.
         """
         self.tenant_id = tenant_id
         self.store_code = store_code
         self.terminal_info = terminal_info
         self.item_master_documents = item_master_documents
-        self.grpc_helper = GrpcClientHelper(
-            target=cart_settings.MASTER_DATA_GRPC_URL,
-            options=[
-                ('grpc.max_send_message_length', 10 * 1024 * 1024),
-                ('grpc.max_receive_message_length', 10 * 1024 * 1024),
-            ]
-        )
 
     def set_item_master_documents(self, item_master_documents: list):
         """
@@ -101,8 +98,8 @@ class ItemMasterGrpcRepository:
 
         # Fetch via gRPC
         try:
-            channel = await self.grpc_helper.get_channel()
-            stub = item_service_pb2_grpc.ItemServiceStub(channel)
+            # Use module-level shared stub (eliminates 100-300ms overhead per request)
+            stub = await get_master_data_grpc_stub(self.tenant_id, self.store_code)
 
             request = item_service_pb2.ItemDetailRequest(
                 tenant_id=self.tenant_id,
