@@ -2,6 +2,39 @@
 # This file takes precedence over docker-compose.prod.yaml
 
 services:
+  # Common environment variables for all services
+  account:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+
+  terminal:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+
+  master-data:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+
+  cart:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+
+  report:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+
+  journal:
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+
   stock:
     environment:
+      MONGODB_URI: mongodb://mongodb:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
       UVICORN_WORKERS: 1  # Single worker for WebSocket testing stability
