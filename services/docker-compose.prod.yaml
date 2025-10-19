@@ -362,7 +362,7 @@ services:
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
-      UVICORN_WORKERS: 2
+      UVICORN_WORKERS: 1
     depends_on:
       mongodb:
         condition: service_healthy

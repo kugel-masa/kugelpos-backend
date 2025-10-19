@@ -311,7 +311,10 @@ async def get_pooled_client(service_name: str, **kwargs) -> HttpClientHelper:
             # Create a new client and add to the pool
             base_url = _get_service_url(service_name)
             _client_pool[pool_key] = HttpClientHelper(base_url=base_url, **kwargs)
-            
+            logger.info(f"Created new pooled HTTP client for service: {service_name} (base_url: {base_url})")
+        else:
+            logger.debug(f"Reusing existing pooled HTTP client for service: {service_name}")
+
     return _client_pool[pool_key]
 
 
