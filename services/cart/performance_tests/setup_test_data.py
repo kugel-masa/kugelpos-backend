@@ -265,13 +265,13 @@ class PerformanceTestDataSetup:
                 raise Exception(f"Failed to open terminal: {response.status_code} - {response.text}")
 
     async def _register_items(self):
-        """Step 5: Register 20 items for performance testing"""
-        print("\n[5/5] Registering items (20 items for testing)...")
+        """Step 5: Register 100 items for performance testing"""
+        print("\n[5/5] Registering items (100 items for testing)...")
 
         headers = {"Authorization": f"Bearer {self.token}"}
 
         async with AsyncClient(timeout=300.0) as client:
-            total_items = 20
+            total_items = 100
             success_count = 0
 
             for i in range(total_items):

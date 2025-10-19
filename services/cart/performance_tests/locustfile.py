@@ -28,6 +28,7 @@ Test can be run in two modes:
 from locust import HttpUser, task, between, events
 import time
 import logging
+import random
 from config import PerformanceTestConfig
 
 # Configure logging
@@ -129,16 +130,20 @@ class CartPerformanceUser(HttpUser):
 
     def _add_items(self, cart_id: str):
         """
-        Add items to the cart
+        Add items to the cart with random unique items
 
         Args:
             cart_id: The cart ID to add items to
         """
-        for i in range(self.items_per_cart):
+        # Generate random unique item indices for this cart (avoid duplicates)
+        # We have 100 items (ITEM000-ITEM099), so sample randomly without replacement
+        item_indices = random.sample(range(100), self.items_per_cart)
+
+        for i, item_idx in enumerate(item_indices):
             item_data = [{
-                "item_code": f"ITEM{i:03d}",
+                "item_code": f"ITEM{item_idx:03d}",
                 "quantity": 1,
-                "unit_price": 100 + i  # Varying price for diversity
+                "unit_price": 100 + item_idx  # Varying price for diversity
             }]
 
             with self.client.post(
@@ -150,7 +155,7 @@ class CartPerformanceUser(HttpUser):
             ) as response:
                 if response.status_code == 200:
                     response.success()
-                    logger.debug(f"Item {i+1}/{self.items_per_cart} added to cart {cart_id}")
+                    logger.debug(f"Item {i+1}/{self.items_per_cart} (ITEM{item_idx:03d}) added to cart {cart_id}")
                 else:
                     response.failure(f"Failed to add item: {response.status_code} - {response.text}")
                     logger.error(f"Item add failed for cart {cart_id}: {response.status_code}")

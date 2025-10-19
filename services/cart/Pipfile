@@ -24,6 +24,7 @@ apscheduler = "*"
 httpx = "*"
 python-dotenv = "*"
 motor = "*"
+pandas = "*"
 
 [dev-packages]
 flake8 = "*"

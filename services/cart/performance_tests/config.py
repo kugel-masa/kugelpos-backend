@@ -34,8 +34,8 @@ class PerformanceTestConfig:
 
     # Test scenario parameters
     items_per_cart: int = 20
-    item_add_interval: int = 5  # seconds between item additions
-    post_cancel_wait: int = 5   # seconds to wait after cart cancellation
+    item_add_interval: int = 3  # seconds between item additions
+    post_cancel_wait: int = 3   # seconds to wait after cart cancellation
 
     # Test execution parameters
     num_users: int = 20
@@ -60,8 +60,8 @@ class PerformanceTestConfig:
             - API_KEY: API key for authentication (required)
             - TENANT_ID: Tenant ID (required)
             - PERF_TEST_ITEMS_PER_CART: Number of items to add per cart (default: 20)
-            - PERF_TEST_ITEM_ADD_INTERVAL: Seconds between item additions (default: 5)
-            - PERF_TEST_POST_CANCEL_WAIT: Seconds to wait after cart cancel (default: 5)
+            - PERF_TEST_ITEM_ADD_INTERVAL: Seconds between item additions (default: 3)
+            - PERF_TEST_POST_CANCEL_WAIT: Seconds to wait after cart cancel (default: 3)
             - PERF_TEST_NUM_USERS: Number of concurrent users (default: 20)
             - PERF_TEST_SPAWN_RATE: Users spawned per second (default: 2)
             - PERF_TEST_RUN_TIME: Test duration (default: 5m)
@@ -79,8 +79,8 @@ class PerformanceTestConfig:
 
         # Optional parameters with defaults
         items_per_cart = int(os.environ.get(f"{env_prefix}ITEMS_PER_CART", "20"))
-        item_add_interval = int(os.environ.get(f"{env_prefix}ITEM_ADD_INTERVAL", "5"))
-        post_cancel_wait = int(os.environ.get(f"{env_prefix}POST_CANCEL_WAIT", "5"))
+        item_add_interval = int(os.environ.get(f"{env_prefix}ITEM_ADD_INTERVAL", "3"))
+        post_cancel_wait = int(os.environ.get(f"{env_prefix}POST_CANCEL_WAIT", "3"))
         num_users = int(os.environ.get(f"{env_prefix}NUM_USERS", "20"))
         spawn_rate = int(os.environ.get(f"{env_prefix}SPAWN_RATE", "2"))
         run_time = os.environ.get(f"{env_prefix}RUN_TIME", "5m")

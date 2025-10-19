@@ -182,6 +182,16 @@ run_test_pattern() {
         print_message "${GREEN}" "\n✓ ${pattern_name} completed successfully"
         print_message "${GREEN}" "  HTML Report: ${html_report}"
         print_message "${GREEN}" "  CSV Stats: ${csv_stats}"
+
+        # Generate Add Item specific chart
+        local add_item_chart="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_add_item.html"
+        print_message "${BLUE}" "\n  Generating Add Item chart..."
+        pipenv run python generate_item_chart.py "${csv_stats}" "${add_item_chart}"
+        if [ $? -eq 0 ]; then
+            print_message "${GREEN}" "  Add Item Chart: ${add_item_chart}"
+        else
+            print_message "${YELLOW}" "  ! Warning: Failed to generate Add Item chart"
+        fi
     else
         print_message "${RED}" "\n✗ ${pattern_name} failed with exit code ${exit_code}"
         return ${exit_code}
