@@ -154,7 +154,7 @@ services:
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_master
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
-      USE_GRPC: ${USE_GRPC:-false}
+      USE_GRPC: ${USE_GRPC:-true}
       GRPC_PORT: 50051
       UVICORN_WORKERS: 4
     depends_on:
@@ -207,7 +207,7 @@ services:
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       USE_TERMINAL_CACHE: "True"
-      USE_GRPC: ${USE_GRPC:-false}
+      USE_GRPC: ${USE_GRPC:-true}
       GRPC_TIMEOUT: ${GRPC_TIMEOUT:-5.0}
       MASTER_DATA_GRPC_URL: master-data:50051
       UVICORN_WORKERS: 4
