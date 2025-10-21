@@ -24,6 +24,7 @@ from logging import getLogger
 from pydantic import ValidationError
 import json
 import time
+import asyncio
 
 from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse
@@ -83,8 +84,12 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
                 terminal_info=await _make_terminal_info(terminal_info),
                 service_name=service_name  # Add service name to the log
             )
+            # Log to file synchronously (fast operation)
             await _output_request_log_to_file(request_log)
-            await _output_request_log_to_db(request_log)
+
+            # Log to database asynchronously (fire-and-forget)
+            # This prevents database write latency from blocking API responses
+            asyncio.create_task(_output_request_log_to_db_async(request_log))
         return response
     return middleware
 
@@ -119,13 +124,39 @@ async def _output_request_log_to_file(request_log: RequestLog):
         f"is_superuser-> {request_log.user_info.is_superuser if request_log.user_info else None}\n"
     )
 
+async def _output_request_log_to_db_async(request_log: RequestLog):
+    """
+    Store the request log in the database asynchronously (fire-and-forget)
+
+    This function is designed to run as a background task without blocking
+    the HTTP response. Any exceptions are caught and logged to prevent
+    unhandled task exceptions.
+
+    Saves the request log to both the common database and tenant-specific database
+    for audit trail and analytics purposes.
+
+    Args:
+        request_log: RequestLog document containing all request/response information
+    """
+    try:
+        await _output_request_log_to_db(request_log)
+    except Exception as e:
+        # Log the error but don't propagate it to avoid unhandled task exceptions
+        logger.error(
+            f"Background task failed to write request log to database: "
+            f"url={request_log.request_info.url}, "
+            f"method={request_log.request_info.method}, "
+            f"error={e}",
+            exc_info=True
+        )
+
 async def _output_request_log_to_db(request_log: RequestLog):
     """
     Store the request log in the database
-    
-    Saves the request log to both the common database and tenant-specific database
-    for audit trail and analytics purposes.
-    
+
+    Internal function that performs the actual database write operation.
+    This is called by _output_request_log_to_db_async in a background task.
+
     Args:
         request_log: RequestLog document containing all request/response information
     """
