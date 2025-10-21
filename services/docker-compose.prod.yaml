@@ -104,7 +104,7 @@ services:
       BASE_URL_JOURNAL: http://journal:8000/api/v1
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_STOCK: http://stock:8000/api/v1
-      UVICORN_WORKERS: 2
+      UVICORN_WORKERS: 4
     depends_on:
       mongodb:
         condition: service_healthy
@@ -211,7 +211,7 @@ services:
       USE_GRPC: ${USE_GRPC:-true}
       GRPC_TIMEOUT: ${GRPC_TIMEOUT:-5.0}
       MASTER_DATA_GRPC_URL: master-data:50051
-      UVICORN_WORKERS: 4
+      UVICORN_WORKERS: 8
     depends_on:
       mongodb:
         condition: service_healthy

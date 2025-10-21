@@ -1,5 +1,12 @@
 # Quick Start Guide - Cart Performance Tests
 
+> **📢 NEW:** As of the latest update, all tests use **Multi-Terminal Mode** by default!
+>
+> - Each user gets a unique terminal_id → No lock contention
+> - More accurate performance measurements
+> - See [QUICKSTART_MULTI_TERMINAL.md](./QUICKSTART_MULTI_TERMINAL.md) for multi-terminal specific guide
+> - See [MULTI_TERMINAL_TESTING.md](./MULTI_TERMINAL_TESTING.md) for detailed explanation
+
 ## 1. Setup (First Time Only)
 
 ### Step 1: Prepare Environment File

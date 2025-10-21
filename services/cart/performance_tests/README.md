@@ -2,6 +2,29 @@
 
 This directory contains performance tests for the Cart Service using [Locust](https://locust.io/), a modern load testing tool.
 
+## 🎯 Multi-Terminal Mode (Default)
+
+**IMPORTANT:** As of the latest update, all performance tests use **Multi-Terminal Mode** by default.
+
+### What is Multi-Terminal Mode?
+
+- Each Locust user is assigned a **unique terminal_id**
+- Prevents `threading.Lock()` contention on `transaction_no` generation
+- More realistic testing (simulates multiple POS terminals in real stores)
+- Significantly more accurate performance measurements
+
+### Why is this important?
+
+**Previous (Single-Terminal) Mode:**
+- All users shared one `terminal_id` → Lock contention
+- High response time variability (CV > 100%)
+- Unrealistic performance bottleneck
+
+**Current (Multi-Terminal) Mode:**
+- Each user has unique `terminal_id` → No lock contention
+- Low response time variability (CV < 50% expected)
+- Accurate representation of real-world usage
+
 ## Overview
 
 The performance tests simulate realistic cart operations:
@@ -49,24 +72,52 @@ Two predefined test patterns are available:
 
 ## Quick Start
 
-### Run All Test Patterns
+### Option 1: Automated Test Execution (Recommended)
 
 ```bash
 cd services/cart/performance_tests
+
+# Run all patterns with automatic setup/cleanup
+# Multi-terminal mode is automatically enabled
 ./run_perf_test.sh
 ```
 
-This will run both Pattern 1 (20 users) and Pattern 2 (40 users) sequentially.
+This will:
+1. Create 50 terminals (multi-terminal mode)
+2. Run Pattern 1 (20 users) and Pattern 2 (40 users)
+3. Clean up test data
 
-### Run Specific Pattern
+### Option 2: Manual Setup + Test
 
 ```bash
-# Run only Pattern 1 (20 users)
-./run_perf_test.sh pattern1
+# Step 1: Setup test data with multi-terminal mode (creates 50 terminals by default)
+./run_perf_test.sh setup
 
-# Run only Pattern 2 (40 users)
-./run_perf_test.sh pattern2
+# Or specify number of terminals
+./run_perf_test.sh setup 100
+
+# Step 2: Run specific pattern
+./run_perf_test.sh pattern1   # 20 users
+./run_perf_test.sh pattern2   # 40 users
+
+# Or custom pattern
+./run_perf_test.sh custom 50 10m   # 50 users for 10 minutes
+
+# Step 3: Cleanup when done
+./run_perf_test.sh cleanup
 ```
+
+### Option 3: Multiple Patterns Test
+
+```bash
+# Run 20, 30, 40, 50 user tests sequentially
+./run_multiple_tests.sh
+```
+
+This will:
+- Run each pattern with service restart
+- Backup results to `results_backup/TIMESTAMP/`
+- Generate comparison report
 
 ### Show Help
 
@@ -82,13 +133,31 @@ For interactive testing with real-time charts:
 
 ```bash
 cd services/cart/performance_tests
-pipenv run locust -f locustfile.py --host=http://localhost:8003
+
+# First, setup test data (multi-terminal mode)
+./run_perf_test.sh setup 100
+
+# Then run Locust Web UI with multi-terminal mode
+pipenv run locust -f locustfile_multi_terminal.py --host=http://localhost:8003
 ```
 
 Then open http://localhost:8089 in your browser and configure:
 - Number of users
 - Spawn rate
 - Host URL (pre-filled)
+
+**Note:** Make sure to run `setup` first to create `terminals_config.json` for multi-terminal mode.
+
+### Single-Terminal Mode (For Comparison Only)
+
+To test single-terminal performance (for comparison with multi-terminal):
+
+```bash
+# Use the original locustfile
+pipenv run locust -f locustfile.py --host=http://localhost:8003
+```
+
+⚠️ **Warning:** Single-terminal mode has lock contention issues and is not recommended for production testing.
 
 ### Custom Parameters via Environment Variables
 

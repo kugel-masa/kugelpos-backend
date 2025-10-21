@@ -16,13 +16,13 @@ from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from jose import JWTError, jwt
 from logging import getLogger, Logger
 from typing import Optional
-from httpx import AsyncClient
 import json
 
 from kugel_common.config.settings import settings
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
+from kugel_common.utils.http_client_helper import get_pooled_client, HttpClientError
 
 logger = getLogger(__name__)
 
@@ -209,33 +209,37 @@ async def get_terminal_info_from_terminal_service(
 ) -> TerminalInfoDocument:
     """
     Retrieves terminal information by making an API call to the terminal service.
-    
+
     Args:
         terminal_id: Terminal ID to retrieve information for
         api_key: API key for authentication
-        
+
     Returns:
         TerminalInfoDocument containing the terminal information
-        
+
     Raises:
         HTTPException: If the API request fails or returns an error
     """
-    async with AsyncClient() as client:
-        response = await client.get(
-            f"{settings.BASE_URL_TERMINAL}/terminals/{terminal_id}",
+    try:
+        # Use pooled HTTP client for better performance with connection reuse
+        client = await get_pooled_client("terminal")
+        response_data = await client.get(
+            f"/terminals/{terminal_id}",
             headers={"X-API-KEY": api_key}
         )
 
-    if response.status_code != 200:
+        terminal_dict = response_data.get("data")
+        return_terminal = transform_terminal_info(terminal_dict)
+        return return_terminal
+
+    except HttpClientError as e:
+        # Handle HTTP errors from the client helper
+        logger.error(f"Failed to get terminal info for {terminal_id}: {e.message}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=e.status_code or status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
             headers={"WWW-Authenticate": "API-KEY"},
         )
-
-    terminal_dict = response.json().get("data")
-    return_terminal = transform_terminal_info(terminal_dict)
-    return return_terminal
 
 def transform_terminal_info(terminal_dict: dict) -> TerminalInfoDocument:
     """

@@ -14,18 +14,25 @@
 # limitations under the License.
 
 ###############################################################################
-# Multiple Performance Test Runner for Cart Service
+# Multiple Performance Test Runner for Cart Service (Multi-Terminal Mode)
 #
 # This script runs multiple performance test patterns sequentially:
 # - Each pattern runs with cleanup and setup
+# - Multi-terminal mode automatically enabled (each user gets unique terminal_id)
 # - Test results are backed up after each pattern
 # - Final comparison report is generated
 #
-# Test Patterns:
-#   - 5 concurrent users for 15 minutes
-#   - 10 concurrent users for 15 minutes
-#   - 15 concurrent users for 15 minutes
-#   - 20 concurrent users for 15 minutes
+# Test Patterns (default):
+#   - 20 concurrent users for 10 minutes
+#   - 30 concurrent users for 10 minutes
+#   - 40 concurrent users for 10 minutes
+#   - 50 concurrent users for 10 minutes
+#
+# Multi-Terminal Mode:
+#   - Each pattern creates N+10 terminals (e.g., 30 terminals for 20 users)
+#   - Each Locust user is assigned a unique terminal_id
+#   - Prevents lock contention on transaction_no generation
+#   - More realistic performance testing
 #
 # Usage:
 #   ./run_multiple_tests.sh
@@ -137,8 +144,39 @@ run_test_pattern() {
 
     print_header "Test Pattern: ${users} Users for ${TEST_DURATION}"
 
-    # Step 1: Cleanup previous test data
-    print_info "Step 1/4: Cleaning up previous test data..."
+    # Step 1: Restart services
+    print_info "Step 1/6: Restarting services..."
+
+    # Get the scripts directory (3 levels up from performance_tests)
+    local SCRIPTS_DIR="${SCRIPT_DIR}/../../../scripts"
+
+    # Stop services
+    if bash "${SCRIPTS_DIR}/stop.sh" --prod; then
+        print_success "Services stopped successfully"
+    else
+        print_error "Failed to stop services (continuing anyway)"
+        PARTIAL_FAILURES+=("${users}users: service stop failed")
+    fi
+
+    # Wait a bit before starting
+    sleep 5
+
+    # Start services
+    if bash "${SCRIPTS_DIR}/start.sh" --prod; then
+        print_success "Services started successfully"
+    else
+        print_error "Failed to start services"
+        PARTIAL_FAILURES+=("${users}users: service start failed")
+        step_failed=true
+    fi
+
+    # Wait for services to be ready
+    print_info "Waiting 60 seconds for services to be ready..."
+    sleep 60
+    echo ""
+
+    # Step 2: Cleanup previous test data
+    print_info "Step 2/6: Cleaning up previous test data..."
     if bash "${SCRIPT_DIR}/run_perf_test.sh" cleanup; then
         print_success "Test data cleanup completed"
     else
@@ -147,10 +185,12 @@ run_test_pattern() {
     fi
     echo ""
 
-    # Step 2: Setup new test data
-    print_info "Step 2/4: Setting up new test data..."
-    if bash "${SCRIPT_DIR}/run_perf_test.sh" setup; then
-        print_success "Test data setup completed"
+    # Step 3: Setup new test data (multi-terminal mode with enough terminals)
+    print_info "Step 3/6: Setting up new test data (multi-terminal mode)..."
+    # Use users + 10 terminals to ensure enough capacity
+    local num_terminals=$((users + 10))
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" setup "${num_terminals}"; then
+        print_success "Test data setup completed (${num_terminals} terminals created)"
     else
         print_error "Test data setup failed (continuing anyway)"
         PARTIAL_FAILURES+=("${users}users: setup failed")
@@ -158,8 +198,8 @@ run_test_pattern() {
     fi
     echo ""
 
-    # Step 3: Run performance test
-    print_info "Step 3/4: Running performance test (${users} users, ${TEST_DURATION})..."
+    # Step 4: Run performance test
+    print_info "Step 4/6: Running performance test (${users} users, ${TEST_DURATION})..."
     if bash "${SCRIPT_DIR}/run_perf_test.sh" custom "${users}" "${TEST_DURATION}"; then
         print_success "Performance test completed"
     else
@@ -169,13 +209,23 @@ run_test_pattern() {
     fi
     echo ""
 
-    # Step 4: Backup results
-    print_info "Step 4/4: Backing up test results..."
+    # Step 5: Backup results
+    print_info "Step 5/6: Backing up test results..."
     if backup_results "${users}"; then
         print_success "Test results backed up"
     else
         print_error "Backup failed (non-critical)"
         PARTIAL_FAILURES+=("${users}users: backup failed")
+    fi
+    echo ""
+
+    # Step 6: Post-test cleanup
+    print_info "Step 6/6: Post-test cleanup..."
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" cleanup; then
+        print_success "Post-test cleanup completed"
+    else
+        print_error "Post-test cleanup failed (non-critical)"
+        PARTIAL_FAILURES+=("${users}users: post-test cleanup failed")
     fi
     echo ""
 
@@ -189,17 +239,20 @@ run_test_pattern() {
 
 # Main execution
 main() {
-    print_header "Multiple Performance Test Execution"
+    print_header "Multiple Performance Test Execution (Multi-Terminal Mode)"
 
     print_info "Test Configuration:"
     echo "  - Test Patterns: ${TEST_PATTERNS[*]} users"
     echo "  - Test Duration: ${TEST_DURATION}"
+    echo "  - Mode: Multi-Terminal (each user gets unique terminal_id)"
+    echo "  - Terminals per pattern: N+10 (e.g., 30 terminals for 20 users)"
     echo "  - Backup Directory: ${BACKUP_DIR}"
     echo ""
 
     # Confirm execution
     print_warning "This will run ${#TEST_PATTERNS[@]} test patterns sequentially."
     print_warning "Estimated total time: ~$(( ${#TEST_PATTERNS[@]} * 15 )) minutes (1-1.5 hours including setup/cleanup time)"
+    print_info "NOTE: Multi-terminal mode prevents lock contention for accurate performance testing"
     echo ""
     read -p "Do you want to continue? (y/n): " -n 1 -r
     echo ""
