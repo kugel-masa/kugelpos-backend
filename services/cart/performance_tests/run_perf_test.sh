@@ -60,16 +60,29 @@ print_message() {
 }
 
 ###############################################################################
-# Function: Setup test data
+# Function: Setup test data (Multi-Terminal Version)
 ###############################################################################
 setup_test_data() {
-    print_message "${BLUE}" "Setting up test data..."
+    local num_terminals=${1:-50}  # Default to 50 terminals
+
+    print_message "${BLUE}" "Setting up test data (Multi-Terminal Mode)..."
+    print_message "${BLUE}" "  Creating ${num_terminals} terminals..."
 
     cd "${SCRIPT_DIR}"
-    pipenv run python setup_test_data.py
+
+    # Use multi-terminal setup script
+    pipenv run python setup_test_data_multi_terminal.py "${num_terminals}"
 
     if [ $? -eq 0 ]; then
-        print_message "${GREEN}" "  ✓ Test data setup completed"
+        print_message "${GREEN}" "  ✓ Test data setup completed (${num_terminals} terminals created)"
+
+        # Verify terminals_config.json was created
+        if [ -f "${SCRIPT_DIR}/terminals_config.json" ]; then
+            print_message "${GREEN}" "  ✓ Terminal configuration saved"
+        else
+            print_message "${RED}" "  ✗ Error: terminals_config.json not found"
+            exit 1
+        fi
     else
         print_message "${RED}" "  ✗ Error: Test data setup failed"
         exit 1
@@ -89,6 +102,12 @@ cleanup_test_data() {
         print_message "${GREEN}" "  ✓ Test data cleanup completed"
     else
         print_message "${YELLOW}" "  ! Warning: Test data cleanup had issues"
+    fi
+
+    # Remove terminals_config.json if it exists
+    if [ -f "${SCRIPT_DIR}/terminals_config.json" ]; then
+        rm -f "${SCRIPT_DIR}/terminals_config.json"
+        print_message "${GREEN}" "  ✓ Terminal configuration removed"
     fi
 }
 
@@ -162,11 +181,21 @@ run_test_pattern() {
     local csv_history="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_history.csv"
     local csv_failures="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_failures.csv"
 
+    # Check if terminals_config.json exists (multi-terminal mode)
+    local locustfile="locustfile.py"
+    if [ -f "${SCRIPT_DIR}/terminals_config.json" ]; then
+        locustfile="locustfile_multi_terminal.py"
+        print_message "${GREEN}" "  Using Multi-Terminal Mode (${locustfile})"
+    else
+        print_message "${YELLOW}" "  Warning: terminals_config.json not found, using single-terminal mode"
+        print_message "${YELLOW}" "  Run './run_perf_test.sh setup' to create multi-terminal configuration"
+    fi
+
     # Run Locust
     cd "${SCRIPT_DIR}"
 
     pipenv run locust \
-        -f locustfile.py \
+        -f "${locustfile}" \
         --host="${BASE_URL_CART}" \
         --users="${num_users}" \
         --spawn-rate="${spawn_rate}" \
@@ -277,14 +306,14 @@ show_usage() {
     cat << EOF
 Usage: $0 [OPTION]
 
-Run performance tests for Cart Service
+Run performance tests for Cart Service (Multi-Terminal Mode)
 
 OPTIONS:
     pattern1            Run Pattern 1: 20 concurrent users for 5 minutes
     pattern2            Run Pattern 2: 40 concurrent users for 5 minutes
     custom <users> <time>  Run custom pattern with specified users and duration
     all                 Run all test patterns with data setup/cleanup (default)
-    setup               Setup test data only
+    setup [num_terminals]  Setup test data with multiple terminals (default: 50)
     cleanup             Cleanup test data only
     help                Show this help message
 
@@ -295,8 +324,17 @@ EXAMPLES:
     $0 pattern2             # Run only 40 users pattern (requires existing data)
     $0 custom 50 10m        # Run 50 concurrent users for 10 minutes
     $0 custom 100 30s       # Run 100 concurrent users for 30 seconds
-    $0 setup                # Setup test data only
+    $0 setup                # Setup test data with 50 terminals (default)
+    $0 setup 100            # Setup test data with 100 terminals
     $0 cleanup              # Cleanup test data only
+
+MULTI-TERMINAL MODE:
+    This script automatically uses multi-terminal mode to avoid lock contention:
+    - Each Locust user is assigned a unique terminal_id
+    - Prevents threading.Lock() contention on transaction_no generation
+    - More realistic performance testing (simulates multiple POS terminals)
+    - If terminals_config.json exists, uses locustfile_multi_terminal.py
+    - Otherwise, falls back to single-terminal mode (locustfile.py)
 
 REQUIREMENTS:
     - Services running (account, terminal, master-data, cart)
@@ -308,14 +346,24 @@ OUTPUT:
     - HTML reports: Pattern_*_TIMESTAMP.html
     - CSV statistics: Pattern_*_TIMESTAMP_stats.csv
     - CSV history: Pattern_*_TIMESTAMP_history.csv
+    - Add Item chart: Pattern_*_TIMESTAMP_add_item.html
 
-TEST DATA SETUP:
-    The 'all' command automatically:
+TEST DATA SETUP (Multi-Terminal):
+    The 'setup' command:
     1. Creates a new tenant with auto-generated ID
     2. Creates terminal and store masters
-    3. Registers 1000 test items
-    4. Runs performance tests
-    5. Cleans up all test data
+    3. Creates MULTIPLE terminals (default: 50) with unique API keys
+    4. Opens all terminals
+    5. Registers 100 test items
+    6. Saves terminal configuration to terminals_config.json
+
+    The 'all' command automatically runs setup, tests, and cleanup.
+
+PERFORMANCE COMPARISON:
+    Single-Terminal: All users share one terminal_id → Lock contention
+    Multi-Terminal:  Each user has unique terminal_id → No lock contention
+
+    For accurate performance testing, always use multi-terminal mode!
 
 EOF
 }
@@ -328,7 +376,8 @@ main() {
 
     case "$command" in
         setup)
-            setup_test_data
+            local num_terminals=${2:-50}  # Default to 50 terminals
+            setup_test_data "$num_terminals"
             print_message "${GREEN}" "\n✓ Test data setup completed"
             print_message "${GREEN}" "  You can now run 'pattern1', 'pattern2', or 'custom'"
             ;;
