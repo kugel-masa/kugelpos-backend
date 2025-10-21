@@ -36,7 +36,8 @@
 #   - Cart service running
 ###############################################################################
 
-set -e  # Exit on error
+# Note: set -e is NOT used here to allow tests to continue even if individual steps fail
+# Errors are tracked and reported at the end
 
 # Color codes for output
 RED='\033[0;31m'
@@ -59,9 +60,12 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}"
 
 # Test patterns: users and duration
-TEST_PATTERNS=(1 5 10 15 20)
-#TEST_PATTERNS=(1 3)
+TEST_PATTERNS=(20 30 40 50)
 TEST_DURATION="10m"
+
+# Error tracking
+declare -a FAILED_TESTS=()
+declare -a PARTIAL_FAILURES=()
 
 # Function to print section header
 print_header() {
@@ -100,51 +104,87 @@ backup_results() {
     print_info "Backing up results for ${pattern}-user test..."
 
     # Create backup directory
-    mkdir -p "${backup_subdir}"
+    if ! mkdir -p "${backup_subdir}"; then
+        print_error "Failed to create backup directory: ${backup_subdir}"
+        return 1
+    fi
 
     # Move result files to backup directory
+    local files_found=false
     if ls "${OUTPUT_DIR}"/Custom_${pattern}users_*.html >/dev/null 2>&1; then
         mv "${OUTPUT_DIR}"/Custom_${pattern}users_*.html "${backup_subdir}/" 2>/dev/null || true
+        files_found=true
     fi
 
     if ls "${OUTPUT_DIR}"/Custom_${pattern}users_*.csv >/dev/null 2>&1; then
         mv "${OUTPUT_DIR}"/Custom_${pattern}users_*.csv "${backup_subdir}/" 2>/dev/null || true
+        files_found=true
+    fi
+
+    if [ "$files_found" = false ]; then
+        print_warning "No result files found to backup for ${pattern}-user test"
+        return 1
     fi
 
     print_success "Results backed up to: ${backup_subdir}"
+    return 0
 }
 
 # Function to run a single test pattern
 run_test_pattern() {
     local users=$1
+    local step_failed=false
 
     print_header "Test Pattern: ${users} Users for ${TEST_DURATION}"
 
     # Step 1: Cleanup previous test data
     print_info "Step 1/4: Cleaning up previous test data..."
-    bash "${SCRIPT_DIR}/run_perf_test.sh" cleanup
-    print_success "Test data cleanup completed"
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" cleanup; then
+        print_success "Test data cleanup completed"
+    else
+        print_error "Test data cleanup failed (continuing anyway)"
+        PARTIAL_FAILURES+=("${users}users: cleanup failed")
+    fi
     echo ""
 
     # Step 2: Setup new test data
     print_info "Step 2/4: Setting up new test data..."
-    bash "${SCRIPT_DIR}/run_perf_test.sh" setup
-    print_success "Test data setup completed"
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" setup; then
+        print_success "Test data setup completed"
+    else
+        print_error "Test data setup failed (continuing anyway)"
+        PARTIAL_FAILURES+=("${users}users: setup failed")
+        step_failed=true
+    fi
     echo ""
 
     # Step 3: Run performance test
     print_info "Step 3/4: Running performance test (${users} users, ${TEST_DURATION})..."
-    bash "${SCRIPT_DIR}/run_perf_test.sh" custom "${users}" "${TEST_DURATION}"
-    print_success "Performance test completed"
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" custom "${users}" "${TEST_DURATION}"; then
+        print_success "Performance test completed"
+    else
+        print_error "Performance test failed or incomplete"
+        PARTIAL_FAILURES+=("${users}users: performance test failed")
+        step_failed=true
+    fi
     echo ""
 
     # Step 4: Backup results
     print_info "Step 4/4: Backing up test results..."
-    backup_results "${users}"
-    print_success "Test results backed up"
+    if backup_results "${users}"; then
+        print_success "Test results backed up"
+    else
+        print_error "Backup failed (non-critical)"
+        PARTIAL_FAILURES+=("${users}users: backup failed")
+    fi
     echo ""
 
-    print_success "Test pattern ${users} users completed successfully!"
+    if [ "$step_failed" = true ]; then
+        print_warning "Test pattern ${users} users completed with errors"
+        FAILED_TESTS+=("${users}users")
+    else
+        print_success "Test pattern ${users} users completed successfully!"
+    fi
 }
 
 # Main execution
@@ -196,9 +236,13 @@ main() {
     # Generate comparison report
     print_info "Generating comparison report..."
 
-    cd "${SCRIPT_DIR}"
+    cd "${SCRIPT_DIR}" || {
+        print_error "Failed to change directory to ${SCRIPT_DIR}"
+        PARTIAL_FAILURES+=("report: failed to change directory")
+        return
+    }
 
-    if pipenv run python generate_comparison_report.py "${BACKUP_DIR}"; then
+    if pipenv run python generate_comparison_report.py "${BACKUP_DIR}" 2>&1; then
         print_success "Comparison report generated successfully!"
 
         # Find and display report location
@@ -207,7 +251,8 @@ main() {
             print_success "Report location: ${REPORT_FILE}"
         fi
     else
-        print_error "Failed to generate comparison report"
+        print_error "Failed to generate comparison report (non-critical)"
+        PARTIAL_FAILURES+=("report: generation failed")
         print_warning "You can manually generate the report by running:"
         echo "  cd ${SCRIPT_DIR}"
         echo "  pipenv run python generate_comparison_report.py ${BACKUP_DIR}"
@@ -223,7 +268,34 @@ main() {
     done
     echo ""
 
-    print_success "All performance tests completed successfully!"
+    # Display error summary if any
+    if [ ${#FAILED_TESTS[@]} -gt 0 ] || [ ${#PARTIAL_FAILURES[@]} -gt 0 ]; then
+        print_header "Error Summary"
+
+        if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
+            print_error "Tests with failures:"
+            for test in "${FAILED_TESTS[@]}"; do
+                echo "  ✗ ${test}"
+            done
+            echo ""
+        fi
+
+        if [ ${#PARTIAL_FAILURES[@]} -gt 0 ]; then
+            print_warning "Partial failures encountered:"
+            for failure in "${PARTIAL_FAILURES[@]}"; do
+                echo "  ⚠ ${failure}"
+            done
+            echo ""
+        fi
+
+        print_warning "Some tests completed with errors. Check logs above for details."
+        echo ""
+        echo "Note: Tests continued despite errors. Results may be partial."
+        exit 1
+    else
+        print_success "All performance tests completed successfully!"
+        exit 0
+    fi
 }
 
 # Run main function
