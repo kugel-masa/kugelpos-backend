@@ -31,6 +31,7 @@ class TaxReportTemplate(BaseDocumentModel):
     tax_amount: float  # Total tax amount
     target_amount: float  # Amount subject to this tax
     target_quantity: int  # Quantity of items subject to this tax
+    tax_type: Optional[str] = None  # Type of tax (External, Internal, Exempt)
 
 
 class PaymentReportTemplate(BaseDocumentModel):

@@ -341,6 +341,7 @@ class SalesReportMaker(IReportPlugin):
                     "in": {
                         "tax_no": "$$tax.tax_no",
                         "tax_code": "$$tax.tax_code",
+                        "tax_type": "$$tax.tax_type",
                         "tax_name": "$$tax.tax_name",
                         "tax_amount": "$$tax.tax_amount",
                         "target_amount": "$$tax.target_amount",
@@ -800,6 +801,7 @@ class SalesReportMaker(IReportPlugin):
         return_list = [
             {
                 "tax_code": tax.get("tax_code"),
+                "tax_type": tax.get("tax_type"),
                 "tax_name": tax.get("tax_name"),
                 "tax_amount": tax.get("tax_amount", 0),
                 "target_amount": tax.get("target_amount", 0),

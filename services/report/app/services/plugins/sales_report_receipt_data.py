@@ -93,13 +93,29 @@ class SalesReportReceiptData(AbstractReceiptData[SalesReportDocument]):
             page: Page object to add lines to
         """
 
+        # Calculate tax amounts for display adjustments
+        # External tax: added to gross sales
+        exclusive_tax_amount = sum(
+            tax.tax_amount for tax in report.taxes
+            if tax.tax_type == "External"
+        )
+
+        # Internal tax: subtracted from net sales
+        inclusive_tax_amount = sum(
+            tax.tax_amount for tax in report.taxes
+            if tax.tax_type == "Internal"
+        )
+
+        # Total tax: displayed as negative line item
+        total_tax_amount = sum(tax.tax_amount for tax in report.taxes)
+
         # --------------------------------
         page.lines.append(self.line_boarder())
 
         # ----+----+----+----+----+----+--
         # 12345678901234567890123456789012
         # 売 上 合 計
-        #  総売上      999件   99,999,999円
+        #  総売上      999件   99,999,999円  ← Tax-inclusive (with external tax)
         # 　　　       999点
         #  返　品      999件   99,999,999円
         # 　　　       999点
@@ -107,11 +123,14 @@ class SalesReportReceiptData(AbstractReceiptData[SalesReportDocument]):
         # 　　　       999点
         #  小計値引    999件   99,999,999円
         # 　　　       999点
-        #  純売上      999件   99,999,999円
+        #  税額                -9,999,999円  ← New line (negative)
+        #  純売上      999件   99,999,999円  ← Tax-exclusive (without internal tax)
         # 　　　       999点
         page.lines.append(self.line_left("売 上 合 計"))
+        # Gross sales: add external tax to display as tax-inclusive
+        gross_amount_with_tax = report.sales_gross.amount + exclusive_tax_amount
         self._make_line_for_sales(
-            "総売上", report.sales_gross.amount, report.sales_gross.quantity, report.sales_gross.count, page
+            "総売上", gross_amount_with_tax, report.sales_gross.quantity, report.sales_gross.count, page
         )
         self._make_line_for_sales("返品", report.returns.amount, report.returns.quantity, report.returns.count, page)
         self._make_line_for_sales(
@@ -128,8 +147,12 @@ class SalesReportReceiptData(AbstractReceiptData[SalesReportDocument]):
             report.discount_for_subtotal.count,
             page,
         )
+        # Tax amount line: display as negative (no count/quantity)
+        self._make_line("税額", -total_tax_amount, page)
+        # Net sales: subtract internal tax to display as tax-exclusive
+        net_amount_pretax = report.sales_net.amount - inclusive_tax_amount
         self._make_line_for_sales(
-            "純売上", report.sales_net.amount, report.sales_net.quantity, report.sales_net.count, page
+            "純売上", net_amount_pretax, report.sales_net.quantity, report.sales_net.count, page
         )
 
         # --------------------------------
@@ -137,15 +160,13 @@ class SalesReportReceiptData(AbstractReceiptData[SalesReportDocument]):
 
         # ----+----+----+----+----+----+--
         # 12345678901234567890123456789012
-        # 税 額
+        # 税 額（内訳）
         #  税名称      　      99,999,999円
         #  税名称      　      99,999,999円
-        page.lines.append(self.line_left("税 額"))
+        page.lines.append(self.line_left("税 額（内訳）"))
         for tax in report.taxes:
-            if "内" in tax.tax_name:
-                self._make_line_with_parentheses(tax.tax_name, tax.tax_amount, page)
-            else:
-                self._make_line(tax.tax_name, tax.tax_amount, page)
+            # Display all taxes without parentheses
+            self._make_line(tax.tax_name, tax.tax_amount, page)
 
         # --------------------------------
         page.lines.append(self.line_boarder())
