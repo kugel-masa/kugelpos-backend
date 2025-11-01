@@ -12,6 +12,8 @@ test_files=(
     "tests/test_payment_report_all.py"
     "tests/test_flash_date_range_validation.py"
     "tests/test_comprehensive_aggregation.py"  # Comprehensive aggregation tests
+    "tests/test_return_transactions.py"  # Return transaction tests
+    "tests/test_void_transactions.py"  # Void transaction tests
     "tests/test_split_payment_bug.py"  # Run last to avoid affecting other tests
 )
 

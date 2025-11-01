@@ -508,9 +508,7 @@ class SalesReportMaker(IReportPlugin):
                 description = payment["description"]
                 amount = payment["amount"] * factor
                 count = payment["count"] * factor
-                payment_dict = next(
-                    (payment for payment in total["payments"] if payment["payment_code"] == payment_code), None
-                )
+                payment_dict = next((payment for payment in total["payments"] if payment["payment_code"] == payment_code), None)
                 if payment_dict is None:
                     total["payments"].append(
                         {"payment_code": payment_code, "description": description, "amount": amount, "count": count}
