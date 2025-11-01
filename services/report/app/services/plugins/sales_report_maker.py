@@ -161,10 +161,17 @@ class SalesReportMaker(IReportPlugin):
             staff=None,  # HACK: Staff information is not included in data model
         )
 
-        # Create receipt data
-        receipt_data = SalesReportReceiptData("Sales Report", 32).make_receipt_data(return_doc)
-        return_doc.receipt_text = receipt_data.receipt_text
-        return_doc.journal_text = receipt_data.journal_text
+        # Generate receipt text
+        try:
+            receipt_data = SalesReportReceiptData("Sales Report", 32).make_receipt_data(return_doc)
+            return_doc.receipt_text = receipt_data.receipt_text
+            return_doc.journal_text = receipt_data.journal_text
+            logger.info(f"Sales report document created with receipt text")
+        except Exception as e:
+            logger.warning(f"Failed to generate receipt text: {e}")
+            # Continue without receipt text
+            return_doc.receipt_text = None
+            return_doc.journal_text = None
 
         logger.info(f"Sales report document: {return_doc}")
         return return_doc

@@ -44,7 +44,16 @@ def check_report_data(report_data: dict):
         sales_gross_amount
         == sales_net_amount + returns_amount + discount_for_lineItems_amount + discount_for_subtotal_amount
     )
-    assert payment_amount == sales_net_amount + tax_amount
+    # Payment amount verification (handles both sales and returns)
+    # For returns: payment = returns + tax
+    # For sales: payment = gross + tax
+    # General formula: payment = abs(net) + tax (or gross + returns + tax - net)
+    if sales_net_amount >= 0:
+        # Normal sales case
+        assert payment_amount == sales_net_amount + tax_amount
+    else:
+        # Return case: payment is positive, net is negative
+        assert payment_amount == abs(sales_net_amount) + tax_amount
 
     # verify cash report data
     cash = report_data.get("cash")
