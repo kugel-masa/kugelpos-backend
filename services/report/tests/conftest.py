@@ -8,6 +8,8 @@ import pytest_asyncio
 from httpx import AsyncClient
 from datetime import datetime
 from dotenv import load_dotenv
+import locale
+from unittest.mock import patch
 
 
 @pytest.fixture(scope="session")
@@ -170,3 +172,10 @@ async def cleanup_database_connection(set_env_vars):
         print("Database connection cleaned up successfully")
     except Exception as e:
         print(f"Warning: Failed to cleanup database connection: {e}")
+
+
+@pytest.fixture(scope="function", autouse=True)
+def mock_locale():
+    """Mock locale.setlocale to avoid locale errors in test environment."""
+    with patch('locale.setlocale'):
+        yield
