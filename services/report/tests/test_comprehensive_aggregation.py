@@ -604,3 +604,324 @@ async def test_multiple_payment_methods_mixed(set_env_vars):
 
     # Don't close client - pytest fixture handles it
     # await local_db_helper.close_client_async()
+
+@pytest.mark.asyncio
+async def test_multi_store_mixed_transactions(set_env_vars):
+    """
+    COMPREHENSIVE TEST: Multiple stores with mixed transaction types
+    
+    Scenario:
+    - STORE001:
+      - Terminal 1: NormalSales 1000 yen + ReturnSales 200 yen
+      - Terminal 2: NormalSales 2000 yen + VoidSales 500 yen
+    - STORE002:
+      - Terminal 1: NormalSales 3000 yen + ReturnSales 1000 yen + VoidSales 500 yen
+      - Terminal 2: NormalSales 4000 yen
+    
+    Expected:
+    - STORE001: Net sales = (1000 - 200) + (2000 - 500) = 2300 yen
+    - STORE002: Net sales = (3000 - 1000 - 500) + 4000 = 5500 yen
+    - Stores are isolated (no cross-contamination)
+    
+    WHY THIS MATTERS:
+    - Tests multi-store isolation
+    - Tests all transaction types per store
+    - Tests composite key across multiple stores
+    - Real-world scenario: Chain stores with independent operations
+    """
+    from kugel_common.database import database as local_db_helper
+
+    tenant_id = os.environ.get("TENANT_ID")
+    db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"
+    db = await local_db_helper.get_db_async(db_name)
+
+    tran_repo = TranlogRepository(db, tenant_id)
+    cash_repo = CashInOutLogRepository(db, tenant_id)
+    open_close_repo = OpenCloseLogRepository(db, tenant_id)
+    daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
+    terminal_info_repo = TerminalInfoWebRepository(db, tenant_id)
+
+    collection = db[tran_repo.collection_name]
+    
+    # Clean up both stores
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": {"$in": ["STORE001", "STORE002"]}
+    })
+
+    test_date = "2024-02-15"
+
+    # STORE001 - Terminal 1: NormalSales + ReturnSales
+    tran_s1_t1_n1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE001",
+        terminal_no=1,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=1,
+        transaction_type=TransactionType.NormalSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 1000,
+            "total_amount_with_tax": 1100,
+            "tax_amount": 100,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM001", "quantity": 1, "amount": 1000}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 1100, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 100, "target_amount": 1000, "target_quantity": 1}],
+    )
+
+    tran_s1_t1_r1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE001",
+        terminal_no=1,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=2,
+        transaction_type=TransactionType.ReturnSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 200,
+            "total_amount_with_tax": 220,
+            "tax_amount": 20,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM001", "quantity": 1, "amount": 200}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 220, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 20, "target_amount": 200, "target_quantity": 1}],
+    )
+
+    # STORE001 - Terminal 2: NormalSales + VoidSales
+    tran_s1_t2_n1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE001",
+        terminal_no=2,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=1,
+        transaction_type=TransactionType.NormalSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 2000,
+            "total_amount_with_tax": 2200,
+            "tax_amount": 200,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM002", "quantity": 1, "amount": 2000}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 2200, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 200, "target_amount": 2000, "target_quantity": 1}],
+    )
+
+    tran_s1_t2_v1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE001",
+        terminal_no=2,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=2,
+        transaction_type=TransactionType.VoidSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 500,
+            "total_amount_with_tax": 550,
+            "tax_amount": 50,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM002", "quantity": 1, "amount": 500}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 550, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 50, "target_amount": 500, "target_quantity": 1}],
+    )
+
+    # STORE002 - Terminal 1: NormalSales + ReturnSales + VoidSales
+    tran_s2_t1_n1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE002",
+        terminal_no=1,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=1,
+        transaction_type=TransactionType.NormalSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 3000,
+            "total_amount_with_tax": 3300,
+            "tax_amount": 300,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM003", "quantity": 1, "amount": 3000}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 3300, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 300, "target_amount": 3000, "target_quantity": 1}],
+    )
+
+    tran_s2_t1_r1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE002",
+        terminal_no=1,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=2,
+        transaction_type=TransactionType.ReturnSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 1000,
+            "total_amount_with_tax": 1100,
+            "tax_amount": 100,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM003", "quantity": 1, "amount": 1000}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 1100, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 100, "target_amount": 1000, "target_quantity": 1}],
+    )
+
+    tran_s2_t1_v1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE002",
+        terminal_no=1,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=3,
+        transaction_type=TransactionType.VoidSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 500,
+            "total_amount_with_tax": 550,
+            "tax_amount": 50,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM003", "quantity": 1, "amount": 500}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 550, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 50, "target_amount": 500, "target_quantity": 1}],
+    )
+
+    # STORE002 - Terminal 2: NormalSales only
+    tran_s2_t2_n1 = BaseTransaction(
+        tenant_id=tenant_id,
+        store_code="STORE002",
+        terminal_no=2,
+        business_date=test_date,
+        business_counter=1,
+        open_counter=1,
+        transaction_no=1,
+        transaction_type=TransactionType.NormalSales.value,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        sales={
+            "total_amount": 4000,
+            "total_amount_with_tax": 4400,
+            "tax_amount": 400,
+            "total_quantity": 1,
+            "change_amount": 0,
+            "total_discount_amount": 0,
+            "is_cancelled": False,
+        },
+        line_items=[{"line_no": 1, "item_code": "ITEM004", "quantity": 1, "amount": 4000}],
+        payments=[{"payment_no": 1, "payment_code": "01", "amount": 4400, "description": "Cash"}],
+        taxes=[{"tax_no": 1, "tax_code": "01", "tax_name": "消費税10%", "tax_amount": 400, "target_amount": 4000, "target_quantity": 1}],
+    )
+
+    # Insert all transactions
+    await collection.insert_many([
+        tran_s1_t1_n1.model_dump(),
+        tran_s1_t1_r1.model_dump(),
+        tran_s1_t2_n1.model_dump(),
+        tran_s1_t2_v1.model_dump(),
+        tran_s2_t1_n1.model_dump(),
+        tran_s2_t1_r1.model_dump(),
+        tran_s2_t1_v1.model_dump(),
+        tran_s2_t2_n1.model_dump(),
+    ])
+
+    # Get sales reports for both stores
+    report_service = ReportService(
+        tran_repository=tran_repo,
+        cash_in_out_log_repository=cash_repo,
+        open_close_log_repository=open_close_repo,
+        daily_info_repository=daily_info_repo,
+        terminal_info_repository=terminal_info_repo,
+    )
+
+    # STORE001 report
+    report_s1 = await report_service.get_report_for_store_async(
+        store_code="STORE001",
+        report_scope="flash",
+        report_type="sales",
+        business_date=test_date,
+        open_counter=1,
+    )
+
+    # STORE002 report
+    report_s2 = await report_service.get_report_for_store_async(
+        store_code="STORE002",
+        report_scope="flash",
+        report_type="sales",
+        business_date=test_date,
+        open_counter=1,
+    )
+
+    # Verify STORE001
+    # NormalSales: 1000 + 2000 = 3000
+    # ReturnSales: 200 (factor -1) = -200
+    # VoidSales: 500 (factor -1) = -500
+    # Net: 3000 - 200 - 500 = 2300
+    assert report_s1.sales_net.amount == 2300, \
+        f"STORE001: Expected net 2300, got {report_s1.sales_net.amount}"
+
+    # Verify STORE002
+    # NormalSales: 3000 + 4000 = 7000
+    # ReturnSales: 1000 (factor -1) = -1000
+    # VoidSales: 500 (factor -1) = -500
+    # Net: 7000 - 1000 - 500 = 5500
+    assert report_s2.sales_net.amount == 5500, \
+        f"STORE002: Expected net 5500, got {report_s2.sales_net.amount}"
+
+    print("\n=== MULTI-STORE MIXED TRANSACTIONS TEST ===")
+    print(f"STORE001: Net sales = {report_s1.sales_net.amount} yen (4 transactions)")
+    print(f"  - NormalSales: 1000 + 2000 = 3000")
+    print(f"  - ReturnSales: -200")
+    print(f"  - VoidSales: -500")
+    print(f"  - Net: 3000 - 200 - 500 = 2300 ✓")
+    print(f"STORE002: Net sales = {report_s2.sales_net.amount} yen (4 transactions)")
+    print(f"  - NormalSales: 3000 + 4000 = 7000")
+    print(f"  - ReturnSales: -1000")
+    print(f"  - VoidSales: -500")
+    print(f"  - Net: 7000 - 1000 - 500 = 5500 ✓")
+    print("✓ Stores are properly isolated")
+    print("✓ All transaction types correctly factored")
+    print("✓ Composite key works across multiple stores")
+    print("===========================================\n")
