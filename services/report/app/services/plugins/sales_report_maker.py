@@ -442,15 +442,16 @@ class SalesReportMaker(IReportPlugin):
         pipeline = [
             {"$match": match_dict},
             {"$project": project_dict},
-            {"$unwind": "$taxes"},
-            {"$unwind": "$payments"},
+            # IMPORTANT: preserveNullAndEmptyArrays handles empty taxes/payments arrays (e.g., non-taxable items)
+            {"$unwind": {"path": "$taxes", "preserveNullAndEmptyArrays": True}},
+            {"$unwind": {"path": "$payments", "preserveNullAndEmptyArrays": True}},
             # CRITICAL FIX: Group by transaction_no first
             {"$group": intermediate_group_dict},
             # Then group by business criteria
             {"$group": final_group_dict},
             # Process taxes - unwind twice because it's array of arrays
-            {"$unwind": "$all_taxes"},
-            {"$unwind": "$all_taxes"},
+            {"$unwind": {"path": "$all_taxes", "preserveNullAndEmptyArrays": True}},
+            {"$unwind": {"path": "$all_taxes", "preserveNullAndEmptyArrays": True}},
             # Group by tax code
             {
                 "$group": {
@@ -623,12 +624,15 @@ class SalesReportMaker(IReportPlugin):
 
             # Aggregate tax amounts
             for tax in result["taxes"]:
-                tax_code = tax["tax_code"]
-                tax_name = tax["tax_name"]
-                tax_amount = tax["tax_amount"] * factor
-                target_amount = tax["target_amount"] * factor
-                target_quantity = tax["target_quantity"] * factor
-                tax_dict = next((tax for tax in total["taxes"] if tax["tax_code"] == tax_code), None)
+                tax_code = tax.get("tax_code")
+                tax_name = tax.get("tax_name")
+                # Skip if tax_code is None (e.g., empty taxes array)
+                if tax_code is None:
+                    continue
+                tax_amount = tax.get("tax_amount", 0) * factor
+                target_amount = tax.get("target_amount", 0) * factor
+                target_quantity = tax.get("target_quantity", 0) * factor
+                tax_dict = next((tax for tax in total["taxes"] if tax.get("tax_code") == tax_code), None)
                 if tax_dict is None:
                     total["taxes"].append(
                         {
@@ -646,11 +650,14 @@ class SalesReportMaker(IReportPlugin):
 
             # Aggregate payment methods
             for payment in result["payments"]:
-                payment_code = payment["payment_code"]
-                description = payment["description"]
-                amount = payment["amount"] * factor
-                count = payment["count"] * factor
-                payment_dict = next((payment for payment in total["payments"] if payment["payment_code"] == payment_code), None)
+                payment_code = payment.get("payment_code")
+                description = payment.get("description")
+                # Skip if payment_code is None (e.g., empty payments array)
+                if payment_code is None:
+                    continue
+                amount = payment.get("amount", 0) * factor
+                count = payment.get("count", 0) * factor
+                payment_dict = next((payment for payment in total["payments"] if payment.get("payment_code") == payment_code), None)
                 if payment_dict is None:
                     total["payments"].append(
                         {"payment_code": payment_code, "description": description, "amount": amount, "count": count}
@@ -663,26 +670,30 @@ class SalesReportMaker(IReportPlugin):
 
     def _make_sales_gross(self, results: list[dict]) -> dict[str, Any]:
         """
-        Create gross sales information
+        Create gross sales information (before discounts)
 
         Args:
             results: Sales report retrieval results
 
         Returns:
-            Gross sales information
+            Gross sales information (amount before discounts)
         """
 
         normal_sales = self._get_result_by_transaction_type(results, TransactionType.NormalSales.value)
         void_sales = self._get_result_by_transaction_type(results, TransactionType.VoidSales.value)
 
         if normal_sales is None:
-            normal_sales = {"total_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+            normal_sales = {"total_amount": 0, "total_discount_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
 
         if void_sales is None:
-            void_sales = {"total_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+            void_sales = {"total_amount": 0, "total_discount_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+
+        # Sales Gross = Net Amount + Discounts (to get amount before discounts)
+        normal_gross = normal_sales["total_amount"] + normal_sales.get("total_discount_amount", 0)
+        void_gross = void_sales["total_amount"] + void_sales.get("total_discount_amount", 0)
 
         return_dict = {
-            "amount": normal_sales["total_amount"] - void_sales["total_amount"],
+            "amount": normal_gross - void_gross,
             "quantity": normal_sales["total_quantity"] - void_sales["total_quantity"],
             "count": normal_sales["total_transaction_count"] - void_sales["total_transaction_count"],
         }
@@ -795,6 +806,7 @@ class SalesReportMaker(IReportPlugin):
                 "target_quantity": tax.get("target_quantity", 0),
             }
             for tax in taxes
+            if tax.get("tax_code") is not None  # Filter out null tax_code (e.g., empty taxes array)
         ]
         logger.debug(f"Taxes: {return_list}")
         return return_list
@@ -819,6 +831,7 @@ class SalesReportMaker(IReportPlugin):
                 "count": payment.get("count", 0),
             }
             for payment in payments
+            if payment.get("payment_code") is not None  # Filter out null payment_code (e.g., empty payments array)
         ]
         logger.debug(f"Payments: {return_list}")
         return return_list

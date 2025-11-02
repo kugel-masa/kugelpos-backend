@@ -86,6 +86,57 @@ async def http_client(set_env_vars):
     print("Closing http client")
 
 
+@pytest_asyncio.fixture(scope="function")
+async def clean_test_data(set_env_vars):
+    """
+    Clean up test data before AND after each test to ensure test isolation.
+
+    This fixture deletes all transaction logs for STORE001 before and after each test,
+    ensuring that:
+    1. Each test starts with a clean database state
+    2. No test data is left behind that affects subsequent tests
+
+    Usage:
+        @pytest.mark.asyncio
+        async def test_something(set_env_vars, clean_test_data):
+            # Test will start with clean database
+            ...
+
+    WHY THIS IS NEEDED:
+    - Tests can leave data behind that affects subsequent tests
+    - Ensures each test is independent and reproducible
+    - Prevents false positives/negatives from test data pollution
+    """
+    from kugel_common.database import database as db_helper
+
+    # Setup: clean data before test
+    tenant_id = os.environ.get("TENANT_ID")
+    db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"
+    db = await db_helper.get_db_async(db_name)
+
+    # Get correct collection name from repository
+    from app.models.repositories.tranlog_repository import TranlogRepository
+    tran_repo = TranlogRepository(db, tenant_id)
+    collection = db[tran_repo.collection_name]
+
+    # IMPORTANT: MongoDB stores fields in snake_case (tenant_id, store_code)
+    # because we use model_dump() without by_alias=True
+    delete_result = await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": "STORE001"
+    })
+    print(f"[CLEANUP BEFORE] Deleted {delete_result.deleted_count} test documents before test")
+
+    yield
+
+    # Teardown: clean data after test to prevent contamination of next test
+    delete_result_after = await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": "STORE001"
+    })
+    print(f"[CLEANUP AFTER] Deleted {delete_result_after.deleted_count} test documents after test")
+
+
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def cleanup_database_connection(set_env_vars):
     """
