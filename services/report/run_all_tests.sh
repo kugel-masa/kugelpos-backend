@@ -17,6 +17,7 @@ test_files=(
     "tests/test_return_transactions.py"  # Return transaction tests
     "tests/test_void_transactions.py"  # Void transaction tests
     "tests/test_edge_cases.py"  # Edge case tests (empty arrays, rounding, etc.)
+    "tests/test_cancelled_transactions.py"  # Cancelled transaction handling tests
     "tests/test_split_payment_bug.py"  # Run last to avoid affecting other tests
 )
 
