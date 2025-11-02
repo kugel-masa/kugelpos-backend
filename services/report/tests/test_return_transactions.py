@@ -147,7 +147,6 @@ async def test_return_transaction_basic(set_env_vars):
     print("=====================================\n")
 
 
-@pytest.mark.skip(reason="Event loop closure issue - TODO: Fix async test isolation")
 @pytest.mark.asyncio
 async def test_return_exceeds_sales(set_env_vars):
     """
@@ -269,7 +268,6 @@ async def test_return_exceeds_sales(set_env_vars):
     print("=====================================\n")
 
 
-@pytest.mark.skip(reason="Event loop closure issue - TODO: Fix async test isolation")
 @pytest.mark.asyncio
 async def test_multiple_returns_same_day(set_env_vars):
     """

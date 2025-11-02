@@ -136,7 +136,6 @@ async def test_void_sales_basic(set_env_vars):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Event loop closure issue - TODO: Fix async test isolation")
 async def test_void_return_basic(set_env_vars):
     """
     Test basic void return transaction.
@@ -257,7 +256,6 @@ async def test_void_return_basic(set_env_vars):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Event loop closure issue - TODO: Fix async test isolation")
 async def test_complex_void_scenario(set_env_vars):
     """
     Test complex scenario with multiple voids.
@@ -486,7 +484,6 @@ async def test_complex_void_scenario(set_env_vars):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Event loop closure issue - TODO: Fix async test isolation")
 async def test_multiple_voids_same_transaction_type(set_env_vars):
     """
     Test multiple void transactions of the same type.

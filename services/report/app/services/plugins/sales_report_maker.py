@@ -266,6 +266,7 @@ class SalesReportMaker(IReportPlugin):
             "store_code": 1,
             "terminal_no": 1,
             "business_date": 1,
+            "transaction_no": 1,  # CRITICAL: Required for intermediate grouping to prevent transaction merge
             "transaction_type": 1,
             "sales.total_amount": 1,
             "sales.total_amount_with_tax": 1,
@@ -361,20 +362,70 @@ class SalesReportMaker(IReportPlugin):
             },
         }
 
-        # Create group stage conditions
-        group_dict = {
-            "_id": {
-                "tenant_id": "$tenant_id",
-                "store_code": "$store_code",
-                "business_date": "$business_date",
-                "transaction_type": "$transaction_type",
-            },
-            "total_amount": {"$sum": "$sales.total_amount"},
-            "total_amount_with_tax": {"$sum": "$sales.total_amount_with_tax"},
-            "total_tax_amount": {"$sum": "$sales.tax_amount"},
-            "total_quantity": {"$sum": "$sales.total_quantity"},
-            "total_change_amount": {"$sum": "$sales.change_amount"},
-            "total_discount_amount": {"$sum": "$sales.total_discount_amount"},
+        # Add optional keys
+        if terminal_no is not None:
+            match_dict["terminal_no"] = terminal_no
+
+        if open_counter is not None:
+            match_dict["open_counter"] = open_counter
+
+        # CRITICAL FIX for Cartesian product issue (Issue #78)
+        # Add intermediate grouping by transaction_no to deduplicate parent fields
+        # before final aggregation by business criteria
+        # Note: transaction_no is only unique within tenant_id + store_code + terminal_no
+
+        intermediate_group_id = {
+            "tenant_id": "$tenant_id",
+            "store_code": "$store_code",
+            "terminal_no": "$terminal_no",  # Always include terminal_no for unique identification
+            "business_date": "$business_date",
+            "transaction_no": "$transaction_no",
+            "transaction_type": "$transaction_type",
+        }
+
+        intermediate_group_dict = {
+            "_id": intermediate_group_id,
+            # Use $first to get parent-level fields only once per transaction
+            "total_amount": {"$first": "$sales.total_amount"},
+            "total_amount_with_tax": {"$first": "$sales.total_amount_with_tax"},
+            "total_tax_amount": {"$first": "$sales.tax_amount"},
+            "total_quantity": {"$first": "$sales.total_quantity"},
+            "total_change_amount": {"$first": "$sales.change_amount"},
+            "total_discount_amount": {"$first": "$sales.total_discount_amount"},
+            "line_items_discount_amount": {"$first": "$line_items_discount_amount"},
+            "line_items_discount_count": {"$first": "$line_items_discount_count"},
+            "line_items_discount_quantity": {"$first": "$line_items_discount_quantity"},
+            "sub_total_discount_amount": {"$first": "$sub_total_discount_amount"},
+            "sub_total_discount_count": {"$first": "$sub_total_discount_count"},
+            "sub_total_discount_quantity": {"$first": "$sub_total_discount_quantity"},
+            # CRITICAL FIX: Use $addToSet instead of $push to eliminate Cartesian product duplicates
+            # After $unwind taxes and $unwind payments, we get 4 docs (2 taxes × 2 payments)
+            # Using $push would collect: taxes=[tax1, tax1, tax2, tax2], payments=[pay1, pay2, pay1, pay2]
+            # Using $addToSet collects only unique values: taxes=[tax1, tax2], payments=[pay1, pay2]
+            "taxes": {"$addToSet": "$taxes"},
+            "payments": {"$addToSet": "$payments"},
+        }
+
+        # Create final group dict for business criteria aggregation
+        final_group_id = {
+            "tenant_id": "$_id.tenant_id",
+            "store_code": "$_id.store_code",
+            "business_date": "$_id.business_date",
+            "transaction_type": "$_id.transaction_type",
+        }
+        # Include terminal_no in final grouping only if filtering by specific terminal
+        if terminal_no is not None:
+            final_group_id["terminal_no"] = "$_id.terminal_no"
+
+        final_group_dict = {
+            "_id": final_group_id,
+            # Sum parent fields (now each transaction counted once)
+            "total_amount": {"$sum": "$total_amount"},
+            "total_amount_with_tax": {"$sum": "$total_amount_with_tax"},
+            "total_tax_amount": {"$sum": "$total_tax_amount"},
+            "total_quantity": {"$sum": "$total_quantity"},
+            "total_change_amount": {"$sum": "$total_change_amount"},
+            "total_discount_amount": {"$sum": "$total_discount_amount"},
             "total_line_items_discount_amount": {"$sum": "$line_items_discount_amount"},
             "total_line_items_discount_count": {"$sum": "$line_items_discount_count"},
             "total_line_items_discount_quantity": {"$sum": "$line_items_discount_quantity"},
@@ -382,40 +433,131 @@ class SalesReportMaker(IReportPlugin):
             "total_sub_total_discount_count": {"$sum": "$sub_total_discount_count"},
             "total_sub_total_discount_quantity": {"$sum": "$sub_total_discount_quantity"},
             "total_transaction_count": {"$sum": 1},
-            "taxes": {
-                "$push": {
-                    "tax_code": "$taxes.tax_code",
-                    "tax_name": "$taxes.tax_name",
-                    "tax_amount": {"$sum": "$taxes.tax_amount"},
-                    "target_amount": {"$sum": "$taxes.target_amount"},
-                    "target_quantity": {"$sum": "$taxes.target_quantity"},
-                }
-            },
-            "payments": {
-                "$push": {
-                    "payment_code": "$payments.payment_code",
-                    "description": "$payments.description",
-                    "amount": {"$sum": "$payments.amount"},
-                    "count": {"$sum": 1},
-                }
-            },
+            # Flatten and collect taxes and payments arrays
+            "all_taxes": {"$push": "$taxes"},
+            "all_payments": {"$push": "$payments"},
         }
 
-        # Add optional keys
-        if terminal_no is not None:
-            match_dict["terminal_no"] = terminal_no
-            group_dict["_id"]["terminal_no"] = "$terminal_no"
-
-        if open_counter is not None:
-            match_dict["open_counter"] = open_counter
-
-        # Create pipeline
+        # Create pipeline with intermediate grouping to fix Cartesian product issue
         pipeline = [
             {"$match": match_dict},
             {"$project": project_dict},
             {"$unwind": "$taxes"},
             {"$unwind": "$payments"},
-            {"$group": group_dict},
+            # CRITICAL FIX: Group by transaction_no first
+            {"$group": intermediate_group_dict},
+            # Then group by business criteria
+            {"$group": final_group_dict},
+            # Process taxes - unwind twice because it's array of arrays
+            {"$unwind": "$all_taxes"},
+            {"$unwind": "$all_taxes"},
+            # Group by tax code
+            {
+                "$group": {
+                    "_id": dict(list(final_group_id.items()) + [("tax_code", "$all_taxes.tax_code"), ("tax_name", "$all_taxes.tax_name")]),
+                    "tax_amount": {"$sum": "$all_taxes.tax_amount"},
+                    "target_amount": {"$sum": "$all_taxes.target_amount"},
+                    "target_quantity": {"$sum": "$all_taxes.target_quantity"},
+                    # Preserve aggregated fields
+                    "total_amount": {"$first": "$total_amount"},
+                    "total_amount_with_tax": {"$first": "$total_amount_with_tax"},
+                    "total_tax_amount": {"$first": "$total_tax_amount"},
+                    "total_quantity": {"$first": "$total_quantity"},
+                    "total_change_amount": {"$first": "$total_change_amount"},
+                    "total_discount_amount": {"$first": "$total_discount_amount"},
+                    "total_line_items_discount_amount": {"$first": "$total_line_items_discount_amount"},
+                    "total_line_items_discount_count": {"$first": "$total_line_items_discount_count"},
+                    "total_line_items_discount_quantity": {"$first": "$total_line_items_discount_quantity"},
+                    "total_sub_total_discount_amount": {"$first": "$total_sub_total_discount_amount"},
+                    "total_sub_total_discount_count": {"$first": "$total_sub_total_discount_count"},
+                    "total_sub_total_discount_quantity": {"$first": "$total_sub_total_discount_quantity"},
+                    "total_transaction_count": {"$first": "$total_transaction_count"},
+                    "all_payments": {"$first": "$all_payments"},
+                }
+            },
+            # Regroup to collect taxes
+            {
+                "$group": {
+                    "_id": final_group_id,
+                    "total_amount": {"$first": "$total_amount"},
+                    "total_amount_with_tax": {"$first": "$total_amount_with_tax"},
+                    "total_tax_amount": {"$first": "$total_tax_amount"},
+                    "total_quantity": {"$first": "$total_quantity"},
+                    "total_change_amount": {"$first": "$total_change_amount"},
+                    "total_discount_amount": {"$first": "$total_discount_amount"},
+                    "total_line_items_discount_amount": {"$first": "$total_line_items_discount_amount"},
+                    "total_line_items_discount_count": {"$first": "$total_line_items_discount_count"},
+                    "total_line_items_discount_quantity": {"$first": "$total_line_items_discount_quantity"},
+                    "total_sub_total_discount_amount": {"$first": "$total_sub_total_discount_amount"},
+                    "total_sub_total_discount_count": {"$first": "$total_sub_total_discount_count"},
+                    "total_sub_total_discount_quantity": {"$first": "$total_sub_total_discount_quantity"},
+                    "total_transaction_count": {"$first": "$total_transaction_count"},
+                    "taxes": {
+                        "$push": {
+                            "tax_code": "$_id.tax_code",
+                            "tax_name": "$_id.tax_name",
+                            "tax_amount": "$tax_amount",
+                            "target_amount": "$target_amount",
+                            "target_quantity": "$target_quantity",
+                        }
+                    },
+                    "all_payments": {"$first": "$all_payments"},
+                }
+            },
+            # Process payments - unwind twice
+            {"$unwind": "$all_payments"},
+            {"$unwind": "$all_payments"},
+            # Group by payment code
+            {
+                "$group": {
+                    "_id": dict(list(final_group_id.items()) + [("payment_code", "$all_payments.payment_code"), ("description", "$all_payments.description")]),
+                    "payment_amount": {"$sum": "$all_payments.amount"},
+                    "payment_count": {"$sum": 1},
+                    # Preserve fields
+                    "total_amount": {"$first": "$total_amount"},
+                    "total_amount_with_tax": {"$first": "$total_amount_with_tax"},
+                    "total_tax_amount": {"$first": "$total_tax_amount"},
+                    "total_quantity": {"$first": "$total_quantity"},
+                    "total_change_amount": {"$first": "$total_change_amount"},
+                    "total_discount_amount": {"$first": "$total_discount_amount"},
+                    "total_line_items_discount_amount": {"$first": "$total_line_items_discount_amount"},
+                    "total_line_items_discount_count": {"$first": "$total_line_items_discount_count"},
+                    "total_line_items_discount_quantity": {"$first": "$total_line_items_discount_quantity"},
+                    "total_sub_total_discount_amount": {"$first": "$total_sub_total_discount_amount"},
+                    "total_sub_total_discount_count": {"$first": "$total_sub_total_discount_count"},
+                    "total_sub_total_discount_quantity": {"$first": "$total_sub_total_discount_quantity"},
+                    "total_transaction_count": {"$first": "$total_transaction_count"},
+                    "taxes": {"$first": "$taxes"},
+                }
+            },
+            # Final regroup to collect payments
+            {
+                "$group": {
+                    "_id": final_group_id,
+                    "total_amount": {"$first": "$total_amount"},
+                    "total_amount_with_tax": {"$first": "$total_amount_with_tax"},
+                    "total_tax_amount": {"$first": "$total_tax_amount"},
+                    "total_quantity": {"$first": "$total_quantity"},
+                    "total_change_amount": {"$first": "$total_change_amount"},
+                    "total_discount_amount": {"$first": "$total_discount_amount"},
+                    "total_line_items_discount_amount": {"$first": "$total_line_items_discount_amount"},
+                    "total_line_items_discount_count": {"$first": "$total_line_items_discount_count"},
+                    "total_line_items_discount_quantity": {"$first": "$total_line_items_discount_quantity"},
+                    "total_sub_total_discount_amount": {"$first": "$total_sub_total_discount_amount"},
+                    "total_sub_total_discount_count": {"$first": "$total_sub_total_discount_count"},
+                    "total_sub_total_discount_quantity": {"$first": "$total_sub_total_discount_quantity"},
+                    "total_transaction_count": {"$first": "$total_transaction_count"},
+                    "taxes": {"$first": "$taxes"},
+                    "payments": {
+                        "$push": {
+                            "payment_code": "$_id.payment_code",
+                            "description": "$_id.description",
+                            "amount": "$payment_amount",
+                            "count": "$payment_count",
+                        }
+                    },
+                }
+            },
         ]
 
         # Add sort stage (if sort is specified)

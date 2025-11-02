@@ -84,3 +84,38 @@ async def http_client(set_env_vars):
     async with AsyncClient(base_url=base_url) as client:
         yield client
     print("Closing http client")
+
+
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def cleanup_database_connection(set_env_vars):
+    """
+    Automatically cleanup database connection after each test.
+
+    This fixture solves the "Event loop is closed" error that occurs when
+    running multiple async tests. The issue happens because:
+
+    1. kugel_common.database.database uses a global singleton MongoDB client
+    2. The client is tied to the event loop that created it
+    3. When pytest creates a new event loop for the next test, the old client
+       is still referenced in the global variable
+    4. Attempting to use the old client with the new event loop causes
+       "RuntimeError: Event loop is closed"
+
+    This fixture ensures that after each test:
+    - The database client is properly closed
+    - The global client variable is reset to None
+    - The next test will create a fresh client with the new event loop
+
+    The 'autouse=True' parameter means this fixture runs automatically for
+    every test function, even if not explicitly requested.
+    """
+    # Setup: runs before test
+    yield
+
+    # Teardown: runs after test
+    try:
+        from kugel_common.database import database as db_helper
+        await db_helper.reset_client_async()
+        print("Database connection cleaned up successfully")
+    except Exception as e:
+        print(f"Warning: Failed to cleanup database connection: {e}")
