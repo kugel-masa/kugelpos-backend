@@ -15,6 +15,8 @@ from pydantic_xml import BaseXmlModel, attr, element
 from typing import List, Optional
 from logging import getLogger
 import wcwidth
+from pydantic import Field
+from xml.sax.saxutils import escape
 
 from kugel_common.utils.text_helper import TextHelper
 
@@ -49,29 +51,46 @@ class Constants:
 class Line(BaseXmlModel, tag="Line"):
     """
     Line element model
-    
+
     Represents a single line on a receipt.
     Defines the type, alignment, and content of text lines.
     """
     type: str = attr()
     align: Optional[str] = attr(default=None)
-    description: Optional[str] = element(tag="Description", default=None)
+    dimension: Optional[str] = attr(default=None)
+    description: Optional[str] = Field(default=None)
     item1: Optional[str] = element(tag="Item1", default=None)
     item2: Optional[str] = element(tag="Item2", default=None)
-    
-    def __init__(self, **data):
+
+    def to_xml(self, **kwargs):
+        """Custom XML serialization"""
+        # Build the XML string manually when description is present
+        if self.description is not None:
+            attrs = [f'type="{escape(self.type)}"']
+            if self.align:
+                attrs.append(f'align="{escape(self.align)}"')
+            if self.dimension:
+                attrs.append(f'dimension="{escape(self.dimension)}"')
+            attr_string = ' '.join(attrs)
+            # Escape the description content
+            return f'<Line {attr_string}>{escape(self.description)}</Line>'.encode('utf-8')
+        else:
+            # Use default serialization for other cases
+            kwargs['exclude_none'] = True
+            return super().to_xml(**kwargs)
+
+    def model_post_init(self, __context):
+        """Adjust item1 width after model initialization"""
         # Store original item1 value
-        item1_original = data.get('item1')
-        item2 = data.get('item2')
-        
+        item1_original = self.item1
+        item2 = self.item2
+
         # Adjust item1 if both item1 and item2 are present
         if item1_original is not None and item2 is not None:
             max_width = 32
             item2_width = wcwidth.wcswidth(item2)
             item1_max_width = max(0, max_width - item2_width - 1)
-            data['item1'] = TextHelper.fixed_left(item1_original, item1_max_width, truncate=True)
-        
-        super().__init__(**data)
+            self.item1 = TextHelper.fixed_left(item1_original, item1_max_width, truncate=True)
 
 # TableRow model
 class TableRow(BaseXmlModel, tag="tr"):

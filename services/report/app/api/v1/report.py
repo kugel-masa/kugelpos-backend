@@ -10,10 +10,15 @@ from kugel_common.status_codes import StatusCodes
 from kugel_common.exceptions import ServiceException
 
 from app.api.v1.schemas_transformer import SchemasTransformerV1
-from app.api.v1.schemas import SalesReportResponse
+from app.api.v1.schemas import SalesReportResponse, CategoryReportResponse, ItemReportResponse
 from app.services.report_service import ReportService
 from app.dependencies.get_report_service import get_report_service
 from app.dependencies.get_staff_info import get_requesting_staff_id
+from app.models.documents.sales_report_document import SalesReportDocument
+from app.models.documents.category_report_document import CategoryReportDocument
+from app.models.documents.item_report_document import ItemReportDocument
+from app.models.documents.payment_report_document import PaymentReportDocument
+from app.exceptions.report_exceptions import TerminalNotClosedException
 
 # Create a router instance for report-related endpoints
 router = APIRouter()
@@ -50,7 +55,7 @@ def parse_sort(sort: str = Query(default=None, description="?sort=field1:1,field
 # API get report for store  #  token or (api_key and terminal_id) is required
 @router.get(
     "/tenants/{tenant_id}/stores/{store_code}/reports",
-    response_model=ApiResponse[SalesReportResponse],
+    response_model=ApiResponse,
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Bad Request"},
@@ -67,7 +72,9 @@ async def get_report_for_store(
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
     report_scope: str = Query(..., description="Scope of the report: flash, daily"),
     report_type: str = Query(..., description="Type of the report: sales, category, item"),
-    business_date: str = Query(..., description="Business date for flash and daily"),
+    business_date: str = Query(None, description="Business date for flash and daily (single date or ignored if date range is specified)"),
+    business_date_from: str = Query(None, description="Start date for date range (YYYYMMDD format)"),
+    business_date_to: str = Query(None, description="End date for date range (YYYYMMDD format)"),
     open_counter: int = Query(None, description="Open counter for flash and daily, None for total in business date"),
     business_counter: int = Query(None, description="Business counter for the report"),
     limit: int = Query(100, description="Limit of the number of records to return"),
@@ -106,6 +113,24 @@ async def get_report_for_store(
     """
     logger.info(f"Fetching {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}")
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
+    
+    # Validate date parameters
+    if business_date_from and business_date_to:
+        # Date range mode
+        if report_scope == "flash":
+            # Flash reports are for current session only, date range not applicable
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Date range is not supported for flash reports. Flash reports are for the current session only."
+            )
+        if business_date:
+            logger.warning("Both single date and date range specified, using date range")
+    elif not business_date and not (business_date_from and business_date_to):
+        # Neither single date nor date range specified
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either business_date or both business_date_from and business_date_to must be specified"
+        )
 
     # Extract terminal number from terminal_id if available (format: tenant_store_terminal)
     requesting_terminal_no = None
@@ -135,13 +160,49 @@ async def get_report_for_store(
             requesting_terminal_no=requesting_terminal_no,
             requesting_staff_id=requesting_staff_id,
             is_api_key_request=is_api_key_request,
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
         )
-        return_report = SchemasTransformerV1().transform_sales_report_response(report_doc)
+        # Transform based on report type
+        transformer = SchemasTransformerV1()
+        if isinstance(report_doc, ItemReportDocument):
+            return_report = transformer.transform_item_report_response(report_doc)
+        elif isinstance(report_doc, CategoryReportDocument):
+            return_report = transformer.transform_category_report_response(report_doc)
+        elif isinstance(report_doc, PaymentReportDocument):
+            # Payment report document - use model_dump to convert to dict
+            return_report = report_doc.model_dump(by_alias=False)
+        elif isinstance(report_doc, dict):
+            # Legacy: Payment report returns a dict directly
+            return_report = report_doc
+        else:
+            return_report = transformer.transform_sales_report_response(report_doc)
+    except TerminalNotClosedException as e:
+        # Return specific error for terminals not closed
+        error_response = ApiResponse(
+            success=False,
+            code=e.error_code,  # Use the specific error code (412101)
+            message=e.user_message,  # Use the user-friendly message
+            data=None,
+            operation=f"{inspect.currentframe().f_code.co_name}",
+        )
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=error_response.model_dump()
+        )
     except ServiceException as e:
-        message = (
-            f"some of terminals in store are not closed. tenant_id: {tenant_id}, store_code: {store_code}, Error: {e}"
+        # Handle other service exceptions
+        error_response = ApiResponse(
+            success=False,
+            code=e.error_code if hasattr(e, 'error_code') else "500001",
+            message=e.user_message if hasattr(e, 'user_message') else str(e),
+            data=None,
+            operation=f"{inspect.currentframe().f_code.co_name}",
         )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
+        raise HTTPException(
+            status_code=e.status_code if hasattr(e, 'status_code') else status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response.model_dump()
+        )
     except Exception as e:
         message = (
             f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, Error: {e}"
@@ -152,7 +213,7 @@ async def get_report_for_store(
         success=True,
         code=status.HTTP_200_OK,
         message=f"{report_type.capitalize()} report fetched successfully",
-        data=return_report.model_dump(),
+        data=return_report if isinstance(return_report, dict) else return_report.model_dump(by_alias=True),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -176,7 +237,7 @@ def make_terminal_id(terminal_no: str = Path(...), store_code: str = Path(...), 
 # API get report for terminal  #  token or (api_key and terminal_id) is required
 @router.get(
     "/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports",
-    response_model=ApiResponse[SalesReportResponse],
+    response_model=ApiResponse,
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Bad Request"},
@@ -194,7 +255,9 @@ async def get_report_for_terminal(
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
     report_scope: str = Query(..., description="Scope of the report: flash, daily"),
     report_type: str = Query(..., description="Type of the report: sales, category, item"),
-    business_date: str = Query(..., description="Business date for flash and daily"),
+    business_date: str = Query(None, description="Business date for flash and daily (single date or ignored if date range is specified)"),
+    business_date_from: str = Query(None, description="Start date for date range (YYYYMMDD format)"),
+    business_date_to: str = Query(None, description="End date for date range (YYYYMMDD format)"),
     open_counter: int = Query(None, description="Open counter for flash and daily, None for total in business date"),
     business_counter: int = Query(None, description="Business counter for the report"),
     limit: int = Query(100, description="Limit of the number of records to return"),
@@ -235,6 +298,24 @@ async def get_report_for_terminal(
         f"Fetching {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}"
     )
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
+    
+    # Validate date parameters
+    if business_date_from and business_date_to:
+        # Date range mode
+        if report_scope == "flash":
+            # Flash reports are for current session only, date range not applicable
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Date range is not supported for flash reports. Flash reports are for the current session only."
+            )
+        if business_date:
+            logger.warning("Both single date and date range specified, using date range")
+    elif not business_date and not (business_date_from and business_date_to):
+        # Neither single date nor date range specified
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either business_date or both business_date_from and business_date_to must be specified"
+        )
 
     try:
         # For terminal-specific reports, extract requesting terminal from terminal_id if available
@@ -269,11 +350,49 @@ async def get_report_for_terminal(
             requesting_staff_id=requesting_staff_id,
             requesting_terminal_no=requesting_terminal_no,
             is_api_key_request=is_api_key_request,
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
         )
-        return_report = SchemasTransformerV1().transform_sales_report_response(report_doc)
+        # Transform based on report type
+        transformer = SchemasTransformerV1()
+        if isinstance(report_doc, ItemReportDocument):
+            return_report = transformer.transform_item_report_response(report_doc)
+        elif isinstance(report_doc, CategoryReportDocument):
+            return_report = transformer.transform_category_report_response(report_doc)
+        elif isinstance(report_doc, PaymentReportDocument):
+            # Payment report document - use model_dump to convert to dict
+            return_report = report_doc.model_dump(by_alias=False)
+        elif isinstance(report_doc, dict):
+            # Legacy: Payment report returns a dict directly
+            return_report = report_doc
+        else:
+            return_report = transformer.transform_sales_report_response(report_doc)
+    except TerminalNotClosedException as e:
+        # Return specific error for terminal not closed
+        error_response = ApiResponse(
+            success=False,
+            code=e.error_code,  # Use the specific error code (412101)
+            message=e.user_message,  # Use the user-friendly message
+            data=None,
+            operation=f"{inspect.currentframe().f_code.co_name}",
+        )
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=error_response.model_dump()
+        )
     except ServiceException as e:
-        message = f"terminal is not closed. tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}, Error: {e}"
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
+        # Handle other service exceptions
+        error_response = ApiResponse(
+            success=False,
+            code=e.error_code if hasattr(e, 'error_code') else "500001",
+            message=e.user_message if hasattr(e, 'user_message') else str(e),
+            data=None,
+            operation=f"{inspect.currentframe().f_code.co_name}",
+        )
+        raise HTTPException(
+            status_code=e.status_code if hasattr(e, 'status_code') else status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response.model_dump()
+        )
     except Exception as e:
         message = f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}, Error: {e}"
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
@@ -282,7 +401,7 @@ async def get_report_for_terminal(
         success=True,
         code=status.HTTP_200_OK,
         message=f"{report_type.capitalize()} report fetched successfully",
-        data=return_report.model_dump(),
+        data=return_report if isinstance(return_report, dict) else return_report.model_dump(by_alias=True),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response

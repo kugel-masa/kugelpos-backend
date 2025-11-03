@@ -49,3 +49,27 @@ class TenantCreateResponse(BaseTenantCreateResponse):
     """
 
     pass
+
+
+class CategoryReportResponse(BaseCategoryReportResponse):
+    """
+    Category report response model for API version 1.
+
+    Extends the base category report response model with version-specific fields
+    if needed. Currently inherits all functionality from BaseCategoryReportResponse.
+    Used to provide sales data aggregated by product categories.
+    """
+
+    pass
+
+
+class ItemReportResponse(BaseItemReportResponse):
+    """
+    Item report response model for API version 1.
+
+    Extends the base item report response model with version-specific fields
+    if needed. Currently inherits all functionality from BaseItemReportResponse.
+    Used to provide detailed sales data for individual items grouped by categories.
+    """
+
+    pass

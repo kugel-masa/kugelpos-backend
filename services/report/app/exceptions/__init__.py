@@ -49,4 +49,5 @@ from app.exceptions.report_exceptions import (
     ImportException,
     DailyInfoException,
     ExternalServiceException,
+    CategoryMasterDataNotFoundException,
 )

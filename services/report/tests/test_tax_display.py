@@ -125,16 +125,18 @@ class TestTaxDisplayLogic:
 
         # Extract tax breakdown amounts
         tax_breakdown = []
-        tax_section = re.search(r'税 額（内訳）</Line>(.*?)</Page>', receipt_text, re.DOTALL)
+        # Match both old format (<Description>税 額（内訳）</Description>) and new format (直接テキスト)
+        tax_section = re.search(r'税 額（内訳）[\s\S]*?</Line>(.*?)</Page>', receipt_text, re.DOTALL)
         if tax_section:
             # Find all tax lines that come after "税 額（内訳）" and before the next section
             tax_content = tax_section.group(1)
-            # Stop at the first Line type="Line" after tax section starts
-            next_section = re.search(r'<Line type="Line"/>', tax_content)
+            # Stop at the first Line type="Line" after tax section starts (matches both old and new formats)
+            next_section = re.search(r'<Line type="Line"[^>]*>', tax_content)
             if next_section:
                 tax_content = tax_content[:next_section.start()]
 
-            tax_items = re.findall(r'<Line type="Text" align="Split">.*?<Item1>\s*([^<]+?)\s*</Item1>.*?<Item2>([0-9,]+)円</Item2>', tax_content, re.DOTALL)
+            # Match both old and new XML formats (with and without dimension attribute)
+            tax_items = re.findall(r'<Line type="Text" align="Split"[^>]*>.*?<Item1>\s*([^<]+?)\s*</Item1>.*?<Item2>([0-9,]+)円</Item2>', tax_content, re.DOTALL)
             for tax_name, tax_amount in tax_items:
                 tax_breakdown.append({
                     "name": tax_name.strip(),

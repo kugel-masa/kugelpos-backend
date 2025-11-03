@@ -107,7 +107,9 @@ class BaseSalesReportResponse(BaseSchemaModel):
     tenant_id: str  # Tenant identifier
     store_code: str  # Store identifier
     terminal_no: Optional[int] = None  # Terminal number (if report is for specific terminal)
-    business_date: str  # Business date in YYYYMMDD format
+    business_date: Optional[str] = None  # Business date in YYYYMMDD format (None for date range)
+    business_date_from: Optional[str] = None  # Start date for date range reports
+    business_date_to: Optional[str] = None  # End date for date range reports
     open_counter: Optional[int] = None  # Open counter (if report is for specific session)
     business_counter: Optional[int] = None  # Business counter
     sales_gross: SalesReportTemplate  # Gross sales before discounts
@@ -141,3 +143,91 @@ class BaseTenantCreateResponse(BaseSchemaModel):
     """
 
     tenant_id: str  # Created tenant identifier
+
+
+class CategoryReportItem(BaseSchemaModel):
+    """
+    Schema for a single category in the category report.
+    Contains aggregated sales metrics for a product category.
+    """
+    category_code: str
+    category_name: str
+    gross_amount: float
+    discount_amount: float
+    net_amount: float
+    quantity: int
+    discount_quantity: int
+    transaction_count: int
+
+
+class BaseCategoryReportResponse(BaseSchemaModel):
+    """
+    Base schema for category-based sales report responses.
+    Contains sales metrics aggregated by product category for a specific reporting period.
+    """
+    tenant_id: str
+    store_code: str
+    terminal_no: Optional[int] = None
+    business_date: Optional[str] = None  # Business date (None for date range)
+    business_date_from: Optional[str] = None  # Start date for date range reports
+    business_date_to: Optional[str] = None  # End date for date range reports
+    open_counter: Optional[int] = None
+    business_counter: Optional[int] = None
+    categories: list[CategoryReportItem]
+    total_gross_amount: float
+    total_discount_amount: float
+    total_net_amount: float
+    total_quantity: int
+    total_discount_quantity: int
+    total_transaction_count: int
+    receipt_text: Optional[str] = None
+    journal_text: Optional[str] = None
+
+
+class ItemReportItem(BaseSchemaModel):
+    """Item sales data within a category"""
+    item_code: Optional[str] = None
+    item_name: Optional[str] = None
+    gross_amount: Optional[float] = 0.0
+    discount_amount: Optional[float] = 0.0
+    net_amount: Optional[float] = 0.0
+    quantity: Optional[int] = 0
+    discount_quantity: Optional[int] = 0
+    transaction_count: Optional[int] = 0
+
+
+class CategoryWithItems(BaseSchemaModel):
+    """Category containing item sales data"""
+    category_code: Optional[str] = None
+    category_name: Optional[str] = None
+    items: Optional[list[ItemReportItem]] = []
+    category_total_gross_amount: Optional[float] = 0.0
+    category_total_discount_amount: Optional[float] = 0.0
+    category_total_net_amount: Optional[float] = 0.0
+    category_total_quantity: Optional[int] = 0
+    category_total_discount_quantity: Optional[int] = 0
+    category_total_transaction_count: Optional[int] = 0
+
+
+class BaseItemReportResponse(BaseSchemaModel):
+    """
+    Base schema for item-based sales report responses grouped by categories.
+    Contains detailed sales metrics for individual items organized by their product categories.
+    """
+    tenant_id: str
+    store_code: str
+    terminal_no: Optional[int] = None
+    business_date: Optional[str] = None  # Business date (None for date range)
+    business_date_from: Optional[str] = None  # Start date for date range reports
+    business_date_to: Optional[str] = None  # End date for date range reports
+    open_counter: Optional[int] = None
+    business_counter: Optional[int] = None
+    categories: list[CategoryWithItems]
+    total_gross_amount: float
+    total_discount_amount: float
+    total_net_amount: float
+    total_quantity: int
+    total_discount_quantity: int
+    total_transaction_count: int
+    receipt_text: Optional[str] = None
+    journal_text: Optional[str] = None

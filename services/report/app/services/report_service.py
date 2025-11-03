@@ -85,7 +85,7 @@ class ReportService:
         store_code: str,
         report_scope: str,
         report_type: str,
-        business_date: str,
+        business_date: str = None,
         open_counter: int = None,
         business_counter: int = None,
         limit: int = 100,
@@ -94,6 +94,8 @@ class ReportService:
         requesting_terminal_no: int = None,
         requesting_staff_id: str = None,
         is_api_key_request: bool = False,
+        business_date_from: str = None,
+        business_date_to: str = None,
     ):
         """
         Generate a report for an entire store.
@@ -106,7 +108,7 @@ class ReportService:
             store_code: Identifier for the store
             report_scope: Scope of the report (e.g., 'flash', 'daily')
             report_type: Type of report to generate (must correspond to a loaded plugin)
-            business_date: Date for which the report is generated
+            business_date: Date for which the report is generated (single date mode)
             open_counter: Optional counter for terminal open/close cycles
             business_counter: Optional business counter for the day
             limit: Maximum number of records to include
@@ -115,12 +117,14 @@ class ReportService:
             requesting_terminal_no: Terminal number that requested the report (for journal tracking)
             requesting_staff_id: Staff ID who requested the report (for journal tracking)
             is_api_key_request: Whether this request came from API key authentication (determines if journal entry is created)
+            business_date_from: Start date for date range mode (optional)
+            business_date_to: End date for date range mode (optional)
 
         Returns:
             The generated report data
 
         Raises:
-            TerminalNotClosedException: If any terminal in the store is not closed
+            TerminalNotClosedException: If any terminal in the store is not closed (single date mode only)
             ReportGenerationException: If an error occurs during report generation
             ReportNotFoundException: If the requested report type does not exist
         """
@@ -133,8 +137,9 @@ class ReportService:
             report_scope = "flash"
 
         # check if conditions are met for daily report
-        if report_scope == "daily":
-            # check if all terminals in the store are closed
+        # Skip terminal closed check if date range is specified
+        if report_scope == "daily" and not (business_date_from and business_date_to):
+            # check if all terminals in the store are closed (single date mode only)
             try:
                 await self._check_if_terminal_closed(
                     store_code=store_code, business_date=business_date, open_counter=open_counter
@@ -146,28 +151,50 @@ class ReportService:
         if report_type in self.report_makers:
             try:
                 maker = self.report_makers[report_type]
-                report_data = await maker.generate_report(
-                    store_code=store_code,
-                    terminal_no=None,
-                    business_counter=business_counter,
-                    business_date=business_date,
-                    open_counter=open_counter,
-                    report_scope=report_scope,
-                    report_type=report_type,
-                    limit=limit,
-                    page=page,
-                    sort=sort,
-                )
+                
+                # Check if the maker supports date range parameters
+                if hasattr(maker.generate_report, '__code__') and 'business_date_from' in maker.generate_report.__code__.co_varnames:
+                    # Maker supports date range parameters
+                    report_data = await maker.generate_report(
+                        store_code=store_code,
+                        terminal_no=None,
+                        business_counter=business_counter,
+                        business_date=business_date,
+                        open_counter=open_counter,
+                        report_scope=report_scope,
+                        report_type=report_type,
+                        limit=limit,
+                        page=page,
+                        sort=sort,
+                        business_date_from=business_date_from,
+                        business_date_to=business_date_to,
+                    )
+                else:
+                    # Maker doesn't support date range parameters (legacy)
+                    report_data = await maker.generate_report(
+                        store_code=store_code,
+                        terminal_no=None,
+                        business_counter=business_counter,
+                        business_date=business_date,
+                        open_counter=open_counter,
+                        report_scope=report_scope,
+                        report_type=report_type,
+                        limit=limit,
+                        page=page,
+                        sort=sort,
+                    )
 
                 # Send report to journal service only for API key requests
                 if is_api_key_request:
                     logger.info("API key request detected for store report, sending to journal")
+                    # For date range reports, use business_date_from as the business_date for journal
+                    journal_business_date = business_date if business_date else business_date_from
                     await self._send_report_to_journal(
                         store_code=store_code,
                         terminal_no=None,
                         report_scope=report_scope,
                         report_type=report_type,
-                        business_date=business_date,
+                        business_date=journal_business_date,
                         open_counter=open_counter,
                         business_counter=business_counter,
                         report_data=report_data,
@@ -177,7 +204,13 @@ class ReportService:
 
                 return report_data
             except Exception as e:
-                message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, business_date->{business_date}"
+                import traceback
+                logger.error(f"Detailed error in report generation: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                if business_date_from and business_date_to:
+                    message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, date_range->{business_date_from} to {business_date_to}"
+                else:
+                    message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, business_date->{business_date}"
                 raise ReportGenerationException(message, logger, e) from e
         else:
             message = f"Invalid report type: {report_type}"
@@ -189,7 +222,7 @@ class ReportService:
         terminal_no: int,
         report_scope: str,
         report_type: str,
-        business_date: str,
+        business_date: str = None,
         open_counter: int = None,
         business_counter: int = None,
         limit: int = 100,
@@ -198,6 +231,8 @@ class ReportService:
         requesting_staff_id: str = None,
         requesting_terminal_no: int = None,
         is_api_key_request: bool = False,
+        business_date_from: str = None,
+        business_date_to: str = None,
     ):
         """
         Generate a report for a specific terminal.
@@ -238,8 +273,9 @@ class ReportService:
             report_scope = "flash"
 
         # check if conditions are met for daily report
-        if report_scope == "daily":
-            # check if all transactions are received for the business date and open counter
+        # Skip terminal closed check if date range is specified
+        if report_scope == "daily" and not (business_date_from and business_date_to):
+            # check if all transactions are received for the business date and open counter (single date mode only)
             try:
                 await self._check_if_terminal_closed(
                     store_code=store_code,
@@ -254,28 +290,50 @@ class ReportService:
         if report_type in self.report_makers:
             try:
                 maker = self.report_makers[report_type]
-                report_data = await maker.generate_report(
-                    store_code=store_code,
-                    terminal_no=terminal_no,
-                    report_scope=report_scope,
-                    report_type=report_type,
-                    business_date=business_date,
-                    open_counter=open_counter,
-                    business_counter=business_counter,
-                    limit=limit,
-                    page=page,
-                    sort=sort,
-                )
-
-                # Send report to journal service only for API key requests
-                if is_api_key_request:
-                    logger.info("API key request detected for terminal report, sending to journal")
-                    await self._send_report_to_journal(
+                
+                # Check if the maker supports date range parameters
+                if hasattr(maker.generate_report, '__code__') and 'business_date_from' in maker.generate_report.__code__.co_varnames:
+                    # Maker supports date range parameters
+                    report_data = await maker.generate_report(
                         store_code=store_code,
                         terminal_no=terminal_no,
                         report_scope=report_scope,
                         report_type=report_type,
                         business_date=business_date,
+                        open_counter=open_counter,
+                        business_counter=business_counter,
+                        limit=limit,
+                        page=page,
+                        sort=sort,
+                        business_date_from=business_date_from,
+                        business_date_to=business_date_to,
+                    )
+                else:
+                    # Maker doesn't support date range parameters (legacy)
+                    report_data = await maker.generate_report(
+                        store_code=store_code,
+                        terminal_no=terminal_no,
+                        report_scope=report_scope,
+                        report_type=report_type,
+                        business_date=business_date,
+                        open_counter=open_counter,
+                        business_counter=business_counter,
+                        limit=limit,
+                        page=page,
+                        sort=sort,
+                    )
+
+                # Send report to journal service only for API key requests
+                if is_api_key_request:
+                    logger.info("API key request detected for terminal report, sending to journal")
+                    # For date range reports, use business_date_from as the business_date for journal
+                    journal_business_date = business_date if business_date else business_date_from
+                    await self._send_report_to_journal(
+                        store_code=store_code,
+                        terminal_no=terminal_no,
+                        report_scope=report_scope,
+                        report_type=report_type,
+                        business_date=journal_business_date,
                         open_counter=open_counter,
                         business_counter=business_counter,
                         report_data=report_data,
@@ -285,7 +343,10 @@ class ReportService:
 
                 return report_data
             except Exception as e:
-                message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}"
+                if business_date_from and business_date_to:
+                    message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, terminal_no->{terminal_no}, date_range->{business_date_from} to {business_date_to}"
+                else:
+                    message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}"
                 raise ReportGenerationException(message, logger, e) from e
         else:
             message = f"Invalid report type: {report_type}"
@@ -510,7 +571,7 @@ class ReportService:
             message = f"Missing cash in/out logs. Expected count->{cash_log_count}, Actual count->{cash_in_out_logs.metadata.total}"
             await self._create_daily_info(daily_info, False, message)
             raise CashInOutMissingException(message, logger)
-        if cash_in_out_logs.data.count != 0:
+        if len(cash_in_out_logs.data) != 0:
             if cash_in_out_logs.data[0].generate_date_time != cash_log_datetime:
                 message = f"Missing cash in/out logs. Expected datetime->{cash_log_datetime}, Actual datetime->{cash_in_out_logs.data[0].generate_date_time}"
                 await self._create_daily_info(daily_info, False, message)
@@ -537,7 +598,7 @@ class ReportService:
             )
             await self._create_daily_info(daily_info, False, message)
             raise TransactionMissingException(message, logger)
-        if tran_logs.data.count != 0:
+        if len(tran_logs.data) != 0:
             if tran_logs.data[0].transaction_no != tran_log_no:
                 message = f"Missing transaction logs. Expected transaction no->{tran_log_no}, Actual transaction no->{tran_logs.data[0].transaction_no}"
                 await self._create_daily_info(daily_info, False, message)
@@ -636,7 +697,7 @@ class ReportService:
                 "receiptNo": 0,  # Reports don't have receipt numbers
                 "amount": 0.0,  # Will be set from report data if available
                 "quantity": 0,  # Will be set from report data if available
-                "staffId": requesting_staff_id or "SYSTEM",  # Default to SYSTEM when no staff
+                "staffId": requesting_staff_id or "SYSTEM",  # Default to SYSTEM for reports
                 "userId": None,  # Set to None as requested
                 "journalText": journal_text,
                 "receiptText": receipt_text,
