@@ -4,6 +4,21 @@
             "module": "app.services.plugins.sales_report_maker",
             "class": "SalesReportMaker",
             "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
+        },
+        "category": {
+            "module": "app.services.plugins.category_report_maker",
+            "class": "CategoryReportMaker",
+            "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
+        },
+        "item": {
+            "module": "app.services.plugins.item_report_maker",
+            "class": "ItemReportMaker",
+            "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
+        },
+        "payment": {
+            "module": "app.services.plugins.payment_report_maker",
+            "class": "PaymentReportMaker",
+            "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
         }
     }
-} 
+}
