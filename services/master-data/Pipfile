@@ -15,8 +15,6 @@ pytest = "*"
 pytest-asyncio = "*"
 python-jose = {extras=["cryptography"], version = "*"}
 kugel_common = {file = "commons/dist/kugel_common-0.1.33-py3-none-any.whl"}
-grpcio = ">=1.60.0"
-grpcio-tools = ">=1.60.0"
 httpx = "*"
 pydantic-xml = {extras = ["lxml"], version = "*"}
 lxml = "*"

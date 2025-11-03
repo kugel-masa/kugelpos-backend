@@ -3,6 +3,8 @@ from logging import getLogger
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.api.common.schemas import *
 from app.models.documents.sales_report_document import SalesReportDocument
+from app.models.documents.category_report_document import CategoryReportDocument
+from app.models.documents.item_report_document import ItemReportDocument
 
 logger = getLogger(__name__)
 
@@ -63,6 +65,8 @@ class SchemasTransformer:
             store_code=report_doc.store_code,
             terminal_no=report_doc.terminal_no,
             business_date=report_doc.business_date,
+            business_date_from=report_doc.business_date_from,
+            business_date_to=report_doc.business_date_to,
             open_counter=report_doc.open_counter,
             business_counter=report_doc.business_counter,
             # Transform gross sales metrics (total sales before returns/discounts)
@@ -123,6 +127,115 @@ class SchemasTransformer:
                 ),
             ),
             # Include formatted receipt and journal text for printing/display
+            receipt_text=report_doc.receipt_text,
+            journal_text=report_doc.journal_text,
+        )
+
+    def transform_category_report_response(self, report_doc: CategoryReportDocument) -> BaseCategoryReportResponse:
+        """
+        Transform a category report document into a category report response schema.
+
+        This method converts a category report document into the API response format,
+        including all category-wise sales metrics and totals.
+
+        Args:
+            report_doc: The category report document to transform
+
+        Returns:
+            BaseCategoryReportResponse: API response with all category report data
+        """
+        return BaseCategoryReportResponse(
+            tenant_id=report_doc.tenant_id,
+            store_code=report_doc.store_code,
+            terminal_no=report_doc.terminal_no,
+            business_date=report_doc.business_date,
+            business_date_from=report_doc.business_date_from,
+            business_date_to=report_doc.business_date_to,
+            open_counter=report_doc.open_counter,
+            business_counter=report_doc.business_counter,
+            # Transform category items
+            categories=[
+                CategoryReportItem(
+                    category_code=cat.category_code,
+                    category_name=cat.category_name,
+                    gross_amount=cat.gross_amount,
+                    discount_amount=cat.discount_amount,
+                    net_amount=cat.net_amount,
+                    quantity=cat.quantity,
+                    discount_quantity=cat.discount_quantity,
+                    transaction_count=cat.transaction_count
+                )
+                for cat in report_doc.categories
+            ],
+            # Include totals
+            total_gross_amount=report_doc.total_gross_amount,
+            total_discount_amount=report_doc.total_discount_amount,
+            total_net_amount=report_doc.total_net_amount,
+            total_quantity=report_doc.total_quantity,
+            total_discount_quantity=report_doc.total_discount_quantity,
+            total_transaction_count=report_doc.total_transaction_count,
+            # Include formatted text
+            receipt_text=report_doc.receipt_text,
+            journal_text=report_doc.journal_text,
+        )
+
+    def transform_item_report_response(self, report_doc: ItemReportDocument) -> BaseItemReportResponse:
+        """
+        Transform an item report document into an item report response schema.
+
+        This method converts an item report document into the API response format,
+        including all item-wise sales metrics grouped by categories and totals.
+
+        Args:
+            report_doc: The item report document to transform
+
+        Returns:
+            BaseItemReportResponse: API response with all item report data
+        """
+        return BaseItemReportResponse(
+            tenant_id=report_doc.tenant_id,
+            store_code=report_doc.store_code,
+            terminal_no=report_doc.terminal_no,
+            business_date=report_doc.business_date,
+            business_date_from=report_doc.business_date_from,
+            business_date_to=report_doc.business_date_to,
+            open_counter=report_doc.open_counter,
+            business_counter=report_doc.business_counter,
+            # Transform categories with items
+            categories=[
+                CategoryWithItems(
+                    category_code=cat.category_code,
+                    category_name=cat.category_name,
+                    items=[
+                        ItemReportItem(
+                            item_code=item.item_code,
+                            item_name=item.item_name,
+                            gross_amount=item.gross_amount,
+                            discount_amount=item.discount_amount,
+                            net_amount=item.net_amount,
+                            quantity=item.quantity,
+                            discount_quantity=item.discount_quantity,
+                            transaction_count=item.transaction_count
+                        )
+                        for item in cat.items
+                    ],
+                    category_total_gross_amount=cat.category_total_gross_amount,
+                    category_total_discount_amount=cat.category_total_discount_amount,
+                    category_total_net_amount=cat.category_total_net_amount,
+                    category_total_quantity=cat.category_total_quantity,
+                    category_total_discount_quantity=cat.category_total_discount_quantity,
+                    category_total_transaction_count=cat.category_total_transaction_count
+                )
+                for cat in report_doc.categories
+            ],
+            # Include totals
+            total_gross_amount=report_doc.total_gross_amount,
+            total_discount_amount=report_doc.total_discount_amount,
+            total_net_amount=report_doc.total_net_amount,
+            total_quantity=report_doc.total_quantity,
+            total_discount_quantity=report_doc.total_discount_quantity,
+            total_transaction_count=report_doc.total_transaction_count,
+            # Include formatted text
             receipt_text=report_doc.receipt_text,
             journal_text=report_doc.journal_text,
         )

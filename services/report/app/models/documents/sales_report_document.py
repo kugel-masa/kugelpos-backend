@@ -31,6 +31,7 @@ class TaxReportTemplate(BaseDocumentModel):
     tax_amount: float  # Total tax amount
     target_amount: float  # Amount subject to this tax
     target_quantity: int  # Quantity of items subject to this tax
+    tax_type: Optional[str] = None  # Type of tax (External, Internal, Exempt)
 
 
 class PaymentReportTemplate(BaseDocumentModel):
@@ -88,7 +89,9 @@ class SalesReportDocument(AbstractDocument):
     store_name: str  # Name of the store
     terminal_no: Optional[int] = None  # Terminal number (None for store-level reports)
     business_counter: Optional[int] = None  # Business counter for the day
-    business_date: str  # Date for which the report is generated
+    business_date: Optional[str] = None  # Date for which the report is generated (None for date range)
+    business_date_from: Optional[str] = None  # Start date for date range reports
+    business_date_to: Optional[str] = None  # End date for date range reports
     open_counter: Optional[int] = None  # Counter for terminal open/close cycles
     report_scope: str  # Scope of the report (e.g., 'flash', 'daily')
     report_type: str  # Type of report (e.g., 'sales')

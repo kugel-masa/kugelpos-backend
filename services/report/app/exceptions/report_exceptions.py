@@ -329,3 +329,35 @@ class ExternalServiceException(ServiceException):
             ReportErrorMessage.get_message(ReportErrorCode.EXTERNAL_SERVICE_ERROR),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+class CategoryMasterDataNotFoundException(ServiceException):
+    """
+    カテゴリーマスタデータの取得に失敗した場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            ReportErrorCode.EXTERNAL_SERVICE_ERROR,
+            ReportErrorMessage.get_message(ReportErrorCode.EXTERNAL_SERVICE_ERROR),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+class ItemMasterDataNotFoundException(ServiceException):
+    """
+    商品マスタデータの取得に失敗した場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            ReportErrorCode.EXTERNAL_SERVICE_ERROR,
+            ReportErrorMessage.get_message(ReportErrorCode.EXTERNAL_SERVICE_ERROR),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

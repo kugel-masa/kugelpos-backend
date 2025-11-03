@@ -189,6 +189,43 @@ pipenv update
 ./scripts/rebuild_pipenv.sh
 ```
 
+### After Making Code Changes: Build and Test Procedure
+
+When you've made code changes (especially to commons library or report service), follow these steps to build, test, and verify:
+
+```bash
+# 1. Build commons library and distribute to all services (without version increment)
+./scripts/update_common_and_rebuild.sh
+
+# 2. Rebuild Docker images for affected services
+./scripts/build.sh report          # For specific service
+# OR
+./scripts/build.sh                 # For all services
+# Optional flags:
+#   --no-cache   : Build without using cache
+#   --parallel   : Build in parallel
+
+# 3. Stop all running services
+./scripts/stop.sh
+
+# 4. Start all services with health check
+./scripts/start.sh
+
+# 5. Verify services are running (from services directory)
+cd services
+docker-compose logs -f report      # Check specific service logs
+
+# 6. Run tests to verify changes
+cd report
+./run_all_tests.sh                 # Run all tests for the service
+```
+
+**Important Notes:**
+- **DO NOT** use `--increment-version` flag with `update_common_and_rebuild.sh` unless you're making actual changes to the commons library code
+- Always verify service health after restart before running tests
+- If porting fixes from private repository, maintain the commons version from the public repository
+- The build process uses the `commons/dist/` wheel files referenced in each service's Pipfile
+
 ### Code Quality
 
 ```bash
