@@ -121,10 +121,14 @@ async def test_return_transaction_basic(set_env_vars):
         page=1
     )
 
-    # Verify sales calculations
-    assert report.sales_gross.amount == 1000, f"Expected sales gross 1000, got {report.sales_gross.amount}"
+    # Verify sales calculations (Issue #85: now uses tax-inclusive amounts)
+    # Sales gross: 1100 (tax-inclusive)
+    # Returns: 550 (tax-inclusive)
+    # Net tax: 100 - 50 = 50
+    # Sales net: 1100 - 550 - 0 - 0 - 50 = 500
+    assert report.sales_gross.amount == 1100, f"Expected sales gross 1100, got {report.sales_gross.amount}"
     assert report.sales_net.amount == 500, f"Expected sales net 500, got {report.sales_net.amount}"
-    assert report.returns.amount == 500, f"Expected returns 500, got {report.returns.amount}"
+    assert report.returns.amount == 550, f"Expected returns 550, got {report.returns.amount}"
 
     # Verify payment
     cash_payment = next((p for p in report.payments if p.payment_name == "Cash"), None)
@@ -250,9 +254,13 @@ async def test_return_exceeds_sales(set_env_vars):
         page=1
     )
 
-    # Verify negative net sales
+    # Verify negative net sales (Issue #85: now uses tax-inclusive amounts)
+    # Sales gross: 1100 (tax-inclusive)
+    # Returns: 1650 (tax-inclusive)
+    # Net tax: 100 - 150 = -50
+    # Sales net: 1100 - 1650 - 0 - 0 - (-50) = -500
     assert report.sales_net.amount == -500, f"Expected sales net -500, got {report.sales_net.amount}"
-    assert report.returns.amount == 1500, f"Expected returns 1500, got {report.returns.amount}"
+    assert report.returns.amount == 1650, f"Expected returns 1650, got {report.returns.amount}"
 
     # Verify payment (1100 - 1650 = -550)
     cash_payment = next((p for p in report.payments if p.payment_name == "Cash"), None)
@@ -424,9 +432,13 @@ async def test_multiple_returns_same_day(set_env_vars):
         page=1
     )
 
-    # Verify aggregation
-    assert report.sales_gross.amount == 3000, f"Expected sales gross 3000, got {report.sales_gross.amount}"
-    assert report.returns.amount == 800, f"Expected returns 800, got {report.returns.amount}"
+    # Verify aggregation (Issue #85: now uses tax-inclusive amounts)
+    # Sales gross: 1100 + 2200 = 3300 (tax-inclusive)
+    # Returns: 330 + 550 = 880 (tax-inclusive)
+    # Net tax: (100 + 200) - (30 + 50) = 220
+    # Sales net: 3300 - 880 - 0 - 0 - 220 = 2200
+    assert report.sales_gross.amount == 3300, f"Expected sales gross 3300, got {report.sales_gross.amount}"
+    assert report.returns.amount == 880, f"Expected returns 880, got {report.returns.amount}"
     assert report.sales_net.amount == 2200, f"Expected sales net 2200, got {report.sales_net.amount}"
 
     # Verify payment (1100 + 2200 - 330 - 550 = 2420)

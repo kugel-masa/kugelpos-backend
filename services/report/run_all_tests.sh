@@ -13,6 +13,8 @@ test_files=(
     "tests/test_payment_report_all.py"
     "tests/test_flash_date_range_validation.py"
     "tests/test_critical_issue_78.py"  # Issue #78 critical bug verification
+    "tests/test_sales_report_formula_external_tax.py"  # Issue #85: External tax formula verification
+    "tests/test_sales_report_formula_internal_tax.py"  # Issue #85: Internal tax formula verification
     "tests/test_comprehensive_aggregation.py"  # Comprehensive aggregation tests
     "tests/test_data_integrity.py"  # Data integrity tests
     "tests/test_return_transactions.py"  # Return transaction tests

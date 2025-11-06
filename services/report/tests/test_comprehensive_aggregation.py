@@ -281,11 +281,11 @@ async def test_return_transactions_aggregation(set_env_vars):
     payments = report.payments
     taxes = report.taxes
 
-    # Net sales: 1000 - 500 = 500
+    # Net sales: 1100 (gross) - 550 (returns) - 0 (discount) - 0 (discount) - 50 (net_tax) = 500
     assert sales_net.amount == 500, f"Expected sales net 500, got {sales_net.amount}"
 
-    # Returns: 500 (stored as positive value, factored during aggregation)
-    assert returns.amount == 500, f"Expected returns 500, got {returns.amount}"
+    # Returns: 550 (tax-inclusive, Issue #85: changed from tax-exclusive)
+    assert returns.amount == 550, f"Expected returns 550, got {returns.amount}"
 
     # Payment: 1100 - 550 = 550
     # Note: Sales report uses payment_name, not payment_code

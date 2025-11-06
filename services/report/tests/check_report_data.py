@@ -40,9 +40,12 @@ def check_report_data(report_data: dict):
     print(f"*** Payment Total Amount : {payment_amount}")
 
     # verify sales report data
+    # Issue #85: New formula - 純売上 = 総売上 - 返品 - 値引 - 税額
+    # Calculate net tax (sales tax - returns tax)
+    # Note: In the report, tax_amount already represents the net tax (sales tax - returns tax)
     assert (
-        sales_gross_amount
-        == sales_net_amount + returns_amount + discount_for_lineItems_amount + discount_for_subtotal_amount
+        sales_net_amount
+        == sales_gross_amount - returns_amount - discount_for_lineItems_amount - discount_for_subtotal_amount - tax_amount
     )
     # Payment amount verification (handles both sales and returns)
     # For returns: payment = returns + tax
