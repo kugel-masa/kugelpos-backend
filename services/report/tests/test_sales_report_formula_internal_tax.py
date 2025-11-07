@@ -116,7 +116,7 @@ async def test_internal_tax_with_discount_and_return(set_env_vars):
             "total_quantity": 1,
             "total_amount": 3000.0,  # For internal tax: this is tax-inclusive
             "total_amount_with_tax": 3000.0,  # Same as total_amount for internal tax
-            "tax_amount": 273.0,
+            "tax_amount": 0.0,  # Internal tax is stored in taxes array, not here (Cart service spec)
             "total_discount_amount": 500.0,
             "change_amount": 0.0,
             "is_cancelled": False
@@ -175,7 +175,7 @@ async def test_internal_tax_with_discount_and_return(set_env_vars):
             "total_quantity": 1,
             "total_amount": 3000.0,
             "total_amount_with_tax": 3000.0,
-            "tax_amount": 273.0,
+            "tax_amount": 0.0,  # Internal tax is stored in taxes array, not here (Cart service spec)
             "total_discount_amount": 500.0,
             "change_amount": 0.0,
             "is_cancelled": False

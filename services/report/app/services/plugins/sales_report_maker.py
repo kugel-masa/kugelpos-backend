@@ -405,7 +405,8 @@ class SalesReportMaker(IReportPlugin):
             # Use $first to get parent-level fields only once per transaction
             "total_amount": {"$first": "$sales.total_amount"},
             "total_amount_with_tax": {"$first": "$sales.total_amount_with_tax"},
-            "total_tax_amount": {"$first": "$sales.tax_amount"},
+            # Store sales.tax_amount temporarily (we'll recalculate from taxes array later)
+            "sales_tax_amount": {"$first": "$sales.tax_amount"},
             "total_quantity": {"$first": "$sales.total_quantity"},
             "total_change_amount": {"$first": "$sales.change_amount"},
             "total_discount_amount": {"$first": "$sales.total_discount_amount"},
@@ -439,7 +440,19 @@ class SalesReportMaker(IReportPlugin):
             # Sum parent fields (now each transaction counted once)
             "total_amount": {"$sum": "$total_amount"},
             "total_amount_with_tax": {"$sum": "$total_amount_with_tax"},
-            "total_tax_amount": {"$sum": "$total_tax_amount"},
+            # ISSUE #90 FIX: Calculate total_tax_amount from taxes array (includes all tax types)
+            # We sum the tax amounts from each transaction's taxes array
+            # This correctly includes external + internal + exempt taxes
+            # Use $reduce to sum the tax_amount values within each taxes array
+            "total_tax_amount": {
+                "$sum": {
+                    "$reduce": {
+                        "input": {"$ifNull": ["$taxes", []]},
+                        "initialValue": 0,
+                        "in": {"$add": ["$$value", {"$ifNull": ["$$this.tax_amount", 0]}]}
+                    }
+                }
+            },
             "total_quantity": {"$sum": "$total_quantity"},
             "total_change_amount": {"$sum": "$total_change_amount"},
             "total_discount_amount": {"$sum": "$total_discount_amount"},
@@ -880,7 +893,10 @@ class SalesReportMaker(IReportPlugin):
         Calculate net tax amount (sales tax - returns tax)
 
         Formula: 税額 = 売上の税額 - 返品の税額
-        This works for both external tax (外税) and internal tax (内税).
+
+        ISSUE #90 FIX: Now correctly includes ALL tax types (external + internal + exempt)
+        Previously only included external tax due to using sales.tax_amount field.
+        Now uses total_tax_amount calculated from taxes array in aggregation pipeline.
 
         Args:
             results: Sales report retrieval results
