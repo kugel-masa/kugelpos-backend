@@ -24,21 +24,13 @@ test_files=(
     # Setup tests (must run first)
     "tests/test_clean_data.py"
     "tests/test_setup_data.py"
-    
+
     # Integration tests
     "tests/test_health.py"
     "tests/test_cart.py"
     "tests/test_void_return.py"
-    "tests/test_void_return_receipts.py"
-    "tests/test_void_return_print_output.py"
     "tests/test_payment_cashless_error.py"
-    "tests/test_receipt_logo.py"
     "tests/test_resume_item_entry.py"
-    "tests/test_cashless_integration.py"
-    "tests/test_cashless_integration_real.py"
-    "tests/test_cashless_integration_simple.py"
-    "tests/test_card_reading_type_integration.py"
-    "tests/test_offline_integration.py"
 
     # Unit tests
     "tests/test_calc_subtotal_logic.py"

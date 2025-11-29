@@ -35,10 +35,9 @@ echo -e "${BLUE}       Running all tests for microservices (${TOTAL_SERVICES} se
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo ""
 
-# Set required environment variables for testing
-echo -e "${YELLOW}Setting required environment variables for testing...${NC}"
-export SECRET_KEY="test-secret-key-123456789"
-export PUBSUB_NOTIFY_API_KEY="test-api-key-123456789"
+# Note: Do not set SECRET_KEY or PUBSUB_NOTIFY_API_KEY here
+# Each service uses its own configuration from docker-compose.yaml
+# Setting these variables globally would break JWT authentication between services
 
 # Check and create .env.test file if needed
 echo -e "${YELLOW}Checking .env.test file...${NC}"
@@ -97,8 +96,8 @@ for service in "${MICROSERVICES[@]}"; do
     
     cd "$PROJECT_ROOT/services/$service"
     
-    # Run tests and capture output with environment variables
-    if SECRET_KEY="$SECRET_KEY" PUBSUB_NOTIFY_API_KEY="$PUBSUB_NOTIFY_API_KEY" ./run_all_tests.sh > test_output.log 2>&1; then
+    # Run tests and capture output
+    if ./run_all_tests.sh > test_output.log 2>&1; then
         echo -e "${GREEN}✓ ${service} - All tests PASSED${NC}"
         PASSED_SERVICES+=("$service")
         
