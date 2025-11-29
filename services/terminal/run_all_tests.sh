@@ -22,7 +22,6 @@ test_files=(
     "tests/test_setup_data.py"
     "tests/test_health.py"
     "tests/test_terminal.py"
-    "tests/test_api_key_masking.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

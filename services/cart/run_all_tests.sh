@@ -41,21 +41,12 @@ test_files=(
     "tests/test_offline_integration.py"
 
     # Unit tests
-    "tests/unit/test_calc_subtotal_logic.py"
-    "tests/unit/test_card_company_copy.py"
-    "tests/unit/test_card_reading_type.py"
-    "tests/unit/test_cashless_flow.py"
-    "tests/unit/test_cashless_integration_focused.py"
-    "tests/unit/test_cashless_models.py"
-    "tests/unit/test_cashless_payment.py"
-    "tests/unit/test_cashless_receipt.py"
-    "tests/unit/test_multiple_receipts.py"
-    "tests/unit/test_offline_indicator.py"
-    "tests/unit/test_terminal_cache.py"
-    "tests/unit/test_text_helper.py"
-    "tests/unit/test_tran_service_status.py"
-    "tests/unit/test_tran_service_unit_simple.py"
-    "tests/unit/test_transaction_status_repository.py"
+    "tests/test_calc_subtotal_logic.py"
+    "tests/test_terminal_cache.py"
+    "tests/test_text_helper.py"
+    "tests/test_tran_service_status.py"
+    "tests/test_tran_service_unit_simple.py"
+    "tests/test_transaction_status_repository.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

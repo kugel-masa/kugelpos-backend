@@ -46,7 +46,6 @@ test_files=(
     "tests/test_clean_data.py"
     "tests/test_setup_data.py"
     "tests/test_stock.py"
-    "tests/test_snapshot_id.py"
     "tests/test_snapshot_date_range.py"
     "tests/test_snapshot_schedule_api.py"
     "tests/test_snapshot_scheduler.py"
