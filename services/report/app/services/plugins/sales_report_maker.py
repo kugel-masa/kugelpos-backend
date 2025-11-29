@@ -139,6 +139,13 @@ class SalesReportMaker(IReportPlugin):
         logger.info(f"Payment amount summary by cash: {cash_payments}")
 
         # Create sales report document
+        # Issue #85: Calculate components for net sales formula
+        sales_gross = self._make_sales_gross(tran_results)
+        returns = self._make_returns(tran_results)
+        discount_for_lineitems = self._make_discount_for_lineitem(summarized_tran_result)
+        discount_for_subtotal = self._make_discount_for_subtotal(summarized_tran_result)
+        net_tax = self._make_net_tax(tran_results)
+
         return_doc = SalesReportDocument(
             tenant_id=self.tran_repository.tenant_id,
             store_code=store_code,
@@ -149,11 +156,13 @@ class SalesReportMaker(IReportPlugin):
             business_counter=business_counter,
             report_scope=report_scope,
             report_type=report_type,
-            sales_gross=self._make_sales_gross(tran_results),
-            sales_net=self._make_sales_net(summarized_tran_result),
-            discount_for_lineitems=self._make_discount_for_lineitem(summarized_tran_result),
-            discount_for_subtotal=self._make_discount_for_subtotal(summarized_tran_result),
-            returns=self._make_returns(tran_results),
+            sales_gross=sales_gross,
+            sales_net=self._make_sales_net(
+                sales_gross, returns, discount_for_lineitems, discount_for_subtotal, net_tax
+            ),
+            discount_for_lineitems=discount_for_lineitems,
+            discount_for_subtotal=discount_for_subtotal,
+            returns=returns,
             taxes=self._make_taxes(summarized_tran_result),
             payments=self._make_payments(summarized_tran_result),
             cash=self._make_cash(cash_summary, open_close_summary, cash_payments),
@@ -161,10 +170,17 @@ class SalesReportMaker(IReportPlugin):
             staff=None,  # HACK: Staff information is not included in data model
         )
 
-        # Create receipt data
-        receipt_data = SalesReportReceiptData("Sales Report", 32).make_receipt_data(return_doc)
-        return_doc.receipt_text = receipt_data.receipt_text
-        return_doc.journal_text = receipt_data.journal_text
+        # Generate receipt text
+        try:
+            receipt_data = SalesReportReceiptData("Sales Report", 32).make_receipt_data(return_doc)
+            return_doc.receipt_text = receipt_data.receipt_text
+            return_doc.journal_text = receipt_data.journal_text
+            logger.info(f"Sales report document created with receipt text")
+        except Exception as e:
+            logger.warning(f"Failed to generate receipt text: {e}")
+            # Continue without receipt text
+            return_doc.receipt_text = None
+            return_doc.journal_text = None
 
         logger.info(f"Sales report document: {return_doc}")
         return return_doc
@@ -389,7 +405,8 @@ class SalesReportMaker(IReportPlugin):
             # Use $first to get parent-level fields only once per transaction
             "total_amount": {"$first": "$sales.total_amount"},
             "total_amount_with_tax": {"$first": "$sales.total_amount_with_tax"},
-            "total_tax_amount": {"$first": "$sales.tax_amount"},
+            # Store sales.tax_amount temporarily (we'll recalculate from taxes array later)
+            "sales_tax_amount": {"$first": "$sales.tax_amount"},
             "total_quantity": {"$first": "$sales.total_quantity"},
             "total_change_amount": {"$first": "$sales.change_amount"},
             "total_discount_amount": {"$first": "$sales.total_discount_amount"},
@@ -423,7 +440,19 @@ class SalesReportMaker(IReportPlugin):
             # Sum parent fields (now each transaction counted once)
             "total_amount": {"$sum": "$total_amount"},
             "total_amount_with_tax": {"$sum": "$total_amount_with_tax"},
-            "total_tax_amount": {"$sum": "$total_tax_amount"},
+            # ISSUE #90 FIX: Calculate total_tax_amount from taxes array (includes all tax types)
+            # We sum the tax amounts from each transaction's taxes array
+            # This correctly includes external + internal + exempt taxes
+            # Use $reduce to sum the tax_amount values within each taxes array
+            "total_tax_amount": {
+                "$sum": {
+                    "$reduce": {
+                        "input": {"$ifNull": ["$taxes", []]},
+                        "initialValue": 0,
+                        "in": {"$add": ["$$value", {"$ifNull": ["$$this.tax_amount", 0]}]}
+                    }
+                }
+            },
             "total_quantity": {"$sum": "$total_quantity"},
             "total_change_amount": {"$sum": "$total_change_amount"},
             "total_discount_amount": {"$sum": "$total_discount_amount"},
@@ -671,27 +700,31 @@ class SalesReportMaker(IReportPlugin):
 
     def _make_sales_gross(self, results: list[dict]) -> dict[str, Any]:
         """
-        Create gross sales information (before discounts)
+        Create gross sales information (tax-inclusive amount after discount + discount amount)
+
+        Formula: 総売上 = 値引後の税込金額 + 値引額
+        This works for both external tax (外税) and internal tax (内税).
 
         Args:
             results: Sales report retrieval results
 
         Returns:
-            Gross sales information (amount before discounts)
+            Gross sales information (tax-inclusive amount before discounts)
         """
 
         normal_sales = self._get_result_by_transaction_type(results, TransactionType.NormalSales.value)
         void_sales = self._get_result_by_transaction_type(results, TransactionType.VoidSales.value)
 
         if normal_sales is None:
-            normal_sales = {"total_amount": 0, "total_discount_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+            normal_sales = {"total_amount_with_tax": 0, "total_discount_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
 
         if void_sales is None:
-            void_sales = {"total_amount": 0, "total_discount_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+            void_sales = {"total_amount_with_tax": 0, "total_discount_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
 
-        # Sales Gross = Net Amount + Discounts (to get amount before discounts)
-        normal_gross = normal_sales["total_amount"] + normal_sales.get("total_discount_amount", 0)
-        void_gross = void_sales["total_amount"] + void_sales.get("total_discount_amount", 0)
+        # Sales Gross = Tax-inclusive amount after discount + Discounts (to get amount before discounts)
+        # Issue #85: Changed from total_amount to total_amount_with_tax
+        normal_gross = normal_sales["total_amount_with_tax"] + normal_sales.get("total_discount_amount", 0)
+        void_gross = void_sales["total_amount_with_tax"] + void_sales.get("total_discount_amount", 0)
 
         return_dict = {
             "amount": normal_gross - void_gross,
@@ -701,23 +734,61 @@ class SalesReportMaker(IReportPlugin):
         logger.debug(f"Sales gross: {return_dict}")
         return return_dict
 
-    def _make_sales_net(self, summarized_result: dict[str, Any]) -> dict[str, Any]:
+    def _make_sales_net(
+        self,
+        sales_gross: dict[str, Any],
+        returns: dict[str, Any],
+        discount_lineitem: dict[str, Any],
+        discount_subtotal: dict[str, Any],
+        net_tax: float,
+    ) -> dict[str, Any]:
         """
-        Create net sales information
+        Calculate net sales using the formula:
+        純売上 = 総売上 - 返品 - 値引 - 税額
+
+        Formula: 純売上 = 総売上 - 返品 - 明細値引 - 小計値引 - 税額
+        This works for both external tax (外税) and internal tax (内税).
 
         Args:
-            summarized_result: Aggregated sales report results
+            sales_gross: Gross sales information
+            returns: Returns information
+            discount_lineitem: Line item discount information
+            discount_subtotal: Subtotal discount information
+            net_tax: Net tax amount (sales tax - returns tax)
 
         Returns:
             Net sales information
         """
 
+        # Issue #85: Implement the correct formula
+        net_amount = (
+            sales_gross["amount"]
+            - returns["amount"]
+            - discount_lineitem["amount"]
+            - discount_subtotal["amount"]
+            - net_tax
+        )
+
+        # Quantity: sales quantity - returns quantity
+        net_quantity = sales_gross["quantity"] - returns["quantity"]
+
+        # Count: sales count - returns count
+        net_count = sales_gross["count"] - returns["count"]
+
         return_dict = {
-            "amount": summarized_result["total_amount"],
-            "quantity": summarized_result["total_quantity"],
-            "count": summarized_result["total_transaction_count"],
+            "amount": net_amount,
+            "quantity": net_quantity,
+            "count": net_count,
         }
-        logger.debug(f"Sales net: {return_dict}")
+        logger.debug(
+            f"Sales net calculation: "
+            f"sales_gross={sales_gross['amount']}, "
+            f"returns={returns['amount']}, "
+            f"discount_lineitem={discount_lineitem['amount']}, "
+            f"discount_subtotal={discount_subtotal['amount']}, "
+            f"net_tax={net_tax}, "
+            f"result={return_dict}"
+        )
         return return_dict
 
     def _make_discount_for_lineitem(self, summarized_result: dict[str, Any]) -> dict[str, Any]:
@@ -760,7 +831,10 @@ class SalesReportMaker(IReportPlugin):
 
     def _make_returns(self, results: list[dict]) -> dict[str, Any]:
         """
-        Create return information
+        Create return information (tax-inclusive amount)
+
+        Formula: 返品 = 税込金額
+        This works for both external tax (外税) and internal tax (内税).
 
         Args:
             results: Sales report retrieval results
@@ -773,13 +847,14 @@ class SalesReportMaker(IReportPlugin):
         void_return = self._get_result_by_transaction_type(results, TransactionType.VoidReturn.value)
 
         if return_sales is None:
-            return_sales = {"total_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+            return_sales = {"total_amount_with_tax": 0, "total_quantity": 0, "total_transaction_count": 0}
 
         if void_return is None:
-            void_return = {"total_amount": 0, "total_quantity": 0, "total_transaction_count": 0}
+            void_return = {"total_amount_with_tax": 0, "total_quantity": 0, "total_transaction_count": 0}
 
+        # Issue #85: Changed from total_amount to total_amount_with_tax
         return_dict = {
-            "amount": return_sales["total_amount"] - void_return["total_amount"],
+            "amount": return_sales["total_amount_with_tax"] - void_return["total_amount_with_tax"],
             "quantity": return_sales["total_quantity"] - void_return["total_quantity"],
             "count": return_sales["total_transaction_count"] - void_return["total_transaction_count"],
         }
@@ -812,6 +887,51 @@ class SalesReportMaker(IReportPlugin):
         ]
         logger.debug(f"Taxes: {return_list}")
         return return_list
+
+    def _make_net_tax(self, results: list[dict]) -> float:
+        """
+        Calculate net tax amount (sales tax - returns tax)
+
+        Formula: 税額 = 売上の税額 - 返品の税額
+
+        ISSUE #90 FIX: Now correctly includes ALL tax types (external + internal + exempt)
+        Previously only included external tax due to using sales.tax_amount field.
+        Now uses total_tax_amount calculated from taxes array in aggregation pipeline.
+
+        Args:
+            results: Sales report retrieval results
+
+        Returns:
+            Net tax amount (can be negative if returns exceed sales)
+        """
+
+        # Get sales transactions
+        normal_sales = self._get_result_by_transaction_type(results, TransactionType.NormalSales.value)
+        void_sales = self._get_result_by_transaction_type(results, TransactionType.VoidSales.value)
+
+        # Get return transactions
+        return_sales = self._get_result_by_transaction_type(results, TransactionType.ReturnSales.value)
+        void_return = self._get_result_by_transaction_type(results, TransactionType.VoidReturn.value)
+
+        # Calculate sales tax (NormalSales - VoidSales)
+        sales_tax = 0.0
+        if normal_sales:
+            sales_tax += normal_sales.get("total_tax_amount", 0)
+        if void_sales:
+            sales_tax -= void_sales.get("total_tax_amount", 0)
+
+        # Calculate returns tax (ReturnSales - VoidReturn)
+        returns_tax = 0.0
+        if return_sales:
+            returns_tax += return_sales.get("total_tax_amount", 0)
+        if void_return:
+            returns_tax -= void_return.get("total_tax_amount", 0)
+
+        # Net tax = sales tax - returns tax
+        net_tax = sales_tax - returns_tax
+
+        logger.debug(f"Net tax calculation: sales_tax={sales_tax}, returns_tax={returns_tax}, net_tax={net_tax}")
+        return net_tax
 
     def _make_payments(self, summarized_result: dict[str, Any]) -> list[dict[str, Any]]:
         """

@@ -6,7 +6,7 @@
 services:
   account:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_account
       - DISABLE_API_KEY_MASKING=True
     depends_on:
@@ -15,7 +15,7 @@ services:
 
   terminal:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_terminal
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
       - BASE_URL_CART=http://cart:8000/api/v1
@@ -30,7 +30,7 @@ services:
 
   master-data:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_master
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - DISABLE_API_KEY_MASKING=True
@@ -40,7 +40,7 @@ services:
 
   cart:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_cart
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
@@ -52,7 +52,7 @@ services:
 
   report:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_report
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
@@ -65,7 +65,7 @@ services:
 
   journal:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_journal
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_CART=http://cart:8000/api/v1
@@ -76,7 +76,7 @@ services:
 
   stock:
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_stock
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1

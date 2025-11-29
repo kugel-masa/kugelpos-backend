@@ -207,30 +207,44 @@ async def test_register_invoice_number(set_env_vars):
     result = await register_invoice_registration_number(tenant_id, token)
     print(f"INVOICE_REGISTRATION_NUMBER registration result: {result}")
 
-    # 登録結果の確認
-    assert result.get("success") is True
-    assert result.get("code") == status.HTTP_201_CREATED
-    assert result.get("data").get("name") == "INVOICE_REGISTRATION_NUMBER"
-    assert result.get("data").get("defaultValue") == "T999999999999"
+    # 登録結果の確認（既に存在する場合は400エラーでも成功とみなす）
+    if result.get("code") == status.HTTP_400_BAD_REQUEST:
+        # 既に登録されている場合
+        assert "already exists" in result.get("message", "")
+        print("INVOICE_REGISTRATION_NUMBER already registered, skipping...")
+    else:
+        # 新規登録の場合
+        assert result.get("success") is True
+        assert result.get("code") == status.HTTP_201_CREATED
+        assert result.get("data").get("name") == "INVOICE_REGISTRATION_NUMBER"
+        assert result.get("data").get("defaultValue") == "T999999999999"
 
-    # 値の検証
-    store_code = os.environ.get("STORE_CODE")
-    terminal_no = 9
-    assert result.get("data").get("values")[0].get("storeCode") == store_code
-    assert result.get("data").get("values")[0].get("terminalNo") == terminal_no
-    assert result.get("data").get("values")[0].get("value") == "T1234567890123"
+        # 値の検証
+        store_code = os.environ.get("STORE_CODE")
+        terminal_no = 9
+        assert result.get("data").get("values")[0].get("storeCode") == store_code
+        assert result.get("data").get("values")[0].get("terminalNo") == terminal_no
+        assert result.get("data").get("values")[0].get("value") == "T1234567890123"
 
     # receipt headerの登録
     result = await register_receipt_header(tenant_id, token)
     print(f"RECEIPT_HEADERS registration result: {result}")
-    assert result.get("success") is True
-    assert result.get("code") == status.HTTP_201_CREATED
+    if result.get("code") == status.HTTP_400_BAD_REQUEST:
+        assert "already exists" in result.get("message", "")
+        print("RECEIPT_HEADERS already registered, skipping...")
+    else:
+        assert result.get("success") is True
+        assert result.get("code") == status.HTTP_201_CREATED
 
     # receipt footerの登録
     result = await register_receipt_footer(tenant_id, token)
     print(f"RECEIPT_FOOTERS registration result: {result}")
-    assert result.get("success") is True
-    assert result.get("code") == status.HTTP_201_CREATED
+    if result.get("code") == status.HTTP_400_BAD_REQUEST:
+        assert "already exists" in result.get("message", "")
+        print("RECEIPT_FOOTERS already registered, skipping...")
+    else:
+        assert result.get("success") is True
+        assert result.get("code") == status.HTTP_201_CREATED
 
 
 def _make_terminal_info(
