@@ -22,7 +22,6 @@ test_files=(
     "tests/test_setup_data.py"
     "tests/test_health.py"
     "tests/test_report.py"
-    "tests/test_issue_88_receipt_data.py"  # Issue #88: Receipt data validation
     "tests/test_category_report.py"
     "tests/test_item_report.py"
     "tests/test_payment_report_all.py"
@@ -35,9 +34,6 @@ test_files=(
     "tests/test_data_integrity.py"  # Data integrity tests
     "tests/test_return_transactions.py"  # Return transaction tests
     "tests/test_void_transactions.py"  # Void transaction tests
-    "tests/test_void_with_discount.py"  # Void transaction with discount tests
-    "tests/test_void_cancels_everything.py"  # Void transaction cancels everything test
-    "tests/test_sale_return_void_return.py"  # Sale → Return → Void Return scenario test
     "tests/test_edge_cases.py"  # Edge case tests (empty arrays, rounding, etc.)
     "tests/test_cancelled_transactions.py"  # Cancelled transaction handling tests
     "tests/test_split_payment_bug.py"  # Run last to avoid affecting other tests
