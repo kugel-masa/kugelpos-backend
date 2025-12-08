@@ -1,0 +1,361 @@
+openapi: 3.0.3
+info:
+  title: Category Master API - 論理削除機能
+  description: 商品カテゴリマスターの論理削除、復元、削除済み取得機能のAPIコントラクト
+  version: 1.0.0
+  contact:
+    name: Kugelpos Development Team
+
+servers:
+  - url: http://localhost:8002/api/v1
+    description: ローカル開発環境（master-dataサービス）
+
+tags:
+  - name: category-master
+    description: 商品カテゴリマスター操作
+
+paths:
+  /category-master:
+    get:
+      tags:
+        - category-master
+      summary: カテゴリ一覧取得
+      description: |
+        カテゴリの一覧を取得する。
+        デフォルトでは有効なカテゴリ（is_deleted=False）のみを返す。
+        include_deleted=trueを指定すると削除済みカテゴリも含めて返す。
+      parameters:
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: 削除済みカテゴリを含めるかどうか
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryMasterResponse'
+              examples:
+                active_only:
+                  summary: 有効なカテゴリのみ
+                  value:
+                    - category_code: "CAT001"
+                      description: "飲料"
+                      description_short: "飲料"
+                      tax_code: "TAX01"
+                      is_deleted: false
+                      deleted_at: null
+                with_deleted:
+                  summary: 削除済みを含む
+                  value:
+                    - category_code: "CAT001"
+                      description: "飲料"
+                      is_deleted: false
+                      deleted_at: null
+                    - category_code: "CAT002"
+                      description: "食品"
+                      is_deleted: true
+                      deleted_at: "2025-12-01T10:30:00Z"
+
+  /category-master/{category_code}:
+    get:
+      tags:
+        - category-master
+      summary: 特定カテゴリ取得
+      description: |
+        カテゴリコードを指定してカテゴリを取得する。
+        デフォルトでは有効なカテゴリのみを返し、削除済みカテゴリは404エラーとなる。
+        include_deleted=trueを指定すると削除済みカテゴリも取得可能。
+      parameters:
+        - name: category_code
+          in: path
+          required: true
+          schema:
+            type: string
+          description: カテゴリコード
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: 削除済みカテゴリも取得するかどうか
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryMasterResponse'
+        '404':
+          description: カテゴリが見つからない、または削除済み（include_deleted=falseの場合）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Category not found"
+
+    delete:
+      tags:
+        - category-master
+      summary: カテゴリ削除（論理削除）
+      description: |
+        カテゴリを論理削除する。
+        is_deletedフラグをtrueに設定し、deleted_atに削除日時を記録する。
+        既に削除済みの場合は成功応答を返す（冪等性）。
+      parameters:
+        - name: category_code
+          in: path
+          required: true
+          schema:
+            type: string
+          description: カテゴリコード
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryMasterDeleteResponse'
+              example:
+                message: "Category deleted successfully"
+                category_code: "CAT001"
+        '404':
+          description: カテゴリが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Category not found"
+
+    put:
+      tags:
+        - category-master
+      summary: カテゴリ更新
+      description: |
+        カテゴリを更新する。
+        削除済みカテゴリ（is_deleted=true）の更新は400エラーとなる。
+      parameters:
+        - name: category_code
+          in: path
+          required: true
+          schema:
+            type: string
+          description: カテゴリコード
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryMasterUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryMasterResponse'
+        '400':
+          description: 削除済みカテゴリの更新試行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Cannot update deleted category"
+        '404':
+          description: カテゴリが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /category-master/{category_code}/restore:
+    post:
+      tags:
+        - category-master
+      summary: カテゴリ復元
+      description: |
+        削除済みカテゴリを復元する。
+        is_deletedフラグをfalseに設定し、deleted_atをクリアする。
+        削除されていないカテゴリの復元は400エラーとなる。
+      parameters:
+        - name: category_code
+          in: path
+          required: true
+          schema:
+            type: string
+          description: カテゴリコード
+      responses:
+        '200':
+          description: 復元成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryMasterResponse'
+              example:
+                category_code: "CAT001"
+                description: "飲料"
+                is_deleted: false
+                deleted_at: null
+        '400':
+          description: 削除されていないカテゴリの復元試行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Category is not deleted"
+        '404':
+          description: カテゴリが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Category not found"
+
+    post:
+      tags:
+        - category-master
+      summary: カテゴリ新規作成
+      description: |
+        新しいカテゴリを作成する。
+        削除済みカテゴリと同じcategory_codeでの作成は409エラーとなる。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryMasterCreateRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryMasterResponse'
+        '409':
+          description: 削除済みカテゴリと同じコードで作成試行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: "Category code already exists (deleted category)"
+
+components:
+  schemas:
+    CategoryMasterResponse:
+      type: object
+      required:
+        - category_code
+        - description
+        - is_deleted
+      properties:
+        category_code:
+          type: string
+          description: カテゴリコード
+          example: "CAT001"
+        description:
+          type: string
+          description: カテゴリ説明
+          example: "飲料"
+        description_short:
+          type: string
+          nullable: true
+          description: 短縮説明
+          example: "飲料"
+        tax_code:
+          type: string
+          nullable: true
+          description: 税コード
+          example: "TAX01"
+        is_deleted:
+          type: boolean
+          description: 論理削除フラグ
+          example: false
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 削除日時（UTC）
+          example: null
+
+    CategoryMasterCreateRequest:
+      type: object
+      required:
+        - category_code
+        - description
+      properties:
+        category_code:
+          type: string
+          description: カテゴリコード
+          example: "CAT001"
+        description:
+          type: string
+          description: カテゴリ説明
+          example: "飲料"
+        description_short:
+          type: string
+          nullable: true
+          description: 短縮説明
+          example: "飲料"
+        tax_code:
+          type: string
+          nullable: true
+          description: 税コード
+          example: "TAX01"
+
+    CategoryMasterUpdateRequest:
+      type: object
+      required:
+        - description
+      properties:
+        description:
+          type: string
+          description: カテゴリ説明
+          example: "飲料（更新）"
+        description_short:
+          type: string
+          nullable: true
+          description: 短縮説明
+          example: "飲料"
+        tax_code:
+          type: string
+          nullable: true
+          description: 税コード
+          example: "TAX01"
+
+    CategoryMasterDeleteResponse:
+      type: object
+      required:
+        - message
+        - category_code
+      properties:
+        message:
+          type: string
+          description: 削除結果メッセージ
+          example: "Category deleted successfully"
+        category_code:
+          type: string
+          description: 削除されたカテゴリコード
+          example: "CAT001"
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: エラー詳細メッセージ
+          example: "Category not found"

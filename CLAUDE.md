@@ -495,3 +495,10 @@ Error codes follow XXYYZZ format:
 - Use environment variables for configuration
 - API keys should be hashed when stored
 - Implement proper input validation on all endpoints
+
+## Active Technologies
+- Python 3.12+ + FastAPI, Motor (MongoDB async driver), Pydantic, pytest-asyncio (001-logical-delete)
+- MongoDB（テナント毎にデータベース分離、Motor async driver使用） (001-logical-delete)
+
+## Recent Changes
+- 001-logical-delete: Added Python 3.12+ + FastAPI, Motor (MongoDB async driver), Pydantic, pytest-asyncio

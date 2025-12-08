@@ -38,3 +38,13 @@ venv/
 # ignore claude files
 claude-*
 .claude/
+
+# Claude Code local settings and secrets
+.claude/settings.local.json
+.claude/*.secret
+
+# Seminar materials (temporary)
+semina_20251208/
+
+# Temporary test files
+docs/ja/exsample.py
