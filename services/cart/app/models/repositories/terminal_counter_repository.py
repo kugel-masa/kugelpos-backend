@@ -2,7 +2,7 @@
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from logging import getLogger
 import sys
-import threading
+from pymongo import ReturnDocument
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import CannotCreateException, UpdateNotWorkException, CannotDeleteException
@@ -11,8 +11,6 @@ from app.models.documents.terminal_counter_document import TerminalCounterDocume
 from app.config.settings import settings
 
 logger = getLogger(__name__)
-
-lock = threading.Lock()
 
 
 def make_terminal_id(tenant_id: str, store_code: str, terminal_no: int) -> str:
@@ -54,8 +52,9 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
         """
         Generate or increment a counter of the specified type for the current terminal.
 
-        This method is thread-safe using a lock to prevent race conditions when
-        multiple requests are incrementing the same counter.
+        This method uses MongoDB's atomic find_one_and_update operation to prevent
+        race conditions. No Python-level locking is required as the operation is
+        atomic at the database level.
 
         Args:
             countType: Type of counter to increment (e.g., "receipt", "transaction")
@@ -65,149 +64,48 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
         Returns:
             int: The new counter value after incrementing
         """
-        # lock the method
-        with lock:
-            logger.debug(f"numbering_count: countType->{countType}, start_value->{start_value}, end_value->{end_value}")
-            return await self.__numbering_count_async(countType, start_value, end_value)
+        logger.debug(f"numbering_count: countType->{countType}, start_value->{start_value}, end_value->{end_value}")
 
-    async def __numbering_count_async(self, countType: str, start_value: int, end_value: int) -> int:
-        """
-        Internal implementation of the counter increment logic.
-
-        Retrieves the counter document, increments the specified counter, and updates
-        the document in the database.
-
-        Args:
-            countType: Type of counter to increment
-            start_value: Value to start from if counter doesn't exist
-            end_value: Maximum value before resetting to start_value
-
-        Returns:
-            int: The new counter value after incrementing
-        """
         tenant_id = self.terminal_info.tenant_id
         store_code = self.terminal_info.store_code
         terminal_no = self.terminal_info.terminal_no
-
-        # first get the counter document for the terminal
         terminal_id = make_terminal_id(tenant_id=tenant_id, store_code=store_code, terminal_no=terminal_no)
-        counter = await self.__get_counter_async(terminal_id)
 
-        # if counter does not exist, create one
-        if counter is None:
-            counter = await self.__create_counter_async(terminal_id)
-
-        # increment the counter in range [start_value, end_value]
-        if countType in counter.count_dic:
-            current_value = counter.count_dic[countType]
-            if current_value < end_value:
-                counter.count_dic[countType] += 1
-            else:
-                counter.count_dic[countType] = start_value
-        else:
-            counter.count_dic[countType] = start_value
-
-        # update the counter document
         target_field = f"count_dic.{countType}"
-        new_values = {target_field: counter.count_dic[countType]}
-        await self.__update_counter_async(terminal_id, new_values)
 
-        # return the counter value
-        return counter.count_dic[countType]
+        # Set initial value for new counters
+        initial_value = start_value - 1 if start_value > 1 else 0
 
-    async def __create_counter_async(self, terminal_id: str):
-        """
-        Create a new counter document for the specified terminal ID.
+        # Atomically increment counter using MongoDB's find_one_and_update
+        result = await self.dbcollection.find_one_and_update(
+            filter={"terminal_id": terminal_id},
+            update={
+                "$inc": {target_field: 1},  # Atomic increment
+                "$setOnInsert": {
+                    "terminal_id": terminal_id,
+                    "shard_key": terminal_id,
+                    target_field: initial_value
+                }
+            },
+            upsert=True,  # Create document if it doesn't exist
+            return_document=ReturnDocument.AFTER,  # Return updated value
+            projection={target_field: 1, "_id": 0}
+        )
 
-        Args:
-            terminal_id: Unique identifier for the terminal
-
-        Returns:
-            TerminalCounterDocument: The newly created counter document
-
-        Raises:
-            CannotCreateException: If the document could not be created in the database
-        """
-        counter = TerminalCounterDocument(terminal_id=terminal_id)
-        counter.shard_key = terminal_id
-
-        result = await self.create_async(counter)
-        if not result:
-            message = "Failed to create counter"
-            raise CannotCreateException(message, self.collection_name, counter, logger)
-        return counter
-
-    async def __get_counter_async(self, terminal_id: str) -> TerminalCounterDocument:
-        """
-        Retrieve the counter document for a specific terminal ID.
-
-        Args:
-            terminal_id: Unique identifier for the terminal
-
-        Returns:
-            TerminalCounterDocument: The retrieved counter document, or None if not found
-        """
-        search_dict = {"terminal_id": terminal_id}
-        doc = await self.get_one_async(search_dict)
-        if doc is None:
-            return None
-        return doc
-
-    async def __replace_counter_async(self, counter: TerminalCounterDocument) -> bool:
-        """
-        Replace an entire counter document in the database.
-
-        Args:
-            counter: The counter document to replace the existing one with
-
-        Returns:
-            bool: True if the replacement was successful
-
-        Raises:
-            UpdateNotWorkException: If the document could not be replaced
-        """
-        result = await self.replace_one_async({"terminal_id": counter.terminal_id}, counter)
-        if not result:
-            message = "document not replaced"
-            raise UpdateNotWorkException(message, self.collection_name, counter.terminal_id, logger)
-        return True
-
-    async def __update_counter_async(self, terminal_id: str, new_values: dict) -> bool:
-        """
-        Update specific fields in a counter document.
-
-        Args:
-            terminal_id: Unique identifier for the terminal
-            new_values: Dictionary of fields to update with their new values
-
-        Returns:
-            bool: True if the update was successful
-
-        Raises:
-            UpdateNotWorkException: If the document could not be updated
-        """
-        result = await self.update_one_async({"terminal_id": terminal_id}, new_values)
-        if not result:
-            message = "document not updated"
+        if result is None or "count_dic" not in result or countType not in result["count_dic"]:
+            message = f"Failed to increment counter for countType={countType}, terminal_id={terminal_id}"
+            logger.error(message)
             raise UpdateNotWorkException(message, self.collection_name, terminal_id, logger)
-        return True
 
-    async def __delete_counter_async(self, terminal_id: str) -> bool:
-        """
-        Delete a counter document from the database.
+        new_count = result["count_dic"][countType]
 
-        Args:
-            terminal_id: Unique identifier for the terminal whose counter should be deleted
+        # Handle rollover if counter exceeds end_value
+        if new_count > end_value:
+            logger.debug(f"Counter {countType} exceeded end_value ({end_value}), rolling over to {start_value}")
+            await self.dbcollection.update_one(
+                {"terminal_id": terminal_id},
+                {"$set": {target_field: start_value}}
+            )
+            new_count = start_value
 
-        Returns:
-            bool: True if the deletion was successful
-
-        Raises:
-            CannotDeleteException: If the document could not be deleted
-        """
-        search_dict = {"terminal_id": terminal_id}
-        result = await self.delete_async(search_dict)
-        if not result:
-            message = "document not deleted"
-            raise CannotDeleteException(message, self.collection_name, terminal_id, logger)
-        return True
+        return new_count
