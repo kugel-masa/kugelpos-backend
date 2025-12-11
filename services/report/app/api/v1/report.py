@@ -132,11 +132,11 @@ async def get_report_for_store(
             detail="Either business_date or both business_date_from and business_date_to must be specified"
         )
 
-    # Extract terminal number from terminal_id if available (format: tenant_store_terminal)
+    # Extract terminal number from terminal_id if available (format: tenant_id-store_code-terminal_no)
     requesting_terminal_no = None
     if terminal_id:
         try:
-            parts = terminal_id.split("_")
+            parts = terminal_id.split("-")
             if len(parts) >= 3:
                 requesting_terminal_no = int(parts[-1])
         except (ValueError, IndexError):
@@ -322,7 +322,7 @@ async def get_report_for_terminal(
         requesting_terminal_no = None
         if terminal_id:
             try:
-                parts = terminal_id.split("_")
+                parts = terminal_id.split("-")
                 if len(parts) >= 3:
                     requesting_terminal_no = int(parts[-1])
             except (ValueError, IndexError):

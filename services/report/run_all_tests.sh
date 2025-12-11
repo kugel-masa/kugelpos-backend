@@ -22,6 +22,7 @@ test_files=(
     "tests/test_setup_data.py"
     "tests/test_health.py"
     "tests/test_report.py"
+    "tests/test_terminal_id_parsing.py"  # Issue #28: Terminal ID parsing with hyphen delimiter
     "tests/test_category_report.py"
     "tests/test_item_report.py"
     "tests/test_payment_report_all.py"
