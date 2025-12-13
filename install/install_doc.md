@@ -9,6 +9,7 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system that requir
 - **Python 3.12+** - Programming language runtime
 - **Docker & Docker Compose** - Container runtime and orchestration
 - **Pipenv** - Python dependency management
+- **Hatch** - Python build tool (for building the commons package)
 - **Dapr CLI** (optional) - Distributed application runtime
 
 ## Tested Environment
@@ -132,7 +133,18 @@ pip install pipenv
 pipenv --version
 ```
 
-### 5. Dapr CLI Installation (Optional)
+### 5. Hatch Installation
+
+Install Hatch for building the commons package:
+
+```bash
+pip install hatch
+
+# Verify installation
+hatch --version
+```
+
+### 6. Dapr CLI Installation (Optional)
 
 Dapr is optional but recommended for distributed application features:
 
@@ -240,6 +252,7 @@ export PATH="$HOME/.local/bin:$PATH"
 brew install python@3.12
 brew install --cask docker
 brew install pipenv
+brew install hatch
 
 # Install Dapr
 curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
@@ -290,6 +303,7 @@ If you encounter issues:
 | Docker | 20.10+ | Latest stable |
 | Docker Compose | 2.0+ | Latest stable |
 | Pipenv | Any recent | Latest stable |
+| Hatch | Any recent | Latest stable |
 | Dapr CLI | 1.10+ | 1.15.1 |
 
 ## Uninstallation

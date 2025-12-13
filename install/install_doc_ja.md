@@ -9,6 +9,7 @@ Kugelposは、以下のツールを必要とするマイクロサービスベー
 - **Python 3.12+** - プログラミング言語ランタイム
 - **Docker & Docker Compose** - コンテナランタイムとオーケストレーション
 - **Pipenv** - Python依存関係管理
+- **Hatch** - Pythonビルドツール（commonsパッケージのビルド用）
 - **Dapr CLI**（オプション）- 分散アプリケーションランタイム
 
 ## テスト済み環境
@@ -132,7 +133,18 @@ pip install pipenv
 pipenv --version
 ```
 
-### 5. Dapr CLIのインストール（オプション）
+### 5. Hatchのインストール
+
+commonsパッケージのビルドのためHatchをインストールします：
+
+```bash
+pip install hatch
+
+# インストールの確認
+hatch --version
+```
+
+### 6. Dapr CLIのインストール（オプション）
 
 Daprはオプションですが、分散アプリケーション機能に推奨されます：
 
@@ -240,6 +252,7 @@ export PATH="$HOME/.local/bin:$PATH"
 brew install python@3.12
 brew install --cask docker
 brew install pipenv
+brew install hatch
 
 # Daprのインストール
 curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | /bin/bash
@@ -290,6 +303,7 @@ cd scripts
 | Docker | 20.10+ | 最新安定版 |
 | Docker Compose | 2.0+ | 最新安定版 |
 | Pipenv | 最新版 | 最新安定版 |
+| Hatch | 最新版 | 最新安定版 |
 | Dapr CLI | 1.10+ | 1.15.1 |
 
 ## アンインストール

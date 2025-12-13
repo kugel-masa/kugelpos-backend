@@ -25,6 +25,7 @@ Kugelposは小売業向けの包括的なPOS（Point of Sale）バックエン�
 - Docker と Docker Compose
 - Python 3.12以上
 - pipenv（Python依存関係管理用）
+- hatch（commonsパッケージのビルド用）
 - MongoDB 7.0+（Dockerで自動的に提供）
 - Redis（Dockerで自動的に提供）
 

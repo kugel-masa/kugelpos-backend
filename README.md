@@ -25,6 +25,7 @@ Required tools:
 - Docker and Docker Compose
 - Python 3.12 or higher
 - pipenv (for Python dependency management)
+- hatch (for building the commons package)
 - MongoDB 7.0+ (automatically provided via Docker)
 - Redis (automatically provided via Docker)
 
