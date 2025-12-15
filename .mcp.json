@@ -11,7 +11,7 @@
         "--context",
         "claude-code",
         "--project",
-        "/home/masa/proj/kugelpos-public"
+        "."
       ],
       "env": {}
     }
