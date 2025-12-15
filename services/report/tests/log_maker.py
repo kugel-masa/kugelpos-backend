@@ -27,6 +27,8 @@ def make_tran_log(
     # Calculate amounts based on total_amount parameter
     tax_amount = total_amount * 0.1  # 10% tax
     total_amount_with_tax = total_amount + tax_amount
+    deposit_amount = 1000.0 if total_amount_with_tax <= 1000.0 else total_amount_with_tax + 500.0
+    change_amount = deposit_amount - total_amount_with_tax
 
     return_tranlog = BaseTransaction(
         tenant_id=tenant_id,
@@ -46,7 +48,7 @@ def make_tran_log(
             "total_amount_with_tax": total_amount_with_tax,
             "tax_amount": tax_amount,
             "total_quantity": 3,
-            "change_amount": 450.0,
+            "change_amount": change_amount,
             "total_discount_amount": 0.0,
             "is_cancelled": False,
         },
@@ -81,7 +83,7 @@ def make_tran_log(
             },
         ],
         payments=[
-            {"payment_no": 1, "payment_code": "01", "deposit_amount": 1000.0, "amount": total_amount_with_tax, "description": "Cash"}
+            {"payment_no": 1, "payment_code": "01", "deposit_amount": deposit_amount, "amount": total_amount_with_tax, "description": "Cash"}
         ],
         taxes=[
             {
