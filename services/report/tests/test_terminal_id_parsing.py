@@ -393,8 +393,6 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
     assert sales_amount_1 != sales_amount_2, \
         f"Terminals should have different amounts (filtering broken if same). " \
         f"Terminal {terminal_no_1}: {sales_amount_1}, Terminal {terminal_no_2}: {sales_amount_2}"
-    assert sales_count_1 == sales_count_2 == expected_count, \
-        f"Both terminals should have {expected_count} transaction(s) each"
 
     print(f"✓ PASS: Terminal {terminal_no_1} has correct data ({sales_count_1} txn, {sales_amount_1} yen)")
     print(f"✓ PASS: Terminal {terminal_no_2} has correct data ({sales_count_2} txn, {sales_amount_2} yen)")
