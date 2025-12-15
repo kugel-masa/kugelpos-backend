@@ -52,17 +52,29 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
         """
         Generate or increment a counter of the specified type for the current terminal.
 
-        This method uses MongoDB's atomic find_one_and_update operation to prevent
-        race conditions. No Python-level locking is required as the operation is
-        atomic at the database level.
+        This method performs ALL operations (document creation, field initialization,
+        increment, and rollover) in a SINGLE atomic find_one_and_update operation using
+        MongoDB's aggregation pipeline. This guarantees complete atomicity with zero
+        race conditions:
+
+        - Document creation (if needed) via upsert=True
+        - Counter field initialization on first access using $type check
+        - Atomic increment using $add operator
+        - Automatic rollover when exceeding end_value using $cond
+
+        All logic executes atomically within MongoDB, making race conditions impossible
+        even under high concurrency. No Python-level locking required.
 
         Args:
             countType: Type of counter to increment (e.g., "receipt", "transaction")
-            start_value: Value to start from if counter doesn't exist
-            end_value: Maximum value before resetting to start_value
+            start_value: Value to start from if counter doesn't exist (default: 1)
+            end_value: Maximum value before resetting to start_value (default: sys.maxsize)
 
         Returns:
-            int: The new counter value after incrementing
+            int: The new counter value after incrementing/initialization/rollover
+
+        Raises:
+            UpdateNotWorkException: If the atomic operation fails
         """
         logger.debug(f"numbering_count: countType->{countType}, start_value->{start_value}, end_value->{end_value}")
 
