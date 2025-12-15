@@ -369,8 +369,10 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
 
     # CRITICAL ASSERTIONS: Verify that terminal_id parsing correctly filters data
     # Expected values based on transactions created above
-    expected_amount_1 = amount_terminal_1 * 1.1  # 1000 + 10% tax = 1100
-    expected_amount_2 = amount_terminal_2 * 1.1  # 2000 + 10% tax = 2200
+    # Tax rate must match the rate in make_tran_log (10%)
+    TAX_RATE = 0.1
+    expected_amount_1 = amount_terminal_1 * (1 + TAX_RATE)  # 1000 + 10% tax = 1100
+    expected_amount_2 = amount_terminal_2 * (1 + TAX_RATE)  # 2000 + 10% tax = 2200
     expected_count = 1  # Each terminal has 1 transaction
 
     print(f"\n=== Verification Results ===")

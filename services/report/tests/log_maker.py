@@ -25,8 +25,11 @@ def make_tran_log(
     print(f"***** generate_date_time: {generate_date_time}")
 
     # Calculate amounts based on total_amount parameter
-    tax_amount = total_amount * 0.1  # 10% tax
+    TAX_RATE = 0.1  # 10% tax
+    tax_amount = total_amount * TAX_RATE
     total_amount_with_tax = total_amount + tax_amount
+    
+    # Calculate deposit amount: use 1000 yen if total is <=1000, otherwise use total + 500 yen
     deposit_amount = 1000.0 if total_amount_with_tax <= 1000.0 else total_amount_with_tax + 500.0
     change_amount = deposit_amount - total_amount_with_tax
 
