@@ -73,62 +73,44 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
 
         target_field = f"count_dic.{countType}"
 
-        # Set initial value for new counters
-        initial_value = start_value - 1 if start_value > 1 else 0
-
-        # Strategy: Use a single atomic operation with proper initialization
-        # MongoDB's $inc will create the field if it doesn't exist, starting at 0
-        # To handle custom start values, we need to initialize first if needed
-
-        # First, check if we need to initialize the counter
-        # This operation will only create/update if the counter field doesn't exist
-        await self.dbcollection.update_one(
-            filter={
-                "terminal_id": terminal_id
-            },
-            update={
-                "$setOnInsert": {
-                    "terminal_id": terminal_id,
-                    "shard_key": terminal_id,
-                    "count_dic": {}
-                }
-            },
-            upsert=True  # Create if doesn't exist
-        )
-
-        # Now initialize the specific counter field if it doesn't exist
-        # Using $setOnInsert won't work here since document already exists
-        # So we use a conditional $set that only sets if field doesn't exist
-        await self.dbcollection.update_one(
-            filter={
-                "terminal_id": terminal_id,
-                target_field: {"$exists": False}
-            },
-            update={
-                "$set": {target_field: initial_value}
-            }
-        )
-
-        # Atomically increment the counter with rollover handling
-        # Use aggregation pipeline to make increment and rollover atomic
-        # This prevents race conditions where multiple concurrent requests
-        # could all see the exceeded value and race to reset it
+        # Atomically handle document creation, field initialization, increment, and rollover
+        # in a single operation using MongoDB aggregation pipeline.
+        # This prevents ALL race conditions:
+        # 1. Multiple threads trying to initialize the same document
+        # 2. Multiple threads trying to initialize the same counter field
+        # 3. Multiple threads trying to increment between initialization and increment
+        # 4. Multiple threads trying to handle rollover simultaneously
         result = await self.dbcollection.find_one_and_update(
             filter={"terminal_id": terminal_id},
             update=[
                 {
                     "$set": {
+                        # Ensure document structure exists
+                        "terminal_id": {"$ifNull": ["$terminal_id", terminal_id]},
+                        "shard_key": {"$ifNull": ["$shard_key", terminal_id]},
+                        "count_dic": {"$ifNull": ["$count_dic", {}]},
+                        # Handle counter logic atomically
                         target_field: {
                             "$cond": {
-                                # If incremented value > end_value, reset to start_value
-                                "if": {"$gt": [{"$add": [f"${target_field}", 1]}, end_value]},
+                                # Check if counter field is missing (first access)
+                                "if": {"$eq": [{"$type": f"${target_field}"}, "missing"]},
+                                # Field doesn't exist, initialize to start_value
                                 "then": start_value,
-                                "else": {"$add": [f"${target_field}", 1]}
+                                # Field exists, increment with rollover
+                                "else": {
+                                    "$cond": {
+                                        # If incremented value > end_value, reset to start_value
+                                        "if": {"$gt": [{"$add": [f"${target_field}", 1]}, end_value]},
+                                        "then": start_value,
+                                        "else": {"$add": [f"${target_field}", 1]}
+                                    }
+                                }
                             }
                         }
                     }
                 }
             ],
+            upsert=True,  # Create document if doesn't exist
             return_document=ReturnDocument.AFTER,  # Return updated value
             projection={target_field: 1, "_id": 0}
         )
