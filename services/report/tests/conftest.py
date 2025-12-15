@@ -121,22 +121,33 @@ async def clean_test_data(set_env_vars):
     tran_repo = TranlogRepository(db, tenant_id)
     collection = db[tran_repo.collection_name]
 
+    # Clean both environment variable store_code and hardcoded test store codes
+    # Some tests use env var ("5678"), others use hardcoded values ("STORE001")
+    store_code_env = os.environ.get("STORE_CODE")
+    test_store_codes = [store_code_env, "STORE001"]
+
     # IMPORTANT: MongoDB stores fields in snake_case (tenant_id, store_code)
     # because we use model_dump() without by_alias=True
-    delete_result = await collection.delete_many({
-        "tenant_id": tenant_id,
-        "store_code": "STORE001"
-    })
-    print(f"[CLEANUP BEFORE] Deleted {delete_result.deleted_count} test documents before test")
+    total_deleted = 0
+    for store_code in test_store_codes:
+        delete_result = await collection.delete_many({
+            "tenant_id": tenant_id,
+            "store_code": store_code
+        })
+        total_deleted += delete_result.deleted_count
+    print(f"[CLEANUP BEFORE] Deleted {total_deleted} test documents before test (store_codes: {test_store_codes})")
 
     yield
 
     # Teardown: clean data after test to prevent contamination of next test
-    delete_result_after = await collection.delete_many({
-        "tenant_id": tenant_id,
-        "store_code": "STORE001"
-    })
-    print(f"[CLEANUP AFTER] Deleted {delete_result_after.deleted_count} test documents after test")
+    total_deleted_after = 0
+    for store_code in test_store_codes:
+        delete_result_after = await collection.delete_many({
+            "tenant_id": tenant_id,
+            "store_code": store_code
+        })
+        total_deleted_after += delete_result_after.deleted_count
+    print(f"[CLEANUP AFTER] Deleted {total_deleted_after} test documents after test")
 
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
