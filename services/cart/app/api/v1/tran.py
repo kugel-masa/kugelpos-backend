@@ -118,8 +118,11 @@ async def get_tran_service_for_pubsub_notification(
     db_common = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_commons")
 
     terminal_counter_repo = TerminalCounterRepository(db=db, terminal_info=terminal_info)
+    await terminal_counter_repo.initialize()
     tranlog_repo = TranlogRepository(db=db, terminal_info=terminal_info)
+    await tranlog_repo.initialize()
     tranlog_delivery_status_repo = TranlogDeliveryStatusRepository(db=db_common, terminal_info=terminal_info)
+    await tranlog_delivery_status_repo.initialize()
     settings_master_repo = SettingsMasterWebRepository(
         tenant_id=tenant_id,
         store_code=terminal_info.store_code,
@@ -128,6 +131,7 @@ async def get_tran_service_for_pubsub_notification(
     )
     payment_master_repo = PaymentMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
+    await transaction_status_repo.initialize()
 
     tran_service = TranService(
         terminal_info=terminal_info,
@@ -162,10 +166,13 @@ async def get_tran_service(
     db_common = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_commons")  # ← 修正
 
     terminal_counter_repo = TerminalCounterRepository(db=db, terminal_info=terminal_info)
+    await terminal_counter_repo.initialize()
     tranlog_repo = TranlogRepository(db=db, terminal_info=terminal_info)
+    await tranlog_repo.initialize()
     tranlog_delivery_status_repo = TranlogDeliveryStatusRepository(
         db=db_common, terminal_info=terminal_info  # use common db
     )
+    await tranlog_delivery_status_repo.initialize()
     settings_master_repo = SettingsMasterWebRepository(
         tenant_id=tenant_id,
         store_code=terminal_info.store_code,
@@ -174,6 +181,7 @@ async def get_tran_service(
     )
     payment_master_repo = PaymentMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
+    await transaction_status_repo.initialize()
 
     return TranService(
         terminal_info=terminal_info,

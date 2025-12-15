@@ -103,12 +103,16 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
 
     cart_repo = CartRepository(db=db, terminal_info=terminal_info)
     terminal_counter_repo = TerminalCounterRepository(db=db, terminal_info=terminal_info)
+    await terminal_counter_repo.initialize()
     tax_master_repo = TaxMasterRepository(db=db, terminal_info=terminal_info)
     tranlog_repo = TranlogRepository(db=db, terminal_info=terminal_info)
-    tranlo_delivery_status_repo = TranlogDeliveryStatusRepository(
+    await tranlog_repo.initialize()
+    tranlog_delivery_status_repo = TranlogDeliveryStatusRepository(
         db=db_common, terminal_info=terminal_info  # use common db
     )
+    await tranlog_delivery_status_repo.initialize()
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
+    await transaction_status_repo.initialize()
     item_master_repo = create_item_master_repository(
         tenant_id=tenant_id,
         store_code=terminal_info.store_code,
@@ -127,7 +131,7 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         terminal_info=terminal_info,
         terminal_counter_repo=terminal_counter_repo,
         tranlog_repo=tranlog_repo,
-        tranlog_delivery_status_repo=tranlo_delivery_status_repo,
+        tranlog_delivery_status_repo=tranlog_delivery_status_repo,
         settings_master_repo=settings_master_repo,
         payment_master_repo=payment_master_repo,
         transaction_status_repo=transaction_status_repo,
