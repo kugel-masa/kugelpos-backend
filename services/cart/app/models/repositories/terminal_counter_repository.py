@@ -86,7 +86,7 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
         target_field = f"count_dic.{countType}"
 
         # Atomically handle document creation, field initialization, increment, and rollover
-        # in a single operation using MongoDB aggregation pipeline.
+        # in a single operation using MongoDB aggregation pipeline with two stages.
         # This prevents ALL race conditions:
         # 1. Multiple threads trying to initialize the same document
         # 2. Multiple threads trying to initialize the same counter field
@@ -95,13 +95,17 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
         result = await self.dbcollection.find_one_and_update(
             filter={"terminal_id": terminal_id},
             update=[
+                # Stage 1: Ensure document structure exists
                 {
                     "$set": {
-                        # Ensure document structure exists
                         "terminal_id": {"$ifNull": ["$terminal_id", terminal_id]},
                         "shard_key": {"$ifNull": ["$shard_key", terminal_id]},
-                        "count_dic": {"$ifNull": ["$count_dic", {}]},
-                        # Handle counter logic atomically
+                        "count_dic": {"$ifNull": ["$count_dic", {}]}
+                    }
+                },
+                # Stage 2: Handle counter logic atomically
+                {
+                    "$set": {
                         target_field: {
                             "$cond": {
                                 # Check if counter field is missing (first access)
