@@ -109,10 +109,26 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
             }
         )
 
-        # Finally, atomically increment the counter
+        # Atomically increment the counter with rollover handling
+        # Use aggregation pipeline to make increment and rollover atomic
+        # This prevents race conditions where multiple concurrent requests
+        # could all see the exceeded value and race to reset it
         result = await self.dbcollection.find_one_and_update(
             filter={"terminal_id": terminal_id},
-            update={"$inc": {target_field: 1}},  # Atomic increment
+            update=[
+                {
+                    "$set": {
+                        target_field: {
+                            "$cond": {
+                                # If incremented value > end_value, reset to start_value
+                                "if": {"$gt": [{"$add": [f"${target_field}", 1]}, end_value]},
+                                "then": start_value,
+                                "else": {"$add": [f"${target_field}", 1]}
+                            }
+                        }
+                    }
+                }
+            ],
             return_document=ReturnDocument.AFTER,  # Return updated value
             projection={target_field: 1, "_id": 0}
         )
@@ -123,14 +139,4 @@ class TerminalCounterRepository(AbstractRepository[TerminalCounterDocument]):
             raise UpdateNotWorkException(message, self.collection_name, terminal_id, logger)
 
         new_count = result["count_dic"][countType]
-
-        # Handle rollover if counter exceeds end_value
-        if new_count > end_value:
-            logger.debug(f"Counter {countType} exceeded end_value ({end_value}), rolling over to {start_value}")
-            await self.dbcollection.update_one(
-                {"terminal_id": terminal_id},
-                {"$set": {target_field: start_value}}
-            )
-            new_count = start_value
-
         return new_count
