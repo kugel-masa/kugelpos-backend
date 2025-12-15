@@ -301,7 +301,7 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no_1}/reports",
         params={
             "terminal_id": terminal_id_1,  # Should parse and match path parameter
-            "report_scope": "flush",  # Use flush like in test_report.py
+            "report_scope": "flash",  # Use flash for consistency
             "report_type": "sales",
             "business_date": business_date,
             "open_counter": 1,
