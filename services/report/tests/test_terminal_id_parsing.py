@@ -269,7 +269,7 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
     assert response.status_code == status.HTTP_201_CREATED
     print(f"✓ Created transaction {tran_no_1} for terminal {terminal_no_1}")
 
-    # Create transactions for terminal 5556 (amount: 2000 yen)
+    # Create transactions for terminal 5556 (amount: 550 yen)
     tran_no_2 = 2002
     receipt_no_2 = 2002
     header_2 = {"X-API-KEY": api_key_2}
