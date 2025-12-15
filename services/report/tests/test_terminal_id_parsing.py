@@ -174,7 +174,7 @@ async def test_terminal_id_format_validation():
 
 
 @pytest.mark.asyncio()
-async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
+async def test_terminal_id_filtering_with_multi_terminal_data(http_client, clean_test_data):
     """
     Test that terminal_id filtering returns only data for the specified terminal.
 
@@ -294,6 +294,11 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
     )
     assert response.status_code == status.HTTP_201_CREATED
     print(f"✓ Created transaction {tran_no_2} for terminal {terminal_no_2}")
+
+    # Wait for pub/sub events to be processed
+    import asyncio
+    print("\nWaiting for transactions to be processed...")
+    await asyncio.sleep(3)
 
     # Request TERMINAL-specific report with terminal_id parameter
     # This tests that terminal_id is correctly parsed and used for filtering
