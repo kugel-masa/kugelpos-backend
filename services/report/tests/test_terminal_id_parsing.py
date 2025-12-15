@@ -12,7 +12,6 @@ from fastapi import status
 from httpx import AsyncClient
 from datetime import datetime
 from unittest.mock import patch
-import logging
 from tests.log_maker import make_tran_log
 from kugel_common.utils.misc import get_app_time_str
 
