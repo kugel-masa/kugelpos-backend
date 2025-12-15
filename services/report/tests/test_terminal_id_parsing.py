@@ -246,7 +246,7 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
     api_key_1 = response_1.json().get("data").get("apiKey")
     api_key_2 = response_2.json().get("data").get("apiKey")
 
-    # Create transactions for terminal 5555 (amount: 1000 yen)
+    # Create transactions for terminal 5555 (amount: 550 yen)
     tran_no_1 = 2001
     receipt_no_1 = 2001
     header_1 = {"X-API-KEY": api_key_1}
