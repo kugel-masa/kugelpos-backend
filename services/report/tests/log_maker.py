@@ -19,9 +19,14 @@ def make_tran_log(
     open_counter: int = 1,
     business_counter: int = 1001,
     generate_date_time: str = get_date_time_str(),
+    total_amount: float = 500.0,
 ):
 
     print(f"***** generate_date_time: {generate_date_time}")
+
+    # Calculate amounts based on total_amount parameter
+    tax_amount = total_amount * 0.1  # 10% tax
+    total_amount_with_tax = total_amount + tax_amount
 
     return_tranlog = BaseTransaction(
         tenant_id=tenant_id,
@@ -37,9 +42,9 @@ def make_tran_log(
         user={"id": "user789", "name": "John Doe"},
         sales={
             "reference_date_time": generate_date_time,
-            "total_amount": 500.0,
-            "total_amount_with_tax": 550.0,
-            "tax_amount": 50.0,
+            "total_amount": total_amount,
+            "total_amount_with_tax": total_amount_with_tax,
+            "tax_amount": tax_amount,
             "total_quantity": 3,
             "change_amount": 450.0,
             "total_discount_amount": 0.0,
@@ -76,15 +81,15 @@ def make_tran_log(
             },
         ],
         payments=[
-            {"payment_no": 1, "payment_code": "01", "deposit_amount": 1000.0, "amount": 550.0, "description": "Cash"}
+            {"payment_no": 1, "payment_code": "01", "deposit_amount": 1000.0, "amount": total_amount_with_tax, "description": "Cash"}
         ],
         taxes=[
             {
                 "tax_no": 1,
                 "tax_code": "01",
                 "tax_name": "外税10%",
-                "tax_amount": 50.0,
-                "target_amount": 500.0,
+                "tax_amount": tax_amount,
+                "target_amount": total_amount,
                 "target_quantity": 3,
             }
         ],

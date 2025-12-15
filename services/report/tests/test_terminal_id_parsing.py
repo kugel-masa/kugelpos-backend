@@ -245,12 +245,13 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
     api_key_1 = response_1.json().get("data").get("apiKey")
     api_key_2 = response_2.json().get("data").get("apiKey")
 
-    # Create transactions for terminal 5555 (amount: 550 yen)
+    # Create transactions for terminal 5555 (amount: 1000 yen)
     tran_no_1 = 2001
     receipt_no_1 = 2001
+    amount_terminal_1 = 1000.0  # Base amount for terminal 1
     header_1 = {"X-API-KEY": api_key_1}
 
-    print(f"\nCreating transaction for terminal {terminal_no_1} (amount: 1000)")
+    print(f"\nCreating transaction for terminal {terminal_no_1} (amount: {amount_terminal_1})")
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no_1}/transactions?terminal_id={terminal_id_1}",
         json=make_tran_log(
@@ -262,18 +263,20 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
             receipt_no=receipt_no_1,
             business_date=business_date,
             generate_date_time=get_app_time_str(),
+            total_amount=amount_terminal_1,
         ),
         headers=header_1,
     )
     assert response.status_code == status.HTTP_201_CREATED
     print(f"✓ Created transaction {tran_no_1} for terminal {terminal_no_1}")
 
-    # Create transactions for terminal 5556 (amount: 550 yen)
+    # Create transactions for terminal 5556 (amount: 2000 yen)
     tran_no_2 = 2002
     receipt_no_2 = 2002
+    amount_terminal_2 = 2000.0  # Different base amount for terminal 2
     header_2 = {"X-API-KEY": api_key_2}
 
-    print(f"Creating transaction for terminal {terminal_no_2} (amount: 2000)")
+    print(f"Creating transaction for terminal {terminal_no_2} (amount: {amount_terminal_2})")
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no_2}/transactions?terminal_id={terminal_id_2}",
         json=make_tran_log(
@@ -285,6 +288,7 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
             receipt_no=receipt_no_2,
             business_date=business_date,
             generate_date_time=get_app_time_str(),
+            total_amount=amount_terminal_2,
         ),
         headers=header_2,
     )
@@ -363,18 +367,37 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client):
 
     print(f"Terminal {terminal_no_2} sales: amount={sales_amount_2}, count={sales_count_2}")
 
-    # Verify that terminal_id parsing correctly filters data
-    # Each terminal should have its own transactions (we created 1 for each)
-    # The counts/amounts should be different if filtering is working correctly
-    print(f"\n=== Verification Results ===")
-    print(f"Terminal {terminal_no_1}: {sales_count_1} transactions, total {sales_amount_1} yen")
-    print(f"Terminal {terminal_no_2}: {sales_count_2} transactions, total {sales_amount_2} yen")
+    # CRITICAL ASSERTIONS: Verify that terminal_id parsing correctly filters data
+    # Expected values based on transactions created above
+    expected_amount_1 = amount_terminal_1 * 1.1  # 1000 + 10% tax = 1100
+    expected_amount_2 = amount_terminal_2 * 1.1  # 2000 + 10% tax = 2200
+    expected_count = 1  # Each terminal has 1 transaction
 
-    # The data should be different (we created different transactions for each terminal)
-    # If terminal_id parsing failed, both would show the same aggregated data
-    if sales_amount_1 != sales_amount_2 or sales_count_1 != sales_count_2:
-        print(f"✓ PASS: Different terminals have different data (filtering works correctly)")
-    else:
-        print(f"⚠ WARNING: Both terminals have identical data. This might indicate an issue.")
+    print(f"\n=== Verification Results ===")
+    print(f"Terminal {terminal_no_1}: {sales_count_1} transactions, total {sales_amount_1} yen (expected: {expected_count} transactions, {expected_amount_1} yen)")
+    print(f"Terminal {terminal_no_2}: {sales_count_2} transactions, total {sales_amount_2} yen (expected: {expected_count} transactions, {expected_amount_2} yen)")
+
+    # Assert terminal 1 has expected data
+    assert sales_count_1 == expected_count, \
+        f"Terminal {terminal_no_1} should have {expected_count} transaction(s), got {sales_count_1}"
+    assert sales_amount_1 == expected_amount_1, \
+        f"Terminal {terminal_no_1} should have total amount {expected_amount_1}, got {sales_amount_1}"
+
+    # Assert terminal 2 has expected data
+    assert sales_count_2 == expected_count, \
+        f"Terminal {terminal_no_2} should have {expected_count} transaction(s), got {sales_count_2}"
+    assert sales_amount_2 == expected_amount_2, \
+        f"Terminal {terminal_no_2} should have total amount {expected_amount_2}, got {sales_amount_2}"
+
+    # Assert that terminals have different data (proving filtering works)
+    assert sales_amount_1 != sales_amount_2, \
+        f"Terminals should have different amounts (filtering broken if same). " \
+        f"Terminal {terminal_no_1}: {sales_amount_1}, Terminal {terminal_no_2}: {sales_amount_2}"
+    assert sales_count_1 == sales_count_2 == expected_count, \
+        f"Both terminals should have {expected_count} transaction(s) each"
+
+    print(f"✓ PASS: Terminal {terminal_no_1} has correct data ({sales_count_1} txn, {sales_amount_1} yen)")
+    print(f"✓ PASS: Terminal {terminal_no_2} has correct data ({sales_count_2} txn, {sales_amount_2} yen)")
+    print(f"✓ PASS: Terminals have different amounts (filtering works correctly)")
 
     print(f"\n✓ Terminal ID filtering test completed successfully")
