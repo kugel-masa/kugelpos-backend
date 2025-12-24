@@ -64,7 +64,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   account-dapr:
     image: daprio/daprd:latest
@@ -118,7 +117,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   terminal-dapr:
     image: daprio/daprd:latest
@@ -170,7 +168,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   master-data-dapr:
     image: daprio/daprd:latest
@@ -225,7 +222,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   cart-dapr:
     image: daprio/daprd:latest
@@ -276,7 +272,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   report-dapr:
     image: daprio/daprd:latest
@@ -326,7 +321,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   journal-dapr:
     image: daprio/daprd:latest
@@ -377,7 +371,6 @@ services:
       start_period: 40s
     networks:
       - kugelpos-network
-    user: appuser
 
   stock-dapr:
     image: daprio/daprd:latest
