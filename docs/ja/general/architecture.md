@@ -41,7 +41,6 @@ Kugelposは、マイクロサービスアーキテクチャに基づいて構築
 - 機能:
   - 自動リトライ（3回、指数バックオフ）
   - コネクションプーリング
-  - サーキットブレーカーパターン
   - サービスディスカバリサポート
 
 ```python
@@ -149,8 +148,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 
 ### 4. サーキットブレーカーパターン
 
-**実装場所:** 
-- HttpClientHelper: `/services/commons/src/kugel_common/utils/http_client_helper.py`
+**実装場所:**
 - DaprClientHelper: `/services/commons/src/kugel_common/utils/dapr_client_helper.py`
 
 **設定:**
@@ -159,9 +157,10 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 - 状態: CLOSED → OPEN → HALF_OPEN
 
 **対象操作:**
-- 外部HTTPサービス呼び出し
 - Dapr pub/sub操作
 - Daprステートストア操作
+
+**注:** HttpClientHelperは自動リトライ機能のみを提供し、サーキットブレーカーは実装していません。
 
 ## セキュリティアーキテクチャ
 

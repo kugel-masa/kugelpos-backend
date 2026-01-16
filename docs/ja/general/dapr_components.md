@@ -85,7 +85,7 @@ spec:
   - name: consumerID
     value: kugelpos-tranlog-consumer
   - name: processingTimeout
-    value: "180"
+    value: "180s"
 ```
 
 **イベントフロー:**

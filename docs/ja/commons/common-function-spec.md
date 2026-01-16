@@ -277,16 +277,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
 
 #### 2. APIキー認証
 ```python
-async def get_current_terminal_from_api_key(
-    api_key: str = Header(..., alias="X-API-KEY"),
-    terminal_id: str = Query(...)
+async def get_terminal_info(
+    terminal_id: str = Path(...),
+    api_key: str = Security(api_key_header)
 ) -> TerminalInfoDocument:
-    """端末APIキーによる認証"""
-    
+    """端末APIキーによる認証（Pathパラメータ版）"""
+
     # 端末ID形式: {tenant_id}-{store_code}-{terminal_no}
     # APIキー検証
     # サービス間端末情報取得
     # 戻り値はTerminalInfoDocument型
+
+async def get_terminal_info_with_api_key(
+    terminal_id: str = Query(...),
+    api_key: str = Security(api_key_header)
+) -> TerminalInfoDocument:
+    """端末APIキーによる認証（Queryパラメータ版）"""
 ```
 
 ### マルチテナントセキュリティ
@@ -460,15 +466,35 @@ class AbstractReceiptData(ABC):
 
 ```python
 class ReceiptData(BaseModel):
-    """レシートデータクラス（ReceiptDataModel ではなく ReceiptData）"""
-    
-    tenant_id: str
-    terminal_id: str
-    business_date: str
-    generate_date_time: str
-    tranlog_id: str
-    receipt_text: str
-    journal_text: str
+    """レシートデータクラス - 生成されたテキストを保持"""
+
+    receipt_text: str = ""   # レシート印刷用テキスト
+    journal_text: str = ""   # 電子ジャーナル用テキスト
+```
+
+**注:** `ReceiptData`は生成されたテキストのみを保持するシンプルな構造です。トランザクション情報（tenant_id, terminal_id等）は、レシート生成時に`AbstractReceiptData`の実装クラスが処理します。
+
+### レシート生成用XMLモデル
+
+レシートの構造化データには以下のPydanticXMLモデルを使用：
+
+```python
+class PrintData(BaseXmlModel):
+    """印刷データのルート要素"""
+    pages: list[Page]
+
+class Page(BaseXmlModel):
+    """ページ要素（複数行やテーブルを含む）"""
+    lines: list[Line | Table]
+
+class Line(BaseXmlModel):
+    """単一行要素"""
+    text: str
+    align: str = "left"
+
+class Table(BaseXmlModel):
+    """テーブル要素"""
+    rows: list[TableRow]
 ```
 
 ## 10. 追加の機能

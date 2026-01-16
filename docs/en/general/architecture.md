@@ -41,7 +41,6 @@ Kugelpos is a POS backend system built on microservices architecture, utilizing 
 - Features:
   - Auto-retry (3 attempts, exponential backoff)
   - Connection pooling
-  - Circuit breaker pattern
   - Service discovery support
 
 ```python
@@ -150,7 +149,6 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### 4. Circuit Breaker Pattern
 
 **Implementation:**
-- HttpClientHelper: `/services/commons/src/kugel_common/utils/http_client_helper.py`
 - DaprClientHelper: `/services/commons/src/kugel_common/utils/dapr_client_helper.py`
 
 **Configuration:**
@@ -159,9 +157,10 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 - States: CLOSED → OPEN → HALF_OPEN
 
 **Target Operations:**
-- External HTTP service calls
 - Dapr pub/sub operations
 - Dapr state store operations
+
+**Note:** HttpClientHelper provides auto-retry functionality only, not circuit breaker pattern.
 
 ## Security Architecture
 
