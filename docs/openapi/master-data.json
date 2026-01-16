@@ -964,7 +964,7 @@
           "Item Common Master"
         ],
         "summary": "Get Item Master All Async",
-        "description": "Retrieve all item master records for a tenant.\n\nThis endpoint returns a paginated list of all active items for the specified tenant.\nThe results can be sorted and paginated as needed. Optionally filter by category code.\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.\n\nArgs:\n    tenant_id: The tenant identifier from the path\n    category_code: Optional category code to filter items\n    limit: Maximum number of items to return (default: 100)\n    page: Page number for pagination (default: 1)\n    sort: Sorting criteria (default: item_code ascending)\n    tenant_id_in_token: The tenant ID from security credentials\n\nReturns:\n    ApiResponse[list[ItemResponse]]: Standard API response with a list of item data and pagination metadata\n\nRaises:\n    RepositoryException: If there's an error during database operations",
+        "description": "Retrieve all item master records for a tenant.\n\nThis endpoint returns a paginated list of all active items for the specified tenant.\nThe results can be sorted and paginated as needed.\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.\n\nArgs:\n    tenant_id: The tenant identifier from the path\n    limit: Maximum number of items to return (default: 100)\n    page: Page number for pagination (default: 1)\n    sort: Sorting criteria (default: item_code ascending)\n    tenant_id_in_token: The tenant ID from security credentials\n\nReturns:\n    ApiResponse[list[ItemResponse]]: Standard API response with a list of item data and pagination metadata\n\nRaises:\n    RepositoryException: If there's an error during database operations",
         "operationId": "get_item_master_all_async_api_v1_tenants__tenant_id__items_get",
         "security": [
           {
@@ -983,24 +983,6 @@
               "type": "string",
               "title": "Tenant Id"
             }
-          },
-          {
-            "name": "category_code",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter by category code",
-              "title": "Category Code"
-            },
-            "description": "Filter by category code"
           },
           {
             "name": "limit",

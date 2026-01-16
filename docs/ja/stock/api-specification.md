@@ -612,7 +612,6 @@ Represents metadata for paginated  |
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `snapshotId` | string | No | Snapshot ID |
 | `tenantId` | string | Yes | Tenant ID |
 | `storeCode` | string | Yes | Store code |
 | `totalItems` | integer | Yes | Total number of items |
@@ -634,7 +633,6 @@ Represents metadata for paginated  |
     "message": "string"
   },
   "data": {
-    "snapshotId": "string",
     "tenantId": "string",
     "storeCode": "string",
     "totalItems": 0,
@@ -691,7 +689,6 @@ Represents metadata for paginated  |
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `snapshotId` | string | No | Snapshot ID |
 | `tenantId` | string | Yes | Tenant ID |
 | `storeCode` | string | Yes | Store code |
 | `totalItems` | integer | Yes | Total number of items |
@@ -713,7 +710,6 @@ Represents metadata for paginated  |
     "message": "string"
   },
   "data": {
-    "snapshotId": "string",
     "tenantId": "string",
     "storeCode": "string",
     "totalItems": 0,
@@ -743,11 +739,11 @@ Represents metadata for paginated  |
 }
 ```
 
-### 12. 在庫スナップショット一覧取得
+### 12. Get stock snapshots by date range
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots`
 
-在庫情報を取得します。在庫レベルと関連データを返します。
+Get list of stock snapshots filtered by generate_date_time range
 
 **パスパラメータ:**
 
@@ -763,11 +759,6 @@ Represents metadata for paginated  |
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |
 | `start_date` | string | No | - | Start date in ISO format |
 | `end_date` | string | No | - | End date in ISO format |
-| `date_type` | string | No | generate | Date field to filter on |
-| `period` | string | No | - | Period shortcut |
-| `last_n_days` | string | No | - | Filter last N days |
-| `last_n_hours` | string | No | - | Filter last N hours |
-| `timezone` | string | No | Asia/Tokyo | Timezone for date interpretation |
 | `page` | integer | No | 1 | Page number |
 | `limit` | integer | No | 100 | Maximum number of items to return |
 | `is_terminal_service` | string | No | False | - |
@@ -796,7 +787,6 @@ Represents metadata for paginated  |
   "data": {
     "data": [
       {
-        "snapshotId": "string",
         "tenantId": "string",
         "storeCode": "string",
         "totalItems": 0,
@@ -904,11 +894,11 @@ Represents metadata for paginated  |
 }
 ```
 
-### 14. 在庫更新履歴取得
+### 14. Get stock update history
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history`
 
-在庫情報を取得します。在庫レベルと関連データを返します。
+Get stock update history for an item
 
 **パスパラメータ:**
 
@@ -923,12 +913,6 @@ Represents metadata for paginated  |
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |
-| `start_date` | string | No | - | Start date in ISO format |
-| `end_date` | string | No | - | End date in ISO format |
-| `update_type` | string | No | - | Update type filter (sales, receive, adju |
-| `period` | string | No | - | Period shortcut |
-| `last_n_days` | string | No | - | Filter last N days |
-| `timezone` | string | No | Asia/Tokyo | Timezone for date interpretation |
 | `page` | integer | No | 1 | Page number |
 | `limit` | integer | No | 100 | Maximum number of items to return |
 | `is_terminal_service` | string | No | False | - |
@@ -1209,36 +1193,6 @@ Handle transaction log from cart serviceを処理します。
 
 **レスポンス:**
 
-## WebSocket エンドポイント
-
-### 19. 在庫アラートWebSocket
-
-**WebSocket** `/ws/{tenant_id}/{store_code}`
-
-リアルタイムの在庫アラートを受信するためのWebSocketエンドポイントです。
-
-**注意:** このエンドポイントは `/api/v1` プレフィックスを含みません。
-
-**パスパラメータ:**
-
-| パラメータ | 型 | 必須 | 説明 |
-|------------|------|------|------|
-| `tenant_id` | string | Yes | テナントID |
-| `store_code` | string | Yes | 店舗コード |
-
-**クエリパラメータ:**
-
-| パラメータ | 型 | 必須 | 説明 |
-|------------|------|------|------|
-| `token` | string | Yes | JWT認証トークン |
-
-**接続例:**
-```
-ws://localhost:8006/ws/tenant001/STORE001?token={jwt_token}
-```
-
-**詳細仕様:** [WebSocket仕様書](./websocket-specification.md) を参照してください。
-
 ## エラーコード
 
 エラーレスポンスは以下の形式で返されます：
@@ -1248,12 +1202,7 @@ ws://localhost:8006/ws/tenant001/STORE001?token={jwt_token}
   "success": false,
   "code": 400,
   "message": "エラーメッセージ",
-  "userError": {
-    "code": "100001",
-    "message": "ユーザー向けエラーメッセージ"
-  },
+  "errorCode": "ERROR_CODE",
   "operation": "operation_name"
 }
 ```
-
-エラーコード体系の詳細については、`/docs/ja/general/error_code_spec.md` を参照してください。

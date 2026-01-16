@@ -1637,7 +1637,7 @@ the one in the security credentials.
 Retrieve all item master records for a tenant.
 
 This endpoint returns a paginated list of all active items for the specified tenant.
-The results can be sorted and paginated as needed. Optionally filter by category code.
+The results can be sorted and paginated as needed.
 
 Authentication is required via token or API key. The tenant ID in the path must match
 the one in the security credentials.
@@ -1652,7 +1652,6 @@ the one in the security credentials.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `category_code` | string | No | - | Filter by category code |
 | `limit` | integer | No | 100 | - |
 | `page` | integer | No | 1 | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |

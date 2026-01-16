@@ -1530,7 +1530,13 @@ Delete Button From Tab In Category In Item Bookを削除します。対象をシ
 
 **GET** `/api/v1/tenants/{tenant_id}/items`
 
-商品を取得します。商品の詳細情報を返します。
+Retrieve all item master records for a tenant.
+
+This endpoint returns a paginated list of all active items for the specified tenant.
+The results can be sorted and paginated as needed.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
 
 **パスパラメータ:**
 
@@ -1542,7 +1548,6 @@ Delete Button From Tab In Category In Item Bookを削除します。対象をシ
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `category_code` | string | No | - | Filter by category code |
 | `limit` | integer | No | 100 | - |
 | `page` | integer | No | 1 | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |

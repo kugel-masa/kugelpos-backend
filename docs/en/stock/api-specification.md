@@ -620,7 +620,6 @@ Create a snapshot of current stock levels
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `snapshotId` | string | No | Snapshot ID |
 | `tenantId` | string | Yes | Tenant ID |
 | `storeCode` | string | Yes | Store code |
 | `totalItems` | integer | Yes | Total number of items |
@@ -642,7 +641,6 @@ Create a snapshot of current stock levels
     "message": "string"
   },
   "data": {
-    "snapshotId": "string",
     "tenantId": "string",
     "storeCode": "string",
     "totalItems": 0,
@@ -699,7 +697,6 @@ Get a specific stock snapshot by its ID
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `snapshotId` | string | No | Snapshot ID |
 | `tenantId` | string | Yes | Tenant ID |
 | `storeCode` | string | Yes | Store code |
 | `totalItems` | integer | Yes | Total number of items |
@@ -721,7 +718,6 @@ Get a specific stock snapshot by its ID
     "message": "string"
   },
   "data": {
-    "snapshotId": "string",
     "tenantId": "string",
     "storeCode": "string",
     "totalItems": 0,
@@ -751,11 +747,11 @@ Get a specific stock snapshot by its ID
 }
 ```
 
-### 12. Get stock snapshots with flexible date filtering
+### 12. Get stock snapshots by date range
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots`
 
-Get list of stock snapshots with flexible date range filtering and period shortcuts
+Get list of stock snapshots filtered by generate_date_time range
 
 **Path Parameters:**
 
@@ -771,11 +767,6 @@ Get list of stock snapshots with flexible date range filtering and period shortc
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |
 | `start_date` | string | No | - | Start date in ISO format |
 | `end_date` | string | No | - | End date in ISO format |
-| `date_type` | string | No | generate | Date field to filter on |
-| `period` | string | No | - | Period shortcut |
-| `last_n_days` | string | No | - | Filter last N days |
-| `last_n_hours` | string | No | - | Filter last N hours |
-| `timezone` | string | No | Asia/Tokyo | Timezone for date interpretation |
 | `page` | integer | No | 1 | Page number |
 | `limit` | integer | No | 100 | Maximum number of items to return |
 | `is_terminal_service` | string | No | False | - |
@@ -804,7 +795,6 @@ Represents metadata for paginated  |
   "data": {
     "data": [
       {
-        "snapshotId": "string",
         "tenantId": "string",
         "storeCode": "string",
         "totalItems": 0,
@@ -912,11 +902,11 @@ Get current stock information for a specific item
 }
 ```
 
-### 14. Get stock update history with filtering
+### 14. Get stock update history
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history`
 
-Get stock update history for an item with date range and type filtering
+Get stock update history for an item
 
 **Path Parameters:**
 
@@ -931,12 +921,6 @@ Get stock update history for an item with date range and type filtering
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |
-| `start_date` | string | No | - | Start date in ISO format |
-| `end_date` | string | No | - | End date in ISO format |
-| `update_type` | string | No | - | Update type filter (sales, receive, adju |
-| `period` | string | No | - | Period shortcut |
-| `last_n_days` | string | No | - | Filter last N days |
-| `timezone` | string | No | Asia/Tokyo | Timezone for date interpretation |
 | `page` | integer | No | 1 | Page number |
 | `limit` | integer | No | 100 | Maximum number of items to return |
 | `is_terminal_service` | string | No | False | - |
@@ -1217,36 +1201,6 @@ Process transaction log to update stock quantities
 
 **Response:**
 
-## WebSocket Endpoint
-
-### 19. Stock Alert WebSocket
-
-**WebSocket** `/ws/{tenant_id}/{store_code}`
-
-WebSocket endpoint for receiving real-time stock alerts.
-
-**Note:** This endpoint does NOT include the `/api/v1` prefix.
-
-**Path Parameters:**
-
-| Parameter | Type | Required | Description |
-|------------|------|------|------|
-| `tenant_id` | string | Yes | Tenant ID |
-| `store_code` | string | Yes | Store code |
-
-**Query Parameters:**
-
-| Parameter | Type | Required | Description |
-|------------|------|------|------|
-| `token` | string | Yes | JWT authentication token |
-
-**Connection Example:**
-```
-ws://localhost:8006/ws/tenant001/STORE001?token={jwt_token}
-```
-
-**Detailed Specification:** See [WebSocket Specification](./websocket-specification.md).
-
 ## Error Codes
 
 Error responses are returned in the following format:
@@ -1256,12 +1210,7 @@ Error responses are returned in the following format:
   "success": false,
   "code": 400,
   "message": "Error message",
-  "userError": {
-    "code": "100001",
-    "message": "User-facing error message"
-  },
+  "errorCode": "ERROR_CODE",
   "operation": "operation_name"
 }
 ```
-
-For details on the error code structure, see `/docs/en/general/error_code_spec.md`.

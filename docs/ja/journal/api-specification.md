@@ -181,7 +181,6 @@
 | `content` | string | No | delete in future |
 | `journalText` | string | Yes | journal text |
 | `receiptText` | string | Yes | receipt text |
-| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
 
 **レスポンス例:**
 ```json
@@ -261,7 +260,6 @@
 | `content` | string | No | delete in future |
 | `journalText` | string | Yes | journal text |
 | `receiptText` | string | Yes | receipt text |
-| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
 
 **リクエスト例:**
 ```json

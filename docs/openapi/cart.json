@@ -3893,21 +3893,6 @@
             ],
             "title": "Journaltext"
           },
-          "receipts": {
-            "anyOf": [
-              {
-                "items": {
-                  "additionalProperties": true,
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receipts"
-          },
           "staff": {
             "anyOf": [
               {
@@ -4562,21 +4547,6 @@
               }
             ],
             "title": "Journaltext"
-          },
-          "receipts": {
-            "anyOf": [
-              {
-                "items": {
-                  "additionalProperties": true,
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receipts"
           },
           "staff": {
             "anyOf": [

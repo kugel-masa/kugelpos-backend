@@ -240,7 +240,6 @@ Fetches the cart with the specified ID and returns its full details.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -330,7 +329,6 @@ it for receipt generation and storage.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -419,7 +417,6 @@ Marks the cart as cancelled, preventing further modifications or processing.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -521,7 +518,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -623,7 +619,6 @@ Adds one or more items to the specified cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -713,7 +708,6 @@ Marks the specified line item as cancelled without removing it from the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -816,7 +810,6 @@ Applies one or more discounts to the specified item in the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -919,7 +912,6 @@ Changes the quantity of the specified item in the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1022,7 +1014,6 @@ Changes the unit price of the specified item in the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1124,7 +1115,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1214,7 +1204,6 @@ clearing any payment information and allowing additional items to be added.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1303,7 +1292,6 @@ Updates the cart with calculated subtotals and tax information.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1406,7 +1394,6 @@ The tenant ID in the path must match the tenant ID from the authentication token
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 
@@ -1498,7 +1485,6 @@ The tenant ID in the path must match the tenant ID from the authentication token
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 
@@ -1675,7 +1661,6 @@ The terminal making this request must be in the same store as the original trans
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 
@@ -1778,7 +1763,6 @@ The terminal making this request must match the terminal that created the transa
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 

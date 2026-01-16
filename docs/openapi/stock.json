@@ -371,8 +371,8 @@
         "tags": [
           "stock"
         ],
-        "summary": "Get stock snapshots with flexible date filtering",
-        "description": "Get list of stock snapshots with flexible date range filtering and period shortcuts",
+        "summary": "Get stock snapshots by date range",
+        "description": "Get list of stock snapshots filtered by generate_date_time range",
         "operationId": "get_snapshots_by_date_range_api_v1_tenants__tenant_id__stores__store_code__stock_snapshots_get",
         "security": [
           {
@@ -454,90 +454,6 @@
               "title": "End Date"
             },
             "description": "End date in ISO format"
-          },
-          {
-            "name": "date_type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "pattern": "^(generate|create|update)$",
-              "description": "Date field to filter on",
-              "default": "generate",
-              "title": "Date Type"
-            },
-            "description": "Date field to filter on"
-          },
-          {
-            "name": "period",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "pattern": "^(today|yesterday|this_week|last_week|this_month|last_month)$"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Period shortcut",
-              "title": "Period"
-            },
-            "description": "Period shortcut"
-          },
-          {
-            "name": "last_n_days",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "maximum": 365,
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter last N days",
-              "title": "Last N Days"
-            },
-            "description": "Filter last N days"
-          },
-          {
-            "name": "last_n_hours",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "maximum": 168,
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter last N hours",
-              "title": "Last N Hours"
-            },
-            "description": "Filter last N hours"
-          },
-          {
-            "name": "timezone",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Timezone for date interpretation",
-              "default": "Asia/Tokyo",
-              "title": "Timezone"
-            },
-            "description": "Timezone for date interpretation"
           },
           {
             "name": "page",
@@ -1097,8 +1013,8 @@
         "tags": [
           "stock"
         ],
-        "summary": "Get stock update history with filtering",
-        "description": "Get stock update history for an item with date range and type filtering",
+        "summary": "Get stock update history",
+        "description": "Get stock update history for an item",
         "operationId": "get_stock_history_api_v1_tenants__tenant_id__stores__store_code__stock__item_code__history_get",
         "security": [
           {
@@ -1153,111 +1069,6 @@
               "title": "Terminal Id"
             },
             "description": "terminal_id should be provided by query parameter optional"
-          },
-          {
-            "name": "start_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Start date in ISO format",
-              "title": "Start Date"
-            },
-            "description": "Start date in ISO format"
-          },
-          {
-            "name": "end_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "End date in ISO format",
-              "title": "End Date"
-            },
-            "description": "End date in ISO format"
-          },
-          {
-            "name": "update_type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Update type filter (sales, receive, adjust, etc.)",
-              "title": "Update Type"
-            },
-            "description": "Update type filter (sales, receive, adjust, etc.)"
-          },
-          {
-            "name": "period",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "pattern": "^(today|yesterday|this_week|last_week|this_month)$"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Period shortcut",
-              "title": "Period"
-            },
-            "description": "Period shortcut"
-          },
-          {
-            "name": "last_n_days",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "maximum": 365,
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter last N days",
-              "title": "Last N Days"
-            },
-            "description": "Filter last N days"
-          },
-          {
-            "name": "timezone",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Timezone for date interpretation",
-              "default": "Asia/Tokyo",
-              "title": "Timezone"
-            },
-            "description": "Timezone for date interpretation"
           },
           {
             "name": "page",
@@ -3321,18 +3132,6 @@
       },
       "StockSnapshotResponse": {
         "properties": {
-          "snapshotId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Snapshotid",
-            "description": "Snapshot ID"
-          },
           "tenantId": {
             "type": "string",
             "title": "Tenantid",

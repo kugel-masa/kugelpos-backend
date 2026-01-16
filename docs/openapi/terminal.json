@@ -1272,18 +1272,6 @@
             "description": "Page number"
           },
           {
-            "name": "include_api_key",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Include unmasked API key in response",
-              "default": false,
-              "title": "Include Api Key"
-            },
-            "description": "Include unmasked API key in response"
-          },
-          {
             "name": "store_code",
             "in": "query",
             "required": false,
@@ -1445,18 +1433,6 @@
               "type": "string",
               "title": "Terminal Id"
             }
-          },
-          {
-            "name": "include_api_key",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Include unmasked API key in response",
-              "default": false,
-              "title": "Include Api Key"
-            },
-            "description": "Include unmasked API key in response"
           }
         ],
         "responses": {
@@ -2238,18 +2214,6 @@
               "type": "string",
               "title": "Terminal Id"
             }
-          },
-          {
-            "name": "include_api_key",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Include unmasked API key in response",
-              "default": false,
-              "title": "Include Api Key"
-            },
-            "description": "Include unmasked API key in response"
           }
         ],
         "requestBody": {
@@ -2377,18 +2341,6 @@
               "type": "string",
               "title": "Terminal Id"
             }
-          },
-          {
-            "name": "include_api_key",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Include unmasked API key in response",
-              "default": false,
-              "title": "Include Api Key"
-            },
-            "description": "Include unmasked API key in response"
           }
         ],
         "requestBody": {

@@ -232,7 +232,6 @@
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -319,7 +318,6 @@
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -406,7 +404,6 @@
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -508,7 +505,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -608,7 +604,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -696,7 +691,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -797,7 +791,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -898,7 +891,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -999,7 +991,6 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1101,7 +1092,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1188,7 +1178,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1275,7 +1264,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 | `cartId` | string | Yes | - |
@@ -1375,7 +1363,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 
@@ -1464,7 +1451,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 
@@ -1635,7 +1621,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 
@@ -1735,7 +1720,6 @@ Processes one or more payment methods against the cart.
 | `subtotalDiscounts` | array[BaseDiscount] | No | - |
 | `receiptText` | string | No | - |
 | `journalText` | string | No | - |
-| `receipts` | array[object] | No | - |
 | `staff` | BaseTranStaff | No | - |
 | `status` | BaseTranStatus | No | - |
 

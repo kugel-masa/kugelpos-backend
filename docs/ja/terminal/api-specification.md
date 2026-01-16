@@ -724,7 +724,6 @@ Delete Storeを削除します。対象をシステムから削除します。
 |------------|------|------|------------|------|
 | `limit` | integer | No | 100 | Limit the number of results |
 | `page` | integer | No | 1 | Page number |
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 | `store_code` | string | No | - | Filter by store code |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
 | `terminal_id` | string | No | - | - |
@@ -877,12 +876,6 @@ Delete Storeを削除します。対象をシステムから削除します。
 | パラメータ | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
-
-**クエリパラメータ:**
-
-| パラメータ | 型 | 必須 | デフォルト | 説明 |
-|------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 
 **レスポンス:**
 
@@ -1129,12 +1122,6 @@ Delete Terminalを削除します。対象をシステムから削除します�
 | パラメータ | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
-
-**クエリパラメータ:**
-
-| パラメータ | 型 | 必須 | デフォルト | 説明 |
-|------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 
 **リクエストボディ:**
 
@@ -1452,12 +1439,6 @@ Represents termin |
 | パラメータ | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
-
-**クエリパラメータ:**
-
-| パラメータ | 型 | 必須 | デフォルト | 説明 |
-|------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 
 **リクエストボディ:**
 

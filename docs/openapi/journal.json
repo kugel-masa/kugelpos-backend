@@ -1328,22 +1328,6 @@
             "type": "string",
             "title": "Receipttext",
             "description": "receipt text"
-          },
-          "receipts": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ReceiptDocument"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receipts",
-            "description": "Multiple receipt documents (customer, merchant, journal copies)",
-            "default": []
           }
         },
         "type": "object",
@@ -1409,51 +1393,6 @@
         ],
         "title": "Metadata",
         "description": "Metadata Model\n\nRepresents metadata for paginated API responses.\nIncludes total count, current page, items per page, sort criteria,\nand filter conditions."
-      },
-      "ReceiptDocument": {
-        "properties": {
-          "type": {
-            "type": "string",
-            "title": "Type"
-          },
-          "content": {
-            "type": "string",
-            "title": "Content"
-          },
-          "format": {
-            "type": "string",
-            "title": "Format",
-            "default": "text"
-          },
-          "print_required": {
-            "type": "boolean",
-            "title": "Print Required",
-            "default": true
-          },
-          "print_copies": {
-            "type": "integer",
-            "title": "Print Copies",
-            "default": 1
-          },
-          "printer_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Printer Type"
-          }
-        },
-        "type": "object",
-        "required": [
-          "type",
-          "content"
-        ],
-        "title": "ReceiptDocument",
-        "description": "Receipt document model for storing individual receipt information.\n\nThis class represents a single receipt that can be printed as part of a transaction.\nMultiple receipts can be associated with a single transaction for different purposes\n(customer copy, merchant copy, journal, etc.)."
       },
       "TenantCreateRequest": {
         "properties": {

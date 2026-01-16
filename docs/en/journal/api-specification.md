@@ -189,7 +189,6 @@ the one in the security credentials.
 | `content` | string | No | delete in future |
 | `journalText` | string | Yes | journal text |
 | `receiptText` | string | Yes | receipt text |
-| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
 
 **Response Example:**
 ```json
@@ -275,7 +274,6 @@ the one in the security credentials.
 | `content` | string | No | delete in future |
 | `journalText` | string | Yes | journal text |
 | `receiptText` | string | Yes | receipt text |
-| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
 
 **Request Example:**
 ```json

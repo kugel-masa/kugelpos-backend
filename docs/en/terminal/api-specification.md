@@ -765,7 +765,6 @@ Optional filtering by store code is supported.
 |------------|------|------|------------|------|
 | `limit` | integer | No | 100 | Limit the number of results |
 | `page` | integer | No | 1 | Page number |
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 | `store_code` | string | No | - | Filter by store code |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
 | `terminal_id` | string | No | - | - |
@@ -923,12 +922,6 @@ This endpoint retrieves detailed information about a specific terminal.
 | Parameter | Type | Required | Description |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
-
-**Query Parameters:**
-
-| Parameter | Type | Required | Default | Description |
-|------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 
 **Response:**
 
@@ -1188,12 +1181,6 @@ physical cash amount in the drawer and creates a closing report.
 | Parameter | Type | Required | Description |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
-
-**Query Parameters:**
-
-| Parameter | Type | Required | Default | Description |
-|------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 
 **Request Body:**
 
@@ -1523,12 +1510,6 @@ It also records the initial cash amount in the drawer.
 | Parameter | Type | Required | Description |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
-
-**Query Parameters:**
-
-| Parameter | Type | Required | Default | Description |
-|------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Include unmasked API key in response |
 
 **Request Body:**
 
