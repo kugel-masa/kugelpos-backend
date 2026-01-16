@@ -8,21 +8,21 @@ The Stock service's WebSocket functionality is a system that provides real-time 
 
 ### Connection Information
 
-**Endpoint:** `WebSocket /api/v1/ws/{tenant_id}/{store_code}`
+**Endpoint:** `WebSocket /ws/{tenant_id}/{store_code}`
 
-**Implementation Location:** `/services/stock/app/routers/websocket_router.py:21`
+**Implementation Location:** `/services/stock/app/api/v1/stock.py:996`
 
 **Authentication:** JWT authentication (via query parameter)
 
 **URL Example:**
 ```
-ws://localhost:8006/api/v1/ws/tenant001/STORE001?token={jwt_token}
+ws://localhost:8006/ws/tenant001/STORE001?token={jwt_token}
 ```
 
 ## Authentication Mechanism
 
 ### JWT Authentication
-**Implementation Location:** `/services/stock/app/routers/websocket_router.py:29`
+**Implementation Location:** `/services/stock/app/api/v1/stock.py:1028`
 
 Due to WebSocket protocol constraints, the authentication token is sent as a query parameter:
 
@@ -45,7 +45,9 @@ Sent when connection is established:
 {
   "type": "connection",
   "status": "connected",
-  "message": "WebSocket connected successfully"
+  "tenant_id": "tenant001",
+  "store_code": "STORE001",
+  "message": "Connected to stock alert service"
 }
 ```
 
@@ -91,14 +93,15 @@ Heartbeat for connection maintenance:
 
 ### ConnectionManager
 
-**Implementation Location:** `/services/stock/app/services/websocket/connection_manager.py`
+**Implementation Location:** `/services/stock/app/websocket/connection_manager.py`
 
 ```python
 class ConnectionManager:
     """Manager for WebSocket connections"""
-    
+
     def __init__(self):
-        self.active_connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
+        # Structure: {tenant_id: {store_code: set(websocket_connections)}}
+        self._connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
         self._lock = asyncio.Lock()
 ```
 
@@ -118,23 +121,19 @@ class ConnectionManager:
 
 ### AlertService
 
-**Implementation Location:** `/services/stock/app/services/websocket/alert_service.py`
+**Implementation Location:** `/services/stock/app/services/alert_service.py`
 
 **Main Features:**
 
 1. **Alert Evaluation Logic**
    ```python
-   async def check_and_send_alerts(
-       self,
-       tenant_id: str,
-       store_code: str,
-       item: StockItemDocument
-   )
+   async def check_and_send_alerts(self, stock: StockDocument) -> None:
+       """Check stock levels and send alerts if necessary"""
    ```
 
 2. **Alert Types**
-   - `reorder_point`: Stock quantity ≤ reorder point
-   - `minimum_stock`: Stock quantity < minimum stock
+   - `reorder_point`: Stock quantity ≤ reorder point (only when reorder_point > 0)
+   - `minimum_stock`: Stock quantity < minimum stock (only when minimum_quantity > 0)
 
 3. **Cooldown Feature**
    - Default: 60 seconds
@@ -143,45 +142,43 @@ class ConnectionManager:
 
 ### Cooldown Implementation
 
-**Implementation Location:** `/services/stock/app/repositories/alert_cooldown_repository.py`
+Managed using an in-memory dictionary (`recent_alerts`) within AlertService.
 
 ```python
-class AlertCooldownRepository:
-    """Repository for managing alert cooldowns"""
-    
-    async def is_in_cooldown(
-        self,
-        alert_type: str,
-        tenant_id: str,
-        store_code: str,
-        item_code: str
-    ) -> bool
+class AlertService:
+    def __init__(self, connection_manager: ConnectionManager):
+        self.connection_manager = connection_manager
+        self.alert_cooldown = settings.ALERT_COOLDOWN_SECONDS
+        self.recent_alerts: Dict[str, datetime] = {}  # Track recent alerts
+        self._cleanup_task = None
+
+    def _should_send_alert(self, alert_key: str) -> bool:
+        """Check if we should send an alert based on cooldown"""
 ```
 
 **Cleanup:**
-- Background task deletes old records every 10 minutes
-- Implementation: `/services/stock/app/services/websocket/alert_service.py:60`
+- Background task (`_cleanup_old_alerts`) deletes old records every 10 minutes
+- Implementation: `/services/stock/app/services/alert_service.py:38`
 
 ## Integration Points
 
 ### 1. Trigger on Stock Updates
 
-**Implementation Location:** `/services/stock/app/services/stock_service.py:239`
+**Implementation Location:** `/services/stock/app/services/stock_service.py:96`
 
 ```python
-# Alert check after stock update
-await self.alert_service.check_and_send_alerts(
-    tenant_id=tenant_id,
-    store_code=store_code,
-    item=updated_item
-)
+# Check for alerts if alert service is available
+if self._alert_service:
+    await self._alert_service.check_and_send_alerts(updated_stock)
 ```
 
-### 2. During Transaction Processing
+### 2. On WebSocket Connection Establishment
 
-**Implementation Location:** `/services/stock/app/services/transaction_handler.py:100`
+**Implementation Location:** `/services/stock/app/api/v1/stock.py:1079`
 
-Alert check after transaction log processing when stock changes occur
+When a WebSocket connection is established, current alert states are sent:
+- Reorder point alerts for items below reorder point
+- Minimum stock alerts for items below minimum quantity
 
 ## Performance Characteristics
 

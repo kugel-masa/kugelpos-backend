@@ -2,99 +2,92 @@
 
 ## Overview
 
-The Kugelpos system implements consistent error handling across services through a unified error code system. Error codes are in 6-digit numeric format (XXYYZZ) and include multi-language support.
+The Kugelpos system achieves consistent error handling across services through a unified error code system. Error codes are in 6-digit numeric format (XXYYZZ) and include multi-language support.
 
 ## Error Code Structure (XXYYZZ)
 
-### XX: Service Identifier
+### XX: Error Category
+
+| Category | Code Range | Description |
+|----------|------------|-------------|
+| General | 10XXXX | General errors |
+| Authentication | 20XXXX | Authentication/authorization errors |
+| Input Validation | 30XXXX | Input data validation errors |
+| Business Rule | 40XXXX | Business logic errors (service-specific subcategories) |
+| Database | 50XXXX | Database/repository errors |
+| External Service | 60XXXX | External service integration errors |
+| System | 90XXXX | System errors |
+
+### YY: Subcategory (Service-specific ranges within Business Rule Errors)
 
 | Service | Code Range | Description |
 |---------|------------|-------------|
-| Commons | 10XXX | Common errors |
-| Account | 20XXX | Authentication & user management |
-| Terminal | 30XXX | Terminal & store management |
-| Master-data | 40XXX | Master data management |
-| Cart | 50XXX | Cart & transaction processing |
-| Report | 60XXX | Report generation |
-| Journal | 70XXX | Electronic journal |
-| Stock | 80XXX | Inventory management |
-
-### YY: Feature/Module Identifier
+| Cart | 401xx-404xx | Cart/transaction processing |
+| Master-data | 405xx | Master data management |
+| Terminal | 406xx-407xx | Terminal/store management |
+| Account | 408xx-409xx | Authentication/user management |
+| Journal | 410xx-411xx | Electronic journal |
+| Report | 412xx-413xx | Report generation |
+| Stock | 414xx-415xx | Inventory management |
 
 ### ZZ: Specific Error Number
 
 ## Implemented Error Codes
 
-### Common Errors (10XXX)
+### General Errors (10XXXX)
 
 | Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 10001 | General error occurred | 一般エラーが発生しました | System general |
-| 10002 | Authentication required | 認証が必要です | Authentication check |
-| 10003 | Access denied | アクセスが拒否されました | Authorization check |
-| 10004 | Invalid request format | 無効なリクエスト形式です | Validation |
-| 10005 | Database connection failed | データベース接続に失敗しました | DB connection |
+|------|-----------------|------------------|-------|
+| 100000 | General error occurred | 一般エラーが発生しました | System general |
+| 100001 | Resource not found | 対象データが見つかりませんでした | Resource search |
 
-### Account Service (20XXX)
+### Authentication/Authorization Errors (20XXXX)
 
 | Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 20001 | Invalid credentials | 認証情報が無効です | Login failure |
-| 20002 | User not found | ユーザーが見つかりません | User search |
-| 20003 | Token expired | トークンが期限切れです | JWT validation |
-| 20004 | User already exists | ユーザーが既に存在します | User creation |
+|------|-----------------|------------------|-------|
+| 200001 | Authentication failed | 認証に失敗しました | Login failure |
+| 200002 | Permission denied | 権限がありません | Authorization check |
 
-### Terminal Service (30XXX)
+### Input Validation Errors (30XXXX)
 
 | Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 30001 | Terminal not found | 端末が見つかりません | Terminal search |
-| 30002 | Terminal already exists | 端末が既に存在します | Terminal creation |
-| 30003 | Invalid terminal status | 無効な端末状態です | Status check |
-| 30004 | Store not found | 店舗が見つかりません | Store search |
-| 30005 | Invalid API key | 無効なAPIキーです | API authentication |
+|------|-----------------|------------------|-------|
+| 300001 | Invalid input data | 入力データが無効です | General validation |
+| 300002 | Required field is missing | 必須フィールドがありません | Required check |
+| 300003 | Invalid field format | フィールドの形式が正しくありません | Format validation |
+| 300004 | Invalid operation | 操作が無効です | Operation validation |
 
-### Master-data Service (40XXX)
+### Business Rule Errors (40XXXX)
 
-| Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 40001 | Item not found | 商品が見つかりません | Product search |
-| 40002 | Category not found | カテゴリが見つかりません | Category search |
-| 40003 | Price not configured | 価格が設定されていません | Price retrieval |
-| 40004 | Tax rule not found | 税率ルールが見つかりません | Tax calculation |
+Business rule errors are a category for defining service-specific errors. Subcategories are assigned by service.
 
-### Cart Service (50XXX)
+**Note:** Specific business rule error codes are defined in each service.
+
+### Database/Repository Errors (50XXXX)
 
 | Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 50001 | Cart not found | カートが見つかりません | Cart search |
-| 50002 | Invalid cart state | 無効なカート状態です | State check |
-| 50003 | Item already in cart | 商品が既にカートにあります | Item addition |
-| 50004 | Payment method not supported | サポートされていない支払い方法です | Payment processing |
-| 50005 | Insufficient payment | 支払い金額が不足しています | Payment validation |
+|------|-----------------|------------------|-------|
+| 500001 | Database error occurred | データベースエラーが発生しました | DB general |
+| 500002 | Cannot create data | データを作成できませんでした | Create failure |
+| 500003 | Cannot update data | データを更新できませんでした | Update failure |
+| 500004 | Cannot delete data | データを削除できませんでした | Delete failure |
+| 500005 | Duplicate key | キーが重複しています | Duplicate error |
+| 500006 | Update operation failed | 更新が機能しませんでした | Update malfunction |
+| 500007 | Replace operation failed | 置換が機能しませんでした | Replace malfunction |
+| 500008 | Cannot delete because child elements exist | 子要素が存在するため削除できません | Referential integrity |
 
-### Report Service (60XXX)
-
-| Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 60001 | Report generation failed | レポート生成に失敗しました | Report creation |
-| 60002 | Invalid date range | 無効な日付範囲です | Date validation |
-| 60003 | No data available | データがありません | Data retrieval |
-
-### Journal Service (70XXX)
+### External Service Integration Errors (60XXXX)
 
 | Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 70001 | Journal entry not found | ジャーナルエントリが見つかりません | Search |
-| 70002 | Invalid journal format | 無効なジャーナル形式です | Format validation |
+|------|-----------------|------------------|-------|
+| 600001 | External service error occurred | 外部サービスエラーが発生しました | External integration |
 
-### Stock Service (80XXX)
+### System Errors (90XXXX)
 
 | Code | English Message | Japanese Message | Usage |
-|------|----------------|------------------|-------|
-| 80001 | Stock item not found | 在庫商品が見つかりません | Stock search |
-| 80002 | Insufficient stock | 在庫が不足しています | Stock check |
-| 80003 | Invalid quantity | 無効な数量です | Quantity validation |
+|------|-----------------|------------------|-------|
+| 900001 | System error occurred | システムエラーが発生しました | System failure |
+| 900999 | Unexpected error occurred | 予期しないエラーが発生しました | Unexpected error |
 
 ## Multi-language Support Implementation
 
@@ -104,24 +97,45 @@ The Kugelpos system implements consistent error handling across services through
 
 ```python
 class ErrorMessage:
+    DEFAULT_LANGUAGE = "ja"
+    SUPPORTED_LANGUAGES = ["ja", "en"]
+
     MESSAGES = {
         "ja": {
             ErrorCode.GENERAL_ERROR: "一般エラーが発生しました",
             ErrorCode.AUTHENTICATION_ERROR: "認証に失敗しました",
-            ErrorCode.CART_NOT_FOUND: "カートが見つかりません",
+            ErrorCode.VALIDATION_ERROR: "入力データが無効です",
+            ErrorCode.DATABASE_ERROR: "データベースエラーが発生しました",
             # ... other error messages
         },
         "en": {
             ErrorCode.GENERAL_ERROR: "General error occurred",
             ErrorCode.AUTHENTICATION_ERROR: "Authentication failed",
-            ErrorCode.CART_NOT_FOUND: "Cart not found",
+            ErrorCode.VALIDATION_ERROR: "Invalid input data",
+            ErrorCode.DATABASE_ERROR: "Database error occurred",
             # ... other error messages
         }
     }
-    
+
+    DEFAULT_ERROR_MESSAGES = {
+        "ja": "不明なエラーが発生しました",
+        "en": "An unknown error occurred"
+    }
+
     @classmethod
-    def get_message(cls, error_code: str, language: str = "ja") -> str:
-        return cls.MESSAGES.get(language, {}).get(error_code, "Unknown error")
+    def get_message(cls, error_code, default_message=None, lang=None) -> str:
+        """Get message corresponding to error code"""
+        if lang is None:
+            lang = cls.DEFAULT_LANGUAGE
+        if lang not in cls.SUPPORTED_LANGUAGES:
+            lang = cls.DEFAULT_LANGUAGE
+
+        message = cls.MESSAGES.get(lang, {}).get(error_code)
+        if message is None:
+            if default_message:
+                return default_message
+            return cls.DEFAULT_ERROR_MESSAGES.get(lang, cls.DEFAULT_ERROR_MESSAGES.get(cls.DEFAULT_LANGUAGE))
+        return message
 ```
 
 ### Unified Response Format
@@ -130,10 +144,10 @@ class ErrorMessage:
 {
   "success": false,
   "code": 400,
-  "message": "Cart creation failed",
+  "message": "Operation failed",
   "userError": {
-    "code": "50001",
-    "message": "カートが見つかりません"
+    "code": "500001",
+    "message": "Database error occurred"
   },
   "data": null,
   "metadata": null,

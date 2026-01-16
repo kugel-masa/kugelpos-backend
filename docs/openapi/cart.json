@@ -1,0 +1,4670 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/carts": {
+      "post": {
+        "summary": "Create Cart",
+        "description": "Create a new shopping cart.\n\nInitializes a new cart for the current terminal with optional user information\nand transaction type.\n\nArgs:\n    create_req: Cart creation parameters including user info and transaction type\n    cart_service: Injected cart service instance\n\nReturns:\n    API response with the ID of the newly created cart",
+        "operationId": "create_cart_api_v1_carts_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CartCreateResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}": {
+      "get": {
+        "summary": "Get Cart",
+        "description": "Retrieve a cart by its ID.\n\nFetches the cart with the specified ID and returns its full details.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the cart data\n\nRaises:\n    HTTPException: If the cart is not found",
+        "operationId": "get_cart_api_v1_carts__cart_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/cancel": {
+      "post": {
+        "summary": "Cancel Transaction",
+        "description": "Cancel a transaction/cart.\n\nMarks the cart as cancelled, preventing further modifications or processing.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "cancel_transaction_api_v1_carts__cart_id__cancel_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/lineItems": {
+      "post": {
+        "summary": "Add Items",
+        "description": "Add items to a cart.\n\nAdds one or more items to the specified cart.\n\nArgs:\n    line_items: List of items to add to the cart\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "add_items_api_v1_carts__cart_id__lineItems_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "title": "Line Items"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel": {
+      "post": {
+        "summary": "Cancel Line Item",
+        "description": "Cancel a specific line item in a cart.\n\nMarks the specified line item as cancelled without removing it from the cart.\n\nArgs:\n    lineNo: Line number of the item to cancel\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "cancel_line_item_api_v1_carts__cart_id__lineItems__lineNo__cancel_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lineNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Lineno"
+            }
+          },
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice": {
+      "patch": {
+        "summary": "Update Item Unit Price",
+        "description": "Update the unit price of a cart line item.\n\nChanges the unit price of the specified item in the cart.\n\nArgs:\n    lineNo: Line number of the item to update\n    unit_price_update: New unit price information\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "update_item_unit_price_api_v1_carts__cart_id__lineItems__lineNo__unitPrice_patch",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lineNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Lineno"
+            }
+          },
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUnitPriceUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity": {
+      "patch": {
+        "summary": "Update Item Quantity",
+        "description": "Update the quantity of a cart line item.\n\nChanges the quantity of the specified item in the cart.\n\nArgs:\n    quantity_update: New quantity information\n    lineNo: Line number of the item to update\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "update_item_quantity_api_v1_carts__cart_id__lineItems__lineNo__quantity_patch",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lineNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Lineno"
+            }
+          },
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemQuantityUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts": {
+      "post": {
+        "summary": "Add Discount To Line Item",
+        "description": "Add discount to a specific line item in a cart.\n\nApplies one or more discounts to the specified item in the cart.\n\nArgs:\n    discount: List of discounts to apply\n    lineNo: Line number of the item to apply discounts to\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "add_discount_to_line_item_api_v1_carts__cart_id__lineItems__lineNo__discounts_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lineNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Lineno"
+            }
+          },
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DiscountRequest"
+                },
+                "title": "Discount"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/subtotal": {
+      "post": {
+        "summary": "Subtotal",
+        "description": "Calculate the subtotal for a cart.\n\nUpdates the cart with calculated subtotals and tax information.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "subtotal_api_v1_carts__cart_id__subtotal_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/discounts": {
+      "post": {
+        "summary": "Discount To Cart",
+        "description": "Add discount to the entire cart.\n\nApplies one or more discounts at the cart level, affecting the total price.\n\nArgs:\n    discount: List of discounts to apply to the cart\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "discount_to_cart_api_v1_carts__cart_id__discounts_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DiscountRequest"
+                },
+                "title": "Discount"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/payments": {
+      "post": {
+        "summary": "Payments",
+        "description": "Add payments to a cart.\n\nProcesses one or more payment methods against the cart.\n\nArgs:\n    payments: List of payments to process\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "payments_api_v1_carts__cart_id__payments_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PaymentRequest"
+                },
+                "title": "Payments"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/bill": {
+      "post": {
+        "summary": "Bill",
+        "description": "Finalize a cart into a billable transaction.\n\nCompletes the cart processing, finalizing the transaction and preparing\nit for receipt generation and storage.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the finalized cart/transaction data",
+        "operationId": "bill_api_v1_carts__cart_id__bill_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/carts/{cart_id}/resume-item-entry": {
+      "post": {
+        "summary": "Resume Item Entry",
+        "description": "Resume item entry from paying state.\n\nTransitions the cart from Paying state back to EnteringItem state,\nclearing any payment information and allowing additional items to be added.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "operationId": "resume_item_entry_api_v1_carts__cart_id__resume_item_entry_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cart_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cart Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Cart_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions": {
+      "get": {
+        "summary": "Get Transactions By Query",
+        "description": "Get transactions based on query parameters.\n\nRetrieves a paginated list of transactions matching the specified filters.\nThe tenant ID in the path must match the tenant ID from the authentication token.\n\nArgs:\n    tenant_id: The tenant ID in the path\n    store_code: The store code to filter by\n    terminal_no: The terminal number to filter by\n    business_date: Optional business date filter in YYYYMMDD format\n    open_counter: Optional open counter filter\n    transaction_type: Optional transaction type filter\n    receipt_no: Optional receipt number filter\n    limit: Maximum number of results per page (default: 100)\n    page: Page number for pagination (default: 1)\n    sort: Sort order specification\n    include_cancelled: Whether to include cancelled transactions\n    tran_service: Injected transaction service\n\nReturns:\n    API response with a list of matching transactions\n\nRaises:\n    HTTPException: If tenant_id doesn't match the authenticated tenant",
+        "operationId": "get_transactions_by_query_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "business_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Business Date"
+            }
+          },
+          {
+            "name": "open_counter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "title": "Open Counter"
+            }
+          },
+          {
+            "name": "transaction_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "title": "Transaction Type"
+            }
+          },
+          {
+            "name": "receipt_no",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "title": "Receipt No"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "include_cancelled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Cancelled"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "?sort=field1:1,field2:-1",
+              "title": "Sort"
+            },
+            "description": "?sort=field1:1,field2:-1"
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_Tran__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}": {
+      "get": {
+        "summary": "Get Transaction By Tranasction No",
+        "description": "Get a single transaction by its transaction number.\n\nRetrieves detailed information about a specific transaction identified by its number.\nThe tenant ID in the path must match the tenant ID from the authentication token.\n\nArgs:\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    transaction_no: The transaction number to retrieve\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the requested transaction details\n\nRaises:\n    HTTPException: If tenant_id doesn't match the authenticated tenant\n    HTTPException: If the transaction is not found",
+        "operationId": "get_transaction_by_tranasction_no_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions__transaction_no__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "transaction_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Transaction No"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Tran_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void": {
+      "post": {
+        "summary": "Void Transaction By Transaction No",
+        "description": "Void (cancel) a transaction.\n\nMarks a transaction as voided and processes any required refund payments.\nThe terminal making this request must match the terminal that created the transaction.\n\nArgs:\n    payments: List of payment methods to use for refunding\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    transaction_no: The transaction number to void\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the voided transaction details\n\nRaises:\n    InvalidRequestDataException: If tenant_id, store_code, or terminal_no don't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be voided",
+        "operationId": "void_transaction_by_transaction_no_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions__transaction_no__void_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "transaction_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Transaction No"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PaymentRequest"
+                },
+                "title": "Payments"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Tran_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return": {
+      "post": {
+        "summary": "Return Transaction By Transaction No",
+        "description": "Process a transaction return.\n\nCreates a return transaction based on an original transaction and processes any required refund payments.\nThe terminal making this request must be in the same store as the original transaction.\n\nArgs:\n    payments: List of payment methods to use for refunding\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    transaction_no: The transaction number to process a return for\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the return transaction details\n\nRaises:\n    InvalidRequestDataException: If tenant_id or store_code don't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be returned",
+        "operationId": "return_transaction_by_transaction_no_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions__transaction_no__return_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "transaction_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Transaction No"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PaymentRequest"
+                },
+                "title": "Payments"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Tran_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status": {
+      "post": {
+        "summary": "Notify Delivery Status",
+        "description": "Notify the delivery status of a transaction.\n\nUpdates the delivery status of a specific transaction based on the provided information.\nThe terminal making this request must be in the same store as the original transaction.\n\nArgs:\n    delivery_status: Delivery status update request containing event ID, service, status, and optional message\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the updated delivery status\n\nRaises:\n    InvalidRequestDataException: If tenant_id or store_code don't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be updated",
+        "operationId": "notify_delivery_status_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions__transaction_no__delivery_status_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryStatusUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DeliveryStatusUpdateResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "post": {
+        "summary": "Create Tenant",
+        "description": "Create a new tenant with the specified tenant ID.\n\nThis endpoint sets up the necessary database collections and indexes for a new tenant.\nThe tenant ID in the request body must match the tenant ID extracted from the authentication token.\n\nArgs:\n    req: Tenant creation request containing the tenant ID\n    tenant_id: The tenant ID extracted from the authentication token\n\nReturns:\n    API response confirming successful tenant creation\n\nRaises:\n    HTTPException: If the tenant IDs don't match or if there's an error during tenant creation",
+        "operationId": "create_tenant_api_v1_tenants_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cache/terminal/status": {
+      "get": {
+        "summary": "Get terminal cache status",
+        "description": "Get current status of the terminal information cache",
+        "operationId": "get_cache_status_api_v1_cache_terminal_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/cache/terminal": {
+      "delete": {
+        "summary": "Clear terminal cache",
+        "description": "Clear all entries from the terminal information cache",
+        "operationId": "clear_cache_api_v1_cache_terminal_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Root endpoint that returns a welcome message and API version information.\n\nReturns:\n    dict: A message indicating the service name and supported API versions",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint for monitoring service health.\n\nReturns:\n    HealthCheckResponse: Service health status including component checks",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse",
+        "description": "Standardized API response model used by all endpoints.\n\nProvides a consistent structure for all API responses, including status information,\nerror details when applicable, and the actual response data. The model is generic\nand can accommodate any data type for the response payload.\n\nAttributes:\n    success: Boolean indicating if the operation was successful\n    code: HTTP status code for the response\n    message: System message typically used for logging or debugging\n    user_error: User-friendly error information when an error occurs\n    data: The actual response payload (generic type)\n    metadata: Additional metadata like pagination info for list responses\n    operation: Name of the operation that was performed (for tracking)"
+      },
+      "ApiResponse_CartCreateResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CartCreateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CartCreateResponse]"
+      },
+      "ApiResponse_Cart_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cart"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[Cart]"
+      },
+      "ApiResponse_DeliveryStatusUpdateResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStatusUpdateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[DeliveryStatusUpdateResponse]"
+      },
+      "ApiResponse_Tran_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Tran"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[Tran]"
+      },
+      "ApiResponse_dict_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[dict]"
+      },
+      "ApiResponse_list_Tran__": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Tran"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[list[Tran]]"
+      },
+      "BaseDiscount": {
+        "properties": {
+          "discountType": {
+            "type": "string",
+            "title": "Discounttype"
+          },
+          "discountValue": {
+            "type": "number",
+            "title": "Discountvalue"
+          },
+          "discountAmount": {
+            "type": "number",
+            "title": "Discountamount"
+          },
+          "discountDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discountdetail",
+            "default": "no detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "discountType",
+          "discountValue",
+          "discountAmount"
+        ],
+        "title": "BaseDiscount",
+        "description": "Model representing a discount applied to an item or the cart.\nContains details about the discount type, value and resulting amount."
+      },
+      "BaseTranLineItem": {
+        "properties": {
+          "lineNo": {
+            "type": "integer",
+            "title": "Lineno"
+          },
+          "itemCode": {
+            "type": "string",
+            "title": "Itemcode"
+          },
+          "itemName": {
+            "type": "string",
+            "title": "Itemname"
+          },
+          "unitPrice": {
+            "type": "number",
+            "title": "Unitprice"
+          },
+          "unitPriceOriginal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unitpriceoriginal"
+          },
+          "isUnitPriceChanged": {
+            "type": "boolean",
+            "title": "Isunitpricechanged"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "discounts": {
+            "items": {
+              "$ref": "#/components/schemas/BaseDiscount"
+            },
+            "type": "array",
+            "title": "Discounts"
+          },
+          "imageUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Imageurls"
+          },
+          "isCancelled": {
+            "type": "boolean",
+            "title": "Iscancelled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lineNo",
+          "itemCode",
+          "itemName",
+          "unitPrice",
+          "isUnitPriceChanged",
+          "quantity",
+          "amount",
+          "discounts",
+          "imageUrls",
+          "isCancelled"
+        ],
+        "title": "BaseTranLineItem",
+        "description": "Model representing a line item in a transaction.\nIncludes all details about the item including pricing, quantity, discounts and status."
+      },
+      "BaseTranPayment": {
+        "properties": {
+          "paymentNo": {
+            "type": "integer",
+            "title": "Paymentno"
+          },
+          "paymentCode": {
+            "type": "string",
+            "title": "Paymentcode"
+          },
+          "paymentName": {
+            "type": "string",
+            "title": "Paymentname"
+          },
+          "paymentAmount": {
+            "type": "number",
+            "title": "Paymentamount"
+          },
+          "paymentDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paymentdetail",
+            "default": "no detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paymentNo",
+          "paymentCode",
+          "paymentName",
+          "paymentAmount"
+        ],
+        "title": "BaseTranPayment",
+        "description": "Model representing a payment made in a transaction.\nIncludes payment method details and amount information."
+      },
+      "BaseTranStaff": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BaseTranStaff",
+        "description": "Model representing staff information associated with a transaction."
+      },
+      "BaseTranStatus": {
+        "properties": {
+          "isCancelled": {
+            "type": "boolean",
+            "title": "Iscancelled",
+            "default": false
+          },
+          "isVoided": {
+            "type": "boolean",
+            "title": "Isvoided",
+            "default": false
+          },
+          "isRefunded": {
+            "type": "boolean",
+            "title": "Isrefunded",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "BaseTranStatus",
+        "description": "Model representing the status of a transaction.\nContains flags for cancellation, voiding, and refunding."
+      },
+      "BaseTranTax": {
+        "properties": {
+          "taxNo": {
+            "type": "integer",
+            "title": "Taxno"
+          },
+          "taxCode": {
+            "type": "string",
+            "title": "Taxcode"
+          },
+          "taxType": {
+            "type": "string",
+            "title": "Taxtype"
+          },
+          "taxName": {
+            "type": "string",
+            "title": "Taxname"
+          },
+          "taxAmount": {
+            "type": "number",
+            "title": "Taxamount"
+          },
+          "targetAmount": {
+            "type": "number",
+            "title": "Targetamount"
+          },
+          "targetQuantity": {
+            "type": "integer",
+            "title": "Targetquantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taxNo",
+          "taxCode",
+          "taxType",
+          "taxName",
+          "taxAmount",
+          "targetAmount",
+          "targetQuantity"
+        ],
+        "title": "BaseTranTax",
+        "description": "Model representing tax information for a transaction.\nContains details about tax type, rate, and applicable amounts."
+      },
+      "Cart": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "storeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storename"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "totalAmount": {
+            "type": "number",
+            "title": "Totalamount"
+          },
+          "totalAmountWithTax": {
+            "type": "number",
+            "title": "Totalamountwithtax"
+          },
+          "totalQuantity": {
+            "type": "integer",
+            "title": "Totalquantity"
+          },
+          "totalDiscountAmount": {
+            "type": "number",
+            "title": "Totaldiscountamount"
+          },
+          "depositAmount": {
+            "type": "number",
+            "title": "Depositamount"
+          },
+          "changeAmount": {
+            "type": "number",
+            "title": "Changeamount"
+          },
+          "stampDutyAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stampdutyamount"
+          },
+          "receiptNo": {
+            "type": "integer",
+            "title": "Receiptno"
+          },
+          "transactionNo": {
+            "type": "integer",
+            "title": "Transactionno"
+          },
+          "transactionType": {
+            "type": "integer",
+            "title": "Transactiontype"
+          },
+          "businessDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businessdate"
+          },
+          "generateDateTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generatedatetime"
+          },
+          "lineItems": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseTranLineItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lineitems"
+          },
+          "payments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseTranPayment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payments"
+          },
+          "taxes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseTranTax"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxes"
+          },
+          "subtotalDiscounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseDiscount"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotaldiscounts"
+          },
+          "receiptText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipttext"
+          },
+          "journalText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journaltext"
+          },
+          "staff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseTranStaff"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseTranStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cartId": {
+            "type": "string",
+            "title": "Cartid"
+          },
+          "cartStatus": {
+            "type": "string",
+            "title": "Cartstatus"
+          },
+          "subtotalAmount": {
+            "type": "number",
+            "title": "Subtotalamount"
+          },
+          "balanceAmount": {
+            "type": "number",
+            "title": "Balanceamount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "totalAmount",
+          "totalAmountWithTax",
+          "totalQuantity",
+          "totalDiscountAmount",
+          "depositAmount",
+          "changeAmount",
+          "receiptNo",
+          "transactionNo",
+          "transactionType",
+          "cartId",
+          "cartStatus",
+          "subtotalAmount",
+          "balanceAmount"
+        ],
+        "title": "Cart",
+        "description": "API v1 model for shopping carts.\nContains all information about a cart including its items, status, and totals."
+      },
+      "CartCreateRequest": {
+        "properties": {
+          "transactionType": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transactiontype",
+            "default": 101
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userid"
+          },
+          "userName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "title": "CartCreateRequest",
+        "description": "API v1 model for cart creation requests.\nContains parameters required to create a new shopping cart."
+      },
+      "CartCreateResponse": {
+        "properties": {
+          "cartId": {
+            "type": "string",
+            "title": "Cartid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cartId"
+        ],
+        "title": "CartCreateResponse",
+        "description": "API v1 model for cart creation responses.\nContains the identifier of the newly created cart."
+      },
+      "ComponentHealth": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of the component"
+          },
+          "response_time_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Time Ms",
+            "description": "Response time in milliseconds"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Additional details about the component"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if unhealthy"
+          },
+          "component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component",
+            "description": "Component name (for Dapr components)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ComponentHealth",
+        "description": "Individual component health status."
+      },
+      "DeliveryStatusUpdateRequest": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "service",
+          "status"
+        ],
+        "title": "DeliveryStatusUpdateRequest",
+        "description": "API model for delivery status update requests.\nContains parameters needed to update the delivery status of a transaction."
+      },
+      "DeliveryStatusUpdateResponse": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "service",
+          "status",
+          "success"
+        ],
+        "title": "DeliveryStatusUpdateResponse",
+        "description": "API model for delivery status update responses.\nReturns the result of updating the delivery status."
+      },
+      "DiscountRequest": {
+        "properties": {
+          "discountType": {
+            "type": "string",
+            "title": "Discounttype"
+          },
+          "discountValue": {
+            "type": "number",
+            "title": "Discountvalue"
+          },
+          "discountDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discountdetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "discountType",
+          "discountValue"
+        ],
+        "title": "DiscountRequest",
+        "description": "API v1 model for discount application requests.\nContains parameters needed to apply a discount to an item or cart."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Overall health status"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "Health check timestamp"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version"
+          },
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ComponentHealth"
+            },
+            "type": "object",
+            "title": "Checks",
+            "description": "Individual component health checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version"
+        ],
+        "title": "HealthCheckResponse",
+        "description": "Health check response model."
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "healthy",
+          "unhealthy"
+        ],
+        "title": "HealthStatus",
+        "description": "Health status enumeration."
+      },
+      "Item": {
+        "properties": {
+          "itemCode": {
+            "type": "string",
+            "title": "Itemcode"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "unitPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unitprice"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemCode",
+          "quantity"
+        ],
+        "title": "Item",
+        "description": "API v1 model for representing items in shopping cart operations.\nExtends the BaseItem with version-specific functionality."
+      },
+      "ItemQuantityUpdateRequest": {
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quantity"
+        ],
+        "title": "ItemQuantityUpdateRequest",
+        "description": "API v1 model for item quantity update requests.\nUsed when changing the quantity of an item in the cart."
+      },
+      "ItemUnitPriceUpdateRequest": {
+        "properties": {
+          "unitPrice": {
+            "type": "number",
+            "title": "Unitprice"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unitPrice"
+        ],
+        "title": "ItemUnitPriceUpdateRequest",
+        "description": "API v1 model for unit price update requests.\nUsed when manually changing the price of an item in the cart."
+      },
+      "Metadata": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "page",
+          "limit",
+          "sort",
+          "filter"
+        ],
+        "title": "Metadata",
+        "description": "Metadata Model\n\nRepresents metadata for paginated API responses.\nIncludes total count, current page, items per page, sort criteria,\nand filter conditions."
+      },
+      "PaymentRequest": {
+        "properties": {
+          "paymentCode": {
+            "type": "string",
+            "title": "Paymentcode"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paymentCode",
+          "amount"
+        ],
+        "title": "PaymentRequest",
+        "description": "API v1 model for payment processing requests.\nContains information needed to process a payment against a cart."
+      },
+      "TenantCreateRequest": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId"
+        ],
+        "title": "TenantCreateRequest",
+        "description": "API v1 model for tenant creation requests.\nContains parameters required to create a new tenant."
+      },
+      "Tran": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "storeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storename"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "totalAmount": {
+            "type": "number",
+            "title": "Totalamount"
+          },
+          "totalAmountWithTax": {
+            "type": "number",
+            "title": "Totalamountwithtax"
+          },
+          "totalQuantity": {
+            "type": "integer",
+            "title": "Totalquantity"
+          },
+          "totalDiscountAmount": {
+            "type": "number",
+            "title": "Totaldiscountamount"
+          },
+          "depositAmount": {
+            "type": "number",
+            "title": "Depositamount"
+          },
+          "changeAmount": {
+            "type": "number",
+            "title": "Changeamount"
+          },
+          "stampDutyAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stampdutyamount"
+          },
+          "receiptNo": {
+            "type": "integer",
+            "title": "Receiptno"
+          },
+          "transactionNo": {
+            "type": "integer",
+            "title": "Transactionno"
+          },
+          "transactionType": {
+            "type": "integer",
+            "title": "Transactiontype"
+          },
+          "businessDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businessdate"
+          },
+          "generateDateTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generatedatetime"
+          },
+          "lineItems": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseTranLineItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lineitems"
+          },
+          "payments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseTranPayment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payments"
+          },
+          "taxes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseTranTax"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxes"
+          },
+          "subtotalDiscounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseDiscount"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotaldiscounts"
+          },
+          "receiptText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipttext"
+          },
+          "journalText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journaltext"
+          },
+          "staff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseTranStaff"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseTranStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "totalAmount",
+          "totalAmountWithTax",
+          "totalQuantity",
+          "totalDiscountAmount",
+          "depositAmount",
+          "changeAmount",
+          "receiptNo",
+          "transactionNo",
+          "transactionType"
+        ],
+        "title": "Tran",
+        "description": "API v1 model for transaction records.\nRepresents a complete transaction with all associated details."
+      },
+      "UserError": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "UserError",
+        "description": "User-friendly error information model.\n\nContains structured error information that is suitable for display to end users,\nsuch as error codes and localized error messages.\n\nAttributes:\n    code: Application-specific error code\n    message: User-friendly error message suitable for display"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY"
+      },
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+          }
+        }
+      }
+    }
+  }
+}

@@ -23,77 +23,23 @@
 
 ### 1. report_transactions コレクション
 
-取引ログを保存するコレクション。BaseTransactionをTransactionLogModelに変換して保存。
+取引ログを保存するコレクション。kugel_commonの`BaseTransaction`構造を使用。
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "store_name": "string",
-  "terminal_no": "integer",
-  "tran_id": "string",
-  "tran_seq": "integer",
-  "business_date": "string (YYYYMMDD)",
-  "business_counter": "integer",
-  "open_counter": "integer",
-  "transaction_type": "string (purchase/refund/exchange/void)",
-  "transaction_time": "datetime",
-  "void_flag": "boolean",
-  "items": [
-    {
-      "item_id": "string",
-      "item_name": "string",
-      "quantity": "integer",
-      "unit_price": "decimal",
-      "amount": "decimal",
-      "discount_amount": "decimal",
-      "tax_info": {
-        "tax_code": "string",
-        "tax_type": "string",
-        "tax_name": "string",
-        "target_amount": "decimal",
-        "tax_amount": "decimal"
-      }
-    }
-  ],
-  "transaction_discount": "decimal",
-  "item_total": "decimal",
-  "excluded_tax_total": "decimal",
-  "included_tax_total": "decimal",
-  "tax_total": "decimal",
-  "discount_total": "decimal",
-  "total_amount": "decimal",
-  "payments": [
-    {
-      "payment_code": "string",
-      "payment_name": "string",
-      "amount": "decimal",
-      "change_amount": "decimal"
-    }
-  ],
-  "tax_aggregation": [
-    {
-      "tax_code": "string",
-      "tax_type": "string",
-      "tax_name": "string",
-      "item_count": "integer",
-      "target_amount": "decimal",
-      "tax_amount": "decimal"
-    }
-  ],
-  "staff_id": "string",
-  "customer_id": "string",
-  "event_id": "string",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
+**注:** レポートサービスは専用のTransactionドキュメントモデルを持たず、共通ライブラリの`BaseTransaction`を直接使用します。構造の詳細はkugel_commonのドキュメントを参照してください。
+
+**主要フィールド:**
+- トランザクション識別子（tenant_id, store_code, terminal_no, transaction_no）
+- ビジネス日付とカウンター情報
+- 明細項目（line_items）、決済（payments）、税金（taxes）
+- 金額と数量の合計
+- レシート/ジャーナルテキスト
 
 ### 2. report_cashinout コレクション
 
 入出金ログを保存するコレクション。
 
+**継承:** `AbstractDocument`
+
 ```json
 {
   "_id": "ObjectId",
@@ -101,25 +47,30 @@
   "store_code": "string",
   "store_name": "string",
   "terminal_no": "integer",
-  "cashinout_id": "string",
-  "business_date": "string (YYYYMMDD)",
-  "business_counter": "integer",
-  "open_counter": "integer",
-  "operation_type": "string (cash_in/cash_out)",
-  "operation_time": "datetime",
-  "amount": "decimal",
-  "reason": "string",
   "staff_id": "string",
-  "comment": "string",
-  "event_id": "string",
+  "staff_name": "string",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "generate_date_time": "string (ISO 8601)",
+  "amount": "float (正: 入金, 負: 出金)",
+  "description": "string (入出金の理由・説明)",
+  "receipt_text": "string",
+  "journal_text": "string",
   "created_at": "datetime",
   "updated_at": "datetime"
 }
 ```
 
+**フィールド説明:**
+- `amount`: 入金の場合は正の値、出金の場合は負の値
+- `description`: 入出金の理由や説明
+
 ### 3. report_open_close コレクション
 
 開閉店ログを保存するコレクション。
+
+**継承:** `AbstractDocument`
 
 ```json
 {
@@ -128,16 +79,20 @@
   "store_code": "string",
   "store_name": "string",
   "terminal_no": "integer",
-  "business_date": "string (YYYYMMDD)",
-  "business_counter": "integer",
-  "open_counter": "integer",
-  "operation_type": "string (open/close)",
-  "operation_time": "datetime",
-  "cash_amount": "decimal",
   "staff_id": "string",
-  "open_time": "datetime (closeの場合のみ)",
-  "close_time": "datetime (closeの場合のみ)",
-  "event_id": "string",
+  "staff_name": "string",
+  "business_date": "string (YYYYMMDD)",
+  "open_counter": "integer",
+  "business_counter": "integer",
+  "operation": "string (open/close)",
+  "generate_date_time": "string (ISO 8601)",
+  "terminal_info": "TerminalInfoDocument (端末情報スナップショット)",
+  "cart_transaction_count": "integer (close時の取引数)",
+  "cart_transaction_last_no": "integer (close時の最終取引番号)",
+  "cash_in_out_count": "integer (close時の現金操作数)",
+  "cash_in_out_last_datetime": "string (close時の最終現金操作日時)",
+  "receipt_text": "string",
+  "journal_text": "string",
   "created_at": "datetime",
   "updated_at": "datetime"
 }
@@ -145,106 +100,62 @@
 
 ### 4. report_daily_info コレクション
 
-日次情報を保存するコレクション。端末ごとの状態を管理。
+日次情報と検証ステータスを保存するコレクション。端末・営業日・開店回数ごとにデータ検証状態を管理。
+
+**継承:** `AbstractDocument`
 
 ```json
 {
   "_id": "ObjectId",
   "tenant_id": "string",
   "store_code": "string",
+  "terminal_no": "integer",
   "business_date": "string (YYYYMMDD)",
-  "terminal_info": [
-    {
-      "terminal_no": "integer",
-      "is_closed": "boolean",
-      "close_time": "datetime",
-      "transaction_count": "integer",
-      "cashinout_count": "integer",
-      "last_open_counter": "integer",
-      "last_business_counter": "integer"
-    }
-  ],
-  "all_terminals_closed": "boolean",
-  "daily_report_generated": "boolean",
+  "open_counter": "integer",
+  "verified": "boolean (検証完了フラグ)",
+  "verified_update_time": "string (最終検証日時)",
+  "verified_message": "string (検証結果メッセージ)",
   "created_at": "datetime",
   "updated_at": "datetime"
 }
 ```
 
-### 5. report_aggregate_data コレクション
+**フィールド説明:**
+- `verified`: データ検証が完了しているかどうか
+- `verified_message`: 検証結果の詳細（成功/失敗理由）
 
-集計データを保存する汎用コレクション。フラッシュ・日次両方のレポートを格納。
+### 5. レポート集計データ
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "store_name": "string",
-  "terminal_no": "integer (nullは店舗合計)",
-  "business_date": "string (YYYYMMDD)",
-  "business_counter": "integer",
-  "open_counter": "integer (flashのみ)",
-  "report_scope": "string (flash/daily)",
-  "report_type": "string (sales/category/item)",
-  "report_data": {
-    "sales_gross": {
-      "item_count": "integer",
-      "transaction_count": "integer",
-      "total_amount": "decimal"
-    },
-    "sales_net": {
-      "item_count": "integer",
-      "transaction_count": "integer",
-      "total_amount": "decimal"
-    },
-    "discount_for_lineitems": {
-      "item_count": "integer",
-      "transaction_count": "integer",
-      "total_amount": "decimal"
-    },
-    "discount_for_subtotal": {
-      "item_count": "integer",
-      "transaction_count": "integer",
-      "total_amount": "decimal"
-    },
-    "returns": {
-      "item_count": "integer",
-      "transaction_count": "integer",
-      "total_amount": "decimal"
-    },
-    "taxes": [
-      {
-        "tax_code": "string",
-        "tax_type": "string",
-        "tax_name": "string",
-        "item_count": "integer",
-        "target_amount": "decimal",
-        "tax_amount": "decimal"
-      }
-    ],
-    "payments": [
-      {
-        "payment_code": "string",
-        "payment_name": "string",
-        "transaction_count": "integer",
-        "total_amount": "decimal"
-      }
-    ],
-    "cash": {
-      "cash_in_count": "integer",
-      "cash_in_amount": "decimal",
-      "cash_out_count": "integer",
-      "cash_out_amount": "decimal",
-      "net_cash_movement": "decimal"
-    },
-    "receipt_text": "string",
-    "journal_text": "string"
-  },
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
+レポートタイプごとに専用のドキュメントクラスを使用して集計データを保存します。
+
+**実装構造:**
+- `SalesReportDocument` - 売上レポート（コレクション: `report_sales`）
+- `PaymentReportDocument` - 決済レポート（コレクション: `report_payment`）
+- `CategoryReportDocument` - カテゴリレポート（コレクション: `report_category`）
+- `ItemReportDocument` - 商品別レポート（コレクション: `report_item`）
+
+**共通フィールド:**
+
+| フィールド名 | 型 | 説明 |
+|------------|------|-------------|
+| tenant_id | string | テナント識別子 |
+| store_code | string | 店舗コード |
+| terminal_no | integer | 端末番号（nullは店舗合計） |
+| business_date | string | 営業日（YYYYMMDD） |
+| open_counter | integer | 開店カウンター（flashのみ） |
+| report_scope | string | レポートスコープ（flash/daily） |
+
+**SalesReportDocument追加フィールド:**
+- `sales_gross`: 総売上（金額・数量・件数）
+- `sales_net`: 純売上（金額・数量・件数）
+- `discount_for_lineitems`: 明細割引
+- `discount_for_subtotal`: 小計割引
+- `returns`: 返品
+- `voids`: 取消
+- `taxes`: 税金集計リスト
+- `payments`: 決済集計リスト
+- `cash`: 現金入出金サマリー
+- `receipt_text`, `journal_text`: フォーマット済みテキスト
 
 ## インデックス定義
 

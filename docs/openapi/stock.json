@@ -1,0 +1,3472 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get stock list for a store",
+        "description": "Get all stock items for a store with pagination",
+        "operationId": "get_store_stocks_api_v1_tenants__tenant_id__stores__store_code__stock_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of items to return"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedResult_StockResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/low": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get low stock items",
+        "description": "Get items with stock below minimum quantity",
+        "operationId": "get_low_stocks_api_v1_tenants__tenant_id__stores__store_code__stock_low_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedResult_StockResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot": {
+      "post": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Create stock snapshot",
+        "description": "Create a snapshot of current stock levels",
+        "operationId": "create_snapshot_api_v1_tenants__tenant_id__stores__store_code__stock_snapshot_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSnapshotRequest",
+                "by_alias": true,
+                "default": {
+                  "createdBy": "system"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StockSnapshotResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get stock snapshots by date range",
+        "description": "Get list of stock snapshots filtered by generate_date_time range",
+        "operationId": "get_snapshots_by_date_range_api_v1_tenants__tenant_id__stores__store_code__stock_snapshots_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start date in ISO format",
+              "title": "Start Date"
+            },
+            "description": "Start date in ISO format"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End date in ISO format",
+              "title": "End Date"
+            },
+            "description": "End date in ISO format"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of items to return"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedResult_StockSnapshotResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot/{snapshot_id}": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get stock snapshot by ID",
+        "description": "Get a specific stock snapshot by its ID",
+        "operationId": "get_snapshot_by_id_api_v1_tenants__tenant_id__stores__store_code__stock_snapshot__snapshot_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "snapshot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Snapshot Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StockSnapshotResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Snapshot not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/reorder-alerts": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get reorder alert items",
+        "description": "Get items with stock at or below reorder point",
+        "operationId": "get_reorder_alerts_api_v1_tenants__tenant_id__stores__store_code__stock_reorder_alerts_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedResult_StockResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get stock for an item",
+        "description": "Get current stock information for a specific item",
+        "operationId": "get_stock_api_v1_tenants__tenant_id__stores__store_code__stock__item_code__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "item_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StockResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Stock not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/update": {
+      "put": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Update stock quantity",
+        "description": "Update stock quantity for an item and record the update",
+        "operationId": "update_stock_api_v1_tenants__tenant_id__stores__store_code__stock__item_code__update_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "item_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockUpdateRequest",
+                "by_alias": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StockUpdateResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get stock update history",
+        "description": "Get stock update history for an item",
+        "operationId": "get_stock_history_api_v1_tenants__tenant_id__stores__store_code__stock__item_code__history_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "item_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of items to return"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedResult_StockUpdateResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/minimum": {
+      "put": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Set minimum stock quantity",
+        "description": "Set minimum stock quantity for alerts",
+        "operationId": "set_minimum_quantity_api_v1_tenants__tenant_id__stores__store_code__stock__item_code__minimum_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "item_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMinimumQuantityRequest",
+                "by_alias": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Stock not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/reorder": {
+      "put": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Set reorder parameters",
+        "description": "Set reorder point and quantity for an item",
+        "operationId": "set_reorder_parameters_api_v1_tenants__tenant_id__stores__store_code__stock__item_code__reorder_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "item_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReorderParametersRequest",
+                "by_alias": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Stock not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tranlog": {
+      "post": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Handle transaction log from cart service",
+        "description": "Process transaction log to update stock quantities",
+        "operationId": "handle_transaction_log_api_v1_tranlog_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stock/snapshot-schedule": {
+      "get": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Get snapshot schedule configuration",
+        "description": "Get the snapshot schedule configuration for a tenant",
+        "operationId": "get_snapshot_schedule_api_v1_tenants__tenant_id__stock_snapshot_schedule_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SnapshotScheduleResponse_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schedule not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Update snapshot schedule configuration",
+        "description": "Update the snapshot schedule configuration for a tenant",
+        "operationId": "update_snapshot_schedule_api_v1_tenants__tenant_id__stock_snapshot_schedule_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotScheduleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SnapshotScheduleResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "stock"
+        ],
+        "summary": "Delete snapshot schedule configuration",
+        "description": "Delete the snapshot schedule configuration for a tenant (reverts to defaults)",
+        "operationId": "delete_snapshot_schedule_api_v1_tenants__tenant_id__stock_snapshot_schedule_delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "post": {
+        "summary": "Create Tenant",
+        "description": "Create and set up a new tenant in the stock service.\n\nThis endpoint initializes the database for a new tenant by creating all required\ncollections, indexes, and other necessary structures. It is typically called during\ntenant onboarding after the tenant has been created in the account service.\n\nAuthentication is required and the authenticated user must belong to the tenant\nbeing created. This ensures only authorized users can set up tenant resources.\n\nArgs:\n    req: The tenant creation request containing tenant_id\n    tenant_id: The tenant ID from the JWT token (for authorization)\n\nReturns:\n    ApiResponse: A standard API response with tenant creation confirmation\n\nRaises:\n    HTTPException: If tenant IDs don't match or if setup fails",
+        "operationId": "create_tenant_api_v1_tenants_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dapr/subscribe": {
+      "get": {
+        "summary": "Subscribe Topics",
+        "description": "Define Dapr pub/sub subscriptions for this service.\n\nThis endpoint is called by Dapr during startup to determine which pub/sub topics\nthis service should subscribe to. When a message is published to one of these topics,\nDapr will deliver it to the specified route.\n\nReturns:\n    list: List of subscription configurations with pubsubname, topic, and route",
+        "operationId": "subscribe_topics_dapr_subscribe_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Root endpoint that returns a welcome message.\nUseful for health checks and API verification.\n\nReturns:\n    dict: A welcome message with API version information",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint for monitoring service health.\n\nReturns:\n    HealthCheckResponse: Service health status including component checks",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse",
+        "description": "Standardized API response model used by all endpoints.\n\nProvides a consistent structure for all API responses, including status information,\nerror details when applicable, and the actual response data. The model is generic\nand can accommodate any data type for the response payload.\n\nAttributes:\n    success: Boolean indicating if the operation was successful\n    code: HTTP status code for the response\n    message: System message typically used for logging or debugging\n    user_error: User-friendly error information when an error occurs\n    data: The actual response payload (generic type)\n    metadata: Additional metadata like pagination info for list responses\n    operation: Name of the operation that was performed (for tracking)"
+      },
+      "ApiResponse_PaginatedResult_StockResponse__": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedResult_StockResponse_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[PaginatedResult[StockResponse]]"
+      },
+      "ApiResponse_PaginatedResult_StockSnapshotResponse__": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedResult_StockSnapshotResponse_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[PaginatedResult[StockSnapshotResponse]]"
+      },
+      "ApiResponse_PaginatedResult_StockUpdateResponse__": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedResult_StockUpdateResponse_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[PaginatedResult[StockUpdateResponse]]"
+      },
+      "ApiResponse_SnapshotScheduleResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotScheduleResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[SnapshotScheduleResponse]"
+      },
+      "ApiResponse_StockResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[StockResponse]"
+      },
+      "ApiResponse_StockSnapshotResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[StockSnapshotResponse]"
+      },
+      "ApiResponse_StockUpdateResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockUpdateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[StockUpdateResponse]"
+      },
+      "ApiResponse_dict_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[dict]"
+      },
+      "ComponentHealth": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of the component"
+          },
+          "response_time_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Time Ms",
+            "description": "Response time in milliseconds"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Additional details about the component"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if unhealthy"
+          },
+          "component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component",
+            "description": "Component name (for Dapr components)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ComponentHealth",
+        "description": "Individual component health status."
+      },
+      "CreateSnapshotRequest": {
+        "properties": {
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby",
+            "description": "User or system that created the snapshot",
+            "default": "system"
+          }
+        },
+        "type": "object",
+        "title": "CreateSnapshotRequest",
+        "description": "スナップショット作成リクエスト"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Overall health status"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "Health check timestamp"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version"
+          },
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ComponentHealth"
+            },
+            "type": "object",
+            "title": "Checks",
+            "description": "Individual component health checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version"
+        ],
+        "title": "HealthCheckResponse",
+        "description": "Health check response model."
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "healthy",
+          "unhealthy"
+        ],
+        "title": "HealthStatus",
+        "description": "Health status enumeration."
+      },
+      "Metadata": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "page",
+          "limit",
+          "sort",
+          "filter"
+        ],
+        "title": "Metadata",
+        "description": "Metadata Model\n\nRepresents metadata for paginated API responses.\nIncludes total count, current page, items per page, sort criteria,\nand filter conditions."
+      },
+      "PaginatedResult_StockResponse_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/StockResponse"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "metadata"
+        ],
+        "title": "PaginatedResult[StockResponse]"
+      },
+      "PaginatedResult_StockSnapshotResponse_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/StockSnapshotResponse"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "metadata"
+        ],
+        "title": "PaginatedResult[StockSnapshotResponse]"
+      },
+      "PaginatedResult_StockUpdateResponse_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/StockUpdateResponse"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "metadata"
+        ],
+        "title": "PaginatedResult[StockUpdateResponse]"
+      },
+      "SetMinimumQuantityRequest": {
+        "properties": {
+          "minimumQuantity": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Minimumquantity",
+            "description": "Minimum stock quantity for alerts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minimumQuantity"
+        ],
+        "title": "SetMinimumQuantityRequest",
+        "description": "最小在庫数設定リクエスト"
+      },
+      "SetReorderParametersRequest": {
+        "properties": {
+          "reorderPoint": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Reorderpoint",
+            "description": "Reorder point - quantity that triggers reorder"
+          },
+          "reorderQuantity": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Reorderquantity",
+            "description": "Quantity to order when reorder point is reached"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reorderPoint",
+          "reorderQuantity"
+        ],
+        "title": "SetReorderParametersRequest",
+        "description": "発注点・発注数量設定リクエスト"
+      },
+      "SnapshotScheduleCreate": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "schedule_interval": {
+            "type": "string",
+            "title": "Schedule Interval",
+            "description": "Schedule interval: daily, weekly, monthly"
+          },
+          "schedule_hour": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Schedule Hour",
+            "description": "Execution hour (0-23)"
+          },
+          "schedule_minute": {
+            "type": "integer",
+            "maximum": 59.0,
+            "minimum": 0.0,
+            "title": "Schedule Minute",
+            "description": "Execution minute (0-59)",
+            "default": 0
+          },
+          "schedule_day_of_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 6.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Day Of Week",
+            "description": "Day of week for weekly schedule (0=Monday, 6=Sunday)"
+          },
+          "schedule_day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Day Of Month",
+            "description": "Day of month for monthly schedule (1-31)"
+          },
+          "retention_days": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Retention Days",
+            "description": "Snapshot retention days",
+            "default": 30
+          },
+          "target_stores": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Stores",
+            "description": "Target stores: ['all'] or specific store codes",
+            "default": [
+              "all"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_interval",
+          "schedule_hour"
+        ],
+        "title": "SnapshotScheduleCreate",
+        "description": "Schema for creating/updating snapshot schedule."
+      },
+      "SnapshotScheduleResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "schedule_interval": {
+            "type": "string",
+            "title": "Schedule Interval",
+            "description": "Schedule interval: daily, weekly, monthly"
+          },
+          "schedule_hour": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Schedule Hour",
+            "description": "Execution hour (0-23)"
+          },
+          "schedule_minute": {
+            "type": "integer",
+            "maximum": 59.0,
+            "minimum": 0.0,
+            "title": "Schedule Minute",
+            "description": "Execution minute (0-59)",
+            "default": 0
+          },
+          "schedule_day_of_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 6.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Day Of Week",
+            "description": "Day of week for weekly schedule (0=Monday, 6=Sunday)"
+          },
+          "schedule_day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Day Of Month",
+            "description": "Day of month for monthly schedule (1-31)"
+          },
+          "retention_days": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Retention Days",
+            "description": "Snapshot retention days",
+            "default": 30
+          },
+          "target_stores": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Stores",
+            "description": "Target stores: ['all'] or specific store codes",
+            "default": [
+              "all"
+            ]
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "last_executed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Executed At"
+          },
+          "next_execution_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Execution At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_interval",
+          "schedule_hour",
+          "tenant_id"
+        ],
+        "title": "SnapshotScheduleResponse",
+        "description": "Schema for snapshot schedule response."
+      },
+      "StockResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid",
+            "description": "Tenant ID"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode",
+            "description": "Store code"
+          },
+          "itemCode": {
+            "type": "string",
+            "title": "Itemcode",
+            "description": "Item code"
+          },
+          "currentQuantity": {
+            "type": "number",
+            "title": "Currentquantity",
+            "description": "Current stock quantity"
+          },
+          "minimumQuantity": {
+            "type": "number",
+            "title": "Minimumquantity",
+            "description": "Minimum stock quantity for alerts"
+          },
+          "reorderPoint": {
+            "type": "number",
+            "title": "Reorderpoint",
+            "description": "Reorder point - quantity that triggers reorder"
+          },
+          "reorderQuantity": {
+            "type": "number",
+            "title": "Reorderquantity",
+            "description": "Quantity to order when reorder point is reached"
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastupdated",
+            "description": "Last update timestamp"
+          },
+          "lastTransactionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasttransactionid",
+            "description": "Last transaction reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "itemCode",
+          "currentQuantity",
+          "minimumQuantity",
+          "reorderPoint",
+          "reorderQuantity",
+          "lastUpdated"
+        ],
+        "title": "StockResponse",
+        "description": "在庫情報レスポンス"
+      },
+      "StockSnapshotItemResponse": {
+        "properties": {
+          "itemCode": {
+            "type": "string",
+            "title": "Itemcode",
+            "description": "Item code"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "description": "Stock quantity at snapshot time"
+          },
+          "minimumQuantity": {
+            "type": "number",
+            "title": "Minimumquantity",
+            "description": "Minimum stock quantity"
+          },
+          "reorderPoint": {
+            "type": "number",
+            "title": "Reorderpoint",
+            "description": "Reorder point"
+          },
+          "reorderQuantity": {
+            "type": "number",
+            "title": "Reorderquantity",
+            "description": "Reorder quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemCode",
+          "quantity",
+          "minimumQuantity",
+          "reorderPoint",
+          "reorderQuantity"
+        ],
+        "title": "StockSnapshotItemResponse",
+        "description": "スナップショット内の在庫アイテム"
+      },
+      "StockSnapshotResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid",
+            "description": "Tenant ID"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode",
+            "description": "Store code"
+          },
+          "totalItems": {
+            "type": "integer",
+            "title": "Totalitems",
+            "description": "Total number of items"
+          },
+          "totalQuantity": {
+            "type": "number",
+            "title": "Totalquantity",
+            "description": "Total stock quantity"
+          },
+          "stocks": {
+            "items": {
+              "$ref": "#/components/schemas/StockSnapshotItemResponse"
+            },
+            "type": "array",
+            "title": "Stocks",
+            "description": "Stock details by item"
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby",
+            "description": "User or system that created the snapshot"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat",
+            "description": "Creation timestamp"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat",
+            "description": "Last update timestamp"
+          },
+          "generateDateTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generatedatetime",
+            "description": "Snapshot generation datetime in ISO format"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "totalItems",
+          "totalQuantity",
+          "stocks",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "StockSnapshotResponse",
+        "description": "在庫スナップショットレスポンス"
+      },
+      "StockUpdateRequest": {
+        "properties": {
+          "quantityChange": {
+            "type": "number",
+            "title": "Quantitychange",
+            "description": "Quantity change (positive for increase, negative for decrease)"
+          },
+          "updateType": {
+            "$ref": "#/components/schemas/UpdateType",
+            "description": "Type of stock update"
+          },
+          "referenceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referenceid",
+            "description": "Reference ID (transaction, adjustment, etc.)"
+          },
+          "operatorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operatorid",
+            "description": "User who performed the update"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Additional notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quantityChange",
+          "updateType"
+        ],
+        "title": "StockUpdateRequest",
+        "description": "在庫更新リクエスト"
+      },
+      "StockUpdateResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid",
+            "description": "Tenant ID"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode",
+            "description": "Store code"
+          },
+          "itemCode": {
+            "type": "string",
+            "title": "Itemcode",
+            "description": "Item code"
+          },
+          "updateType": {
+            "$ref": "#/components/schemas/UpdateType",
+            "description": "Type of stock update"
+          },
+          "quantityChange": {
+            "type": "number",
+            "title": "Quantitychange",
+            "description": "Quantity change"
+          },
+          "beforeQuantity": {
+            "type": "number",
+            "title": "Beforequantity",
+            "description": "Stock quantity before update"
+          },
+          "afterQuantity": {
+            "type": "number",
+            "title": "Afterquantity",
+            "description": "Stock quantity after update"
+          },
+          "referenceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referenceid",
+            "description": "Reference ID"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Update timestamp"
+          },
+          "operatorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operatorid",
+            "description": "User who performed the update"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Additional notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "itemCode",
+          "updateType",
+          "quantityChange",
+          "beforeQuantity",
+          "afterQuantity",
+          "timestamp"
+        ],
+        "title": "StockUpdateResponse",
+        "description": "在庫更新履歴レスポンス"
+      },
+      "TenantCreateRequest": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId"
+        ],
+        "title": "TenantCreateRequest",
+        "description": "Tenant creation request model for API version 1.\n\nExtends the base tenant creation request model with version-specific fields\nif needed. Currently inherits all functionality from BaseTenantCreateRequest.\nUsed to initialize the stock service for a new tenant."
+      },
+      "UpdateType": {
+        "type": "string",
+        "enum": [
+          "sale",
+          "return",
+          "void",
+          "void_return",
+          "purchase",
+          "adjustment",
+          "initial",
+          "damage",
+          "transfer_in",
+          "transfer_out"
+        ],
+        "title": "UpdateType"
+      },
+      "UserError": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "UserError",
+        "description": "User-friendly error information model.\n\nContains structured error information that is suitable for display to end users,\nsuch as error codes and localized error messages.\n\nAttributes:\n    code: Application-specific error code\n    message: User-friendly error message suitable for display"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY"
+      },
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+          }
+        }
+      }
+    }
+  }
+}

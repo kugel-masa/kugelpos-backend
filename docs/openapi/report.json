@@ -1,0 +1,1228 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/reports": {
+      "get": {
+        "summary": "Get Report For Store",
+        "description": "Get a report for the entire store.\n\nThis endpoint requires either a JWT token or an API key with terminal_id.\nIt provides different types of reports (sales, category, item) at different\nscopes (flash, daily) for the specified store.\n\nArgs:\n    tenant_id: The tenant identifier\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code to generate a report for\n    terminal_id: The terminal ID when using API key authentication\n    report_scope: The time scope of the report (flash or daily)\n    report_type: The type of report to generate (sales, category, item)\n    business_date: The business date in YYYYMMDD format\n    open_counter: Optional counter for the specific terminal session\n    business_counter: Optional business counter for the report\n    limit: Maximum number of records to return\n    page: Page number for pagination\n    sort: Sorting criteria\n    report_service: Injected report service dependency\n\nReturns:\n    ApiResponse[SalesReportResponse]: The report data wrapped in the standard API response\n\nRaises:\n    HTTPException: For various error conditions with appropriate status codes",
+        "operationId": "get_report_for_store_api_v1_tenants__tenant_id__stores__store_code__reports_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Terminal ID for api_key authentication",
+              "title": "Terminal Id"
+            },
+            "description": "Terminal ID for api_key authentication"
+          },
+          {
+            "name": "report_scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Scope of the report: flash, daily",
+              "title": "Report Scope"
+            },
+            "description": "Scope of the report: flash, daily"
+          },
+          {
+            "name": "report_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Type of the report: sales, category, item",
+              "title": "Report Type"
+            },
+            "description": "Type of the report: sales, category, item"
+          },
+          {
+            "name": "business_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Business date for flash and daily (single date or ignored if date range is specified)",
+              "title": "Business Date"
+            },
+            "description": "Business date for flash and daily (single date or ignored if date range is specified)"
+          },
+          {
+            "name": "business_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Start date for date range (YYYYMMDD format)",
+              "title": "Business Date From"
+            },
+            "description": "Start date for date range (YYYYMMDD format)"
+          },
+          {
+            "name": "business_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "End date for date range (YYYYMMDD format)",
+              "title": "Business Date To"
+            },
+            "description": "End date for date range (YYYYMMDD format)"
+          },
+          {
+            "name": "open_counter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Open counter for flash and daily, None for total in business date",
+              "title": "Open Counter"
+            },
+            "description": "Open counter for flash and daily, None for total in business date"
+          },
+          {
+            "name": "business_counter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Business counter for the report",
+              "title": "Business Counter"
+            },
+            "description": "Business counter for the report"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Limit of the number of records to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Limit of the number of records to return"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Page number to return",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number to return"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "?sort=field1:1,field2:-1",
+              "title": "Sort"
+            },
+            "description": "?sort=field1:1,field2:-1"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports": {
+      "get": {
+        "summary": "Get Report For Terminal",
+        "description": "Get a report for a specific terminal.\n\nThis endpoint requires either a JWT token or an API key with terminal_id.\nIt provides different types of reports (sales, category, item) at different\nscopes (flush, daily) for the specified terminal.\n\nArgs:\n    tenant_id: The tenant identifier\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code\n    terminal_no: The terminal number to generate a report for\n    report_scope: The time scope of the report (flash or daily)\n    report_type: The type of report to generate (sales, category, item)\n    business_date: The business date in YYYYMMDD format\n    open_counter: Optional counter for the specific terminal session\n    business_counter: Optional business counter for the report\n    limit: Maximum number of records to return\n    page: Page number for pagination\n    sort: Sorting criteria\n    report_service: Injected report service dependency\n\nReturns:\n    ApiResponse[SalesReportResponse]: The report data wrapped in the standard API response\n\nRaises:\n    HTTPException: For various error conditions with appropriate status codes",
+        "operationId": "get_report_for_terminal_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__reports_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Terminal ID for api_key authentication",
+              "title": "Terminal Id"
+            },
+            "description": "Terminal ID for api_key authentication"
+          },
+          {
+            "name": "report_scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Scope of the report: flash, daily",
+              "title": "Report Scope"
+            },
+            "description": "Scope of the report: flash, daily"
+          },
+          {
+            "name": "report_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Type of the report: sales, category, item",
+              "title": "Report Type"
+            },
+            "description": "Type of the report: sales, category, item"
+          },
+          {
+            "name": "business_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Business date for flash and daily (single date or ignored if date range is specified)",
+              "title": "Business Date"
+            },
+            "description": "Business date for flash and daily (single date or ignored if date range is specified)"
+          },
+          {
+            "name": "business_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Start date for date range (YYYYMMDD format)",
+              "title": "Business Date From"
+            },
+            "description": "Start date for date range (YYYYMMDD format)"
+          },
+          {
+            "name": "business_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "End date for date range (YYYYMMDD format)",
+              "title": "Business Date To"
+            },
+            "description": "End date for date range (YYYYMMDD format)"
+          },
+          {
+            "name": "open_counter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Open counter for flash and daily, None for total in business date",
+              "title": "Open Counter"
+            },
+            "description": "Open counter for flash and daily, None for total in business date"
+          },
+          {
+            "name": "business_counter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Business counter for the report",
+              "title": "Business Counter"
+            },
+            "description": "Business counter for the report"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Limit of the number of records to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Limit of the number of records to return"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Page number to return",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number to return"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "?sort=field1:1,field2:-1",
+              "title": "Sort"
+            },
+            "description": "?sort=field1:1,field2:-1"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tranlog": {
+      "post": {
+        "summary": "Handle Tranlog",
+        "description": "Handle transaction logs received via Dapr pub/sub.\n\nThis endpoint is called by Dapr when a transaction log message is published\nto the 'topic-tranlog' topic in the 'pubsub-tranlog-report' component.\n\nArgs:\n    request: The FastAPI request containing the pub/sub message\n    log_service: The LogService instance from the dependency\n\nReturns:\n    dict: A status response with HTTP status code",
+        "operationId": "handle_tranlog_api_v1_tranlog_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cashlog": {
+      "post": {
+        "summary": "Handle Cashlog",
+        "description": "Handle cash in/out logs received via Dapr pub/sub.\n\nThis endpoint is called by Dapr when a cash log message is published\nto the 'topic-cashlog' topic in the 'pubsub-cashlog-report' component.\n\nArgs:\n    request: The FastAPI request containing the pub/sub message\n    log_service: The LogService instance from the dependency\n\nReturns:\n    dict: A status response with HTTP status code",
+        "operationId": "handle_cashlog_api_v1_cashlog_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/opencloselog": {
+      "post": {
+        "summary": "Handle Opencloselog",
+        "description": "Handle terminal open/close logs received via Dapr pub/sub.\n\nThis endpoint is called by Dapr when an open/close log message is published\nto the 'topic-opencloselog' topic in the 'pubsub-opencloselog-report' component.\n\nArgs:\n    request: The FastAPI request containing the pub/sub message\n    log_service: The LogService instance from the dependency\n\nReturns:\n    dict: A status response with HTTP status code",
+        "operationId": "handle_opencloselog_api_v1_opencloselog_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions": {
+      "post": {
+        "summary": "Receive Transactions",
+        "description": "Direct API endpoint for receiving transaction data.\n\nThis endpoint can be used as an alternative to the Dapr pub/sub mechanism\nwhen direct REST API calls are preferred. It requires authentication via\ntoken or API key.\n\nArgs:\n    tran_data: Transaction data in JSON format\n    tenant_id: The tenant identifier from the path\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code from the path\n    terminal_no: The terminal number from the path\n    tran_service: The LogService instance from the dependency\n\nReturns:\n    ApiResponse[TranResponse]: A standard API response with transaction confirmation",
+        "operationId": "receive_transactions_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Tran Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TranResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "post": {
+        "summary": "Create Tenant",
+        "description": "Create and set up a new tenant in the report service.\n\nThis endpoint initializes the database for a new tenant by creating all required\ncollections, indexes, and other necessary structures. It is typically called during\ntenant onboarding after the tenant has been created in the account service.\n\nAuthentication is required and the authenticated user must belong to the tenant\nbeing created. This ensures only authorized users can set up tenant resources.\n\nArgs:\n    req: The tenant creation request containing tenant_id\n    tenant_id: The tenant ID from the JWT token (for authorization)\n\nReturns:\n    ApiResponse: A standard API response with tenant creation confirmation\n\nRaises:\n    HTTPException: If tenant IDs don't match or if setup fails",
+        "operationId": "create_tenant_api_v1_tenants_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dapr/subscribe": {
+      "get": {
+        "summary": "Subscribe Topics",
+        "description": "Define Dapr pub/sub subscriptions for this service.\n\nThis endpoint is called by Dapr during startup to determine which pub/sub topics\nthis service should subscribe to. When a message is published to one of these topics,\nDapr will deliver it to the specified route.\n\nReturns:\n    list: List of subscription configurations with pubsubname, topic, and route",
+        "operationId": "subscribe_topics_dapr_subscribe_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Root endpoint that returns a welcome message.\nUseful for health checks and API verification.\n\nReturns:\n    dict: A welcome message with API version information",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint for monitoring service health.\n\nReturns:\n    HealthCheckResponse: Service health status including component checks",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse",
+        "description": "Standardized API response model used by all endpoints.\n\nProvides a consistent structure for all API responses, including status information,\nerror details when applicable, and the actual response data. The model is generic\nand can accommodate any data type for the response payload.\n\nAttributes:\n    success: Boolean indicating if the operation was successful\n    code: HTTP status code for the response\n    message: System message typically used for logging or debugging\n    user_error: User-friendly error information when an error occurs\n    data: The actual response payload (generic type)\n    metadata: Additional metadata like pagination info for list responses\n    operation: Name of the operation that was performed (for tracking)"
+      },
+      "ApiResponse_TranResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TranResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[TranResponse]"
+      },
+      "ComponentHealth": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Health status of the component"
+          },
+          "response_time_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Time Ms",
+            "description": "Response time in milliseconds"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Additional details about the component"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if unhealthy"
+          },
+          "component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component",
+            "description": "Component name (for Dapr components)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ComponentHealth",
+        "description": "Individual component health status."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Overall health status"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "Health check timestamp"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version"
+          },
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ComponentHealth"
+            },
+            "type": "object",
+            "title": "Checks",
+            "description": "Individual component health checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version"
+        ],
+        "title": "HealthCheckResponse",
+        "description": "Health check response model."
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "healthy",
+          "unhealthy"
+        ],
+        "title": "HealthStatus",
+        "description": "Health status enumeration."
+      },
+      "Metadata": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "page",
+          "limit",
+          "sort",
+          "filter"
+        ],
+        "title": "Metadata",
+        "description": "Metadata Model\n\nRepresents metadata for paginated API responses.\nIncludes total count, current page, items per page, sort criteria,\nand filter conditions."
+      },
+      "TenantCreateRequest": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId"
+        ],
+        "title": "TenantCreateRequest",
+        "description": "Tenant creation request model for API version 1.\n\nExtends the base tenant creation request model with version-specific fields\nif needed. Currently inherits all functionality from BaseTenantCreateRequest.\nUsed to initialize the report service for a new tenant."
+      },
+      "TranResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "transactionNo": {
+            "type": "integer",
+            "title": "Transactionno"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "transactionNo"
+        ],
+        "title": "TranResponse",
+        "description": "Transaction response model for API version 1.\n\nExtends the base transaction response model with version-specific fields\nif needed. Currently inherits all functionality from BaseTranResponse.\nUsed to provide transaction confirmation information to clients."
+      },
+      "UserError": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "UserError",
+        "description": "User-friendly error information model.\n\nContains structured error information that is suitable for display to end users,\nsuch as error codes and localized error messages.\n\nAttributes:\n    code: Application-specific error code\n    message: User-friendly error message suitable for display"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY"
+      },
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+          }
+        }
+      }
+    }
+  }
+}

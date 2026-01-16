@@ -41,7 +41,6 @@ Kugelpos is a POS backend system built on microservices architecture, utilizing 
 - Features:
   - Auto-retry (3 attempts, exponential backoff)
   - Connection pooling
-  - Circuit breaker pattern
   - Service discovery support
 
 ```python
@@ -84,16 +83,24 @@ async with get_dapr_client() as client:
 
 ### Base Document Model
 
-Implementation: `/services/commons/src/kugel_common/models/document/base_document_model.py`
+**Implementation:**
+- `BaseDocumentModel`: `/services/commons/src/kugel_common/models/documents/base_document_model.py`
+- `AbstractDocument`: `/services/commons/src/kugel_common/models/documents/abstract_document.py`
 
 ```python
-class BaseDocumentModel:
-    id: ObjectId
-    created_at: datetime
-    updated_at: datetime
-    created_by: Optional[str]
-    updated_by: Optional[str]
+# BaseDocumentModel - Base class inheriting from Pydantic BaseModel (configuration only)
+class BaseDocumentModel(BaseModel):
+    pass  # Base for database models (does not use alias)
+
+# AbstractDocument - Base document class with common fields
+class AbstractDocument(BaseDocumentModel):
+    shard_key: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    etag: Optional[str] = None
 ```
+
+**Note:** All document models inherit from `AbstractDocument` and have `created_at`/`updated_at` auto-managed.
 
 ## Architecture Patterns
 
@@ -142,7 +149,6 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### 4. Circuit Breaker Pattern
 
 **Implementation:**
-- HttpClientHelper: `/services/commons/src/kugel_common/utils/http_client_helper.py`
 - DaprClientHelper: `/services/commons/src/kugel_common/utils/dapr_client_helper.py`
 
 **Configuration:**
@@ -151,9 +157,10 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 - States: CLOSED → OPEN → HALF_OPEN
 
 **Target Operations:**
-- External HTTP service calls
 - Dapr pub/sub operations
 - Dapr state store operations
+
+**Note:** HttpClientHelper provides auto-retry functionality only, not circuit breaker pattern.
 
 ## Security Architecture
 
@@ -215,18 +222,25 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### Unified Error Code System
 
 **Format:** XXYYZZ
-- XX: Service identifier
-- YY: Feature/module identifier
+- XX: Error category
+- YY: Subcategory
 - ZZ: Specific error number
 
-**Service Ranges:**
-- 10XXX: Account Service
-- 20XXX: Terminal Service
-- 30XXX: Master-data Service
-- 40XXX: Cart Service
-- 41XXX: Report Service
-- 42XXX: Journal Service
-- 43XXX: Stock Service
+**Category Ranges:**
+- 10XXXX: General errors
+- 20XXXX: Authentication/authorization errors
+- 30XXXX: Input validation errors
+- 40XXXX: Business rule errors (service-specific subcategories)
+  - 401xx-404xx: Cart Service
+  - 405xx: Master-data Service
+  - 406xx-407xx: Terminal Service
+  - 408xx-409xx: Account Service
+  - 410xx-411xx: Journal Service
+  - 412xx-413xx: Report Service
+  - 414xx-415xx: Stock Service
+- 50XXXX: Database/repository errors
+- 60XXXX: External service errors
+- 90XXXX: System errors
 
 ### Multi-Language Error Messages
 
@@ -234,9 +248,18 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 
 ```python
 class ErrorMessage:
+    DEFAULT_LANGUAGE = "ja"
+    SUPPORTED_LANGUAGES = ["ja", "en"]
+
     MESSAGES = {
-        "ja": {"10001": "認証に失敗しました"},
-        "en": {"10001": "Authentication failed"}
+        "ja": {
+            ErrorCode.GENERAL_ERROR: "一般エラーが発生しました",
+            # ... other messages
+        },
+        "en": {
+            ErrorCode.GENERAL_ERROR: "General error occurred",
+            # ... other messages
+        }
     }
 ```
 

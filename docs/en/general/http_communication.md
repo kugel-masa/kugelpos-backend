@@ -12,10 +12,11 @@ The Kugelpos system adopts unified HTTP communication patterns to achieve high r
 
 **Main Features:**
 - Automatic retry mechanism (3 attempts, exponential backoff)
-- Circuit breaker pattern (3 failures for 60-second block)
 - Connection pooling (max 100 connections, Keep-Alive 20 connections)
 - Service discovery support
 - Unified error handling
+
+**Note:** Circuit breaker pattern is implemented in `DaprClientHelper`. `HttpClientHelper` provides auto-retry only.
 
 **Configuration:**
 ```python
@@ -88,7 +89,9 @@ class HttpClientError(Exception):
 - **Authentication Errors**: 401, 403
 - **Resource Not Found**: 404
 
-## Circuit Breaker Implementation
+## Circuit Breaker Implementation (DaprClientHelper)
+
+**Note:** Circuit breaker is implemented only in `DaprClientHelper`. `HttpClientHelper` provides retry only.
 
 ### State Management
 

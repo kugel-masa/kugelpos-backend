@@ -10,58 +10,58 @@ The stock service snapshot functionality completely records the inventory state 
 
 Document storing the complete state of stock snapshots.
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "snapshot_id": "string (UUID)",
-  "total_items": "integer",
-  "total_quantity": "decimal",
-  "stocks": [
-    {
-      "item_code": "string",
-      "quantity": "decimal",
-      "minimum_quantity": "decimal",
-      "reorder_point": "decimal",
-      "reorder_quantity": "decimal"
-    }
-  ],
-  "created_by": "string",
-  "generate_date_time": "string (ISO 8601)",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
+**Implementation Location:** `/services/stock/app/models/documents/stock_snapshot_document.py`
+
+```python
+class StockSnapshotDocument(AbstractDocument):
+    id: Optional[str] = Field(None, alias="_id")
+    tenant_id: str
+    store_code: str
+    total_items: int
+    total_quantity: float
+    stocks: List[StockSnapshotItem] = Field(default_factory=list)
+    created_by: str
+    generate_date_time: Optional[str] = None  # ISO 8601 format
+```
+
+**StockSnapshotItem Subdocument:**
+```python
+class StockSnapshotItem(BaseModel):
+    item_code: str
+    quantity: float
+    minimum_quantity: Optional[float] = None
+    reorder_point: Optional[float] = None
+    reorder_quantity: Optional[float] = None
 ```
 
 **Field Descriptions:**
-- `snapshot_id`: Unique snapshot identifier (UUID format)
 - `total_items`: Total number of items at snapshot time
 - `total_quantity`: Total stock quantity at snapshot time
 - `stocks`: Array of stock information for each product
-- `created_by`: Snapshot creator ("system" or operator ID)
+- `created_by`: Snapshot creator ("system", "scheduled_system", or operator ID)
 - `generate_date_time`: Snapshot generation date/time (ISO 8601 format)
 
 ### SnapshotScheduleDocument
 
-Configuration for automatic snapshot creation schedule.
+Configuration for automatic snapshot creation schedule. One schedule per tenant.
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "schedule_interval": "string (daily/weekly/monthly)",
-  "schedule_hour": "integer (0-23)",
-  "schedule_minute": "integer (0-59)",
-  "schedule_day_of_week": "integer (0-6, optional)",
-  "schedule_day_of_month": "integer (1-31, optional)",
-  "retention_days": "integer (30-365)",
-  "target_stores": ["string"],
-  "enabled": "boolean",
-  "last_executed_at": "datetime",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
+**Implementation Location:** `/services/stock/app/models/documents/snapshot_schedule_document.py`
+
+```python
+class SnapshotScheduleDocument(AbstractDocument):
+    tenant_id: str
+    enabled: bool = True
+    schedule_interval: str  # "daily", "weekly", "monthly"
+    schedule_hour: int  # 0-23
+    schedule_minute: int = 0  # 0-59
+    schedule_day_of_week: Optional[int] = None  # 0-6 (for weekly, 0=Monday)
+    schedule_day_of_month: Optional[int] = None  # 1-31 (for monthly)
+    retention_days: int = 30
+    target_stores: List[str] = ["all"]  # ["all"] or specific store codes
+    last_executed_at: Optional[datetime] = None
+    next_execution_at: Optional[datetime] = None
+    created_by: str = "system"
+    updated_by: str = "system"
 ```
 
 **Field Descriptions:**
@@ -69,21 +69,23 @@ Configuration for automatic snapshot creation schedule.
 - `schedule_hour/minute`: Execution time
 - `schedule_day_of_week`: Day of week for weekly schedule (0=Monday)
 - `schedule_day_of_month`: Date for monthly schedule
-- `retention_days`: Snapshot retention period (days)
+- `retention_days`: Snapshot retention period (days, default 30)
 - `target_stores`: Target stores (["all"] for all stores)
 - `enabled`: Schedule enabled/disabled
+- `next_execution_at`: Next scheduled execution time
+- `created_by/updated_by`: Creator/updater (default "system")
 
 ## Snapshot Operations
 
 ### 1. Manual Snapshot Creation
 
-**Implementation Location:** `/services/stock/app/services/snapshot_service.py:54`
+**Implementation Location:** `/services/stock/app/services/snapshot_service.py:20`
 
 ```python
 async def create_snapshot_async(
-    self, 
-    tenant_id: str, 
-    store_code: str, 
+    self,
+    tenant_id: str,
+    store_code: str,
     created_by: str = "system"
 ) -> StockSnapshotDocument
 ```
@@ -102,20 +104,20 @@ async def create_snapshot_async(
 ### 2. Snapshot Queries
 
 #### Get List
-**Implementation Location:** `/services/stock/app/services/snapshot_service.py:94`
+**Implementation Location:** `/services/stock/app/services/snapshot_service.py:76`
 
 ```python
 async def get_snapshots_async(
-    self, 
-    tenant_id: str, 
+    self,
+    tenant_id: str,
     store_code: str,
-    page: int = 1,
-    limit: int = 100
+    skip: int = 0,
+    limit: int = 20
 ) -> Tuple[List[StockSnapshotDocument], int]
 ```
 
 #### Date Range Search
-**Implementation Location:** `/services/stock/app/services/snapshot_service.py:134`
+**Implementation Location:** `/services/stock/app/services/snapshot_service.py:88`
 
 ```python
 async def get_snapshots_by_date_range_async(
@@ -123,15 +125,28 @@ async def get_snapshots_by_date_range_async(
     tenant_id: str,
     store_code: str,
     start_date: datetime,
-    end_date: datetime,
-    page: int = 1,
+    end_date: datetime
+) -> List[StockSnapshotDocument]
+```
+
+#### Generate DateTime Range Search
+**Implementation Location:** `/services/stock/app/services/snapshot_service.py:104`
+
+```python
+async def get_snapshots_by_generate_date_time_async(
+    self,
+    tenant_id: str,
+    store_code: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    skip: int = 0,
     limit: int = 100
 ) -> Tuple[List[StockSnapshotDocument], int]
 ```
 
 ### 3. Schedule Management
 
-**Implementation Location:** `/services/stock/app/scheduler/multi_tenant_snapshot_scheduler.py`
+**Implementation Location:** `/services/stock/app/services/multi_tenant_snapshot_scheduler.py`
 
 #### Scheduler Architecture
 
@@ -139,48 +154,56 @@ async def get_snapshots_by_date_range_async(
 class MultiTenantSnapshotScheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
-        self._running_locks = {}  # Duplicate execution prevention
+        self.tenant_jobs: Dict[str, str] = {}  # {tenant_id: job_id}
+        self._lock = asyncio.Lock()  # For thread-safe operations
 ```
 
 **Main Methods:**
 
-1. **Add/Update Schedule**
+1. **Initialize**
    ```python
-   async def add_or_update_schedule(
-       self, 
-       tenant_id: str, 
-       schedule: SnapshotSchedule
-   )
+   async def initialize(self, get_db_func)
    ```
 
-2. **Remove Schedule**
+2. **Add/Update Schedule**
    ```python
-   async def remove_schedule(self, tenant_id: str)
+   async def update_tenant_schedule(self, schedule: SnapshotScheduleDocument)
    ```
 
-3. **Execution Logic**
+3. **Remove Schedule**
    ```python
-   async def _execute_snapshot_job(self, tenant_id: str)
+   async def remove_tenant_schedule(self, tenant_id: str)
+   ```
+
+4. **Execution Logic**
+   ```python
+   async def _execute_tenant_snapshot(self, tenant_id: str, schedule: SnapshotScheduleDocument)
+   ```
+
+5. **Get Status**
+   ```python
+   def get_status(self) -> dict
    ```
 
 **Execution Flow:**
 1. Check for duplicate execution (in-memory lock)
 2. Retrieve schedule configuration
-3. Determine target store list
-4. Create snapshots for each store
+3. Determine target store list (`_get_target_stores`)
+4. Create snapshots for each store (`created_by="scheduled_system"`)
 5. Log execution results
 6. Update `last_executed_at`
 
 ### 4. Maintenance Features
 
 #### Delete Old Snapshots
-**Implementation Location:** `/services/stock/app/services/snapshot_service.py:184`
+**Implementation Location:** `/services/stock/app/services/snapshot_service.py:94`
 
 ```python
 async def cleanup_old_snapshots_async(
-    self, 
-    tenant_id: str, 
-    retention_days: int
+    self,
+    tenant_id: str,
+    store_code: str,
+    retention_days: int = 90
 ) -> int
 ```
 
@@ -193,33 +216,31 @@ async def cleanup_old_snapshots_async(
 
 ### stock_snapshots Collection
 
-```javascript
-// Unique index
-db.stock_snapshots.createIndex(
-    { "snapshot_id": 1 }, 
-    { unique: true }
-)
-
-// Compound index (for queries)
-db.stock_snapshots.createIndex(
-    { "tenant_id": 1, "store_code": 1, "generate_date_time": -1 }
-)
-
-// TTL index (for automatic deletion)
-db.stock_snapshots.createIndex(
-    { "created_at": 1 }, 
-    { expireAfterSeconds: variable }  // Dynamically configured
-)
+```python
+class Settings:
+    name = "stock_snapshots"
+    indexes = [
+        {"keys": [("tenant_id", 1), ("store_code", 1), ("created_at", -1)]},
+        {"keys": [("tenant_id", 1), ("store_code", 1), ("generate_date_time", -1)]},
+    ]
 ```
+
+**TTL Index:**
+- TTL index is dynamically set via `StockSnapshotRepository.ensure_ttl_index()`
+- Based on `retention_days` from schedule configuration
+- Implementation: `/services/stock/app/services/multi_tenant_snapshot_scheduler.py:100`
 
 ### snapshot_schedules Collection
 
-```javascript
-// Unique index
-db.snapshot_schedules.createIndex(
-    { "tenant_id": 1 }, 
-    { unique: true }
-)
+```python
+class Settings:
+    name = "snapshot_schedules"
+    indexes = [
+        {
+            "keys": [("tenant_id", 1)],
+            "unique": True,
+        }
+    ]
 ```
 
 ## Schedule Configuration Examples

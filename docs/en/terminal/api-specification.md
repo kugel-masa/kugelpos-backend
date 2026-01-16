@@ -2,28 +2,30 @@
 
 ## Overview
 
-The Terminal service provides tenant management, store management, and terminal management capabilities for the Kugelpos POS system. It implements terminal lifecycle management, cash in/out operations, staff management, and basic functions required for store operations.
+Provides tenant management, store management, and terminal management functions. Manages terminal lifecycle, cash in/out operations, and staff management.
+
+## Service Information
+
+- **Port**: 8001
+- **Framework**: FastAPI
+- **Database**: MongoDB (Motor async driver)
 
 ## Base URL
-- Local environment: `http://localhost:8001`
-- Production environment: `https://terminal.{domain}`
+
+- Local Environment: `http://localhost:8001`
+- Production Environment: `https://terminal.{domain}`
 
 ## Authentication
 
-The Terminal service supports two authentication methods:
+The following authentication methods are supported:
 
-### 1. JWT Token (Bearer Token)
-- Header: `Authorization: Bearer {token}`
-- Purpose: Tenant, store, and terminal management operations by administrators
-
-### 2. Terminal ID + API Key Authentication
+### API Key Authentication
 - Header: `X-API-Key: {api_key}`
-- Query parameter: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
-- Purpose: Terminal operations (sign-in, opening, cash management, etc.)
+- Usage: API calls from terminals
 
-## Field Format
-
-All API requests/responses use **camelCase** format.
+### JWT Token Authentication
+- Header: `Authorization: Bearer {token}`
+- Usage: System operations by administrators
 
 ## Common Response Format
 
@@ -32,487 +34,1720 @@ All API requests/responses use **camelCase** format.
   "success": true,
   "code": 200,
   "message": "Operation completed successfully",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## Terminal States
-
-| State | Description |
-|-------|-------------|
-| idle | Initial state, before business start |
-| opened | In business (opened) |
-| closed | Business ended (closed) |
-
-## Function Modes
-
-| Mode | Description |
-|------|-------------|
-| MainMenu | Main menu |
-| OpenTerminal | Terminal opening |
-| Sales | Sales processing |
-| Returns | Return processing |
-| Void | Void processing |
-| Reports | Report display |
-| CloseTerminal | Terminal closing |
-| Journal | Journal display |
-| Maintenance | Maintenance |
-| CashInOut | Cash in/out |
 
 ## API Endpoints
 
-### Tenant Management
+### System
 
-#### 1. Create Tenant
-**POST** `/api/v1/tenants`
+### 1. Root
 
-Creates a new tenant and initializes each service.
+**GET** `/`
 
-**Authentication:** JWT token required
+Root endpoint that provides basic API information
+Returns a welcome message and supported API versions
 
-**Request Body:**
-```json
-{
-  "tenantId": "tenant001",
-  "tenantName": "Sample Corporation"
-}
-```
+**Response:**
 
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Tenant created successfully",
-  "data": {
-    "tenantId": "tenant001",
-    "tenantName": "Sample Corporation",
-    "createdAt": "2024-01-01T10:00:00Z"
-  },
-  "operation": "create_tenant"
-}
-```
+### 2. Health Check
 
-#### 2. Get Tenant Information
-**GET** `/api/v1/tenants/{tenant_id}`
-
-Retrieves detailed tenant information.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-
-#### 3. Update Tenant
-**PUT** `/api/v1/tenants/{tenant_id}`
-
-Updates tenant information.
-
-**Request Body:**
-```json
-{
-  "tenantName": "Sample Corporation (Updated)"
-}
-```
-
-#### 4. Delete Tenant
-**DELETE** `/api/v1/tenants/{tenant_id}`
-
-Deletes tenant and related data.
-
-### Store Management
-
-#### 5. Add Store
-**POST** `/api/v1/tenants/{tenant_id}/stores`
-
-Adds a new store to the tenant.
-
-**Request Body:**
-```json
-{
-  "storeCode": "STORE001",
-  "storeName": "Main Store"
-}
-```
-
-#### 6. Get Store List
-**GET** `/api/v1/tenants/{tenant_id}/stores`
-
-Retrieves list of stores for the tenant.
-
-**Query Parameters:**
-- `page` (integer, default: 1): Page number
-- `limit` (integer, default: 100): Page size
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stores retrieved successfully",
-  "data": {
-    "stores": [
-      {
-        "storeCode": "STORE001",
-        "storeName": "Main Store",
-        "status": "active",
-        "businessDate": "2024-01-01",
-        "createdAt": "2024-01-01T10:00:00Z"
-      }
-    ],
-    "total": 1,
-    "page": 1,
-    "limit": 100
-  },
-  "operation": "list_stores"
-}
-```
-
-#### 7. Get Store Information
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-Retrieves detailed information for a specific store.
-
-#### 8. Update Store
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-Updates store information.
-
-**Request Body:**
-```json
-{
-  "storeName": "Main Store (Updated)",
-  "status": "active",
-  "businessDate": "2024-01-02"
-}
-```
-
-#### 9. Delete Store
-**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-Deletes a store.
-
-### Terminal Management
-
-#### 10. Create Terminal
-**POST** `/api/v1/terminals`
-
-Creates a new terminal.
-
-**Authentication:** JWT token required
-
-**Request Body:**
-```json
-{
-  "storeCode": "STORE001",
-  "terminalNo": 1,
-  "description": "Register #1"
-}
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Terminal created successfully",
-  "data": {
-    "terminalId": "tenant001-STORE001-1",
-    "tenantId": "tenant001",
-    "storeCode": "STORE001",
-    "terminalNo": 1,
-    "description": "Register #1",
-    "status": "idle",
-    "apiKey": "sk_live_1234567890abcdef",
-    "createdAt": "2024-01-01T10:00:00Z"
-  },
-  "operation": "create_terminal"
-}
-```
-
-#### 11. Get Terminal List
-**GET** `/api/v1/terminals`
-
-Retrieves list of terminals.
-
-**Authentication:** JWT token required
-
-**Query Parameters:**
-- `page` (integer, default: 1): Page number
-- `limit` (integer, default: 100): Page size
-- `store_code` (string): Filter by store code
-- `status` (string): Filter by status
-
-#### 12. Get Terminal Information
-**GET** `/api/v1/terminals/{terminal_id}`
-
-Retrieves detailed terminal information.
-
-**Path Parameters:**
-- `terminal_id` (string, required): Terminal ID (format: tenant_id-store_code-terminal_no)
-
-#### 13. Delete Terminal
-**DELETE** `/api/v1/terminals/{terminal_id}`
-
-Deletes a terminal.
-
-**Authentication:** JWT token required
-
-#### 14. Update Terminal Description
-**PATCH** `/api/v1/terminals/{terminal_id}/description`
-
-Updates terminal description.
-
-**Request Body:**
-```json
-{
-  "description": "Register #1 (Maintenance Complete)"
-}
-```
-
-#### 15. Update Function Mode
-**PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
-
-Updates terminal function mode.
-
-**Request Body:**
-```json
-{
-  "functionMode": "Sales"
-}
-```
-
-### Terminal Operations
-
-#### 16. Staff Sign-in
-**POST** `/api/v1/terminals/{terminal_id}/sign-in`
-
-Staff signs into the terminal.
-
-**Request Body:**
-```json
-{
-  "staffId": "STAFF001",
-  "staffName": "Yamada Taro"
-}
-```
-
-#### 17. Staff Sign-out
-**POST** `/api/v1/terminals/{terminal_id}/sign-out`
-
-Staff signs out of the terminal.
-
-**Request Body:**
-```json
-{
-  "staffId": "STAFF001"
-}
-```
-
-#### 18. Open Terminal
-**POST** `/api/v1/terminals/{terminal_id}/open`
-
-Opens the terminal for business.
-
-**Request Body:**
-```json
-{
-  "staffId": "STAFF001",
-  "staffName": "Yamada Taro",
-  "cashAmount": 50000
-}
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Terminal opened successfully",
-  "data": {
-    "terminalId": "tenant001-STORE001-1",
-    "status": "opened",
-    "businessDate": "2024-01-01",
-    "openCounter": 1,
-    "openTime": "2024-01-01T09:00:00Z",
-    "receiptText": "=== OPEN ===\n...",
-    "journalText": "Terminal open processing\n..."
-  },
-  "operation": "open_terminal"
-}
-```
-
-#### 19. Close Terminal
-**POST** `/api/v1/terminals/{terminal_id}/close`
-
-Closes the terminal for business.
-
-**Request Body:**
-```json
-{
-  "staffId": "STAFF001",
-  "staffName": "Yamada Taro",
-  "cashAmount": 125000
-}
-```
-
-### Cash Management
-
-#### 20. Cash In
-**POST** `/api/v1/terminals/{terminal_id}/cash-in`
-
-Deposits cash.
-
-**Request Body:**
-```json
-{
-  "amount": 10000,
-  "reason": "Change replenishment",
-  "staffId": "STAFF001",
-  "staffName": "Yamada Taro",
-  "comment": "Afternoon change replenishment"
-}
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Cash in completed successfully",
-  "data": {
-    "cashInOutId": "CI-20240101-001",
-    "amount": 10000,
-    "receiptText": "=== CASH IN ===\n...",
-    "journalText": "Cash in processing\n..."
-  },
-  "operation": "cash_in"
-}
-```
-
-#### 21. Cash Out
-**POST** `/api/v1/terminals/{terminal_id}/cash-out`
-
-Withdraws cash.
-
-**Request Body:**
-```json
-{
-  "amount": 50000,
-  "reason": "Sales collection",
-  "staffId": "STAFF001",
-  "staffName": "Yamada Taro",
-  "comment": "Intermediate collection"
-}
-```
-
-### System Management
-
-#### 22. Update Delivery Status
-**POST** `/api/v1/terminals/{terminal_id}/delivery-status`
-
-Updates event delivery status (internal use).
-
-**Request Body:**
-```json
-{
-  "eventId": "evt_123456",
-  "eventType": "cashlog",
-  "delivered": true
-}
-```
-
-### 23. Health Check
 **GET** `/health`
 
-Checks service health.
+Health check endpoint for monitoring service health.
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
+}
+```
+
+### Tenant
+
+### 3. Create Tenant
+
+**POST** `/api/v1/tenants`
+
+Create a new tenant
+
+This endpoint sets up a new tenant in the system by:
+1. Creating necessary database structures for the Terminal service
+2. Initializing other services (Master Data, Cart, Report, Journal) for the tenant
+3. Creating the tenant information record
+
+This operation requires OAuth2 token authentication.
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+
+**Request Example:**
+```json
+{
+  "tenantId": "string",
+  "tenantName": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**Response:**
+
+**data Field:** `Tenant`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Service is healthy",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## Event Notifications (Dapr Pub/Sub)
+### 4. Get Tenant
 
-### Cash In/Out Events
-**Topic:** `cashlog_report`
+**GET** `/api/v1/tenants/{tenant_id}`
 
-Events published during cash in/out operations.
+Get tenant information
 
-### Open/Close Events
-**Topic:** `opencloselog_report`
+This endpoint retrieves detailed information about a specific tenant.
+This operation can be authenticated using either:
+- OAuth2 token, or
+- Terminal ID + API key combination
 
-Events published during terminal open/close operations.
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | - |
+
+**Response:**
+
+**data Field:** `Tenant`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Update Tenant
+
+**PUT** `/api/v1/tenants/{tenant_id}`
+
+Update tenant information
+
+This endpoint updates the details of a specific tenant.
+This operation requires OAuth2 token authentication.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+
+**Request Example:**
+```json
+{
+  "tenantName": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**Response:**
+
+**data Field:** `Tenant`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. Delete Tenant
+
+**DELETE** `/api/v1/tenants/{tenant_id}`
+
+Delete a tenant
+
+This endpoint deletes a tenant from the system.
+This operation requires OAuth2 token authentication.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `TenantDeleteResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Store
+
+### 7. Get Stores
+
+**GET** `/api/v1/tenants/{tenant_id}/stores`
+
+Get a list of stores for a tenant
+
+This endpoint retrieves a paginated list of stores for the specified tenant.
+This operation can be authenticated using either:
+- OAuth2 token, or
+- Terminal ID + API key combination
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | - |
+
+**Response:**
+
+**data Field:** `array[Store]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "storeCode": "string",
+      "storeName": "string",
+      "status": "string",
+      "businessDate": "string",
+      "tags": [
+        "string"
+      ],
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. Add Store
+
+**POST** `/api/v1/tenants/{tenant_id}/stores`
+
+Add a store to a tenant
+
+This endpoint adds a new store to the specified tenant.
+This operation requires OAuth2 token authentication.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+
+**Request Example:**
+```json
+{
+  "storeCode": "string",
+  "storeName": "string",
+  "status": "string",
+  "businessDate": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**Response:**
+
+**data Field:** `Tenant`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 9. Get Store
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Get store information
+
+This endpoint retrieves detailed information about a specific store.
+This operation can be authenticated using either:
+- OAuth2 token, or
+- Terminal ID + API key combination
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | - |
+
+**Response:**
+
+**data Field:** `Store`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "storeCode": "string",
+    "storeName": "string",
+    "status": "string",
+    "businessDate": "string",
+    "tags": [
+      "string"
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. Update Store
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Update store information
+
+This endpoint updates the details of a specific store.
+This operation requires OAuth2 token authentication.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+
+**Request Example:**
+```json
+{
+  "storeName": "string",
+  "status": "string",
+  "businessDate": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**Response:**
+
+**data Field:** `Store`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "storeCode": "string",
+    "storeName": "string",
+    "status": "string",
+    "businessDate": "string",
+    "tags": [
+      "string"
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. Delete Store
+
+**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Delete a store
+
+This endpoint deletes a store from the specified tenant.
+This operation requires OAuth2 token authentication.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `StoreDeleteResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "storeCode": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Terminal
+
+### 12. Get Terminals
+
+**GET** `/api/v1/terminals`
+
+Get a list of terminals
+
+This endpoint retrieves a paginated list of terminals for the authenticated tenant.
+Optional filtering by store code is supported.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | Limit the number of results |
+| `page` | integer | No | 1 | Page number |
+| `store_code` | string | No | - | Filter by store code |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | - |
+
+**Response:**
+
+**data Field:** `array[Terminal]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "terminalId": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "description": "string",
+      "functionMode": "string",
+      "status": "string",
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. Create Terminal
+
+**POST** `/api/v1/terminals`
+
+Create a new terminal
+
+This endpoint creates a new terminal for a store with the provided details.
+Requires token authentication (no terminal ID/API key needed since the terminal doesn't exist yet).
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "storeCode": "string",
+  "terminalNo": 0,
+  "description": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. Get Terminal
+
+**GET** `/api/v1/terminals/{terminal_id}`
+
+Get terminal information
+
+This endpoint retrieves detailed information about a specific terminal.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 15. Delete Terminal
+
+**DELETE** `/api/v1/terminals/{terminal_id}`
+
+Delete a terminal
+
+This endpoint deletes a terminal from the system.
+Requires OAuth2 token authentication.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `TerminalDeleteResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 16. Terminal Cash In
+
+**POST** `/api/v1/terminals/{terminal_id}/cash-in`
+
+Add cash to a terminal drawer
+
+This endpoint records cash being added to the terminal drawer
+and generates a receipt for the transaction.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `amount` | number | Yes | - |
+| `description` | string | No | - |
+
+**Request Example:**
+```json
+{
+  "amount": 0.0,
+  "description": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `CashInOutResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `amount` | number | Yes | - |
+| `description` | string | Yes | - |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "amount": 0.0,
+    "description": "string",
+    "receiptText": "string",
+    "journalText": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. Terminal Cash Out
+
+**POST** `/api/v1/terminals/{terminal_id}/cash-out`
+
+Remove cash from a terminal drawer
+
+This endpoint records cash being removed from the terminal drawer
+and generates a receipt for the transaction.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `amount` | number | Yes | - |
+| `description` | string | No | - |
+
+**Request Example:**
+```json
+{
+  "amount": 0.0,
+  "description": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `CashInOutResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `amount` | number | Yes | - |
+| `description` | string | Yes | - |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "amount": 0.0,
+    "description": "string",
+    "receiptText": "string",
+    "journalText": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 18. Terminal Close
+
+**POST** `/api/v1/terminals/{terminal_id}/close`
+
+Close a terminal after business operations
+
+This endpoint transitions a terminal to the 'closed' state,
+ending the current business session. It records the final
+physical cash amount in the drawer and creates a closing report.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `physicalAmount` | number | No | - |
+
+**Request Example:**
+```json
+{
+  "physicalAmount": 0.0
+}
+```
+
+**Response:**
+
+**data Field:** `TerminalCloseResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `terminalInfo` | BaseTerminal | Yes | Base Terminal Information Model
+
+Represents termin |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+| `physicalAmount` | number | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0,
+    "initialAmount": 0.0,
+    "terminalInfo": {
+      "terminalId": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "description": "string",
+      "functionMode": "string",
+      "status": "string",
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0
+    },
+    "receiptText": "string",
+    "journalText": "string",
+    "physicalAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 19. Update Delivery Status
+
+**POST** `/api/v1/terminals/{terminal_id}/delivery-status`
+
+Update the delivery status of a transaction
+
+This endpoint updates the delivery status of a transaction
+and generates a receipt for the transaction.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `message` | string | No | - |
+
+**Request Example:**
+```json
+{
+  "event_id": "string",
+  "service": "string",
+  "status": "string",
+  "message": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `DeliveryStatusUpdateResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `success` | boolean | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "event_id": "string",
+    "service": "string",
+    "status": "string",
+    "success": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 20. Update Terminal Description
+
+**PATCH** `/api/v1/terminals/{terminal_id}/description`
+
+Update terminal description
+
+This endpoint updates the description of a specific terminal.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `description` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "description": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. Update Terminal Function Mode
+
+**PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
+
+Update terminal function mode
+
+This endpoint updates the operating mode of a terminal (e.g., Sales, Returns, etc.).
+The function mode determines what operations are available on the terminal.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `functionMode` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "functionMode": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 22. Terminal Open
+
+**POST** `/api/v1/terminals/{terminal_id}/open`
+
+Open a terminal for business operations
+
+This endpoint transitions a terminal to the 'opened' state,
+making it ready for sales and other business operations.
+It also records the initial cash amount in the drawer.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `initialAmount` | number | No | - |
+
+**Request Example:**
+```json
+{
+  "initialAmount": 0.0
+}
+```
+
+**Response:**
+
+**data Field:** `TerminalOpenResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `terminalInfo` | BaseTerminal | Yes | Base Terminal Information Model
+
+Represents termin |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0,
+    "initialAmount": 0.0,
+    "terminalInfo": {
+      "terminalId": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "description": "string",
+      "functionMode": "string",
+      "status": "string",
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0
+    },
+    "receiptText": "string",
+    "journalText": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 23. Terminal Signin
+
+**POST** `/api/v1/terminals/{terminal_id}/sign-in`
+
+Sign in to a terminal
+
+This endpoint associates a staff member with a terminal for the duration of their shift.
+A terminal must have a staff member signed in before most operations can be performed.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `staffId` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "staffId": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 24. Terminal Signout
+
+**POST** `/api/v1/terminals/{terminal_id}/sign-out`
+
+Sign out from a terminal
+
+This endpoint removes the current staff association from a terminal
+at the end of their shift or when changing operators.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ## Error Codes
 
-Terminal service uses error codes in the 406XX-407XX range:
+Error responses are returned in the following format:
 
-### Terminal Basic Operation Related (4060XX)
-- `406001`: Terminal not found
-- `406002`: Terminal already exists
-- `406003`: Terminal status error
-- `406004`: Sign in/out error
-- `406005`: Sign in required
-- `406006`: Invalid credentials
-- `406007`: Terminal open error
-- `406008`: Terminal close error
-- `406009`: Terminal already opened
-- `406010`: Terminal already closed
-- `406011`: Terminal is busy
-- `406012`: Function mode error
-- `406013`: Terminal not signed in
-- `406014`: Already signed in
-- `406015`: Terminal is signed out
-
-### Cash Handling Related (4061XX)
-- `406101`: Cash in/out error
-- `406102`: Invalid amount
-- `406103`: Cash drawer closed
-- `406104`: Amount exceeds maximum
-- `406105`: Amount below minimum
-- `406106`: Physical amount mismatch
-
-### Tenant Related (4070XX)
-- `407001`: Tenant not found
-- `407002`: Tenant already exists
-- `407003`: Tenant update error
-- `407004`: Tenant delete error
-- `407005`: Tenant configuration error
-- `407006`: Tenant creation error
-
-### Store Related (4071XX)
-- `407101`: Store not found
-- `407102`: Store already exists
-- `407103`: Store update error
-- `407104`: Store delete error
-- `407105`: Store configuration error
-- `407106`: Business date error
-
-### External Service Related (4072XX)
-- `407201`: External service error
-- `407202`: Master data service error
-- `407203`: Cart service error
-- `407204`: Journal service error
-- `407205`: Report service error
-
-### Other Errors (4073XX)
-- `407301`: Internal processing error
-- `407399`: Unexpected error
-
-## Special Notes
-
-1. **Terminal ID Format**: Uses `{tenant_id}-{store_code}-{terminal_no}` format
-2. **API Key**: Auto-generated during terminal creation and stored as hash
-3. **Background Jobs**: Periodic retransmission of undelivered messages
-4. **Multi-tenancy**: Complete isolation at database level
-5. **Event-driven**: Asynchronous event delivery via Dapr pub/sub
-6. **Circuit Breaker**: Failure handling for external service calls
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

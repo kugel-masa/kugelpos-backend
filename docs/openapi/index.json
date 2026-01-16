@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-01-16T16:13:43.924257",
+  "services": [
+    {
+      "name": "account",
+      "file": "account.json",
+      "title": "FastAPI",
+      "version": "0.1.0",
+      "endpoints": 5
+    },
+    {
+      "name": "terminal",
+      "file": "terminal.json",
+      "title": "FastAPI",
+      "version": "0.1.0",
+      "endpoints": 17
+    },
+    {
+      "name": "master-data",
+      "file": "master-data.json",
+      "title": "KugelPOS Master-Data Service",
+      "version": "1.0.0",
+      "endpoints": 28
+    },
+    {
+      "name": "cart",
+      "file": "cart.json",
+      "title": "FastAPI",
+      "version": "0.1.0",
+      "endpoints": 23
+    },
+    {
+      "name": "report",
+      "file": "report.json",
+      "title": "FastAPI",
+      "version": "0.1.0",
+      "endpoints": 10
+    },
+    {
+      "name": "journal",
+      "file": "journal.json",
+      "title": "FastAPI",
+      "version": "0.1.0",
+      "endpoints": 10
+    },
+    {
+      "name": "stock",
+      "file": "stock.json",
+      "title": "FastAPI",
+      "version": "0.1.0",
+      "endpoints": 17
+    }
+  ]
+}

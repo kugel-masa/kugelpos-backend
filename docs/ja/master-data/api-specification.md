@@ -1,28 +1,31 @@
-# マスターデータサービス API仕様
+# マスターデータサービス API仕様書
 
 ## 概要
 
-マスターデータサービスは、Kugelpos POSシステムの基幹となる参照データを管理するRESTful APIサービスです。スタッフ情報、商品マスター、支払方法、税金設定、システム設定などの静的データを一元管理し、他のサービスに提供します。
+商品マスター、支払方法、税金設定、スタッフ情報などの参照データを管理するサービスです。
+
+## サービス情報
+
+- **ポート**: 8002
+- **フレームワーク**: FastAPI
+- **データベース**: MongoDB (Motor async driver)
 
 ## ベースURL
+
 - ローカル環境: `http://localhost:8002`
 - 本番環境: `https://master-data.{domain}`
 
 ## 認証
 
-マスターデータサービスは2つの認証方法をサポートしています：
+以下の認証方法をサポートしています：
 
-### 1. JWTトークン（Bearerトークン）
-- ヘッダー: `Authorization: Bearer {token}`
-- 用途: 管理者によるマスターデータ管理
-
-### 2. APIキー認証
+### APIキー認証
 - ヘッダー: `X-API-Key: {api_key}`
-- 用途: 端末からのマスターデータ読み取り
+- 用途: 端末からのAPI呼び出し
 
-## フィールド形式
-
-すべてのAPIリクエスト/レスポンスは**camelCase**形式を使用します。
+### JWTトークン認証
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるシステム操作
 
 ## 共通レスポンス形式
 
@@ -31,374 +34,3614 @@
   "success": true,
   "code": 200,
   "message": "操作が正常に完了しました",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
 
 ## APIエンドポイント
 
-### スタッフマスター管理
+### システム
 
-#### 1. スタッフ作成
-**POST** `/api/v1/tenants/{tenant_id}/staff`
+### 1. ルートエンドポイント
 
-新規スタッフを登録します。
+**GET** `/`
 
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
+ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。
 
-**リクエストボディ:**
+**レスポンス:**
+
+### 2. ヘルスチェック
+
+**GET** `/health`
+
+ヘルスチェックエンドポイントです。サービスの稼働状態を監視します。
+
+**レスポンス:**
+
+**レスポンス例:**
 ```json
 {
-  "staffId": "STF001",
-  "name": "山田太郎",
-  "pin": "1234",
-  "roles": ["cashier", "manager"]
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
 }
 ```
+
+### テナント
+
+### 3. テナント作成
+
+**POST** `/api/v1/tenants`
+
+新しいテナントを作成します。必要なデータベースコレクションとインデックスをセットアップします。
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "tenantId": "string"
+}
+```
+
+**レスポンス:**
 
 **レスポンス例:**
 ```json
 {
   "success": true,
-  "code": 201,
-  "message": "Staff created successfully",
-  "data": {
-    "staffId": "STF001",
-    "name": "山田太郎",
-    "roles": ["cashier", "manager"]
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "create_staff"
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-#### 2. スタッフ取得
-**GET** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+### 4. カテゴリー一覧取得
 
-特定のスタッフ情報を取得します。
+**GET** `/api/v1/tenants/{tenant_id}/categories`
+
+Get Categoriesの情報を取得します。
 
 **パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `staff_id` (string, 必須): スタッフID
 
-#### 3. スタッフ一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/staff`
-
-スタッフ一覧を取得します。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
 
 **クエリパラメータ:**
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100, 最大: 1000): ページサイズ
-- `sort` (string): ソート条件
 
-#### 4. スタッフ更新
-**PUT** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
 
-スタッフ情報を更新します。
+**レスポンス:**
 
-#### 5. スタッフ削除
-**DELETE** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+**dataフィールド:** `array[CategoryMasterResponse]`
 
-スタッフを削除します。
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `descriptionShort` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
 
-### 商品マスター管理
-
-#### 6. 商品作成
-**POST** `/api/v1/tenants/{tenant_id}/items`
-
-新規商品を登録します。
-
-**リクエストボディ:**
+**レスポンス例:**
 ```json
 {
-  "itemCode": "ITEM001",
-  "description": "コーヒー（ホット）",
-  "shortDescription": "コーヒー",
-  "detailDescription": "ブレンドコーヒー",
-  "unitPrice": 300.00,
-  "unitCost": 100.00,
-  "categoryCode": "BEVERAGE",
-  "taxCode": "TAX_10",
-  "itemDetails": [
-    {"name": "size", "value": "regular"},
-    {"name": "temperature", "value": "hot"}
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "categoryCode": "string",
+      "description": "string",
+      "descriptionShort": "string",
+      "taxCode": "string",
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
   ],
-  "imageUrls": ["https://example.com/coffee.jpg"],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. カテゴリー作成
+
+**POST** `/api/v1/tenants/{tenant_id}/categories`
+
+新しいカテゴリを作成します。商品を整理するためのカテゴリを追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `descriptionShort` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "categoryCode": "string",
+  "description": "string",
+  "descriptionShort": "string",
+  "taxCode": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `CategoryMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `descriptionShort` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "categoryCode": "string",
+    "description": "string",
+    "descriptionShort": "string",
+    "taxCode": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. カテゴリー取得
+
+**GET** `/api/v1/tenants/{tenant_id}/categories/{category_code}`
+
+カテゴリを取得します。カテゴリの詳細を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `category_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `CategoryMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `descriptionShort` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "categoryCode": "string",
+    "description": "string",
+    "descriptionShort": "string",
+    "taxCode": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 7. カテゴリー更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/categories/{category_code}`
+
+Update Categoryを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `category_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `description` | string | Yes | - |
+| `descriptionShort` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "description": "string",
+  "descriptionShort": "string",
+  "taxCode": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `CategoryMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `descriptionShort` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "categoryCode": "string",
+    "description": "string",
+    "descriptionShort": "string",
+    "taxCode": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. カテゴリー削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/categories/{category_code}`
+
+Delete Categoryを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `category_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `CategoryMasterDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryCode` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "categoryCode": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 9. 商品ブック一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/item_books`
+
+商品ブックを取得します。商品ブックの情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[ItemBookResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "title": "string",
+      "categories": [],
+      "itemBookId": "string",
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. 商品ブック作成
+
+**POST** `/api/v1/tenants/{tenant_id}/item_books`
+
+新しい商品ブックを作成します。商品ブックはPOSでの素早いアクセスのために商品を整理します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Input] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "title": "string",
+  "categories": []
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. 商品ブック取得
+
+**GET** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}`
+
+商品ブックを取得します。商品ブックの情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `store_code` | string | No | - | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 12. 商品ブック更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}`
+
+Update Item Bookを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Input] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "title": "string",
+  "categories": []
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. 商品ブック削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}`
+
+Delete Item Bookを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemBookId` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemBookId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. 商品ブックにカテゴリー追加
+
+**POST** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories`
+
+商品ブックにカテゴリを追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryNumber` | integer | Yes | - |
+| `title` | string | Yes | - |
+| `color` | string | Yes | - |
+| `tabs` | array[BaseItemBookTab-Input] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "categoryNumber": 0,
+  "title": "string",
+  "color": "string",
+  "tabs": []
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 15. 商品ブック内カテゴリー更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}`
+
+Update Category In Item Bookを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `categoryNumber` | integer | Yes | - |
+| `title` | string | Yes | - |
+| `color` | string | Yes | - |
+| `tabs` | array[BaseItemBookTab-Input] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "categoryNumber": 0,
+  "title": "string",
+  "color": "string",
+  "tabs": []
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 16. 商品ブックからカテゴリー削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}`
+
+Delete Category From Item Bookを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookCategoryDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemBookId` | string | Yes | - |
+| `categoryNumber` | integer | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemBookId": "string",
+    "categoryNumber": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. 商品ブック内カテゴリーにタブ追加
+
+**POST** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}/tabs`
+
+商品ブックにカテゴリを追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | integer | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tabNumber` | integer | Yes | - |
+| `title` | string | Yes | - |
+| `color` | string | Yes | - |
+| `buttons` | array[BaseItemBookButton] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "tabNumber": 0,
+  "title": "string",
+  "color": "string",
+  "buttons": []
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 18. 商品ブック内カテゴリーのタブ更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}/tabs/{tab_number}`
+
+Update Tab In Category In Item Bookを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | integer | Yes | - |
+| `tab_number` | integer | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tabNumber` | integer | Yes | - |
+| `title` | string | Yes | - |
+| `color` | string | Yes | - |
+| `buttons` | array[BaseItemBookButton] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "tabNumber": 0,
+  "title": "string",
+  "color": "string",
+  "buttons": []
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 19. 商品ブック内カテゴリーからタブ削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}/tabs/{tab_number}`
+
+Delete Tab From Category In Item Bookを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | integer | Yes | - |
+| `tab_number` | integer | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookTabDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemBookId` | string | Yes | - |
+| `categoryNumber` | integer | Yes | - |
+| `tabNumber` | integer | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemBookId": "string",
+    "categoryNumber": 0,
+    "tabNumber": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 20. 商品ブック内タブにボタン追加
+
+**POST** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}/tabs/{tab_number}/buttons`
+
+商品ブックにカテゴリを追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | integer | Yes | - |
+| `tab_number` | integer | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `posX` | integer | Yes | - |
+| `posY` | integer | Yes | - |
+| `size` | ButtonSize | Yes | - |
+| `imageUrl` | string | Yes | - |
+| `colorText` | string | Yes | - |
+| `itemCode` | string | Yes | - |
+| `unitPrice` | number | No | - |
+| `description` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "posX": 0,
+  "posY": 0,
+  "size": "Single",
+  "imageUrl": "string",
+  "colorText": "string",
+  "itemCode": "string",
+  "unitPrice": 0.0,
+  "description": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. 商品ブック内タブのボタン更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}/tabs/{tab_number}/buttons/pos_x/{pos_x}/pos_y/{pos_y}`
+
+Update Button In Tab In Category In Item Bookを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | integer | Yes | - |
+| `tab_number` | integer | Yes | - |
+| `pos_x` | integer | Yes | - |
+| `pos_y` | integer | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `posX` | integer | Yes | - |
+| `posY` | integer | Yes | - |
+| `size` | ButtonSize | Yes | - |
+| `imageUrl` | string | Yes | - |
+| `colorText` | string | Yes | - |
+| `itemCode` | string | Yes | - |
+| `unitPrice` | number | No | - |
+| `description` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "posX": 0,
+  "posY": 0,
+  "size": "Single",
+  "imageUrl": "string",
+  "colorText": "string",
+  "itemCode": "string",
+  "unitPrice": 0.0,
+  "description": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 22. 商品ブック内タブからボタン削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}/tabs/{tab_number}/buttons/pos_x/{pos_x}/pos_y/{pos_y}`
+
+Delete Button From Tab In Category In Item Bookを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `category_number` | integer | Yes | - |
+| `tab_number` | integer | Yes | - |
+| `pos_x` | integer | Yes | - |
+| `pos_y` | integer | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookButtonDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemBookId` | string | Yes | - |
+| `categoryNumber` | integer | Yes | - |
+| `tabNumber` | integer | Yes | - |
+| `posX` | integer | Yes | - |
+| `posY` | integer | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemBookId": "string",
+    "categoryNumber": 0,
+    "tabNumber": 0,
+    "posX": 0,
+    "posY": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 23. 商品ブック詳細取得
+
+**GET** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/detail`
+
+商品ブックを取得します。商品ブックの情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_book_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `store_code` | string | Yes | - | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemBookResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `title` | string | Yes | - |
+| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `itemBookId` | string | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "title": "string",
+    "categories": [],
+    "itemBookId": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 24. 商品マスター一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/items`
+
+Retrieve all item master records for a tenant.
+
+This endpoint returns a paginated list of all active items for the specified tenant.
+The results can be sorted and paginated as needed.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[ItemResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | Yes | - |
+| `isDeleted` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "itemCode": "string",
+      "description": "string",
+      "unitPrice": 0.0,
+      "unitCost": 0.0,
+      "itemDetails": [
+        "string"
+      ],
+      "imageUrls": [
+        "string"
+      ],
+      "categoryCode": "string",
+      "taxCode": "string",
+      "isDiscountRestricted": true,
+      "isDeleted": true
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 25. 商品マスター作成
+
+**POST** `/api/v1/tenants/{tenant_id}/items`
+
+新しい商品マスターレコードを作成します。商品をカタログに追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | No | - |
+
+**リクエスト例:**
+```json
+{
+  "itemCode": "string",
+  "description": "string",
+  "unitPrice": 0.0,
+  "unitCost": 0.0,
+  "itemDetails": [
+    "string"
+  ],
+  "imageUrls": [
+    "string"
+  ],
+  "categoryCode": "string",
+  "taxCode": "string",
   "isDiscountRestricted": false
 }
 ```
 
-#### 7. 商品取得
+**レスポンス:**
+
+**dataフィールド:** `ItemResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | Yes | - |
+| `isDeleted` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string",
+    "description": "string",
+    "unitPrice": 0.0,
+    "unitCost": 0.0,
+    "itemDetails": [
+      "string"
+    ],
+    "imageUrls": [
+      "string"
+    ],
+    "categoryCode": "string",
+    "taxCode": "string",
+    "isDiscountRestricted": true,
+    "isDeleted": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 26. 商品マスター取得
+
 **GET** `/api/v1/tenants/{tenant_id}/items/{item_code}`
 
-特定の商品情報を取得します。
-
-#### 8. 商品一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/items`
-
-商品一覧を取得します。
-
-**クエリパラメータ:**
-- `page` (integer): ページ番号
-- `limit` (integer): ページサイズ
-- `sort` (string): ソート条件
-
-#### 9. 商品更新
-**PUT** `/api/v1/tenants/{tenant_id}/items/{item_code}`
-
-商品情報を更新します。
-
-#### 10. 商品削除
-**DELETE** `/api/v1/tenants/{tenant_id}/items/{item_code}`
-
-商品を削除します。
-
-### 商品店舗別マスター管理
-
-#### 11. 店舗別価格設定
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
-
-店舗固有の商品価格を設定します。
+商品を取得します。商品の詳細情報を返します。
 
 **パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
 
-**リクエストボディ:**
-```json
-{
-  "itemCode": "ITEM001",
-  "storePrice": 280.00
-}
-```
-
-### 商品ブックマスター管理
-
-#### 12. 商品ブック取得
-**GET** `/api/v1/tenants/{tenant_id}/item_books/{item_book_id}`
-
-POS画面のUI階層（カテゴリー/タブ/ボタン）を取得します。
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Item book retrieved successfully",
-  "data": {
-    "itemBookId": "BOOK001",
-    "title": "標準レイアウト",
-    "categories": [
-      {
-        "categoryNumber": 1,
-        "title": "ドリンク",
-        "tabs": [
-          {
-            "tabNumber": 1,
-            "title": "ホット",
-            "buttons": [
-              {
-                "posX": 0,
-                "posY": 0,
-                "sizeX": 1,
-                "sizeY": 1,
-                "itemCode": "ITEM001",
-                "title": "コーヒー",
-                "color": "#8B4513"
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  "operation": "get_item_book"
-}
-```
-
-### 支払方法マスター管理
-
-#### 13. 支払方法一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/payments`
-
-利用可能な支払方法を取得します。
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Payment methods retrieved successfully",
-  "data": [
-    {
-      "paymentCode": "CASH",
-      "description": "現金",
-      "limitAmount": null,
-      "canRefund": true,
-      "canDepositOver": true,
-      "canChange": true
-    },
-    {
-      "paymentCode": "CREDIT",
-      "description": "クレジットカード",
-      "limitAmount": 1000000,
-      "canRefund": true,
-      "canDepositOver": false,
-      "canChange": false
-    }
-  ],
-  "operation": "get_payment_methods"
-}
-```
-
-### 設定マスター管理
-
-#### 14. 設定値取得
-**GET** `/api/v1/tenants/{tenant_id}/settings/{name}/value`
-
-階層的な設定値を取得します（グローバル→店舗→端末の優先順位）。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
 
 **クエリパラメータ:**
-- `store_code` (string): 店舗コード
-- `terminal_no` (integer): 端末番号
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_logical_deleted` | boolean | No | False | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | Yes | - |
+| `isDeleted` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Setting value retrieved successfully",
-  "data": {
-    "name": "receipt_print_count",
-    "value": "2",
-    "scope": "store"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "get_setting_value"
+  "data": {
+    "itemCode": "string",
+    "description": "string",
+    "unitPrice": 0.0,
+    "unitCost": 0.0,
+    "itemDetails": [
+      "string"
+    ],
+    "imageUrls": [
+      "string"
+    ],
+    "categoryCode": "string",
+    "taxCode": "string",
+    "isDiscountRestricted": true,
+    "isDeleted": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-### カテゴリーマスター管理
+### 27. 商品マスター更新
 
-#### 15. カテゴリー一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/categories`
+**PUT** `/api/v1/tenants/{tenant_id}/items/{item_code}`
 
-商品カテゴリーの階層を取得します。
+Update Item Master Asyncを更新します。
 
-### 税金マスター管理
+**パスパラメータ:**
 
-#### 16. 税金設定一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/taxes`
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
 
-税率設定を取得します。
+**クエリパラメータ:**
 
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Tax settings retrieved successfully",  
-  "data": [
-    {
-      "taxCode": "TAX_10",
-      "taxType": "STANDARD",
-      "taxName": "標準税率",
-      "rate": 10.0,
-      "roundDigit": 0,
-      "roundMethod": "ROUND"
-    },
-    {
-      "taxCode": "TAX_8",
-      "taxType": "REDUCED",
-      "taxName": "軽減税率",
-      "rate": 8.0,
-      "roundDigit": 0,
-      "roundMethod": "ROUND"
-    }
-  ],
-  "operation": "get_tax_settings"
-}
-```
-
-### システム管理
-
-#### 17. テナント初期化
-**POST** `/api/v1/tenants`
-
-新規テナントのマスターデータを初期化します。
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
 
 **リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | No | - |
+
+**リクエスト例:**
 ```json
 {
-  "tenantId": "tenant001"
+  "description": "string",
+  "unitPrice": 0.0,
+  "unitCost": 0.0,
+  "itemDetails": [
+    "string"
+  ],
+  "imageUrls": [
+    "string"
+  ],
+  "categoryCode": "string",
+  "taxCode": "string",
+  "isDiscountRestricted": false
 }
 ```
 
-**認証:** JWTトークンが必要
+**レスポンス:**
 
-#### 18. ヘルスチェック
-**GET** `/health`
+**dataフィールド:** `ItemResponse`
 
-サービスの健全性を確認します。
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | Yes | - |
+| `isDeleted` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "サービスは正常です",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {
+    "itemCode": "string",
+    "description": "string",
+    "unitPrice": 0.0,
+    "unitCost": 0.0,
+    "itemDetails": [
+      "string"
+    ],
+    "imageUrls": [
+      "string"
+    ],
+    "categoryCode": "string",
+    "taxCode": "string",
+    "isDiscountRestricted": true,
+    "isDeleted": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## ページネーション
+### 28. 商品マスター削除
 
-一覧取得エンドポイントは共通のページネーション形式をサポート：
+**DELETE** `/api/v1/tenants/{tenant_id}/items/{item_code}`
 
-**レスポンスメタデータ:**
+Delete Item Master Asyncを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_logical` | boolean | No | False | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `isLogical` | boolean | Yes | - |
+
+**レスポンス例:**
 ```json
 {
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string",
+    "isLogical": true
+  },
   "metadata": {
-    "total": 150,
-    "page": 1,
-    "limit": 50,
-    "pages": 3
-  }
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 29. 支払方法一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/payments`
+
+支払方法を取得します。支払方法の設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[PaymentResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `paymentCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `limitAmount` | number | Yes | - |
+| `canRefund` | boolean | Yes | - |
+| `canDepositOver` | boolean | Yes | - |
+| `canChange` | boolean | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "paymentCode": "string",
+      "description": "string",
+      "limitAmount": 0.0,
+      "canRefund": true,
+      "canDepositOver": true,
+      "canChange": true,
+      "isActive": true,
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 30. 支払方法作成
+
+**POST** `/api/v1/tenants/{tenant_id}/payments`
+
+新しい支払方法を作成します。支払オプションをシステムに追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `paymentCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `limitAmount` | number | Yes | - |
+| `canRefund` | boolean | Yes | - |
+| `canDepositOver` | boolean | Yes | - |
+| `canChange` | boolean | Yes | - |
+| `isActive` | boolean | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "paymentCode": "string",
+  "description": "string",
+  "limitAmount": 0.0,
+  "canRefund": true,
+  "canDepositOver": true,
+  "canChange": true,
+  "isActive": true
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `paymentCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `limitAmount` | number | Yes | - |
+| `canRefund` | boolean | Yes | - |
+| `canDepositOver` | boolean | Yes | - |
+| `canChange` | boolean | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "paymentCode": "string",
+    "description": "string",
+    "limitAmount": 0.0,
+    "canRefund": true,
+    "canDepositOver": true,
+    "canChange": true,
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 31. 支払方法取得
+
+**GET** `/api/v1/tenants/{tenant_id}/payments/{payment_code}`
+
+支払方法を取得します。支払方法の設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `paymentCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `limitAmount` | number | Yes | - |
+| `canRefund` | boolean | Yes | - |
+| `canDepositOver` | boolean | Yes | - |
+| `canChange` | boolean | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "paymentCode": "string",
+    "description": "string",
+    "limitAmount": 0.0,
+    "canRefund": true,
+    "canDepositOver": true,
+    "canChange": true,
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 32. 支払方法更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/payments/{payment_code}`
+
+Update Paymentを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `description` | string | Yes | - |
+| `limitAmount` | number | Yes | - |
+| `canRefund` | boolean | Yes | - |
+| `canDepositOver` | boolean | Yes | - |
+| `canChange` | boolean | Yes | - |
+| `isActive` | boolean | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "description": "string",
+  "limitAmount": 0.0,
+  "canRefund": true,
+  "canDepositOver": true,
+  "canChange": true,
+  "isActive": true
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `paymentCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `limitAmount` | number | Yes | - |
+| `canRefund` | boolean | Yes | - |
+| `canDepositOver` | boolean | Yes | - |
+| `canChange` | boolean | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "paymentCode": "string",
+    "description": "string",
+    "limitAmount": 0.0,
+    "canRefund": true,
+    "canDepositOver": true,
+    "canChange": true,
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 33. 支払方法削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/payments/{payment_code}`
+
+Delete Paymentを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `paymentCode` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "paymentCode": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 34. 設定マスター一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/settings`
+
+設定を取得します。設定の値と構成を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[SettingsMasterResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `defaultValue` | string | Yes | - |
+| `values` | array[BaseSettingsMasterValue] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "name": "string",
+      "defaultValue": "string",
+      "values": [
+        {
+          "storeCode": "string",
+          "terminalNo": 0,
+          "value": "string"
+        }
+      ],
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 35. 設定マスター作成
+
+**POST** `/api/v1/tenants/{tenant_id}/settings`
+
+新しい設定エントリを作成します。設定項目をシステムに追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `defaultValue` | string | Yes | - |
+| `values` | array[BaseSettingsMasterValue] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "name": "string",
+  "defaultValue": "string",
+  "values": [
+    {
+      "storeCode": "string",
+      "terminalNo": 0,
+      "value": "string"
+    }
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `SettingsMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `defaultValue` | string | Yes | - |
+| `values` | array[BaseSettingsMasterValue] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "name": "string",
+    "defaultValue": "string",
+    "values": [
+      {
+        "storeCode": "string",
+        "terminalNo": 0,
+        "value": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 36. 設定マスター取得
+
+**GET** `/api/v1/tenants/{tenant_id}/settings/{name}`
+
+設定を取得します。設定の値と構成を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `SettingsMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `defaultValue` | string | Yes | - |
+| `values` | array[BaseSettingsMasterValue] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "name": "string",
+    "defaultValue": "string",
+    "values": [
+      {
+        "storeCode": "string",
+        "terminalNo": 0,
+        "value": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 37. 設定マスター更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/settings/{name}`
+
+Update Settings Master Asyncを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `defaultValue` | string | Yes | - |
+| `values` | array[BaseSettingsMasterValue] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "defaultValue": "string",
+  "values": [
+    {
+      "storeCode": "string",
+      "terminalNo": 0,
+      "value": "string"
+    }
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `SettingsMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `defaultValue` | string | Yes | - |
+| `values` | array[BaseSettingsMasterValue] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "name": "string",
+    "defaultValue": "string",
+    "values": [
+      {
+        "storeCode": "string",
+        "terminalNo": 0,
+        "value": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 38. 設定マスター削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/settings/{name}`
+
+Delete Settings Master Asyncを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `SettingsMasterDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "name": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 39. 設定値取得
+
+**GET** `/api/v1/tenants/{tenant_id}/settings/{name}/value`
+
+設定を取得します。設定の値と構成を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `store_code` | string | Yes | - | - |
+| `terminal_no` | integer | Yes | - | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `SettingsMasterValueResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `value` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "value": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 40. 税率一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/taxes`
+
+税率を取得します。税率の設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[TaxMasterResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `taxCode` | string | Yes | - |
+| `taxType` | string | Yes | - |
+| `taxName` | string | Yes | - |
+| `rate` | number | Yes | - |
+| `roundDigit` | integer | Yes | - |
+| `roundMethod` | string | No | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "taxCode": "string",
+      "taxType": "string",
+      "taxName": "string",
+      "rate": 0.0,
+      "roundDigit": 0,
+      "roundMethod": "string",
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 41. 税率取得
+
+**GET** `/api/v1/tenants/{tenant_id}/taxes/{tax_code}`
+
+税率を取得します。税率の設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tax_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `TaxMasterResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `taxCode` | string | Yes | - |
+| `taxType` | string | Yes | - |
+| `taxName` | string | Yes | - |
+| `rate` | number | Yes | - |
+| `roundDigit` | integer | Yes | - |
+| `roundMethod` | string | No | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "taxCode": "string",
+    "taxType": "string",
+    "taxName": "string",
+    "rate": 0.0,
+    "roundDigit": 0,
+    "roundMethod": "string",
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 店舗
+
+### 42. 店舗別商品マスター一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
+
+店舗情報を取得します。店舗の詳細と設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `store_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[ItemStoreResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `storePrice` | number | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "itemCode": "string",
+      "storePrice": 0.0,
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 43. 商品マスター作成
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
+
+新しい商品マスターレコードを作成します。商品をカタログに追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `store_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `storePrice` | number | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "itemCode": "string",
+  "storePrice": 0.0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemStoreResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `storePrice` | number | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string",
+    "storePrice": 0.0,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 44. 店舗別商品マスター取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
+
+店舗情報を取得します。店舗の詳細と設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemStoreResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `storePrice` | number | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string",
+    "storePrice": 0.0,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 45. 店舗別商品マスター更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
+
+Update Item Store Master Asyncを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storePrice` | number | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "storePrice": 0.0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `ItemStoreResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `storePrice` | number | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string",
+    "storePrice": 0.0,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 46. 店舗別商品マスター削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
+
+Delete Item Store Master Asyncを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemStoreDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 47. 店舗別商品マスター詳細取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}/details`
+
+店舗情報を取得します。店舗の詳細と設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `item_code` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ItemStoreDetailResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `itemCode` | string | Yes | - |
+| `description` | string | Yes | - |
+| `unitPrice` | number | Yes | - |
+| `unitCost` | number | Yes | - |
+| `storePrice` | number | No | - |
+| `itemDetails` | array[string] | Yes | - |
+| `imageUrls` | array[string] | Yes | - |
+| `categoryCode` | string | Yes | - |
+| `taxCode` | string | Yes | - |
+| `isDiscountRestricted` | boolean | Yes | - |
+| `isDeleted` | boolean | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "itemCode": "string",
+    "description": "string",
+    "unitPrice": 0.0,
+    "unitCost": 0.0,
+    "storePrice": 0.0,
+    "itemDetails": [
+      "string"
+    ],
+    "imageUrls": [
+      "string"
+    ],
+    "categoryCode": "string",
+    "taxCode": "string",
+    "isDiscountRestricted": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### スタッフ
+
+### 48. スタッフマスター一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/staff`
+
+スタッフ情報を取得します。スタッフメンバーの詳細を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[StaffResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `name` | string | Yes | - |
+| `pin` | string | Yes | - |
+| `roles` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "id": "string",
+      "name": "string",
+      "pin": "string",
+      "roles": [],
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 49. スタッフマスター作成
+
+**POST** `/api/v1/tenants/{tenant_id}/staff`
+
+新しいスタッフレコードを作成します。スタッフメンバーをシステムに追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `name` | string | Yes | - |
+| `pin` | string | Yes | - |
+| `roles` | array[string] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "id": "string",
+  "name": "string",
+  "pin": "string",
+  "roles": [
+    "string"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `StaffResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `name` | string | Yes | - |
+| `pin` | string | Yes | - |
+| `roles` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "name": "string",
+    "pin": "string",
+    "roles": [],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 50. スタッフマスター取得
+
+**GET** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+
+スタッフ情報を取得します。スタッフメンバーの詳細を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `staff_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `StaffResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `name` | string | Yes | - |
+| `pin` | string | Yes | - |
+| `roles` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "name": "string",
+    "pin": "string",
+    "roles": [],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 51. スタッフマスター更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+
+Update Staff Master Asyncを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `staff_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `pin` | string | Yes | - |
+| `roles` | array[string] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "name": "string",
+  "pin": "string",
+  "roles": [
+    "string"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `StaffResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `name` | string | Yes | - |
+| `pin` | string | Yes | - |
+| `roles` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "name": "string",
+    "pin": "string",
+    "roles": [],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 52. スタッフマスター削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
+
+Delete Staff Master Asyncを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `staff_id` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `StaffDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `staffId` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "staffId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
 ## エラーコード
 
-マスターデータサービスは405XX範囲のエラーコードを使用します：
+エラーレスポンスは以下の形式で返されます：
 
-### 基本エラー (4050X)
-- `405001`: マスターデータ検証エラー
-- `405002`: マスターデータが見つかりません
-- `405003`: マスターデータが既に存在します
-- `405004`: マスターデータを作成できません
-- `405005`: マスターデータを更新できません
-- `405006`: マスターデータを削除できません
-
-### 商品マスター関連 (4051XX)
-- `405101`: 商品が見つかりません
-- `405102`: 商品コードが重複しています
-- `405103`: 商品の価格が無効です
-- `405104`: 商品の税率が無効です
-
-### その他のマスター関連
-- `405201`: 価格が見つかりません
-- `405301`: 顧客が見つかりません
-- `405401`: 店舗が見つかりません
-- `405501`: 部門が見つかりません
-
-## 特記事項
-
-1. **マルチテナント対応**: 全ての操作はテナントスコープ内で実行
-2. **階層的設定**: 設定値はグローバル→店舗→端末の優先順位で解決
-3. **スタッフPIN**: 現在は平文で保存（将来的にはハッシュ化を予定）
-4. **削除処理**: 現在は物理削除を実行（一部のマスターデータは論理削除フラグで管理）
-5. **camelCase変換**: 内部snake_caseは自動的にcamelCaseに変換
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "エラーメッセージ",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

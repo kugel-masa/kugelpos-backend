@@ -41,7 +41,6 @@ Kugelposは、マイクロサービスアーキテクチャに基づいて構築
 - 機能:
   - 自動リトライ（3回、指数バックオフ）
   - コネクションプーリング
-  - サーキットブレーカーパターン
   - サービスディスカバリサポート
 
 ```python
@@ -84,16 +83,24 @@ async with get_dapr_client() as client:
 
 ### ベースドキュメントモデル
 
-実装場所: `/services/commons/src/kugel_common/models/document/base_document_model.py`
+**実装場所:**
+- `BaseDocumentModel`: `/services/commons/src/kugel_common/models/documents/base_document_model.py`
+- `AbstractDocument`: `/services/commons/src/kugel_common/models/documents/abstract_document.py`
 
 ```python
-class BaseDocumentModel:
-    id: ObjectId
-    created_at: datetime
-    updated_at: datetime
-    created_by: Optional[str]
-    updated_by: Optional[str]
+# BaseDocumentModel - Pydantic BaseModelを継承した基底クラス（共通設定のみ）
+class BaseDocumentModel(BaseModel):
+    pass  # データベース向けモデルの基底（aliasを使用しない）
+
+# AbstractDocument - 共通フィールドを持つドキュメント基底クラス
+class AbstractDocument(BaseDocumentModel):
+    shard_key: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    etag: Optional[str] = None
 ```
+
+**注:** 全てのドキュメントモデルは`AbstractDocument`を継承し、`created_at`/`updated_at`を自動管理します。
 
 ## アーキテクチャパターン
 
@@ -141,8 +148,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 
 ### 4. サーキットブレーカーパターン
 
-**実装場所:** 
-- HttpClientHelper: `/services/commons/src/kugel_common/utils/http_client_helper.py`
+**実装場所:**
 - DaprClientHelper: `/services/commons/src/kugel_common/utils/dapr_client_helper.py`
 
 **設定:**
@@ -151,9 +157,10 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 - 状態: CLOSED → OPEN → HALF_OPEN
 
 **対象操作:**
-- 外部HTTPサービス呼び出し
 - Dapr pub/sub操作
 - Daprステートストア操作
+
+**注:** HttpClientHelperは自動リトライ機能のみを提供し、サーキットブレーカーは実装していません。
 
 ## セキュリティアーキテクチャ
 
@@ -215,18 +222,25 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### 統一エラーコード体系
 
 **形式:** XXYYZZ
-- XX: サービス識別子
-- YY: 機能・モジュール識別子  
+- XX: エラーカテゴリ
+- YY: サブカテゴリ
 - ZZ: 特定エラー番号
 
-**サービス範囲:**
-- 10XXX: Account Service
-- 20XXX: Terminal Service
-- 30XXX: Master-data Service
-- 40XXX: Cart Service
-- 41XXX: Report Service
-- 42XXX: Journal Service
-- 43XXX: Stock Service
+**カテゴリ範囲:**
+- 10XXXX: 一般エラー
+- 20XXXX: 認証・認可エラー
+- 30XXXX: 入力バリデーションエラー
+- 40XXXX: ビジネスルールエラー（サービス別サブカテゴリ）
+  - 401xx-404xx: Cart Service
+  - 405xx: Master-data Service
+  - 406xx-407xx: Terminal Service
+  - 408xx-409xx: Account Service
+  - 410xx-411xx: Journal Service
+  - 412xx-413xx: Report Service
+  - 414xx-415xx: Stock Service
+- 50XXXX: データベース・リポジトリエラー
+- 60XXXX: 外部サービス連携エラー
+- 90XXXX: システムエラー
 
 ### 多言語エラーメッセージ
 

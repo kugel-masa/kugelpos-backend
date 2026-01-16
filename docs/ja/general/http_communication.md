@@ -12,10 +12,11 @@ Kugelposシステムでは、統一されたHTTP通信パターンを採用し�
 
 **主要機能:**
 - 自動リトライメカニズム（3回、指数バックオフ）
-- サーキットブレーカーパターン（3回失敗で60秒ブロック）
 - コネクションプーリング（最大100接続、Keep-Alive 20接続）
 - サービスディスカバリサポート
 - 統一エラーハンドリング
+
+**注:** サーキットブレーカーパターンは`DaprClientHelper`で実装されています。`HttpClientHelper`は自動リトライのみ提供します。
 
 **設定:**
 ```python
@@ -88,7 +89,9 @@ class HttpClientError(Exception):
 - **認証エラー**: 401, 403
 - **リソース不存在**: 404
 
-## サーキットブレーカー実装
+## サーキットブレーカー実装（DaprClientHelper）
+
+**注:** サーキットブレーカーは`DaprClientHelper`でのみ実装されています。`HttpClientHelper`はリトライのみを提供します。
 
 ### 状態管理
 
@@ -154,8 +157,7 @@ CART_SERVICE_URL=http://cart:8003
 
 # タイムアウト設定
 HTTP_TIMEOUT=30
-CIRCUIT_BREAKER_THRESHOLD=3
-CIRCUIT_BREAKER_TIMEOUT=60
+HTTP_RETRY_ATTEMPTS=3
 ```
 
 ### デフォルト設定
@@ -165,9 +167,8 @@ class HttpClientSettings:
     timeout: int = 30
     max_connections: int = 100
     max_keepalive: int = 20
-    circuit_breaker_threshold: int = 3
-    circuit_breaker_timeout: int = 60
     retry_attempts: int = 3
+    retry_delay: float = 0.5  # 指数バックオフの初期遅延
 ```
 
 ## セキュリティ考慮事項

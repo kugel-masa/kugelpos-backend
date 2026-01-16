@@ -1,28 +1,31 @@
-# 在庫サービス API仕様
+# 在庫サービス API仕様書
 
 ## 概要
 
-在庫サービスは、Kugelpos POSシステムの在庫管理機能を提供します。リアルタイム在庫追跡、在庫アラート、スナップショット管理、および取引連携による在庫更新を実装しています。WebSocketによるリアルタイムアラートと、Dapr pub/subによるカートサービス連携が特徴です。
+在庫管理と在庫追跡を行うサービスです。スナップショット機能と発注点管理を提供します。
+
+## サービス情報
+
+- **ポート**: 8006
+- **フレームワーク**: FastAPI
+- **データベース**: MongoDB (Motor async driver)
 
 ## ベースURL
+
 - ローカル環境: `http://localhost:8006`
 - 本番環境: `https://stock.{domain}`
 
 ## 認証
 
-在庫サービスは2つの認証方法をサポートしています：
+以下の認証方法をサポートしています：
 
-### 1. JWTトークン（Bearerトークン）
-- ヘッダー: `Authorization: Bearer {token}`
-- 用途: 管理者による在庫管理操作
-
-### 2. APIキー認証
+### APIキー認証
 - ヘッダー: `X-API-Key: {api_key}`
-- 用途: 端末からの在庫照会（一部のエンドポイント）
+- 用途: 端末からのAPI呼び出し
 
-## フィールド形式
-
-すべてのAPIリクエスト/レスポンスは**camelCase**形式を使用します。
+### JWTトークン認証
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるシステム操作
 
 ## 共通レスポンス形式
 
@@ -31,424 +34,1175 @@
   "success": true,
   "code": 200,
   "message": "操作が正常に完了しました",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## 在庫更新タイプ
-
-| タイプID | 名称 | 説明 |
-|----------|------|------|
-| SALE | 販売 | 販売による在庫減少 |
-| RETURN | 返品 | 返品による在庫増加 |
-| VOID | 取消 | 販売取消による在庫増加 |
-| VOID_RETURN | 返品取消 | 返品取消による在庫減少 |
-| PURCHASE | 仕入 | 仕入による在庫増加 |
-| ADJUSTMENT | 調整 | 手動在庫調整 |
-| INITIAL | 初期設定 | 初期在庫設定 |
-| DAMAGE | 破損 | 破損による在庫減少 |
-| TRANSFER_IN | 移動入庫 | 他店舗からの移動入庫 |
-| TRANSFER_OUT | 移動出庫 | 他店舗への移動出庫 |
 
 ## APIエンドポイント
 
-### 1. 在庫一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock`
+### システム
 
-店舗の全在庫アイテムを取得します。
+### 1. ルートエンドポイント
 
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
+**GET** `/`
 
-**クエリパラメータ:**
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100): ページサイズ
-- `terminal_id` (integer): 端末ID（APIキー認証時）
+ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。
 
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock items retrieved successfully",
-  "data": {
-    "items": [
-      {
-        "itemCode": "ITEM001",
-        "itemName": "商品001",
-        "storeCode": "STORE001",
-        "currentQuantity": 100,
-        "minimumQuantity": 20,
-        "reorderPoint": 30,
-        "reorderQuantity": 50,
-        "lastUpdated": "2024-01-01T12:00:00Z",
-        "updateType": "PURCHASE"
-      }
-    ],
-    "total": 150,
-    "page": 1,
-    "limit": 100
-  },
-  "operation": "get_all_stock"
-}
-```
+**レスポンス:**
 
-### 2. 個別在庫取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}`
+### 2. ヘルスチェック
 
-特定商品の在庫情報を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
-- `item_code` (string, 必須): 商品コード
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock item retrieved successfully",
-  "data": {
-    "itemCode": "ITEM001",
-    "itemName": "商品001",
-    "storeCode": "STORE001",
-    "currentQuantity": 100,
-    "minimumQuantity": 20,
-    "reorderPoint": 30,
-    "reorderQuantity": 50,
-    "lastUpdated": "2024-01-01T12:00:00Z",
-    "updateType": "PURCHASE"
-  },
-  "operation": "get_stock"
-}
-```
-
-### 3. 在庫更新
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/update`
-
-在庫数量を更新します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
-- `item_code` (string, 必須): 商品コード
-
-**リクエストボディ:**
-```json
-{
-  "quantity": -1,
-  "updateType": "SALE",
-  "reason": "販売処理",
-  "staffId": "STAFF001",
-  "referenceNo": "TRAN001"
-}
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock updated successfully",
-  "data": {
-    "itemCode": "ITEM001",
-    "previousQuantity": 100,
-    "newQuantity": 99,
-    "quantityChange": -1,
-    "updateType": "SALE"
-  },
-  "operation": "update_stock"
-}
-```
-
-### 4. 在庫履歴取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history`
-
-商品の在庫更新履歴を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
-- `item_code` (string, 必須): 商品コード
-
-**クエリパラメータ:**
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100): ページサイズ
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock history retrieved successfully",
-  "data": {
-    "history": [
-      {
-        "id": "507f1f77bcf86cd799439011",
-        "timestamp": "2024-01-01T12:00:00Z",
-        "previousQuantity": 100,
-        "newQuantity": 99,
-        "quantityChange": -1,
-        "updateType": "SALE",
-        "reason": "販売処理",
-        "staffId": "STAFF001",
-        "referenceNo": "TRAN001"
-      }
-    ],
-    "total": 50,
-    "page": 1,
-    "limit": 100
-  },
-  "operation": "get_stock_history"
-}
-```
-
-### 5. 最小在庫数設定
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/minimum`
-
-最小在庫数を設定します。
-
-**リクエストボディ:**
-```json
-{
-  "minimumQuantity": 20
-}
-```
-
-### 6. 発注点設定
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/reorder`
-
-発注点と発注数量を設定します。
-
-**リクエストボディ:**
-```json
-{
-  "reorderPoint": 30,
-  "reorderQuantity": 50
-}
-```
-
-### 7. 低在庫アイテム取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/low`
-
-最小在庫数を下回るアイテムを取得します。
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Low stock items retrieved successfully",
-  "data": {
-    "items": [
-      {
-        "itemCode": "ITEM001",
-        "itemName": "商品001",
-        "currentQuantity": 15,
-        "minimumQuantity": 20,
-        "shortageQuantity": 5
-      }
-    ],
-    "total": 5
-  },
-  "operation": "get_low_stock"
-}
-```
-
-### 8. 発注アラート取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/reorder-alerts`
-
-発注点に達したアイテムを取得します。
-
-### 9. WebSocket接続（リアルタイムアラート）
-**WebSocket** `/ws/{tenant_id}/{store_code}`
-
-在庫アラートをリアルタイムで受信します。
-
-**接続手順:**
-1. WebSocket接続を確立（JWTトークンはクエリパラメータで指定）
-   - URL例: `/ws/{tenant_id}/{store_code}?token=JWT_TOKEN`
-2. アラートメッセージを受信
-
-**アラートメッセージ例:**
-```json
-{
-  "type": "low_stock",
-  "itemCode": "ITEM001",
-  "itemName": "商品001",
-  "currentQuantity": 15,
-  "minimumQuantity": 20,
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
-
-### 10. スナップショット作成
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot`
-
-在庫スナップショットを手動作成します。
-
-**リクエストボディ:**
-```json
-{
-  "description": "月次棚卸",
-  "takenBy": "STAFF001"
-}
-```
-
-### 11. スナップショット一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots`
-
-スナップショット一覧を取得します。
-
-**クエリパラメータ:**
-- `start_date` (string): 開始日（YYYY-MM-DD）
-- `end_date` (string): 終了日（YYYY-MM-DD）
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100): ページサイズ
-
-### 12. スナップショット詳細取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot/{snapshot_id}`
-
-特定のスナップショット詳細を取得します。
-
-### 13. スナップショットスケジュール取得
-**GET** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
-
-自動スナップショットのスケジュール設定を取得します。
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Snapshot schedule retrieved successfully",
-  "data": {
-    "daily": {
-      "enabled": true,
-      "time": "02:00",
-      "timezone": "Asia/Tokyo"
-    },
-    "weekly": {
-      "enabled": false,
-      "dayOfWeek": 0,
-      "time": "02:00",
-      "timezone": "Asia/Tokyo"
-    },
-    "monthly": {
-      "enabled": true,
-      "dayOfMonth": 1,
-      "time": "02:00",
-      "timezone": "Asia/Tokyo"
-    },
-    "retentionDays": 90
-  },
-  "operation": "get_snapshot_schedule"
-}
-```
-
-### 14. スナップショットスケジュール更新
-**PUT** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
-
-自動スナップショットのスケジュールを更新します。
-
-**リクエストボディ:**
-```json
-{
-  "daily": {
-    "enabled": true,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "weekly": {
-    "enabled": false,
-    "dayOfWeek": 0,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "monthly": {
-    "enabled": true,
-    "dayOfMonth": 1,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "retentionDays": 90
-}
-```
-
-### 15. スナップショットスケジュール削除
-**DELETE** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
-
-カスタムスケジュールを削除し、デフォルト設定に戻します。
-
-### 16. テナント作成
-**POST** `/api/v1/tenants`
-
-新規テナント用の在庫サービスを初期化します。
-
-**リクエストボディ:**
-```json
-{
-  "tenantId": "tenant001"
-}
-```
-
-**認証:** JWTトークンが必要
-
-### 17. ヘルスチェック
 **GET** `/health`
 
-サービスの健全性を確認します。
+ヘルスチェックエンドポイントです。サービスの稼働状態を監視します。
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
+}
+```
+
+### テナント
+
+### 3. テナント作成
+
+**POST** `/api/v1/tenants`
+
+新しいテナントを作成します。必要なデータベースコレクションとインデックスをセットアップします。
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "tenantId": "string"
+}
+```
+
+**レスポンス:**
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "サービスは正常です",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected",
-    "dapr": "connected",
-    "scheduler": "running"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## イベント処理エンドポイント（Dapr Pub/Sub）
+### 4. スナップショットスケジュール設定取得
 
-### 18. 取引ログハンドラー
+**GET** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
+
+在庫情報を取得します。在庫レベルと関連データを返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `SnapshotScheduleResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `enabled` | boolean | No | - |
+| `schedule_interval` | string | Yes | Schedule interval: daily, weekly, monthly |
+| `schedule_hour` | integer | Yes | Execution hour (0-23) |
+| `schedule_minute` | integer | No | Execution minute (0-59) |
+| `schedule_day_of_week` | integer | No | Day of week for weekly schedule (0=Monday, 6=Sunda |
+| `schedule_day_of_month` | integer | No | Day of month for monthly schedule (1-31) |
+| `retention_days` | integer | No | Snapshot retention days |
+| `target_stores` | array[string] | No | Target stores: ['all'] or specific store codes |
+| `tenant_id` | string | Yes | - |
+| `last_executed_at` | string | No | - |
+| `next_execution_at` | string | No | - |
+| `created_at` | string | No | - |
+| `updated_at` | string | No | - |
+| `created_by` | string | No | - |
+| `updated_by` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "enabled": true,
+    "schedule_interval": "string",
+    "schedule_hour": 0,
+    "schedule_minute": 0,
+    "schedule_day_of_week": 0,
+    "schedule_day_of_month": 0,
+    "retention_days": 30,
+    "target_stores": [
+      "all"
+    ],
+    "tenant_id": "string",
+    "last_executed_at": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. スナップショットスケジュール設定更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
+
+スナップショットスケジュールを更新します。自動スナップショットの作成タイミングを設定します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `enabled` | boolean | No | - |
+| `schedule_interval` | string | Yes | Schedule interval: daily, weekly, monthly |
+| `schedule_hour` | integer | Yes | Execution hour (0-23) |
+| `schedule_minute` | integer | No | Execution minute (0-59) |
+| `schedule_day_of_week` | integer | No | Day of week for weekly schedule (0=Monday, 6=Sunda |
+| `schedule_day_of_month` | integer | No | Day of month for monthly schedule (1-31) |
+| `retention_days` | integer | No | Snapshot retention days |
+| `target_stores` | array[string] | No | Target stores: ['all'] or specific store codes |
+
+**リクエスト例:**
+```json
+{
+  "enabled": true,
+  "schedule_interval": "string",
+  "schedule_hour": 0,
+  "schedule_minute": 0,
+  "schedule_day_of_week": 0,
+  "schedule_day_of_month": 0,
+  "retention_days": 30,
+  "target_stores": [
+    "all"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `SnapshotScheduleResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `enabled` | boolean | No | - |
+| `schedule_interval` | string | Yes | Schedule interval: daily, weekly, monthly |
+| `schedule_hour` | integer | Yes | Execution hour (0-23) |
+| `schedule_minute` | integer | No | Execution minute (0-59) |
+| `schedule_day_of_week` | integer | No | Day of week for weekly schedule (0=Monday, 6=Sunda |
+| `schedule_day_of_month` | integer | No | Day of month for monthly schedule (1-31) |
+| `retention_days` | integer | No | Snapshot retention days |
+| `target_stores` | array[string] | No | Target stores: ['all'] or specific store codes |
+| `tenant_id` | string | Yes | - |
+| `last_executed_at` | string | No | - |
+| `next_execution_at` | string | No | - |
+| `created_at` | string | No | - |
+| `updated_at` | string | No | - |
+| `created_by` | string | No | - |
+| `updated_by` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "enabled": true,
+    "schedule_interval": "string",
+    "schedule_hour": 0,
+    "schedule_minute": 0,
+    "schedule_day_of_week": 0,
+    "schedule_day_of_month": 0,
+    "retention_days": 30,
+    "target_stores": [
+      "all"
+    ],
+    "tenant_id": "string",
+    "last_executed_at": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. スナップショットスケジュール設定削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
+
+スナップショットスケジュールを削除します。自動スナップショット作成を無効化します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 在庫
+
+### 7. 店舗在庫一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock`
+
+店舗情報を取得します。店舗の詳細と設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `page` | integer | No | 1 | Page number |
+| `limit` | integer | No | 100 | Maximum number of items to return |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaginatedResult_StockResponse_`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `data` | array[StockResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "currentQuantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0,
+        "lastUpdated": "2025-01-01T00:00:00Z",
+        "lastTransactionId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. 在庫僅少商品取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/low`
+
+商品を取得します。商品の詳細情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaginatedResult_StockResponse_`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `data` | array[StockResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "currentQuantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0,
+        "lastUpdated": "2025-01-01T00:00:00Z",
+        "lastTransactionId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 9. 発注点アラート取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/reorder-alerts`
+
+商品を取得します。商品の詳細情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaginatedResult_StockResponse_`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `data` | array[StockResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "currentQuantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0,
+        "lastUpdated": "2025-01-01T00:00:00Z",
+        "lastTransactionId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. 在庫スナップショット作成
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot`
+
+在庫スナップショットを作成します。監査用の特定時点の在庫記録を提供します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `createdBy` | string | No | User or system that created the snapshot |
+
+**リクエスト例:**
+```json
+{
+  "createdBy": "system"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `StockSnapshotResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `totalItems` | integer | Yes | Total number of items |
+| `totalQuantity` | number | Yes | Total stock quantity |
+| `stocks` | array[StockSnapshotItemResponse] | Yes | Stock details by item |
+| `createdBy` | string | Yes | User or system that created the snapshot |
+| `createdAt` | string | Yes | Creation timestamp |
+| `updatedAt` | string | No | Last update timestamp |
+| `generateDateTime` | string | No | Snapshot generation datetime in ISO format |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "totalItems": 0,
+    "totalQuantity": 0.0,
+    "stocks": [
+      {
+        "itemCode": "string",
+        "quantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0
+      }
+    ],
+    "createdBy": "string",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z",
+    "generateDateTime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. 在庫スナップショット取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot/{snapshot_id}`
+
+在庫情報を取得します。在庫レベルと関連データを返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `snapshot_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `StockSnapshotResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `totalItems` | integer | Yes | Total number of items |
+| `totalQuantity` | number | Yes | Total stock quantity |
+| `stocks` | array[StockSnapshotItemResponse] | Yes | Stock details by item |
+| `createdBy` | string | Yes | User or system that created the snapshot |
+| `createdAt` | string | Yes | Creation timestamp |
+| `updatedAt` | string | No | Last update timestamp |
+| `generateDateTime` | string | No | Snapshot generation datetime in ISO format |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "totalItems": 0,
+    "totalQuantity": 0.0,
+    "stocks": [
+      {
+        "itemCode": "string",
+        "quantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0
+      }
+    ],
+    "createdBy": "string",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z",
+    "generateDateTime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 12. Get stock snapshots by date range
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots`
+
+Get list of stock snapshots filtered by generate_date_time range
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `start_date` | string | No | - | Start date in ISO format |
+| `end_date` | string | No | - | End date in ISO format |
+| `page` | integer | No | 1 | Page number |
+| `limit` | integer | No | 100 | Maximum number of items to return |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaginatedResult_StockSnapshotResponse_`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `data` | array[StockSnapshotResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "totalItems": 0,
+        "totalQuantity": 0.0,
+        "stocks": [
+          {
+            "itemCode": "...",
+            "quantity": "...",
+            "minimumQuantity": "...",
+            "reorderPoint": "...",
+            "reorderQuantity": "..."
+          }
+        ],
+        "createdBy": "string",
+        "createdAt": "2025-01-01T00:00:00Z",
+        "updatedAt": "2025-01-01T00:00:00Z",
+        "generateDateTime": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. 商品在庫取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}`
+
+商品を取得します。商品の詳細情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `StockResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `itemCode` | string | Yes | Item code |
+| `currentQuantity` | number | Yes | Current stock quantity |
+| `minimumQuantity` | number | Yes | Minimum stock quantity for alerts |
+| `reorderPoint` | number | Yes | Reorder point - quantity that triggers reorder |
+| `reorderQuantity` | number | Yes | Quantity to order when reorder point is reached |
+| `lastUpdated` | string | Yes | Last update timestamp |
+| `lastTransactionId` | string | No | Last transaction reference |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "itemCode": "string",
+    "currentQuantity": 0.0,
+    "minimumQuantity": 0.0,
+    "reorderPoint": 0.0,
+    "reorderQuantity": 0.0,
+    "lastUpdated": "2025-01-01T00:00:00Z",
+    "lastTransactionId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. Get stock update history
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history`
+
+Get stock update history for an item
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `page` | integer | No | 1 | Page number |
+| `limit` | integer | No | 100 | Maximum number of items to return |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaginatedResult_StockUpdateResponse_`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `data` | array[StockUpdateResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "updateType": "sale",
+        "quantityChange": 0.0,
+        "beforeQuantity": 0.0,
+        "afterQuantity": 0.0,
+        "referenceId": "string",
+        "timestamp": "2025-01-01T00:00:00Z",
+        "operatorId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 15. 最小在庫数設定
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/minimum`
+
+最小在庫数を設定します。在庫僅少アラートの閾値を設定します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `minimumQuantity` | number | Yes | Minimum stock quantity for alerts |
+
+**リクエスト例:**
+```json
+{
+  "minimumQuantity": 0.0
+}
+```
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 16. 発注点パラメータ設定
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/reorder`
+
+発注点パラメータを設定します。発注点と発注数量を設定します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `reorderPoint` | number | Yes | Reorder point - quantity that triggers reorder |
+| `reorderQuantity` | number | Yes | Quantity to order when reorder point is reached |
+
+**リクエスト例:**
+```json
+{
+  "reorderPoint": 0.0,
+  "reorderQuantity": 0.0
+}
+```
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. 在庫数更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/update`
+
+数量を更新します。指定された明細の数量を変更します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `quantityChange` | number | Yes | Quantity change (positive for increase, negative f |
+| `updateType` | UpdateType | Yes | - |
+| `referenceId` | string | No | Reference ID (transaction, adjustment, etc.) |
+| `operatorId` | string | No | User who performed the update |
+| `note` | string | No | Additional notes |
+
+**リクエスト例:**
+```json
+{
+  "quantityChange": 0.0,
+  "updateType": "sale",
+  "referenceId": "string",
+  "operatorId": "string",
+  "note": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `StockUpdateResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `itemCode` | string | Yes | Item code |
+| `updateType` | UpdateType | Yes | - |
+| `quantityChange` | number | Yes | Quantity change |
+| `beforeQuantity` | number | Yes | Stock quantity before update |
+| `afterQuantity` | number | Yes | Stock quantity after update |
+| `referenceId` | string | No | Reference ID |
+| `timestamp` | string | Yes | Update timestamp |
+| `operatorId` | string | No | User who performed the update |
+| `note` | string | No | Additional notes |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "itemCode": "string",
+    "updateType": "sale",
+    "quantityChange": 0.0,
+    "beforeQuantity": 0.0,
+    "afterQuantity": 0.0,
+    "referenceId": "string",
+    "timestamp": "2025-01-01T00:00:00Z",
+    "operatorId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### イベント処理
+
+### 18. カートサービスから取引ログ受信
+
 **POST** `/api/v1/tranlog`
 
-**トピック:** `topic-tranlog`
+Handle transaction log from cart serviceを処理します。
 
-カートサービスからの取引ログを処理し、在庫を更新します。
-
-### 19. Dapr Subscribe
-**GET** `/dapr/subscribe`
-
-Daprのサブスクリプション設定を返します。
+**レスポンス:**
 
 ## エラーコード
 
-在庫サービスは41XXX範囲のエラーコードを使用します：
+エラーレスポンスは以下の形式で返されます：
 
-- `41401`: 在庫アイテムが見つかりません
-- `41402`: 在庫が不足しています
-- `41403`: 無効な更新タイプ
-- `41404`: 無効な数量
-- `41405`: スナップショットが見つかりません
-- `41406`: スケジュール設定エラー
-- `41499`: 一般的なサービスエラー
-
-## 特記事項
-
-1. **在庫の原子性**: 同時更新を防ぐための原子的操作を実装
-2. **マイナス在庫**: バックオーダーに対応するためマイナス在庫を許可
-3. **アラートクールダウン**: 同一アイテムのアラートは60秒間隔で制限
-4. **冪等性**: イベントIDによる重複処理防止
-5. **WebSocket認証**: 接続時にクエリパラメータでトークンを指定
-6. **スナップショット保持**: デフォルトで90日間保持
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "エラーメッセージ",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

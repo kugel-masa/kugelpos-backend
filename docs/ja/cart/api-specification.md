@@ -1,540 +1,1833 @@
-# Cart Service API 仕様書
+# カートサービス API仕様書
 
 ## 概要
 
-Cart サービスは、ショッピングカートとトランザクション処理を管理するマイクロサービスです。ステートマシンパターンによるカート状態管理、商品操作、決済処理、プラグイン可能な拡張機能を提供します。
+ショッピングカートとトランザクション処理を管理するサービスです。ステートマシンパターンによるカート状態管理を提供します。
 
 ## サービス情報
 
 - **ポート**: 8003
 - **フレームワーク**: FastAPI
-- **認証方式**: API キー認証
-- **データベース**: MongoDB (Motor 非同期ドライバー)
-- **状態管理**: ステートマシンパターン
-- **プラグインシステム**: 決済・販促・レシートデータ
+- **データベース**: MongoDB (Motor async driver)
 
-## API エンドポイント
+## ベースURL
 
-### 1. ルートエンドポイント
+- ローカル環境: `http://localhost:8003`
+- 本番環境: `https://cart.{domain}`
 
-**パス**: `/`  
-**メソッド**: GET  
-**認証**: 不要  
-**説明**: サービスの稼働確認用エンドポイント
+## 認証
 
-**レスポンス**:
-```json
-{
-  "message": "Welcome to Kugel-POS Cart API. supported version: v1"
-}
-```
+以下の認証方法をサポートしています：
 
-**実装ファイル**: app/main.py:68-76
+### APIキー認証
+- ヘッダー: `X-API-Key: {api_key}`
+- 用途: 端末からのAPI呼び出し
 
-### 2. ヘルスチェック
+### JWTトークン認証
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるシステム操作
 
-**パス**: `/health`  
-**メソッド**: GET  
-**認証**: 不要  
-**説明**: サービスの健全性と依存関係の状態を確認
+## 共通レスポンス形式
 
-**レスポンスモデル**: `HealthCheckResponse`
-```json
-{
-  "status": "healthy",
-  "service": "cart",
-  "version": "1.0.0",
-  "checks": {
-    "mongodb": {
-      "status": "healthy",
-      "details": {}
-    },
-    "dapr_sidecar": {
-      "status": "healthy",
-      "details": {}
-    },
-    "dapr_cartstore": {
-      "status": "healthy",
-      "details": {}
-    },
-    "dapr_pubsub_tranlog": {
-      "status": "healthy",
-      "details": {}
-    },
-    "background_jobs": {
-      "status": "healthy",
-      "details": {
-        "scheduler_running": true,
-        "job_count": 1,
-        "job_names": ["republish_undelivered_tranlog"]
-      }
-    }
-  }
-}
-```
-
-**実装ファイル**: app/main.py:79-137
-
-## Cart API (/api/v1/carts)
-
-### 3. カート作成
-
-**パス**: `/api/v1/carts`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 新規ショッピングカートを作成
-
-**リクエストモデル**: `CartCreateRequest`
-```json
-{
-  "transactionType": "standard",
-  "userId": "STF001",
-  "userName": "山田太郎"
-}
-```
-
-**レスポンスモデル**: `ApiResponse[CartCreateResponse]`
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Cart Created. cart_id: cart_20250105_001",
-  "data": {
-    "cartId": "cart_20250105_001"
-  },
-  "operation": "create_cart"
-}
-```
-
-**エラーレスポンス**:
-- 400: Bad Request
-- 401: Unauthorized
-- 403: Forbidden
-- 422: Unprocessable Entity
-- 500: Internal Server Error
-
-**実装詳細** (app/api/v1/cart.py:32-82):
-- terminal_id は依存性注入で取得
-- カート作成時に初期状態は "idle"
-- ユーザー情報はオプション
-
-### 4. カート取得
-
-**パス**: `/api/v1/carts/{cart_id}`  
-**メソッド**: GET  
-**認証**: 必須（API キー）  
-**説明**: カートの詳細情報を取得
-
-**パスパラメータ**:
-- `cart_id`: string - カートID
-
-**レスポンスモデル**: `ApiResponse[Cart]`
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Cart found. cart_id: cart_20250105_001",
+  "message": "操作が正常に完了しました",
   "data": {
-    "cartId": "cart_20250105_001",
-    "status": "entering_item",
-    "terminalId": "A1234-STORE01-1",
-    "lineItems": [...],
-    "subtotalAmount": 1000.0,
-    "taxAmount": 100.0,
-    "totalAmount": 1100.0,
-    "balanceAmount": 1100.0
+    "...": "..."
   },
-  "operation": "get_cart"
+  "operation": "operation_name"
 }
 ```
 
-**実装詳細** (app/api/v1/cart.py:84-128):
-- SchemasTransformerV1 でモデル変換
+## APIエンドポイント
 
-### 5. カートキャンセル
+### システム
 
-**パス**: `/api/v1/carts/{cart_id}/cancel`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: カートをキャンセル状態に遷移
+### 1. ルートエンドポイント
 
-**実装詳細** (app/api/v1/cart.py:131-172):
-- 任意の状態からキャンセル可能
-- キャンセル後は操作不可
+**GET** `/`
 
-### 6. 商品追加
+ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。
 
-**パス**: `/api/v1/carts/{cart_id}/lineItems`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: カートに商品を追加
+**レスポンス:**
 
-**リクエストモデル**: `list[Item]`
-```json
-[
-  {
-    "itemCode": "4901234567890",
-    "quantity": 2.0,
-    "unitPrice": 100.0
-  }
-]
-```
+### 2. ヘルスチェック
 
-**フィールド説明**:
-- `itemCode`: string - 商品コード（必須）
-- `quantity`: number - 数量（必須）
-- `unitPrice`: number - 単価（オプション）
+**GET** `/health`
 
-**実装詳細** (app/api/v1/cart.py:175-220):
-- 複数商品の一括追加可能
-- idle 状態から entering_item 状態へ自動遷移
+ヘルスチェックエンドポイントです。サービスの稼働状態を監視します。
 
-### 7. 商品キャンセル
+**レスポンス:**
 
-**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 特定の商品をキャンセル
-
-**パスパラメータ**:
-- `cart_id`: string - カートID
-- `lineNo`: integer - 行番号（1から開始）
-
-**実装詳細** (app/api/v1/cart.py:223-266):
-- キャンセルフラグをセット（物理削除なし）
-
-### 8. 単価更新
-
-**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`  
-**メソッド**: PATCH  
-**認証**: 必須（API キー）  
-**説明**: 商品の単価を更新
-
-**リクエストモデル**: `ItemUnitPriceUpdateRequest`
+**レスポンス例:**
 ```json
 {
-  "unitPrice": 150.0
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
 }
 ```
 
-**実装詳細** (app/api/v1/cart.py:269-315):
-- 価格変更後、自動的に再計算
+### テナント
 
-### 9. 数量更新
+### 3. テナント作成
 
-**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`  
-**メソッド**: PATCH  
-**認証**: 必須（API キー）  
-**説明**: 商品の数量を更新
+**POST** `/api/v1/tenants`
 
-**リクエストモデル**: `ItemQuantityUpdateRequest`
+新しいテナントを作成します。必要なデータベースコレクションとインデックスをセットアップします。
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**リクエスト例:**
 ```json
 {
-  "quantity": 3.0
+  "tenantId": "string"
 }
 ```
 
-**実装詳細** (app/api/v1/cart.py:318-364):
-- 数量変更後、自動的に再計算
+**レスポンス:**
 
-### 10. 商品割引追加
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-**パス**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 特定商品に割引を適用
+### カート
 
-**リクエストモデル**: `list[DiscountRequest]`
+### 4. カート作成
+
+**POST** `/api/v1/carts`
+
+新しいショッピングカートを作成します。現在の端末に対して、オプションのユーザー情報を含む新しいカートを初期化します。
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `transactionType` | integer | No | - |
+| `userId` | string | No | - |
+| `userName` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "transactionType": 101,
+  "userId": "string",
+  "userName": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `CartCreateResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cartId` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "cartId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. カート取得
+
+**GET** `/api/v1/carts/{cart_id}`
+
+カートを取得します。指定されたカートの詳細情報を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. 会計完了
+
+**POST** `/api/v1/carts/{cart_id}/bill`
+
+会計を完了します。支払処理を完了し、取引レコードとレシートを生成します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 7. 取引取消
+
+**POST** `/api/v1/carts/{cart_id}/cancel`
+
+取引を取消します。カートを取消状態にし、以降の処理を防止します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. カート値引追加
+
+**POST** `/api/v1/carts/{cart_id}/discounts`
+
+Add discount to the entire cart.
+
+Applies one or more discounts at the cart level, affecting the total price.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
 ```json
 [
   {
-    "discountCode": "DISC10",
-    "discountAmount": 50.0,
-    "discountType": "amount"
+    "discountType": "string",
+    "discountValue": 0.0,
+    "discountDetail": "string"
   }
 ]
 ```
 
-**実装詳細** (app/api/v1/cart.py:367-415):
-- 複数割引の適用可能
+**レスポンス:**
 
-### 11. 小計計算
+**dataフィールド:** `Cart`
 
-**パス**: `/api/v1/carts/{cart_id}/subtotal`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: カートの小計と税額を計算
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**実装詳細** (app/api/v1/cart.py:418-459):
-- 商品入力後の小計計算
-- entering_item 状態から paying 状態へ遷移
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-### 12. カート割引追加
+### 9. 商品追加
 
-**パス**: `/api/v1/carts/{cart_id}/discounts`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: カート全体に割引を適用
+**POST** `/api/v1/carts/{cart_id}/lineItems`
 
-**リクエストモデル**: `list[DiscountRequest]`
+カートに商品を追加します。
 
-**実装詳細** (app/api/v1/cart.py:462-508):
-- カートレベルの割引適用
+**パスパラメータ:**
 
-### 13. 支払い追加
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
 
-**パス**: `/api/v1/carts/{cart_id}/payments`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: カートに支払いを追加
+**クエリパラメータ:**
 
-**リクエストモデル**: `list[PaymentRequest]`
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
 ```json
 [
   {
-    "paymentCode": "01",
-    "paymentAmount": 1100.0,
-    "paymentDetails": {
-      "tenderedAmount": 2000.0
-    }
+    "itemCode": "string",
+    "quantity": 0,
+    "unitPrice": 0.0
   }
 ]
 ```
 
-**実装詳細** (app/api/v1/cart.py:511-556):
-- 複数決済方法の併用可能
-- プラグインシステムによる決済処理
+**レスポンス:**
 
-### 14. 会計処理
+**dataフィールド:** `Cart`
 
-**パス**: `/api/v1/carts/{cart_id}/bill`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: カートを完了状態にして取引を確定
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**実装詳細** (app/api/v1/cart.py:559-601):
-- paying 状態から completed 状態へ遷移
-- トランザクションログの生成と発行
-- レシートデータの生成
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. 明細取消
+
+**POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`
+
+明細を取消します。指定された明細を取消状態にします。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. 明細値引追加
+
+**POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`
+
+カートに商品を追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
+```json
+[
+  {
+    "discountType": "string",
+    "discountValue": 0.0,
+    "discountDetail": "string"
+  }
+]
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 12. 数量変更
+
+**PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`
+
+数量を更新します。指定された明細の数量を変更します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `quantity` | integer | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "quantity": 0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. 単価変更
+
+**PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`
+
+単価を更新します。指定された明細の単価を変更します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `unitPrice` | number | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "unitPrice": 0.0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. 支払処理
+
+**POST** `/api/v1/carts/{cart_id}/payments`
+
+Add payments to a cart.
+
+Processes one or more payment methods against the cart.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
+```json
+[
+  {
+    "paymentCode": "string",
+    "amount": 0,
+    "detail": "string"
+  }
+]
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Cart`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ### 15. 商品入力再開
 
-**パス**: `/api/v1/carts/{cart_id}/resume-item-entry`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 支払い状態から商品入力状態に戻る
+**POST** `/api/v1/carts/{cart_id}/resume-item-entry`
 
-**実装詳細** (app/api/v1/cart.py:604-646):
-- paying 状態から entering_item 状態へ戻る
-- 支払い情報をクリア
+商品入力を再開します。支払状態から商品入力状態に戻します。
 
-## Transaction API
+**パスパラメータ:**
 
-### 16. 取引一覧取得
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
 
-**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`  
-**メソッド**: GET  
-**認証**: 必須（API キー）  
-**説明**: 条件に合致する取引一覧を取得
+**クエリパラメータ:**
 
-**クエリパラメータ**:
-- `business_date`: string (YYYYMMDD) - 営業日
-- `open_counter`: integer - オープンカウンター
-- `transaction_type`: list[integer] - 取引タイプ
-- `receipt_no`: integer - レシート番号
-- `limit`: integer (デフォルト: 100) - 取得件数
-- `page`: integer (デフォルト: 1) - ページ番号
-- `sort`: string - ソート条件（例: "transaction_no:-1"）
-- `include_cancelled`: boolean (デフォルト: false) - キャンセル済み含む
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
 
-**実装詳細** (app/api/v1/tran.py:207-292)
+**レスポンス:**
 
-### 17. 取引詳細取得
+**dataフィールド:** `Cart`
 
-**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`  
-**メソッド**: GET  
-**認証**: 必須（API キー）  
-**説明**: 特定の取引の詳細情報を取得
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**実装詳細** (app/api/v1/tran.py:295-357)
-
-### 18. 取引取消
-
-**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 取引を取消処理
-
-**リクエストモデル**: `list[PaymentRequest]` - 返金用の支払い方法
-
-**実装詳細** (app/api/v1/tran.py:360-438):
-- 同一端末からのみ取消可能
-- 取消用の支払い処理が必要
-
-### 19. 返品処理
-
-**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 取引の返品処理
-
-**リクエストモデル**: `list[PaymentRequest]` - 返金用の支払い方法
-
-**実装詳細** (app/api/v1/tran.py:441-516):
-- 同一店舗内からのみ返品可能
-- 返品用の新規取引を作成
-
-### 20. 配信状態更新
-
-**パス**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`  
-**メソッド**: POST  
-**認証**: 必須（JWT または内部認証）  
-**説明**: トランザクションログの配信状態を更新
-
-**リクエストモデル**: `DeliveryStatusUpdateRequest`
+**レスポンス例:**
 ```json
 {
-  "eventId": "evt_123456",
-  "service": "journal",
-  "status": "delivered",
-  "message": "Successfully processed"
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-**実装詳細** (app/api/v1/tran.py:520-594):
-- Pub/Sub 通知用エンドポイント
-- サービス間通信で使用
+### 16. 小計
 
-## Tenant API
+**POST** `/api/v1/carts/{cart_id}/subtotal`
 
-### 21. テナント作成
+小計を計算します。カートの小計と税金情報を計算して更新します。
 
-**パス**: `/api/v1/tenants`  
-**メソッド**: POST  
-**認証**: 必須（API キー）  
-**説明**: 新規テナントのデータベースセットアップ
+**パスパラメータ:**
 
-**実装ファイル**: app/api/v1/tenant.py
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
 
-## Cache API
+**クエリパラメータ:**
 
-### 22. ターミナルステータス更新
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
 
-**パス**: `/api/v1/cache/terminal/status`  
-**メソッド**: PUT  
-**認証**: 必須（API キー）  
-**説明**: ターミナルキャッシュのステータスを更新
+**レスポンス:**
 
-**実装ファイル**: app/api/v1/cache.py
+**dataフィールド:** `Cart`
 
-### 23. ターミナルキャッシュクリア
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**パス**: `/api/v1/cache/terminal`  
-**メソッド**: DELETE  
-**認証**: 必須（API キー）  
-**説明**: ターミナルキャッシュをクリア
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-**実装ファイル**: app/api/v1/cache.py
+### トランザクション
 
-## ステートマシン
+### 17. 取引検索
 
-### カート状態遷移
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
-**実装ディレクトリ**: app/services/states/
+取引を取得します。指定された条件に一致する取引情報を返します。
 
-1. **InitialState** → **IdleState**
-   - カート作成時の初期遷移
+**パスパラメータ:**
 
-2. **IdleState** → **EnteringItemState**
-   - 最初の商品追加時
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
 
-3. **EnteringItemState** → **PayingState**
-   - 小計計算実行時
+**クエリパラメータ:**
 
-4. **PayingState** → **CompletedState**
-   - 会計処理完了時
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `business_date` | string | No | - | - |
+| `open_counter` | integer | No | - | - |
+| `transaction_type` | array | No | - | - |
+| `receipt_no` | integer | No | - | - |
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `include_cancelled` | boolean | No | False | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
 
-5. **PayingState** → **EnteringItemState**
-   - 商品入力再開時
+**レスポンス:**
 
-6. **任意の状態** → **CancelledState**
-   - キャンセル処理時
+**dataフィールド:** `array[Tran]`
 
-## プラグインシステム
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
 
-### 決済プラグイン
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "tenantId": "string",
+      "storeCode": "string",
+      "storeName": "string",
+      "terminalNo": 0,
+      "totalAmount": 0.0,
+      "totalAmountWithTax": 0.0,
+      "totalQuantity": 0,
+      "totalDiscountAmount": 0.0,
+      "depositAmount": 0.0,
+      "changeAmount": 0.0
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-**実装ディレクトリ**: app/services/strategies/payments/
+### 18. 取引番号で取得
 
-- **PaymentByCash** (ID: "01"): 現金決済
-- **PaymentByCashless** (ID: "11"): キャッシュレス決済
-- **PaymentByOthers** (ID: "12"): その他決済
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`
 
-### 販促プラグイン
+取引を取得します。指定された条件に一致する取引情報を返します。
 
-**実装ディレクトリ**: app/services/strategies/sales_promotions/
+**パスパラメータ:**
 
-- **SalesPromoSample** (ID: "101"): サンプル販促
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+| `transaction_no` | integer | Yes | - |
 
-### レシートデータプラグイン
+**クエリパラメータ:**
 
-**実装ディレクトリ**: app/services/strategies/receipt_data/
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
 
-- **ReceiptDataSample** (ID: "default", "32"): レシートデータ生成
+**レスポンス:**
 
-## 定期実行ジョブ
+**dataフィールド:** `Tran`
 
-### 未配信メッセージ再送信
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
 
-**実装ファイル**: app/cron/republish_undelivery_message.py
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-- **実行間隔**: 5分ごと
-- **チェック期間**: 過去24時間
-- **失敗判定**: 15分以上経過
-- **対象**: 未配信のトランザクションログ
+### 19. 配信状態通知
 
-## イベント発行
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`
 
-### Dapr Pub/Sub トピック
+配信状態を通知します。取引の配信状態を更新します。
 
-1. **tranlog_report**: トランザクションログ（レポート用）
-2. **tranlog_status**: トランザクションステータス更新
-3. **cashlog_report**: 現金入出金ログ
-4. **opencloselog_report**: 開局/閉局ログ
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `message` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "event_id": "string",
+  "service": "string",
+  "status": "string",
+  "message": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `DeliveryStatusUpdateResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `success` | boolean | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "event_id": "string",
+    "service": "string",
+    "status": "string",
+    "success": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 20. 返品処理
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`
+
+返品を処理します。元の取引に対する返品取引を作成します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+| `transaction_no` | integer | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
+```json
+[
+  {
+    "paymentCode": "string",
+    "amount": 0,
+    "detail": "string"
+  }
+]
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Tran`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. 取消処理
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`
+
+取引を取消（無効化）します。取引を取消状態にし、取消レコードを作成します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+| `transaction_no` | integer | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
+```json
+[
+  {
+    "paymentCode": "string",
+    "amount": 0,
+    "detail": "string"
+  }
+]
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Tran`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### キャッシュ
+
+### 22. 端末キャッシュクリア
+
+**DELETE** `/api/v1/cache/terminal`
+
+端末キャッシュをクリアします。キャッシュされたデータを削除します。
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 23. 端末キャッシュ状態取得
+
+**GET** `/api/v1/cache/terminal/status`
+
+端末キャッシュの状態を取得します。キャッシュされたデータと最終更新時刻を返します。
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ## エラーコード
 
-Cart サービスでは以下のエラーコード体系を使用：
-- **30XXYY**: Cart サービス固有のエラー
-  - XX: 機能識別子
-  - YY: 具体的なエラー番号
+エラーレスポンスは以下の形式で返されます：
 
-## ミドルウェア
-
-**実装ファイル**: app/main.py
-
-1. **CORS** (53-59行目): 全オリジンからのアクセスを許可
-2. **リクエストログ** (62行目): 全HTTPリクエストをログ記録
-3. **例外ハンドラー** (65行目): 統一されたエラーレスポンス形式
-
-## データベース
-
-### コレクション
-- `carts`: カート情報
-- `terminal_counter`: 端末カウンター
-- `tranlog`: トランザクションログ
-- `transaction_status`: トランザクションステータス
-
-### キャッシュ
-- Dapr State Store (cartstore) を使用
-- ターミナル情報のキャッシュ（TTL: 300秒）
-
-## 注意事項
-
-1. **API キー認証**: 全てのビジネスエンドポイントで必須
-2. **ステートマシン**: 状態遷移ルールに従った操作のみ許可
-3. **プラグイン設定**: plugins.json で動的ロード
-4. **非同期処理**: 全ての DB 操作は非同期
-5. **イベント発行**: Dapr 経由での非同期イベント
-6. **マルチテナント**: テナントごとに独立したデータベース
-7. **カート有効期限**: 作成から24時間
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "エラーメッセージ",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

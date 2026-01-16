@@ -2,27 +2,30 @@
 
 ## Overview
 
-The Stock service provides inventory management capabilities for the Kugelpos POS system. It implements real-time stock tracking, stock alerts, snapshot management, and transaction-linked stock updates. Key features include real-time alerts via WebSocket and Cart service integration via Dapr pub/sub.
+Manages inventory tracking. Provides snapshot functionality and reorder point management.
+
+## Service Information
+
+- **Port**: 8006
+- **Framework**: FastAPI
+- **Database**: MongoDB (Motor async driver)
 
 ## Base URL
-- Local environment: `http://localhost:8006`
-- Production environment: `https://stock.{domain}`
+
+- Local Environment: `http://localhost:8006`
+- Production Environment: `https://stock.{domain}`
 
 ## Authentication
 
-The Stock service supports two authentication methods:
+The following authentication methods are supported:
 
-### 1. JWT Token (Bearer Token)
-- Header: `Authorization: Bearer {token}`
-- Purpose: Inventory management operations by administrators
-
-### 2. API Key Authentication
+### API Key Authentication
 - Header: `X-API-Key: {api_key}`
-- Purpose: Stock inquiry from terminals (limited endpoints)
+- Usage: API calls from terminals
 
-## Field Format
-
-All API requests/responses use **camelCase** format.
+### JWT Token Authentication
+- Header: `Authorization: Bearer {token}`
+- Usage: System operations by administrators
 
 ## Common Response Format
 
@@ -31,424 +34,1183 @@ All API requests/responses use **camelCase** format.
   "success": true,
   "code": 200,
   "message": "Operation completed successfully",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## Stock Update Types
-
-| Type ID | Name | Description |
-|----------|------|-------------|
-| SALE | Sale | Stock decrease due to sales |
-| RETURN | Return | Stock increase due to returns |
-| VOID | Void | Stock increase due to sale cancellation |
-| VOID_RETURN | Return Void | Stock decrease due to return cancellation |
-| PURCHASE | Purchase | Stock increase due to procurement |
-| ADJUSTMENT | Adjustment | Manual stock adjustment |
-| INITIAL | Initial | Initial stock setup |
-| DAMAGE | Damage | Stock decrease due to damage |
-| TRANSFER_IN | Transfer In | Incoming transfer from other stores |
-| TRANSFER_OUT | Transfer Out | Outgoing transfer to other stores |
 
 ## API Endpoints
 
-### 1. Get Stock List
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock`
+### System
 
-Retrieves all stock items for a store.
+### 1. Root
 
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
+**GET** `/`
 
-**Query Parameters:**
-- `page` (integer, default: 1): Page number
-- `limit` (integer, default: 100): Page size
-- `terminal_id` (integer): Terminal ID (for API key authentication)
+Root endpoint that returns a welcome message.
+Useful for health checks and API verification.
 
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock items retrieved successfully",
-  "data": {
-    "items": [
-      {
-        "itemCode": "ITEM001",
-        "itemName": "Product 001",
-        "storeCode": "STORE001",
-        "currentQuantity": 100,
-        "minimumQuantity": 20,
-        "reorderPoint": 30,
-        "reorderQuantity": 50,
-        "lastUpdated": "2024-01-01T12:00:00Z",
-        "updateType": "PURCHASE"
-      }
-    ],
-    "total": 150,
-    "page": 1,
-    "limit": 100
-  },
-  "operation": "get_all_stock"
-}
-```
+**Response:**
 
-### 2. Get Individual Stock Item
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}`
+### 2. Health Check
 
-Retrieves stock information for a specific product.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `item_code` (string, required): Item code
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock item retrieved successfully",
-  "data": {
-    "itemCode": "ITEM001",
-    "itemName": "Product 001",
-    "storeCode": "STORE001",
-    "currentQuantity": 100,
-    "minimumQuantity": 20,
-    "reorderPoint": 30,
-    "reorderQuantity": 50,
-    "lastUpdated": "2024-01-01T12:00:00Z",
-    "updateType": "PURCHASE"
-  },
-  "operation": "get_stock"
-}
-```
-
-### 3. Update Stock
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/update`
-
-Updates stock quantity.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `item_code` (string, required): Item code
-
-**Request Body:**
-```json
-{
-  "quantity": -1,
-  "updateType": "SALE",
-  "reason": "Sales processing",
-  "staffId": "STAFF001",
-  "referenceNo": "TRAN001"
-}
-```
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock updated successfully",
-  "data": {
-    "itemCode": "ITEM001",
-    "previousQuantity": 100,
-    "newQuantity": 99,
-    "quantityChange": -1,
-    "updateType": "SALE"
-  },
-  "operation": "update_stock"
-}
-```
-
-### 4. Get Stock History
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history`
-
-Retrieves stock update history for a product.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `item_code` (string, required): Item code
-
-**Query Parameters:**
-- `page` (integer, default: 1): Page number
-- `limit` (integer, default: 100): Page size
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stock history retrieved successfully",
-  "data": {
-    "history": [
-      {
-        "id": "507f1f77bcf86cd799439011",
-        "timestamp": "2024-01-01T12:00:00Z",
-        "previousQuantity": 100,
-        "newQuantity": 99,
-        "quantityChange": -1,
-        "updateType": "SALE",
-        "reason": "Sales processing",
-        "staffId": "STAFF001",
-        "referenceNo": "TRAN001"
-      }
-    ],
-    "total": 50,
-    "page": 1,
-    "limit": 100
-  },
-  "operation": "get_stock_history"
-}
-```
-
-### 5. Set Minimum Quantity
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/minimum`
-
-Sets minimum stock quantity.
-
-**Request Body:**
-```json
-{
-  "minimumQuantity": 20
-}
-```
-
-### 6. Set Reorder Point
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/reorder`
-
-Sets reorder point and quantity.
-
-**Request Body:**
-```json
-{
-  "reorderPoint": 30,
-  "reorderQuantity": 50
-}
-```
-
-### 7. Get Low Stock Items
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/low`
-
-Retrieves items below minimum quantity.
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Low stock items retrieved successfully",
-  "data": {
-    "items": [
-      {
-        "itemCode": "ITEM001",
-        "itemName": "Product 001",
-        "currentQuantity": 15,
-        "minimumQuantity": 20,
-        "shortageQuantity": 5
-      }
-    ],
-    "total": 5
-  },
-  "operation": "get_low_stock"
-}
-```
-
-### 8. Get Reorder Alerts
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/reorder-alerts`
-
-Retrieves items that have reached reorder point.
-
-### 9. WebSocket Connection (Real-time Alerts)
-**WebSocket** `/ws/{tenant_id}/{store_code}`
-
-Receives stock alerts in real-time.
-
-**Connection Steps:**
-1. Establish WebSocket connection (JWT token must be provided as query parameter)
-   - URL example: `/ws/{tenant_id}/{store_code}?token=JWT_TOKEN`
-2. Receive alert messages
-
-**Alert Message Example:**
-```json
-{
-  "type": "low_stock",
-  "itemCode": "ITEM001",
-  "itemName": "Product 001",
-  "currentQuantity": 15,
-  "minimumQuantity": 20,
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
-
-### 10. Create Snapshot
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot`
-
-Manually creates stock snapshot.
-
-**Request Body:**
-```json
-{
-  "description": "Monthly inventory count",
-  "takenBy": "STAFF001"
-}
-```
-
-### 11. Get Snapshot List
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots`
-
-Retrieves snapshot list.
-
-**Query Parameters:**
-- `start_date` (string): Start date (YYYY-MM-DD)
-- `end_date` (string): End date (YYYY-MM-DD)
-- `page` (integer, default: 1): Page number
-- `limit` (integer, default: 100): Page size
-
-### 12. Get Snapshot Details
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot/{snapshot_id}`
-
-Retrieves details of a specific snapshot.
-
-### 13. Get Snapshot Schedule
-**GET** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
-
-Retrieves automatic snapshot schedule configuration.
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Snapshot schedule retrieved successfully",
-  "data": {
-    "daily": {
-      "enabled": true,
-      "time": "02:00",
-      "timezone": "Asia/Tokyo"
-    },
-    "weekly": {
-      "enabled": false,
-      "dayOfWeek": 0,
-      "time": "02:00",
-      "timezone": "Asia/Tokyo"
-    },
-    "monthly": {
-      "enabled": true,
-      "dayOfMonth": 1,
-      "time": "02:00",
-      "timezone": "Asia/Tokyo"
-    },
-    "retentionDays": 90
-  },
-  "operation": "get_snapshot_schedule"
-}
-```
-
-### 14. Update Snapshot Schedule
-**PUT** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
-
-Updates automatic snapshot schedule.
-
-**Request Body:**
-```json
-{
-  "daily": {
-    "enabled": true,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "weekly": {
-    "enabled": false,
-    "dayOfWeek": 0,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "monthly": {
-    "enabled": true,
-    "dayOfMonth": 1,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "retentionDays": 90
-}
-```
-
-### 15. Delete Snapshot Schedule
-**DELETE** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
-
-Deletes custom schedule and reverts to default settings.
-
-### 16. Create Tenant
-**POST** `/api/v1/tenants`
-
-Initializes stock service for a new tenant.
-
-**Request Body:**
-```json
-{
-  "tenantId": "tenant001"
-}
-```
-
-**Authentication:** JWT token required
-
-### 17. Health Check
 **GET** `/health`
 
-Checks service health.
+Health check endpoint for monitoring service health.
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
+}
+```
+
+### Tenant
+
+### 3. Create Tenant
+
+**POST** `/api/v1/tenants`
+
+Create and set up a new tenant in the stock service.
+
+This endpoint initializes the database for a new tenant by creating all required
+collections, indexes, and other necessary structures. It is typically called during
+tenant onboarding after the tenant has been created in the account service.
+
+Authentication is required and the authenticated user must belong to the tenant
+being created. This ensures only authorized users can set up tenant resources.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "tenantId": "string"
+}
+```
+
+**Response:**
 
 **Response Example:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Service is healthy",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected",
-    "dapr": "connected",
-    "scheduler": "running"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## Event Processing Endpoints (Dapr Pub/Sub)
+### 4. Get snapshot schedule configuration
 
-### 18. Transaction Log Handler
+**GET** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
+
+Get the snapshot schedule configuration for a tenant
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `SnapshotScheduleResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `enabled` | boolean | No | - |
+| `schedule_interval` | string | Yes | Schedule interval: daily, weekly, monthly |
+| `schedule_hour` | integer | Yes | Execution hour (0-23) |
+| `schedule_minute` | integer | No | Execution minute (0-59) |
+| `schedule_day_of_week` | integer | No | Day of week for weekly schedule (0=Monday, 6=Sunda |
+| `schedule_day_of_month` | integer | No | Day of month for monthly schedule (1-31) |
+| `retention_days` | integer | No | Snapshot retention days |
+| `target_stores` | array[string] | No | Target stores: ['all'] or specific store codes |
+| `tenant_id` | string | Yes | - |
+| `last_executed_at` | string | No | - |
+| `next_execution_at` | string | No | - |
+| `created_at` | string | No | - |
+| `updated_at` | string | No | - |
+| `created_by` | string | No | - |
+| `updated_by` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "enabled": true,
+    "schedule_interval": "string",
+    "schedule_hour": 0,
+    "schedule_minute": 0,
+    "schedule_day_of_week": 0,
+    "schedule_day_of_month": 0,
+    "retention_days": 30,
+    "target_stores": [
+      "all"
+    ],
+    "tenant_id": "string",
+    "last_executed_at": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Update snapshot schedule configuration
+
+**PUT** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
+
+Update the snapshot schedule configuration for a tenant
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `enabled` | boolean | No | - |
+| `schedule_interval` | string | Yes | Schedule interval: daily, weekly, monthly |
+| `schedule_hour` | integer | Yes | Execution hour (0-23) |
+| `schedule_minute` | integer | No | Execution minute (0-59) |
+| `schedule_day_of_week` | integer | No | Day of week for weekly schedule (0=Monday, 6=Sunda |
+| `schedule_day_of_month` | integer | No | Day of month for monthly schedule (1-31) |
+| `retention_days` | integer | No | Snapshot retention days |
+| `target_stores` | array[string] | No | Target stores: ['all'] or specific store codes |
+
+**Request Example:**
+```json
+{
+  "enabled": true,
+  "schedule_interval": "string",
+  "schedule_hour": 0,
+  "schedule_minute": 0,
+  "schedule_day_of_week": 0,
+  "schedule_day_of_month": 0,
+  "retention_days": 30,
+  "target_stores": [
+    "all"
+  ]
+}
+```
+
+**Response:**
+
+**data Field:** `SnapshotScheduleResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `enabled` | boolean | No | - |
+| `schedule_interval` | string | Yes | Schedule interval: daily, weekly, monthly |
+| `schedule_hour` | integer | Yes | Execution hour (0-23) |
+| `schedule_minute` | integer | No | Execution minute (0-59) |
+| `schedule_day_of_week` | integer | No | Day of week for weekly schedule (0=Monday, 6=Sunda |
+| `schedule_day_of_month` | integer | No | Day of month for monthly schedule (1-31) |
+| `retention_days` | integer | No | Snapshot retention days |
+| `target_stores` | array[string] | No | Target stores: ['all'] or specific store codes |
+| `tenant_id` | string | Yes | - |
+| `last_executed_at` | string | No | - |
+| `next_execution_at` | string | No | - |
+| `created_at` | string | No | - |
+| `updated_at` | string | No | - |
+| `created_by` | string | No | - |
+| `updated_by` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "enabled": true,
+    "schedule_interval": "string",
+    "schedule_hour": 0,
+    "schedule_minute": 0,
+    "schedule_day_of_week": 0,
+    "schedule_day_of_month": 0,
+    "retention_days": 30,
+    "target_stores": [
+      "all"
+    ],
+    "tenant_id": "string",
+    "last_executed_at": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. Delete snapshot schedule configuration
+
+**DELETE** `/api/v1/tenants/{tenant_id}/stock/snapshot-schedule`
+
+Delete the snapshot schedule configuration for a tenant (reverts to defaults)
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Stock
+
+### 7. Get stock list for a store
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock`
+
+Get all stock items for a store with pagination
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `page` | integer | No | 1 | Page number |
+| `limit` | integer | No | 100 | Maximum number of items to return |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PaginatedResult_StockResponse_`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `data` | array[StockResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "currentQuantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0,
+        "lastUpdated": "2025-01-01T00:00:00Z",
+        "lastTransactionId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. Get low stock items
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/low`
+
+Get items with stock below minimum quantity
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PaginatedResult_StockResponse_`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `data` | array[StockResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "currentQuantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0,
+        "lastUpdated": "2025-01-01T00:00:00Z",
+        "lastTransactionId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 9. Get reorder alert items
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/reorder-alerts`
+
+Get items with stock at or below reorder point
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PaginatedResult_StockResponse_`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `data` | array[StockResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "currentQuantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0,
+        "lastUpdated": "2025-01-01T00:00:00Z",
+        "lastTransactionId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. Create stock snapshot
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot`
+
+Create a snapshot of current stock levels
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `createdBy` | string | No | User or system that created the snapshot |
+
+**Request Example:**
+```json
+{
+  "createdBy": "system"
+}
+```
+
+**Response:**
+
+**data Field:** `StockSnapshotResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `totalItems` | integer | Yes | Total number of items |
+| `totalQuantity` | number | Yes | Total stock quantity |
+| `stocks` | array[StockSnapshotItemResponse] | Yes | Stock details by item |
+| `createdBy` | string | Yes | User or system that created the snapshot |
+| `createdAt` | string | Yes | Creation timestamp |
+| `updatedAt` | string | No | Last update timestamp |
+| `generateDateTime` | string | No | Snapshot generation datetime in ISO format |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "totalItems": 0,
+    "totalQuantity": 0.0,
+    "stocks": [
+      {
+        "itemCode": "string",
+        "quantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0
+      }
+    ],
+    "createdBy": "string",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z",
+    "generateDateTime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. Get stock snapshot by ID
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshot/{snapshot_id}`
+
+Get a specific stock snapshot by its ID
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `snapshot_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `StockSnapshotResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `totalItems` | integer | Yes | Total number of items |
+| `totalQuantity` | number | Yes | Total stock quantity |
+| `stocks` | array[StockSnapshotItemResponse] | Yes | Stock details by item |
+| `createdBy` | string | Yes | User or system that created the snapshot |
+| `createdAt` | string | Yes | Creation timestamp |
+| `updatedAt` | string | No | Last update timestamp |
+| `generateDateTime` | string | No | Snapshot generation datetime in ISO format |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "totalItems": 0,
+    "totalQuantity": 0.0,
+    "stocks": [
+      {
+        "itemCode": "string",
+        "quantity": 0.0,
+        "minimumQuantity": 0.0,
+        "reorderPoint": 0.0,
+        "reorderQuantity": 0.0
+      }
+    ],
+    "createdBy": "string",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z",
+    "generateDateTime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 12. Get stock snapshots by date range
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/snapshots`
+
+Get list of stock snapshots filtered by generate_date_time range
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `start_date` | string | No | - | Start date in ISO format |
+| `end_date` | string | No | - | End date in ISO format |
+| `page` | integer | No | 1 | Page number |
+| `limit` | integer | No | 100 | Maximum number of items to return |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PaginatedResult_StockSnapshotResponse_`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `data` | array[StockSnapshotResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "totalItems": 0,
+        "totalQuantity": 0.0,
+        "stocks": [
+          {
+            "itemCode": "...",
+            "quantity": "...",
+            "minimumQuantity": "...",
+            "reorderPoint": "...",
+            "reorderQuantity": "..."
+          }
+        ],
+        "createdBy": "string",
+        "createdAt": "2025-01-01T00:00:00Z",
+        "updatedAt": "2025-01-01T00:00:00Z",
+        "generateDateTime": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. Get stock for an item
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}`
+
+Get current stock information for a specific item
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `StockResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `itemCode` | string | Yes | Item code |
+| `currentQuantity` | number | Yes | Current stock quantity |
+| `minimumQuantity` | number | Yes | Minimum stock quantity for alerts |
+| `reorderPoint` | number | Yes | Reorder point - quantity that triggers reorder |
+| `reorderQuantity` | number | Yes | Quantity to order when reorder point is reached |
+| `lastUpdated` | string | Yes | Last update timestamp |
+| `lastTransactionId` | string | No | Last transaction reference |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "itemCode": "string",
+    "currentQuantity": 0.0,
+    "minimumQuantity": 0.0,
+    "reorderPoint": 0.0,
+    "reorderQuantity": 0.0,
+    "lastUpdated": "2025-01-01T00:00:00Z",
+    "lastTransactionId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. Get stock update history
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/history`
+
+Get stock update history for an item
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `page` | integer | No | 1 | Page number |
+| `limit` | integer | No | 100 | Maximum number of items to return |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PaginatedResult_StockUpdateResponse_`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `data` | array[StockUpdateResponse] | Yes | - |
+| `metadata` | Metadata | Yes | Metadata Model
+
+Represents metadata for paginated  |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "data": [
+      {
+        "tenantId": "string",
+        "storeCode": "string",
+        "itemCode": "string",
+        "updateType": "sale",
+        "quantityChange": 0.0,
+        "beforeQuantity": 0.0,
+        "afterQuantity": 0.0,
+        "referenceId": "string",
+        "timestamp": "2025-01-01T00:00:00Z",
+        "operatorId": "string"
+      }
+    ],
+    "metadata": {
+      "total": 0,
+      "page": 0,
+      "limit": 0,
+      "sort": "string",
+      "filter": {}
+    }
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 15. Set minimum stock quantity
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/minimum`
+
+Set minimum stock quantity for alerts
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `minimumQuantity` | number | Yes | Minimum stock quantity for alerts |
+
+**Request Example:**
+```json
+{
+  "minimumQuantity": 0.0
+}
+```
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 16. Set reorder parameters
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/reorder`
+
+Set reorder point and quantity for an item
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `reorderPoint` | number | Yes | Reorder point - quantity that triggers reorder |
+| `reorderQuantity` | number | Yes | Quantity to order when reorder point is reached |
+
+**Request Example:**
+```json
+{
+  "reorderPoint": 0.0,
+  "reorderQuantity": 0.0
+}
+```
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. Update stock quantity
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/stock/{item_code}/update`
+
+Update stock quantity for an item and record the update
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `item_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `quantityChange` | number | Yes | Quantity change (positive for increase, negative f |
+| `updateType` | UpdateType | Yes | - |
+| `referenceId` | string | No | Reference ID (transaction, adjustment, etc.) |
+| `operatorId` | string | No | User who performed the update |
+| `note` | string | No | Additional notes |
+
+**Request Example:**
+```json
+{
+  "quantityChange": 0.0,
+  "updateType": "sale",
+  "referenceId": "string",
+  "operatorId": "string",
+  "note": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `StockUpdateResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | Tenant ID |
+| `storeCode` | string | Yes | Store code |
+| `itemCode` | string | Yes | Item code |
+| `updateType` | UpdateType | Yes | - |
+| `quantityChange` | number | Yes | Quantity change |
+| `beforeQuantity` | number | Yes | Stock quantity before update |
+| `afterQuantity` | number | Yes | Stock quantity after update |
+| `referenceId` | string | No | Reference ID |
+| `timestamp` | string | Yes | Update timestamp |
+| `operatorId` | string | No | User who performed the update |
+| `note` | string | No | Additional notes |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "itemCode": "string",
+    "updateType": "sale",
+    "quantityChange": 0.0,
+    "beforeQuantity": 0.0,
+    "afterQuantity": 0.0,
+    "referenceId": "string",
+    "timestamp": "2025-01-01T00:00:00Z",
+    "operatorId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Event Processing
+
+### 18. Handle transaction log from cart service
+
 **POST** `/api/v1/tranlog`
 
-**Topic:** `topic-tranlog`
+Process transaction log to update stock quantities
 
-Processes transaction logs from Cart service and updates stock.
-
-### 19. Dapr Subscribe
-**GET** `/dapr/subscribe`
-
-Returns Dapr subscription configuration.
+**Response:**
 
 ## Error Codes
 
-Stock service uses error codes in the 41XXX range:
+Error responses are returned in the following format:
 
-- `41401`: Stock item not found
-- `41402`: Insufficient stock
-- `41403`: Invalid update type
-- `41404`: Invalid quantity
-- `41405`: Snapshot not found
-- `41406`: Schedule configuration error
-- `41499`: General service error
-
-## Special Notes
-
-1. **Stock Atomicity**: Implements atomic operations to prevent concurrent updates
-2. **Negative Stock**: Allows negative stock to support backorders
-3. **Alert Cooldown**: Alerts for the same item are limited to 60-second intervals
-4. **Idempotency**: Duplicate processing prevention by event ID
-5. **WebSocket Authentication**: Token must be provided as query parameter during connection
-6. **Snapshot Retention**: Default retention period is 90 days
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

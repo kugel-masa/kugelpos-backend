@@ -13,15 +13,17 @@
 
 | コレクション名 | 用途 | 主なデータ |
 |---------------|------|------------|
-| tenant_info | テナント情報 | テナントと店舗の基本情報 |
-| terminal_info | 端末情報 | 端末の詳細と状態管理 |
-| cash_in_out_log | 現金入出金ログ | 現金操作の記録 |
-| open_close_log | 開閉店ログ | 端末の開閉店記録 |
-| terminallog_delivery_status | 配信ステータス | イベント配信の追跡 |
+| info_tenant | テナント情報 | テナントと店舗の基本情報 |
+| info_terminal | 端末情報 | 端末の詳細と状態管理 |
+| log_cash_in_out | 現金入出金ログ | 現金操作の記録 |
+| log_open_close | 開閉店ログ | 端末の開閉店記録 |
+| status_terminal_delivery | 配信ステータス | イベント配信の追跡 |
+
+**注:** コレクション名は `{種類}_{対象}` のパターンで統一されています（info_*, log_*, status_*）。
 
 ## 詳細スキーマ定義
 
-### 1. tenant_info コレクション
+### 1. info_tenant コレクション
 
 テナントと店舗情報を管理するコレクション。店舗は埋め込みドキュメントとして保存。
 
@@ -45,7 +47,7 @@
 }
 ```
 
-### 2. terminal_info コレクション
+### 2. info_terminal コレクション
 
 端末の詳細情報と現在状態を管理するコレクション。
 
@@ -82,7 +84,7 @@
 - `business_counter`: ビジネス操作カウンター
 - `api_key`: 端末認証用APIキー（SHA-256ハッシュ化）
 
-### 3. cash_in_out_log コレクション
+### 3. log_cash_in_out コレクション
 
 現金入出金操作の履歴を保存するコレクション。
 
@@ -93,16 +95,13 @@
   "store_code": "string",
   "store_name": "string",
   "terminal_no": "integer",
-  "cashinout_id": "string",
   "staff_id": "string",
   "staff_name": "string",
   "business_date": "string (YYYYMMDD)",
   "open_counter": "integer",
   "business_counter": "integer",
-  "operation_type": "string (cash_in/cash_out)",
-  "amount": "decimal",
-  "reason": "string",
-  "comment": "string",
+  "amount": "float (正: 入金, 負: 出金)",
+  "description": "string (入出金の理由・説明)",
   "receipt_text": "string",
   "journal_text": "string",
   "generate_date_time": "string (ISO 8601)",
@@ -111,7 +110,11 @@
 }
 ```
 
-### 4. open_close_log コレクション
+**フィールド説明:**
+- `amount`: 入金の場合は正の値、出金の場合は負の値
+- `description`: 入出金の理由や説明（旧フィールド名: reason/comment）
+
+### 4. log_open_close コレクション
 
 端末の開閉店操作の履歴を保存するコレクション。
 
@@ -143,7 +146,7 @@
 }
 ```
 
-### 5. terminallog_delivery_status コレクション
+### 5. status_terminal_delivery コレクション
 
 イベント配信の状態を追跡するコレクション。
 
@@ -152,7 +155,7 @@
   "_id": "ObjectId",
   "event_id": "string (UUID)",
   "published_at": "datetime",
-  "status": "string (published/delivered/failed)",
+  "status": "string (published/delivered/partially_delivered/failed)",
   "tenant_id": "string",
   "store_code": "string",
   "terminal_no": "integer",
@@ -164,8 +167,9 @@
   "services": [
     {
       "service_name": "string",
-      "delivered": "boolean",
-      "delivered_at": "datetime"
+      "received_at": "datetime (optional)",
+      "status": "string (pending/received/failed)",
+      "message": "string (optional, エラーメッセージ等)"
     }
   ],
   "last_updated_at": "datetime",
@@ -174,34 +178,39 @@
 }
 ```
 
+**フィールド説明:**
+- `status`: 全体の配信状態（published → delivered/partially_delivered/failed）
+- `services[].status`: 各サービスへの配信状態（pending → received/failed）
+- `services[].received_at`: サービスがメッセージを受信した日時
+- `services[].message`: エラー発生時のメッセージ
+
 ## インデックス定義
 
-### tenant_info
+### info_tenant
 - ユニークインデックス: `tenant_id`
 
-### terminal_info
+### info_terminal
 - ユニークインデックス: `terminal_id`
-- 複合インデックス: `tenant_id + store_code + terminal_no`
-- 単一インデックス: `api_key`
+- ユニーク複合インデックス: `tenant_id + store_code + terminal_no`
 
-### cash_in_out_log
-- 複合インデックス: `tenant_id + store_code + terminal_no + business_date`
-- 単一インデックス: `generate_date_time`
+### log_cash_in_out
+- ユニーク複合インデックス: `tenant_id + store_code + terminal_no + generate_date_time`
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + open_counter`
 
-### open_close_log
-- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + operation`
-- 単一インデックス: `generate_date_time`
+### log_open_close
+- ユニーク複合インデックス: `tenant_id + store_code + terminal_no + business_date + open_counter + operation`
 
-### terminallog_delivery_status
+### status_terminal_delivery
 - ユニークインデックス: `event_id`
-- 複合インデックス: `tenant_id + status + published_at`
+- 複合インデックス: `tenant_id + store_code + terminal_no + business_date + open_counter`
+- 複合インデックス: `status + published_at`
 
 ## 列挙型定義
 
 ### 端末状態（TerminalStatus）
-- `idle`: 初期状態、営業開始前
-- `opened`: 営業中（開店済み）
-- `closed`: 営業終了（閉店済み）
+- `Idle`: 初期状態、営業開始前
+- `Opened`: 営業中（開店済み）
+- `Closed`: 営業終了（閉店済み）
 
 ### ファンクションモード（FunctionMode）
 - `MainMenu`: メインメニュー
