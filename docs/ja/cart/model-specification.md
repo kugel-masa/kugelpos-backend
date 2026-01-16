@@ -12,7 +12,9 @@
 
 **コレクション名:** `cache_cart`
 
-**継承:** `BaseDocumentModel`
+**継承:** `BaseTransaction` → `AbstractDocument` → `BaseDocumentModel`
+
+**注:** 多くのフィールドは `BaseTransaction` から継承されています（tenant_id, store_code, transaction_no, payments, taxes 等）。
 
 **フィールド定義:**
 
@@ -58,7 +60,7 @@
 | unit_price | float | ✓ | 単価 |
 | unit_price_original | float | - | 元の単価 |
 | is_unit_price_changed | boolean | - | 単価変更フラグ |
-| quantity | float | ✓ | 数量 |
+| quantity | integer | ✓ | 数量（デフォルト: 0） |
 | amount | float | - | 金額 |
 | discount_amount | float | - | 割引金額 |
 | tax_amount | float | - | 税額 |
@@ -101,11 +103,11 @@
 
 **コレクション名:** `log_tran`
 
-**継承:** `BaseDocumentModel`
+**継承:** `BaseTransaction` → `AbstractDocument` → `BaseDocumentModel`
 
 **フィールド定義:**
 
-CartDocumentと同じフィールド構造に加えて：
+CartDocumentと同じフィールド構造（BaseTransactionから継承）に加えて：
 
 | フィールド名 | 型 | 必須 | 説明 |
 |------------|------|----------|-------------|

@@ -37,10 +37,12 @@
 | reorder_quantity | float | - | 推奨発注数量（デフォルト: 0.0） |
 | last_transaction_id | string | - | 最後に在庫を変更した取引ID |
 
-**インデックス:**
-- ユニーク複合: (tenant_id, store_code, item_code)
-- 複合: (tenant_id, store_code, minimum_quantity)
-- 複合: (tenant_id, store_code, reorder_point)
+**インデックス（推奨）:**
+- ユニーク複合: (tenant_id, store_code, item_code) - **重要: データ重複防止**
+- 複合: (tenant_id, store_code, minimum_quantity) - アラートクエリ用
+- 複合: (tenant_id, store_code, reorder_point) - アラートクエリ用
+
+**注:** これらのインデックスはドキュメントのSettingsクラスで定義する必要があります。
 
 ### 2. stock_updates コレクション
 
