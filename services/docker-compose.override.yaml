@@ -34,6 +34,11 @@ services:
       - DB_NAME_PREFIX=db_master
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - DISABLE_API_KEY_MASKING=True
+      # gRPC server settings (default: disabled)
+      - USE_GRPC=${USE_GRPC:-false}
+      - GRPC_PORT=${GRPC_PORT:-50051}
+    ports:
+      - "50051:50051"
     depends_on:
       mongodb:
         condition: service_healthy
@@ -46,6 +51,10 @@ services:
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
       - USE_TERMINAL_CACHE=True
       - DISABLE_API_KEY_MASKING=True
+      # gRPC client settings (default: disabled)
+      - USE_GRPC=${USE_GRPC:-false}
+      - GRPC_TIMEOUT=${GRPC_TIMEOUT:-5.0}
+      - MASTER_DATA_GRPC_URL=${MASTER_DATA_GRPC_URL:-master-data:50051}
     depends_on:
       mongodb:
         condition: service_healthy
