@@ -93,16 +93,13 @@
   "store_code": "string",
   "store_name": "string",
   "terminal_no": "integer",
-  "cashinout_id": "string",
   "staff_id": "string",
   "staff_name": "string",
   "business_date": "string (YYYYMMDD)",
   "open_counter": "integer",
   "business_counter": "integer",
-  "operation_type": "string (cash_in/cash_out)",
-  "amount": "decimal",
-  "reason": "string",
-  "comment": "string",
+  "amount": "float (正: 入金, 負: 出金)",
+  "description": "string (入出金の理由・説明)",
   "receipt_text": "string",
   "journal_text": "string",
   "generate_date_time": "string (ISO 8601)",
@@ -110,6 +107,10 @@
   "updated_at": "datetime"
 }
 ```
+
+**フィールド説明:**
+- `amount`: 入金の場合は正の値、出金の場合は負の値
+- `description`: 入出金の理由や説明（旧フィールド名: reason/comment）
 
 ### 4. open_close_log コレクション
 
@@ -152,7 +153,7 @@
   "_id": "ObjectId",
   "event_id": "string (UUID)",
   "published_at": "datetime",
-  "status": "string (published/delivered/failed)",
+  "status": "string (published/delivered/partially_delivered/failed)",
   "tenant_id": "string",
   "store_code": "string",
   "terminal_no": "integer",
@@ -164,8 +165,9 @@
   "services": [
     {
       "service_name": "string",
-      "delivered": "boolean",
-      "delivered_at": "datetime"
+      "received_at": "datetime (optional)",
+      "status": "string (pending/received/failed)",
+      "message": "string (optional, エラーメッセージ等)"
     }
   ],
   "last_updated_at": "datetime",
@@ -173,6 +175,12 @@
   "updated_at": "datetime"
 }
 ```
+
+**フィールド説明:**
+- `status`: 全体の配信状態（published → delivered/partially_delivered/failed）
+- `services[].status`: 各サービスへの配信状態（pending → received/failed）
+- `services[].received_at`: サービスがメッセージを受信した日時
+- `services[].message`: エラー発生時のメッセージ
 
 ## インデックス定義
 

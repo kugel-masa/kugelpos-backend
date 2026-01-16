@@ -13,64 +13,56 @@
 
 | コレクション名 | 用途 | 主なデータ |
 |---------------|------|------------|
-| stock | 現在在庫レベル | 商品別の在庫数量と発注情報 |
-| stock_update | 在庫更新履歴 | すべての在庫変更の監査証跡 |
-| stock_snapshot | 在庫スナップショット | 特定時点の在庫状態 |
-| snapshot_schedule | スナップショットスケジュール | 自動スナップショット設定 |
+| stocks | 現在在庫レベル | 商品別の在庫数量と発注情報 |
+| stock_updates | 在庫更新履歴 | すべての在庫変更の監査証跡 |
+| stock_snapshots | 在庫スナップショット | 特定時点の在庫状態 |
+| snapshot_schedules | スナップショットスケジュール | 自動スナップショット設定 |
 
 ## 詳細スキーマ定義
 
-### 1. stock コレクション
+### 1. stocks コレクション
 
 現在の在庫レベルと発注管理情報を保存するコレクション。
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "item_code": "string",
-  "current_quantity": "decimal",
-  "minimum_quantity": "decimal",
-  "reorder_point": "decimal",
-  "reorder_quantity": "decimal",
-  "last_transaction_id": "string",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
+**継承:** `AbstractDocument`
 
-**フィールド説明:**
-- `current_quantity`: 現在の在庫数量（マイナス可）
-- `minimum_quantity`: 最小在庫アラート閾値
-- `reorder_point`: 発注点アラート閾値
-- `reorder_quantity`: 推奨発注数量
-- `last_transaction_id`: 最後に在庫を変更した取引ID
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|------|----------|-------------|
+| tenant_id | string | ✓ | テナント識別子 |
+| store_code | string | ✓ | 店舗コード |
+| item_code | string | ✓ | 商品コード |
+| current_quantity | float | - | 現在の在庫数量（デフォルト: 0.0、マイナス可） |
+| minimum_quantity | float | - | 最小在庫アラート閾値（デフォルト: 0.0） |
+| reorder_point | float | - | 発注点アラート閾値（デフォルト: 0.0） |
+| reorder_quantity | float | - | 推奨発注数量（デフォルト: 0.0） |
+| last_transaction_id | string | - | 最後に在庫を変更した取引ID |
 
-### 2. stock_update コレクション
+**インデックス:**
+- ユニーク複合: (tenant_id, store_code, item_code)
+- 複合: (tenant_id, store_code, minimum_quantity)
+- 複合: (tenant_id, store_code, reorder_point)
+
+### 2. stock_updates コレクション
 
 在庫更新の完全な履歴を保存するコレクション。
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "item_code": "string",
-  "update_type": "string (SALE/RETURN/VOID/VOID_RETURN/PURCHASE/ADJUSTMENT/INITIAL/DAMAGE/TRANSFER_IN/TRANSFER_OUT)",
-  "quantity_change": "decimal",
-  "before_quantity": "decimal",
-  "after_quantity": "decimal",
-  "reference_id": "string",
-  "operator_id": "string",
-  "note": "string",
-  "timestamp": "datetime",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
+**継承:** `AbstractDocument`
 
-**更新タイプ説明:**
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|------|----------|-------------|
+| tenant_id | string | ✓ | テナント識別子 |
+| store_code | string | ✓ | 店舗コード |
+| item_code | string | ✓ | 商品コード |
+| update_type | UpdateType | ✓ | 更新タイプ |
+| quantity_change | float | ✓ | 数量変更（増加:正、減少:負） |
+| before_quantity | float | ✓ | 更新前の在庫数量 |
+| after_quantity | float | ✓ | 更新後の在庫数量 |
+| reference_id | string | - | 参照ID（取引ID、調整ID等） |
+| timestamp | datetime | ✓ | 更新日時 |
+| operator_id | string | - | 操作実行者ID |
+| note | string | - | 追加メモ |
+
+**UpdateType列挙値:**
 - `SALE`: 販売による減少
 - `RETURN`: 返品による増加
 - `VOID`: 販売取消による増加
@@ -82,84 +74,66 @@
 - `TRANSFER_IN`: 他店舗からの移動入庫
 - `TRANSFER_OUT`: 他店舗への移動出庫
 
-### 3. stock_snapshot コレクション
+**インデックス:**
+- 複合: (tenant_id, store_code, item_code, timestamp DESC)
+- update_type
+- timestamp DESC
+- reference_id
+
+### 3. stock_snapshots コレクション
 
 特定時点の在庫状態を保存するコレクション。
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "total_items": "integer",
-  "total_quantity": "decimal",
-  "stocks": [
-    {
-      "item_code": "string",
-      "quantity": "decimal",
-      "minimum_quantity": "decimal",
-      "reorder_point": "decimal",
-      "reorder_quantity": "decimal"
-    }
-  ],
-  "created_by": "string",
-  "generate_date_time": "string (ISO 8601)",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
+**継承:** `AbstractDocument`
 
-### 4. snapshot_schedule コレクション
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|------|----------|-------------|
+| tenant_id | string | ✓ | テナント識別子 |
+| store_code | string | ✓ | 店舗コード |
+| total_items | integer | ✓ | 商品アイテム数 |
+| total_quantity | float | ✓ | 総在庫数量 |
+| stocks | array[StockSnapshotItem] | - | 商品別在庫詳細リスト |
+| created_by | string | ✓ | 作成者（ユーザーまたはシステム） |
+| generate_date_time | string | - | 生成日時（ISO 8601形式） |
 
-自動スナップショットのスケジュール設定を保存するコレクション。
+**StockSnapshotItemサブドキュメント:**
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "daily": {
-    "enabled": "boolean",
-    "time": "string (HH:mm)",
-    "timezone": "string"
-  },
-  "weekly": {
-    "enabled": "boolean",
-    "day_of_week": "integer (0-6)",
-    "time": "string (HH:mm)",
-    "timezone": "string"
-  },
-  "monthly": {
-    "enabled": "boolean",
-    "day_of_month": "integer (1-31)",
-    "time": "string (HH:mm)",
-    "timezone": "string"
-  },
-  "retention_days": "integer",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
-```
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|------|----------|-------------|
+| item_code | string | ✓ | 商品コード |
+| quantity | float | ✓ | 在庫数量 |
+| minimum_quantity | float | - | 最小在庫閾値 |
+| reorder_point | float | - | 発注点閾値 |
+| reorder_quantity | float | - | 推奨発注数量 |
 
-## インデックス定義
+**インデックス:**
+- 複合: (tenant_id, store_code, created_at DESC)
+- 複合: (tenant_id, store_code, generate_date_time DESC)
 
-### stock
-- ユニーク複合インデックス: `tenant_id + store_code + item_code`
-- 複合インデックス: `tenant_id + store_code + minimum_quantity`
-- 複合インデックス: `tenant_id + store_code + reorder_point`
+### 4. snapshot_schedules コレクション
 
-### stock_update
-- 複合インデックス: `tenant_id + store_code + item_code + timestamp`
-- 複合インデックス: `tenant_id + reference_id`
-- 単一インデックス: `update_type`
-- 単一インデックス: `timestamp`
+自動スナップショットのスケジュール設定を保存するコレクション。テナント単位で1つのスケジュールを管理。
 
-### stock_snapshot
-- 複合インデックス: `tenant_id + store_code + created_at`
-- 複合インデックス: `tenant_id + store_code + generate_date_time`
-- TTLインデックス: `created_at` (retention_daysに基づく自動削除)
+**継承:** `AbstractDocument`
 
-### snapshot_schedule
-- ユニークインデックス: `tenant_id`
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|------|----------|-------------|
+| tenant_id | string | ✓ | テナント識別子 |
+| enabled | boolean | - | スケジュール有効フラグ（デフォルト: true） |
+| schedule_interval | string | ✓ | スケジュール間隔（"daily"/"weekly"/"monthly"） |
+| schedule_hour | integer | ✓ | 実行時間（0-23） |
+| schedule_minute | integer | - | 実行分（0-59、デフォルト: 0） |
+| schedule_day_of_week | integer | - | 曜日（0-6、0=月曜日、weeklyの場合） |
+| schedule_day_of_month | integer | - | 日（1-31、monthlyの場合） |
+| retention_days | integer | - | 保持日数（デフォルト: 30） |
+| target_stores | array[string] | - | 対象店舗リスト（デフォルト: ["all"]） |
+| last_executed_at | datetime | - | 最終実行日時 |
+| next_execution_at | datetime | - | 次回実行予定日時 |
+| created_by | string | - | 作成者（デフォルト: "system"） |
+| updated_by | string | - | 更新者（デフォルト: "system"） |
+
+**インデックス:**
+- ユニーク: tenant_id
 
 ## データフロー
 
@@ -188,9 +162,11 @@
    - 全在庫の現在状態を記録
 
 2. **自動スナップショット**
-   - スケジューラーによる定期実行
-   - 日次/週次/月次の設定可能
-   - 保持期間による自動削除
+   - APSchedulerによる定期実行
+   - テナント単位で1つのスケジュール設定
+   - schedule_intervalで日次/週次/月次を選択
+   - target_storesで対象店舗を指定可能
+   - retention_daysによる自動削除
 
 ## WebSocketリアルタイム通知
 
@@ -246,27 +222,46 @@
 - 動的なスケジュール更新
 - 分散環境での重複実行防止
 
-### スケジュール設定
+### スケジュール設定例
+
+**日次スナップショット:**
 ```python
 {
-  "daily": {
-    "enabled": True,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "weekly": {
-    "enabled": False,
-    "day_of_week": 0,  # 0=月曜日
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "monthly": {
-    "enabled": True,
-    "day_of_month": 1,
-    "time": "02:00",
-    "timezone": "Asia/Tokyo"
-  },
-  "retention_days": 90
+  "tenant_id": "tenant001",
+  "enabled": True,
+  "schedule_interval": "daily",
+  "schedule_hour": 2,
+  "schedule_minute": 0,
+  "retention_days": 30,
+  "target_stores": ["all"]
+}
+```
+
+**週次スナップショット（月曜日）:**
+```python
+{
+  "tenant_id": "tenant001",
+  "enabled": True,
+  "schedule_interval": "weekly",
+  "schedule_hour": 2,
+  "schedule_minute": 0,
+  "schedule_day_of_week": 0,  # 0=月曜日
+  "retention_days": 90,
+  "target_stores": ["STORE001", "STORE002"]
+}
+```
+
+**月次スナップショット（1日）:**
+```python
+{
+  "tenant_id": "tenant001",
+  "enabled": True,
+  "schedule_interval": "monthly",
+  "schedule_hour": 2,
+  "schedule_minute": 0,
+  "schedule_day_of_month": 1,
+  "retention_days": 365,
+  "target_stores": ["all"]
 }
 ```
 

@@ -1,29 +1,31 @@
-# ターミナルサービス API仕様
+# ターミナルサービス API仕様書
 
 ## 概要
 
-ターミナルサービスは、Kugelpos POSシステムのテナント管理、店舗管理、端末管理機能を提供します。端末のライフサイクル管理、現金入出金操作、スタッフ管理、および店舗運営に必要な基本機能を実装しています。
+テナント管理、店舗管理、端末管理機能を提供するサービスです。端末のライフサイクル管理、現金入出金操作、スタッフ管理を行います。
+
+## サービス情報
+
+- **ポート**: 8001
+- **フレームワーク**: FastAPI
+- **データベース**: MongoDB (Motor async driver)
 
 ## ベースURL
+
 - ローカル環境: `http://localhost:8001`
 - 本番環境: `https://terminal.{domain}`
 
 ## 認証
 
-ターミナルサービスは2つの認証方法をサポートしています：
+以下の認証方法をサポートしています：
 
-### 1. JWTトークン（Bearerトークン）
-- ヘッダー: `Authorization: Bearer {token}`
-- 用途: 管理者によるテナント・店舗・端末管理操作
-
-### 2. 端末ID + APIキー認証
+### APIキー認証
 - ヘッダー: `X-API-Key: {api_key}`
-- クエリパラメータ: `terminal_id={tenant_id}-{store_code}-{terminal_no}`
-- 用途: 端末による操作（サインイン、開店、現金管理等）
+- 用途: 端末からのAPI呼び出し
 
-## フィールド形式
-
-すべてのAPIリクエスト/レスポンスは**camelCase**形式を使用します。
+### JWTトークン認証
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるシステム操作
 
 ## 共通レスポンス形式
 
@@ -32,487 +34,1662 @@
   "success": true,
   "code": 200,
   "message": "操作が正常に完了しました",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## 端末状態
-
-| 状態 | 説明 |
-|------|------|
-| idle | 初期状態、営業開始前 |
-| opened | 営業中（開店済み） |
-| closed | 営業終了（閉店済み） |
-
-## ファンクションモード
-
-| モード | 説明 |
-|--------|------|
-| MainMenu | メインメニュー |
-| OpenTerminal | 端末開店 |
-| Sales | 販売処理 |
-| Returns | 返品処理 |
-| Void | 取消処理 |
-| Reports | レポート表示 |
-| CloseTerminal | 端末閉店 |
-| Journal | ジャーナル表示 |
-| Maintenance | メンテナンス |
-| CashInOut | 現金入出金 |
 
 ## APIエンドポイント
 
-### テナント管理
+### システム
 
-#### 1. テナント作成
-**POST** `/api/v1/tenants`
+### 1. ルートエンドポイント
 
-新規テナントを作成し、各サービスを初期化します。
+**GET** `/`
 
-**認証:** JWTトークンが必要
+ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。
 
-**リクエストボディ:**
-```json
-{
-  "tenantId": "tenant001",
-  "tenantName": "株式会社サンプル"
-}
-```
+**レスポンス:**
 
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Tenant created successfully",
-  "data": {
-    "tenantId": "tenant001",
-    "tenantName": "株式会社サンプル",
-    "createdAt": "2024-01-01T10:00:00Z"
-  },
-  "operation": "create_tenant"
-}
-```
+### 2. ヘルスチェック
 
-#### 2. テナント情報取得
-**GET** `/api/v1/tenants/{tenant_id}`
-
-テナントの詳細情報を取得します。
-
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-
-#### 3. テナント更新
-**PUT** `/api/v1/tenants/{tenant_id}`
-
-テナント情報を更新します。
-
-**リクエストボディ:**
-```json
-{
-  "tenantName": "株式会社サンプル（更新）"
-}
-```
-
-#### 4. テナント削除
-**DELETE** `/api/v1/tenants/{tenant_id}`
-
-テナントと関連データを削除します。
-
-### 店舗管理
-
-#### 5. 店舗追加
-**POST** `/api/v1/tenants/{tenant_id}/stores`
-
-テナントに新規店舗を追加します。
-
-**リクエストボディ:**
-```json
-{
-  "storeCode": "STORE001",
-  "storeName": "本店"
-}
-```
-
-#### 6. 店舗一覧取得
-**GET** `/api/v1/tenants/{tenant_id}/stores`
-
-テナントの店舗一覧を取得します。
-
-**クエリパラメータ:**
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100): ページサイズ
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Stores retrieved successfully",
-  "data": {
-    "stores": [
-      {
-        "storeCode": "STORE001",
-        "storeName": "本店",
-        "status": "active",
-        "businessDate": "2024-01-01",
-        "createdAt": "2024-01-01T10:00:00Z"
-      }
-    ],
-    "total": 1,
-    "page": 1,
-    "limit": 100
-  },
-  "operation": "list_stores"
-}
-```
-
-#### 7. 店舗情報取得
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-特定店舗の詳細情報を取得します。
-
-#### 8. 店舗更新
-**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-店舗情報を更新します。
-
-**リクエストボディ:**
-```json
-{
-  "storeName": "本店（更新）",
-  "status": "active",
-  "businessDate": "2024-01-02"
-}
-```
-
-#### 9. 店舗削除
-**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
-
-店舗を削除します。
-
-### 端末管理
-
-#### 10. 端末作成
-**POST** `/api/v1/terminals`
-
-新規端末を作成します。
-
-**認証:** JWTトークンが必要
-
-**リクエストボディ:**
-```json
-{
-  "storeCode": "STORE001",
-  "terminalNo": 1,
-  "description": "レジ1号機"
-}
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Terminal created successfully",
-  "data": {
-    "terminalId": "tenant001-STORE001-1",
-    "tenantId": "tenant001",
-    "storeCode": "STORE001",
-    "terminalNo": 1,
-    "description": "レジ1号機",
-    "status": "idle",
-    "apiKey": "sk_live_1234567890abcdef",
-    "createdAt": "2024-01-01T10:00:00Z"
-  },
-  "operation": "create_terminal"
-}
-```
-
-#### 11. 端末一覧取得
-**GET** `/api/v1/terminals`
-
-端末一覧を取得します。
-
-**認証:** JWTトークンが必要
-
-**クエリパラメータ:**
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100): ページサイズ
-- `store_code` (string): 店舗コードでフィルタ
-- `status` (string): 状態でフィルタ
-
-#### 12. 端末情報取得
-**GET** `/api/v1/terminals/{terminal_id}`
-
-端末の詳細情報を取得します。
-
-**パスパラメータ:**
-- `terminal_id` (string, 必須): 端末ID（形式: tenant_id-store_code-terminal_no）
-
-#### 13. 端末削除
-**DELETE** `/api/v1/terminals/{terminal_id}`
-
-端末を削除します。
-
-**認証:** JWTトークンが必要
-
-#### 14. 端末説明更新
-**PATCH** `/api/v1/terminals/{terminal_id}/description`
-
-端末の説明を更新します。
-
-**リクエストボディ:**
-```json
-{
-  "description": "レジ1号機（メンテナンス済み）"
-}
-```
-
-#### 15. ファンクションモード更新
-**PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
-
-端末のファンクションモードを更新します。
-
-**リクエストボディ:**
-```json
-{
-  "functionMode": "Sales"
-}
-```
-
-### 端末操作
-
-#### 16. スタッフサインイン
-**POST** `/api/v1/terminals/{terminal_id}/sign-in`
-
-スタッフが端末にサインインします。
-
-**リクエストボディ:**
-```json
-{
-  "staffId": "STAFF001",
-  "staffName": "山田太郎"
-}
-```
-
-#### 17. スタッフサインアウト
-**POST** `/api/v1/terminals/{terminal_id}/sign-out`
-
-スタッフが端末からサインアウトします。
-
-**リクエストボディ:**
-```json
-{
-  "staffId": "STAFF001"
-}
-```
-
-#### 18. 端末開店
-**POST** `/api/v1/terminals/{terminal_id}/open`
-
-端末を開店状態にします。
-
-**リクエストボディ:**
-```json
-{
-  "staffId": "STAFF001",
-  "staffName": "山田太郎",
-  "cashAmount": 50000
-}
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Terminal opened successfully",
-  "data": {
-    "terminalId": "tenant001-STORE001-1",
-    "status": "opened",
-    "businessDate": "2024-01-01",
-    "openCounter": 1,
-    "openTime": "2024-01-01T09:00:00Z",
-    "receiptText": "=== 開店 ===\n...",
-    "journalText": "開店処理\n..."
-  },
-  "operation": "open_terminal"
-}
-```
-
-#### 19. 端末閉店
-**POST** `/api/v1/terminals/{terminal_id}/close`
-
-端末を閉店状態にします。
-
-**リクエストボディ:**
-```json
-{
-  "staffId": "STAFF001",
-  "staffName": "山田太郎",
-  "cashAmount": 125000
-}
-```
-
-### 現金管理
-
-#### 20. 現金入金
-**POST** `/api/v1/terminals/{terminal_id}/cash-in`
-
-現金を入金します。
-
-**リクエストボディ:**
-```json
-{
-  "amount": 10000,
-  "reason": "釣銭補充",
-  "staffId": "STAFF001",
-  "staffName": "山田太郎",
-  "comment": "午後の釣銭補充"
-}
-```
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Cash in completed successfully",
-  "data": {
-    "cashInOutId": "CI-20240101-001",
-    "amount": 10000,
-    "receiptText": "=== 現金入金 ===\n...",
-    "journalText": "現金入金処理\n..."
-  },
-  "operation": "cash_in"
-}
-```
-
-#### 21. 現金出金
-**POST** `/api/v1/terminals/{terminal_id}/cash-out`
-
-現金を出金します。
-
-**リクエストボディ:**
-```json
-{
-  "amount": 50000,
-  "reason": "売上金回収",
-  "staffId": "STAFF001",
-  "staffName": "山田太郎",
-  "comment": "中間回収"
-}
-```
-
-### システム管理
-
-#### 22. 配信ステータス更新
-**POST** `/api/v1/terminals/{terminal_id}/delivery-status`
-
-イベント配信ステータスを更新します（内部使用）。
-
-**リクエストボディ:**
-```json
-{
-  "eventId": "evt_123456",
-  "eventType": "cashlog",
-  "delivered": true
-}
-```
-
-### 23. ヘルスチェック
 **GET** `/health`
 
-サービスの健全性を確認します。
+ヘルスチェックエンドポイントです。サービスの稼働状態を監視します。
+
+**レスポンス:**
+
+**レスポンス例:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
+}
+```
+
+### テナント
+
+### 3. テナント作成
+
+**POST** `/api/v1/tenants`
+
+新しいテナントを作成します。必要なデータベースコレクションとインデックスをセットアップします。
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "tenantId": "string",
+  "tenantName": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Tenant`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "サービスは正常です",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## イベント通知（Dapr Pub/Sub）
+### 4. テナント取得
 
-### 現金入出金イベント
-**トピック:** `cashlog_report`
+**GET** `/api/v1/tenants/{tenant_id}`
 
-現金入出金時に発行されるイベント。
+テナント情報を取得します。テナントの設定を返します。
 
-### 開閉店イベント
-**トピック:** `opencloselog_report`
+**パスパラメータ:**
 
-端末の開閉店時に発行されるイベント。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Tenant`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. テナント更新
+
+**PUT** `/api/v1/tenants/{tenant_id}`
+
+Update Tenantを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "tenantName": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Tenant`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. テナント削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}`
+
+Delete Tenantを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `TenantDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 店舗
+
+### 7. 店舗一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores`
+
+店舗情報を取得します。店舗の詳細と設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[Store]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "storeCode": "string",
+      "storeName": "string",
+      "status": "string",
+      "businessDate": "string",
+      "tags": [
+        "string"
+      ],
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. 店舗追加
+
+**POST** `/api/v1/tenants/{tenant_id}/stores`
+
+店舗を追加します。テナントに新しい店舗を追加します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "storeCode": "string",
+  "storeName": "string",
+  "status": "string",
+  "businessDate": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Tenant`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `tenantName` | string | Yes | - |
+| `tags` | array[string] | Yes | - |
+| `stores` | array[BaseStore] | Yes | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "tenantName": "string",
+    "tags": [
+      "string"
+    ],
+    "stores": [
+      {
+        "storeCode": "string",
+        "storeName": "string",
+        "status": "string",
+        "businessDate": "string",
+        "tags": [
+          "string"
+        ],
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 9. 店舗取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+店舗情報を取得します。店舗の詳細と設定を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Store`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "storeCode": "string",
+    "storeName": "string",
+    "status": "string",
+    "businessDate": "string",
+    "tags": [
+      "string"
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. 店舗更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Update Storeを更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+
+**リクエスト例:**
+```json
+{
+  "storeName": "string",
+  "status": "string",
+  "businessDate": "string",
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Store`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `storeName` | string | Yes | - |
+| `status` | string | No | - |
+| `businessDate` | string | No | - |
+| `tags` | array[string] | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "storeCode": "string",
+    "storeName": "string",
+    "status": "string",
+    "businessDate": "string",
+    "tags": [
+      "string"
+    ],
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. 店舗削除
+
+**DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}`
+
+Delete Storeを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `StoreDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "storeCode": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 端末
+
+### 12. 端末一覧取得
+
+**GET** `/api/v1/terminals`
+
+端末情報を取得します。端末の詳細と現在の状態を返します。
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 100 | Limit the number of results |
+| `page` | integer | No | 1 | Page number |
+| `include_api_key` | boolean | No | False | Include unmasked API key in response |
+| `store_code` | string | No | - | Filter by store code |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[Terminal]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "terminalId": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "description": "string",
+      "functionMode": "string",
+      "status": "string",
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. 端末作成
+
+**POST** `/api/v1/terminals`
+
+新しい端末を作成します。店舗にPOS端末を登録します。
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "storeCode": "string",
+  "terminalNo": 0,
+  "description": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. 端末取得
+
+**GET** `/api/v1/terminals/{terminal_id}`
+
+端末情報を取得します。端末の詳細と現在の状態を返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `include_api_key` | boolean | No | False | Include unmasked API key in response |
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 15. 端末削除
+
+**DELETE** `/api/v1/terminals/{terminal_id}`
+
+Delete Terminalを削除します。対象をシステムから削除します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `TerminalDeleteResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 16. 現金入金
+
+**POST** `/api/v1/terminals/{terminal_id}/cash-in`
+
+現金を入金します。端末のドロワーへの入金を記録し、レシートを生成します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `amount` | number | Yes | - |
+| `description` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "amount": 0.0,
+  "description": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `CashInOutResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `amount` | number | Yes | - |
+| `description` | string | Yes | - |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "amount": 0.0,
+    "description": "string",
+    "receiptText": "string",
+    "journalText": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. 現金出金
+
+**POST** `/api/v1/terminals/{terminal_id}/cash-out`
+
+現金を出金します。端末のドロワーからの出金を記録し、レシートを生成します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `amount` | number | Yes | - |
+| `description` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "amount": 0.0,
+  "description": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `CashInOutResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `amount` | number | Yes | - |
+| `description` | string | Yes | - |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "amount": 0.0,
+    "description": "string",
+    "receiptText": "string",
+    "journalText": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 18. 端末閉店
+
+**POST** `/api/v1/terminals/{terminal_id}/close`
+
+端末を閉店します。その日の取引を確定し、閉店レポートを生成します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `include_api_key` | boolean | No | False | Include unmasked API key in response |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `physicalAmount` | number | No | - |
+
+**リクエスト例:**
+```json
+{
+  "physicalAmount": 0.0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `TerminalCloseResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `terminalInfo` | BaseTerminal | Yes | Base Terminal Information Model
+
+Represents termin |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+| `physicalAmount` | number | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0,
+    "initialAmount": 0.0,
+    "terminalInfo": {
+      "terminalId": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "description": "string",
+      "functionMode": "string",
+      "status": "string",
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0
+    },
+    "receiptText": "string",
+    "journalText": "string",
+    "physicalAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 19. 配信状態更新
+
+**POST** `/api/v1/terminals/{terminal_id}/delivery-status`
+
+配信状態を更新します。取引の配信追跡情報を更新します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `message` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "event_id": "string",
+  "service": "string",
+  "status": "string",
+  "message": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `DeliveryStatusUpdateResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `success` | boolean | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "event_id": "string",
+    "service": "string",
+    "status": "string",
+    "success": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 20. 端末説明更新
+
+**PATCH** `/api/v1/terminals/{terminal_id}/description`
+
+端末の説明を更新します。端末の表示名やメモを変更します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `description` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "description": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. 端末機能モード更新
+
+**PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
+
+端末の機能モードを更新します。操作モードを変更します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `functionMode` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "functionMode": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 22. 端末開店
+
+**POST** `/api/v1/terminals/{terminal_id}/open`
+
+端末を開店します。新しい営業日のために端末を初期化します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `include_api_key` | boolean | No | False | Include unmasked API key in response |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `initialAmount` | number | No | - |
+
+**リクエスト例:**
+```json
+{
+  "initialAmount": 0.0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `TerminalOpenResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `terminalInfo` | BaseTerminal | Yes | Base Terminal Information Model
+
+Represents termin |
+| `receiptText` | string | Yes | - |
+| `journalText` | string | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0,
+    "initialAmount": 0.0,
+    "terminalInfo": {
+      "terminalId": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "description": "string",
+      "functionMode": "string",
+      "status": "string",
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0
+    },
+    "receiptText": "string",
+    "journalText": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 23. スタッフサインイン
+
+**POST** `/api/v1/terminals/{terminal_id}/sign-in`
+
+スタッフをサインインします。端末へのスタッフサインインを記録します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `staffId` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "staffId": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 24. スタッフサインアウト
+
+**POST** `/api/v1/terminals/{terminal_id}/sign-out`
+
+スタッフをサインアウトします。端末からのスタッフサインアウトを記録します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `description` | string | Yes | - |
+| `functionMode` | string | Yes | - |
+| `status` | string | Yes | - |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ## エラーコード
 
-ターミナルサービスは406XX-407XX範囲のエラーコードを使用します：
+エラーレスポンスは以下の形式で返されます：
 
-### 端末基本操作関連 (4060XX)
-- `406001`: 端末が見つかりません
-- `406002`: 端末が既に存在します
-- `406003`: 端末状態エラー
-- `406004`: サインイン/アウトエラー
-- `406005`: サインインが必要です
-- `406006`: 無効な認証情報
-- `406007`: 端末開店エラー
-- `406008`: 端末閉店エラー
-- `406009`: 端末は既に開店しています
-- `406010`: 端末は既に閉店しています
-- `406011`: 端末が他の処理を実行中です
-- `406012`: ファンクションモード変更エラー
-- `406013`: 端末にサインインしていません
-- `406014`: 既にサインインしています
-- `406015`: サインアウトされています
-
-### 現金処理関連 (4061XX)
-- `406101`: 現金入出金エラー
-- `406102`: 無効な金額
-- `406103`: キャッシュドロワーが閉じています
-- `406104`: 最大金額を超過しています
-- `406105`: 最小金額を下回っています
-- `406106`: 実在高と記録金額が一致しません
-
-### テナント関連 (4070XX)
-- `407001`: テナントが見つかりません
-- `407002`: テナントが既に存在します
-- `407003`: テナント更新エラー
-- `407004`: テナント削除エラー
-- `407005`: テナント設定エラー
-- `407006`: テナント作成エラー
-
-### 店舗関連 (4071XX)
-- `407101`: 店舗が見つかりません
-- `407102`: 店舗が既に存在します
-- `407103`: 店舗更新エラー
-- `407104`: 店舗削除エラー
-- `407105`: 店舗設定エラー
-- `407106`: 営業日エラー
-
-### 外部サービス関連 (4072XX)
-- `407201`: 外部サービス連携エラー
-- `407202`: マスターデータサービスエラー
-- `407203`: カートサービスエラー
-- `407204`: ジャーナルサービスエラー
-- `407205`: レポートサービスエラー
-
-### その他のエラー (4073XX)
-- `407301`: 内部処理エラー
-- `407399`: 想定外のエラー
-
-## 特記事項
-
-1. **端末ID形式**: `{tenant_id}-{store_code}-{terminal_no}`形式を使用
-2. **APIキー**: 端末作成時に自動生成され、ハッシュ化して保存
-3. **バックグラウンドジョブ**: 未配信メッセージの再送信を定期的に実行
-4. **マルチテナント**: データベースレベルでの完全分離
-5. **イベント駆動**: Dapr pub/subによる非同期イベント配信
-6. **サーキットブレーカー**: 外部サービス呼び出しの障害対応
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "エラーメッセージ",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

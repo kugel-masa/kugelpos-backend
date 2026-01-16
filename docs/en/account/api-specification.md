@@ -2,282 +2,253 @@
 
 ## Overview
 
-The Account service is a microservice that provides user authentication and JWT token management. It supports multi-tenancy, enabling independent user management for each tenant.
+Provides user authentication and JWT token management.
 
 ## Service Information
 
 - **Port**: 8000
 - **Framework**: FastAPI
-- **Authentication**: JWT (OAuth2PasswordBearer)
 - **Database**: MongoDB (Motor async driver)
-- **Password Encryption**: bcrypt
+
+## Base URL
+
+- Local Environment: `http://localhost:8000`
+- Production Environment: `https://account.{domain}`
+
+## Authentication
+
+The following authentication methods are supported:
+
+### API Key Authentication
+- Header: `X-API-Key: {api_key}`
+- Usage: API calls from terminals
+
+### JWT Token Authentication
+- Header: `Authorization: Bearer {token}`
+- Usage: System operations by administrators
+
+## Common Response Format
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "Operation completed successfully",
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
+}
+```
 
 ## API Endpoints
 
-### 1. Root Endpoint
+### System
 
-**Path**: `/`  
-**Method**: GET  
-**Authentication**: Not required  
-**Description**: Service health check endpoint
+### 1. Root
 
-**Response**:
-```json
-{
-  "message": "Welcome to Kugel-POS Auth API. supported version: v1"
-}
-```
+**GET** `/`
 
-**Implementation File**: app/main.py:75-82
+Root endpoint that returns a welcome message.
+Useful for health checks and API verification.
+
+**Response:**
 
 ### 2. Health Check
 
-**Path**: `/health`  
-**Method**: GET  
-**Authentication**: Not required  
-**Description**: Endpoint to check service health
+**GET** `/health`
 
-**Response Model**: `HealthCheckResponse`
+Health check endpoint for monitoring service health.
+
+**Response:**
+
+**Response Example:**
 ```json
 {
   "status": "healthy",
-  "service": "account",
-  "version": "1.0.0",
-  "checks": {
-    "mongodb": {
-      "status": "healthy",
-      "details": {}
-    }
-  }
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
 }
 ```
 
-**Implementation File**: app/main.py:84-112
+### Account
 
-### 3. Token Generation
+### 3. Register Super User
 
-**Path**: `/api/v1/accounts/token`  
-**Method**: POST  
-**Authentication**: Not required  
-**Description**: Authenticate user and issue JWT access token
+**POST** `/api/v1/accounts/register`
 
-**Request**: `OAuth2PasswordRequestForm`
-- `username`: string (required) - Username
-- `password`: string (required) - Password
-- `client_id`: string (required) - Used as tenant ID
+Register a new superuser and create a new tenant
 
-**Response Model**: `LoginResponse`
+This endpoint is used for initial setup of a tenant and its admin user
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `username` | string | Yes | - |
+| `password` | string | Yes | - |
+| `tenantId` | string | No | - |
+
+**Request Example:**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
+  "username": "string",
+  "password": "string",
+  "tenantId": "string"
 }
 ```
 
-**Error Responses**:
-- 400: Bad Request
-- 401: Unauthorized - Invalid credentials
-- 422: Unprocessable Entity
-- 500: Internal Server Error
+**Response:**
 
-**Implementation Details** (app/api/v1/account.py:46-101):
-- Authenticates using username, password, and tenant ID
-- Updates last login time on successful authentication
-- JWT token includes username, tenant_id, and is_superuser
-- Token expiration is set via `TOKEN_EXPIRE_MINUTES` environment variable
+**data Field:** `UserAccountInDB`
 
-### 4. Super User Registration (Tenant Creation)
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `username` | string | Yes | - |
+| `password` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `hashedPassword` | string | Yes | - |
+| `isSuperuser` | boolean | No | - |
+| `isActive` | boolean | No | - |
+| `createdAt` | string | Yes | - |
+| `updatedAt` | string | No | - |
+| `lastLogin` | string | No | - |
 
-**Path**: `/api/v1/accounts/register`  
-**Method**: POST  
-**Authentication**: Not required  
-**Description**: Create new tenant and super user
-
-**Request Model**: `UserAccount`
-```json
-{
-  "username": "admin",
-  "password": "secure_password123",
-  "tenantId": "A1234"  // Optional - auto-generated if not specified
-}
-```
-
-**Response Model**: `ApiResponse[UserAccountInDB]`
+**Response Example:**
 ```json
 {
   "success": true,
-  "code": 201,
-  "message": "User registration successful",
-  "data": {
-    "username": "admin",
-    "password": "*****",
-    "hashedPassword": "$2b$12$...",
-    "tenantId": "A1234",
-    "isSuperuser": true,
-    "isActive": true,
-    "createdAt": "2025-01-05T10:30:00",
-    "updatedAt": null,
-    "lastLogin": null
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "register_super_user"
-}
-```
-
-**Error Responses**:
-- 400: Bad Request
-- 401: Unauthorized
-- 422: Unprocessable Entity
-- 500: Internal Server Error
-
-**Implementation Details** (app/api/v1/account.py:105-166):
-- Tenant ID can be auto-generated or specified (format: 1 uppercase letter + 4 digits)
-- Creates database for new tenant
-- Created user automatically has super user privileges
-- Sends Slack notification (if configured)
-
-### 5. Regular User Registration
-
-**Path**: `/api/v1/accounts/register/user`  
-**Method**: POST  
-**Authentication**: Required (Super users only)  
-**Description**: Create regular user within the same tenant
-
-**Request Headers**:
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-**Request Model**: `UserAccount`
-```json
-{
-  "username": "user01",
-  "password": "user_password123"
-}
-```
-
-**Response Model**: `ApiResponse[UserAccountInDB]`
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "User registration successful",
   "data": {
-    "username": "user01",
-    "password": "*****",
-    "hashedPassword": "$2b$12$...",
-    "tenantId": "A1234",
+    "username": "string",
+    "password": "string",
+    "tenantId": "string",
+    "hashedPassword": "string",
     "isSuperuser": false,
     "isActive": true,
-    "createdAt": "2025-01-05T11:00:00",
-    "updatedAt": null,
-    "lastLogin": null
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z",
+    "lastLogin": "2025-01-01T00:00:00Z"
   },
-  "operation": "register_user_by_superuser"
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-**Error Responses**:
-- 400: Bad Request
-- 401: Unauthorized - No super user privileges
-- 422: Unprocessable Entity
-- 500: Internal Server Error
+### 4. Register User By Superuser
 
-**Implementation Details** (app/api/v1/account.py:170-234):
-- Verifies current user is a super user
-- New user is created in the same tenant as current user
-- Created user has regular privileges (is_superuser = false)
+**POST** `/api/v1/accounts/register/user`
 
-## Data Models
+Register a new regular user in the tenant by a superuser
 
-### UserAccount (For Requests)
-**Implementation File**: app/api/v1/schemas.py:17-26
-- `username`: string - Username
-- `password`: string - Password (plain text)
-- `tenantId`: string (optional) - Tenant ID
+This endpoint is protected and can only be called by authenticated superusers
 
-### UserAccountInDB (For Database Storage)
-**Implementation File**: app/api/v1/schemas.py:29-38
-- `username`: string - Username
-- `password`: string - Masked display ("*****")
-- `hashedPassword`: string - bcrypt hashed password
-- `tenantId`: string - Tenant ID
-- `isSuperuser`: boolean - Super user flag
-- `isActive`: boolean - Account active flag
-- `createdAt`: datetime - Creation date/time
-- `updatedAt`: datetime (optional) - Update date/time
-- `lastLogin`: datetime (optional) - Last login date/time
+**Request Body:**
 
-### LoginResponse
-**Implementation File**: app/api/v1/schemas.py:41-49
-- `access_token`: string - JWT access token
-- `token_type`: string - Token type ("bearer")
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `username` | string | Yes | - |
+| `password` | string | Yes | - |
+| `tenantId` | string | No | - |
 
-## Authentication & Authorization
-
-### JWT Token Structure
+**Request Example:**
 ```json
 {
-  "sub": "username",
-  "tenant_id": "A1234",
-  "is_superuser": true,
-  "exp": 1704456000
+  "username": "string",
+  "password": "string",
+  "tenantId": "string"
 }
 ```
 
-### Environment Variables
-**Implementation File**: app/config/settings.py
-- `SECRET_KEY`: Secret key for JWT signing
-- `ALGORITHM`: JWT algorithm (default: "HS256")
-- `TOKEN_EXPIRE_MINUTES`: Token expiration time (minutes)
-- `MONGODB_URI`: MongoDB connection string (default: "mongodb://localhost:27017/?replicaSet=rs0")
-- `DB_NAME_PREFIX`: Database name prefix (default: "db_account")
+**Response:**
 
-### Authentication Flow
-1. Client sends username, password, and tenant ID to `/api/v1/accounts/token`
-2. Server validates credentials (app/dependencies/auth.py:106-127)
-3. On successful authentication, returns JWT token (app/dependencies/auth.py:71-89)
-4. Client uses `Authorization: Bearer <token>` header for subsequent requests
+**data Field:** `UserAccountInDB`
 
-### Authentication Dependencies
-**Implementation File**: app/dependencies/auth.py
-- `get_current_user` (lines 153-187): Get current user info from JWT token
-- `authenticate_user` (lines 106-127): User authentication
-- `authenticate_superuser` (lines 130-150): Super user authentication
-- `generate_tenant_id` (lines 190-231): Generate/validate tenant ID
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `username` | string | Yes | - |
+| `password` | string | Yes | - |
+| `tenantId` | string | Yes | - |
+| `hashedPassword` | string | Yes | - |
+| `isSuperuser` | boolean | No | - |
+| `isActive` | boolean | No | - |
+| `createdAt` | string | Yes | - |
+| `updatedAt` | string | No | - |
+| `lastLogin` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "username": "string",
+    "password": "string",
+    "tenantId": "string",
+    "hashedPassword": "string",
+    "isSuperuser": false,
+    "isActive": true,
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z",
+    "lastLogin": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Login For Access Token
+
+**POST** `/api/v1/accounts/token`
+
+Authenticate user and provide a JWT access token
+
+The client_id field in the form is used as the tenant_id for multi-tenant support
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "access_token": "string",
+  "token_type": "string"
+}
+```
 
 ## Error Codes
 
-Account service uses the following error code system:
-- **10XXYY**: Account service specific errors
-  - XX: Feature identifier
-  - YY: Specific error number
+Error responses are returned in the following format:
 
-## Middleware
-
-**Implementation File**: app/main.py
-1. **CORS** (lines 60-66): Allow access from all origins
-2. **Request Logging** (line 69): Log all HTTP requests
-3. **Exception Handler** (line 72): Unified error response format
-
-## Database
-
-### Collections
-**Implementation File**: app/database/database_setup.py
-- `user_accounts`: User account information
-  - Index: `{tenant_id: 1, username: 1}` (unique)
-- `request_log`: Request logs
-  - Index: `{tenant_id: 1, store_code: 1, terminal_no: 1, request_info.accept_time: 1}` (unique)
-
-### Multi-tenant Support
-- Database name: `db_account_{tenant_id}`
-- Each tenant has an independent database
-- Tenant ID generation logic: app/dependencies/auth.py:190-231
-
-## Notes
-
-1. Passwords are hashed with bcrypt before storage (app/dependencies/auth.py:58-68)
-2. Tenant ID format: 1 uppercase letter + 4 digits (e.g., A1234)
-3. Only super users can create new users
-4. JWT tokens use Bearer authentication
-5. Last login time is automatically updated (app/api/v1/account.py:90-99)
-6. All API responses use camelCase format (app/api/common/schemas.py:29)
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

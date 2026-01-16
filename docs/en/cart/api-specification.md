@@ -2,539 +2,1891 @@
 
 ## Overview
 
-The Cart service is a microservice that manages shopping carts and transaction processing. It provides cart state management using state machine patterns, product operations, payment processing, and pluggable extension features.
+Manages shopping cart and transaction processing. Provides cart state management using state machine pattern.
 
 ## Service Information
 
 - **Port**: 8003
 - **Framework**: FastAPI
-- **Authentication**: API Key Authentication
 - **Database**: MongoDB (Motor async driver)
-- **State Management**: State Machine Pattern
-- **Plugin System**: Payment, sales promotion, and receipt data plugins
 
-## API Endpoints
+## Base URL
 
-### 1. Root Endpoint
+- Local Environment: `http://localhost:8003`
+- Production Environment: `https://cart.{domain}`
 
-**Path**: `/`  
-**Method**: GET  
-**Authentication**: Not required  
-**Description**: Service health check endpoint
+## Authentication
 
-**Response**:
-```json
-{
-  "message": "Welcome to Kugel-POS Cart API. supported version: v1"
-}
-```
+The following authentication methods are supported:
 
-**Implementation File**: app/main.py:68-76
+### API Key Authentication
+- Header: `X-API-Key: {api_key}`
+- Usage: API calls from terminals
 
-### 2. Health Check
+### JWT Token Authentication
+- Header: `Authorization: Bearer {token}`
+- Usage: System operations by administrators
 
-**Path**: `/health`  
-**Method**: GET  
-**Authentication**: Not required  
-**Description**: Check service health and dependency status
+## Common Response Format
 
-**Response Model**: `HealthCheckResponse`
-```json
-{
-  "status": "healthy",
-  "service": "cart",
-  "version": "1.0.0",
-  "checks": {
-    "mongodb": {
-      "status": "healthy",
-      "details": {}
-    },
-    "dapr_sidecar": {
-      "status": "healthy",
-      "details": {}
-    },
-    "dapr_cartstore": {
-      "status": "healthy",
-      "details": {}
-    },
-    "dapr_pubsub_tranlog": {
-      "status": "healthy",
-      "details": {}
-    },
-    "background_jobs": {
-      "status": "healthy",
-      "details": {
-        "scheduler_running": true,
-        "job_count": 1,
-        "job_names": ["republish_undelivered_tranlog"]
-      }
-    }
-  }
-}
-```
-
-**Implementation File**: app/main.py:79-137
-
-## Cart API (/api/v1/carts)
-
-### 3. Create Cart
-
-**Path**: `/api/v1/carts`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Create a new shopping cart
-
-**Request Model**: `CartCreateRequest`
-```json
-{
-  "transactionType": "standard",
-  "userId": "STF001",
-  "userName": "山田太郎"
-}
-```
-
-**Response Model**: `ApiResponse[CartCreateResponse]`
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Cart Created. cart_id: cart_20250105_001",
-  "data": {
-    "cartId": "cart_20250105_001"
-  },
-  "operation": "create_cart"
-}
-```
-
-**Error Responses**:
-- 400: Bad Request
-- 401: Unauthorized
-- 403: Forbidden
-- 422: Unprocessable Entity
-- 500: Internal Server Error
-
-**Implementation Details** (app/api/v1/cart.py:32-82):
-- terminal_id is obtained through dependency injection
-- Initial state is "idle" when cart is created
-- User information is optional
-
-### 4. Get Cart
-
-**Path**: `/api/v1/carts/{cart_id}`  
-**Method**: GET  
-**Authentication**: Required (API Key)  
-**Description**: Get detailed cart information
-
-**Path Parameters**:
-- `cart_id`: string - Cart ID
-
-**Response Model**: `ApiResponse[Cart]`
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Cart found. cart_id: cart_20250105_001",
+  "message": "Operation completed successfully",
   "data": {
-    "cartId": "cart_20250105_001",
-    "status": "entering_item",
-    "terminalId": "A1234-STORE01-1",
-    "lineItems": [...],
-    "subtotalAmount": 1000.0,
-    "taxAmount": 100.0,
-    "totalAmount": 1100.0,
-    "balanceAmount": 1100.0
+    "...": "..."
   },
-  "operation": "get_cart"
+  "operation": "operation_name"
 }
 ```
 
-**Implementation Details** (app/api/v1/cart.py:84-128):
-- Model conversion via SchemasTransformerV1
+## API Endpoints
 
-### 5. Cancel Cart
+### System
 
-**Path**: `/api/v1/carts/{cart_id}/cancel`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Transition cart to cancelled state
+### 1. Root
 
-**Implementation Details** (app/api/v1/cart.py:131-172):
-- Can be cancelled from any state
-- No operations allowed after cancellation
+**GET** `/`
 
-### 6. Add Items
+Root endpoint that returns a welcome message and API version information.
 
-**Path**: `/api/v1/carts/{cart_id}/lineItems`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Add items to cart
+**Response:**
 
-**Request Model**: `list[Item]`
-```json
-[
-  {
-    "itemCode": "4901234567890",
-    "quantity": 2.0,
-    "unitPrice": 100.0
-  }
-]
-```
+### 2. Health Check
 
-**Field Descriptions**:
-- `itemCode`: string - Item code (required)
-- `quantity`: number - Quantity (required)
-- `unitPrice`: number - Unit price (optional)
+**GET** `/health`
 
-**Implementation Details** (app/api/v1/cart.py:175-220):
-- Bulk addition of multiple items possible
-- Automatic transition from idle to entering_item state
+Health check endpoint for monitoring service health.
 
-### 7. Cancel Item
+**Response:**
 
-**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Cancel a specific item
-
-**Path Parameters**:
-- `cart_id`: string - Cart ID
-- `lineNo`: integer - Line number (starts from 1)
-
-**Implementation Details** (app/api/v1/cart.py:223-266):
-- Sets cancellation flag (no physical deletion)
-
-### 8. Update Unit Price
-
-**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`  
-**Method**: PATCH  
-**Authentication**: Required (API Key)  
-**Description**: Update item unit price
-
-**Request Model**: `ItemUnitPriceUpdateRequest`
+**Response Example:**
 ```json
 {
-  "unitPrice": 150.0
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
 }
 ```
 
-**Implementation Details** (app/api/v1/cart.py:269-315):
-- Automatic recalculation after price change
+### Tenant
 
-### 9. Update Quantity
+### 3. Create Tenant
 
-**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`  
-**Method**: PATCH  
-**Authentication**: Required (API Key)  
-**Description**: Update item quantity
+**POST** `/api/v1/tenants`
 
-**Request Model**: `ItemQuantityUpdateRequest`
+Create a new tenant with the specified tenant ID.
+
+This endpoint sets up the necessary database collections and indexes for a new tenant.
+The tenant ID in the request body must match the tenant ID extracted from the authentication token.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**Request Example:**
 ```json
 {
-  "quantity": 3.0
+  "tenantId": "string"
 }
 ```
 
-**Implementation Details** (app/api/v1/cart.py:318-364):
-- Automatic recalculation after quantity change
+**Response:**
 
-### 10. Add Item Discount
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-**Path**: `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Apply discount to specific item
+### Cart
 
-**Request Model**: `list[DiscountRequest]`
+### 4. Create Cart
+
+**POST** `/api/v1/carts`
+
+Create a new shopping cart.
+
+Initializes a new cart for the current terminal with optional user information
+and transaction type.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `transactionType` | integer | No | - |
+| `userId` | string | No | - |
+| `userName` | string | No | - |
+
+**Request Example:**
+```json
+{
+  "transactionType": 101,
+  "userId": "string",
+  "userName": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `CartCreateResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `cartId` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "cartId": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Get Cart
+
+**GET** `/api/v1/carts/{cart_id}`
+
+Retrieve a cart by its ID.
+
+Fetches the cart with the specified ID and returns its full details.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. Bill
+
+**POST** `/api/v1/carts/{cart_id}/bill`
+
+Finalize a cart into a billable transaction.
+
+Completes the cart processing, finalizing the transaction and preparing
+it for receipt generation and storage.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 7. Cancel Transaction
+
+**POST** `/api/v1/carts/{cart_id}/cancel`
+
+Cancel a transaction/cart.
+
+Marks the cart as cancelled, preventing further modifications or processing.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. Discount To Cart
+
+**POST** `/api/v1/carts/{cart_id}/discounts`
+
+Add discount to the entire cart.
+
+Applies one or more discounts at the cart level, affecting the total price.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+**Request Example:**
 ```json
 [
   {
-    "discountCode": "DISC10",
-    "discountAmount": 50.0,
-    "discountType": "amount"
+    "discountType": "string",
+    "discountValue": 0.0,
+    "discountDetail": "string"
   }
 ]
 ```
 
-**Implementation Details** (app/api/v1/cart.py:367-415):
-- Multiple discounts can be applied
+**Response:**
 
-### 11. Calculate Subtotal
+**data Field:** `Cart`
 
-**Path**: `/api/v1/carts/{cart_id}/subtotal`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Calculate cart subtotal and tax
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**Implementation Details** (app/api/v1/cart.py:418-459):
-- Subtotal calculation after item entry
-- Transition from entering_item to paying state
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-### 12. Add Cart Discount
+### 9. Add Items
 
-**Path**: `/api/v1/carts/{cart_id}/discounts`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Apply discount to entire cart
+**POST** `/api/v1/carts/{cart_id}/lineItems`
 
-**Request Model**: `list[DiscountRequest]`
+Add items to a cart.
 
-**Implementation Details** (app/api/v1/cart.py:462-508):
-- Apply cart-level discounts
+Adds one or more items to the specified cart.
 
-### 13. Add Payment
+**Path Parameters:**
 
-**Path**: `/api/v1/carts/{cart_id}/payments`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Add payment to cart
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
 
-**Request Model**: `list[PaymentRequest]`
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+**Request Example:**
 ```json
 [
   {
-    "paymentCode": "01",
-    "paymentAmount": 1100.0,
-    "paymentDetails": {
-      "tenderedAmount": 2000.0
-    }
+    "itemCode": "string",
+    "quantity": 0,
+    "unitPrice": 0.0
   }
 ]
 ```
 
-**Implementation Details** (app/api/v1/cart.py:511-556):
-- Multiple payment methods can be combined
-- Payment processing via plugin system
+**Response:**
 
-### 14. Bill Transaction
+**data Field:** `Cart`
 
-**Path**: `/api/v1/carts/{cart_id}/bill`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Complete cart and finalize transaction
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**Implementation Details** (app/api/v1/cart.py:559-601):
-- Transition from paying to completed state
-- Generate and publish transaction log
-- Generate receipt data
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 10. Cancel Line Item
+
+**POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`
+
+Cancel a specific line item in a cart.
+
+Marks the specified line item as cancelled without removing it from the cart.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. Add Discount To Line Item
+
+**POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`
+
+Add discount to a specific line item in a cart.
+
+Applies one or more discounts to the specified item in the cart.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+**Request Example:**
+```json
+[
+  {
+    "discountType": "string",
+    "discountValue": 0.0,
+    "discountDetail": "string"
+  }
+]
+```
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 12. Update Item Quantity
+
+**PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`
+
+Update the quantity of a cart line item.
+
+Changes the quantity of the specified item in the cart.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `quantity` | integer | Yes | - |
+
+**Request Example:**
+```json
+{
+  "quantity": 0
+}
+```
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. Update Item Unit Price
+
+**PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`
+
+Update the unit price of a cart line item.
+
+Changes the unit price of the specified item in the cart.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `lineNo` | integer | Yes | - |
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `unitPrice` | number | Yes | - |
+
+**Request Example:**
+```json
+{
+  "unitPrice": 0.0
+}
+```
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. Payments
+
+**POST** `/api/v1/carts/{cart_id}/payments`
+
+Add payments to a cart.
+
+Processes one or more payment methods against the cart.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+
+**Request Body:**
+
+**Request Example:**
+```json
+[
+  {
+    "paymentCode": "string",
+    "amount": 0,
+    "detail": "string"
+  }
+]
+```
+
+**Response:**
+
+**data Field:** `Cart`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ### 15. Resume Item Entry
 
-**Path**: `/api/v1/carts/{cart_id}/resume-item-entry`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Return from payment state to item entry state
+**POST** `/api/v1/carts/{cart_id}/resume-item-entry`
 
-**Implementation Details** (app/api/v1/cart.py:604-646):
-- Return from paying to entering_item state
-- Clear payment information
+Resume item entry from paying state.
 
-## Transaction API
+Transitions the cart from Paying state back to EnteringItem state,
+clearing any payment information and allowing additional items to be added.
 
-### 16. Get Transaction List
+**Path Parameters:**
 
-**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`  
-**Method**: GET  
-**Authentication**: Required (API Key)  
-**Description**: Get list of transactions matching criteria
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
 
-**Query Parameters**:
-- `business_date`: string (YYYYMMDD) - Business date
-- `open_counter`: integer - Open counter
-- `transaction_type`: list[integer] - Transaction types
-- `receipt_no`: integer - Receipt number
-- `limit`: integer (default: 100) - Number of records
-- `page`: integer (default: 1) - Page number
-- `sort`: string - Sort conditions (e.g., "transaction_no:-1")
-- `include_cancelled`: boolean (default: false) - Include cancelled transactions
+**Query Parameters:**
 
-**Implementation Details** (app/api/v1/tran.py:207-292)
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
 
-### 17. Get Transaction Details
+**Response:**
 
-**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`  
-**Method**: GET  
-**Authentication**: Required (API Key)  
-**Description**: Get detailed information for a specific transaction
+**data Field:** `Cart`
 
-**Implementation Details** (app/api/v1/tran.py:295-357)
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-### 18. Void Transaction
-
-**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Void a transaction
-
-**Request Model**: `list[PaymentRequest]` - Payment methods for refund
-
-**Implementation Details** (app/api/v1/tran.py:360-438):
-- Can only be voided from the same terminal
-- Requires payment processing for refund
-
-### 19. Return Transaction
-
-**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Process transaction return
-
-**Request Model**: `list[PaymentRequest]` - Payment methods for refund
-
-**Implementation Details** (app/api/v1/tran.py:441-516):
-- Can only be returned from within the same store
-- Creates new transaction for return
-
-### 20. Update Delivery Status
-
-**Path**: `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`  
-**Method**: POST  
-**Authentication**: Required (JWT or internal authentication)  
-**Description**: Update delivery status of transaction log
-
-**Request Model**: `DeliveryStatusUpdateRequest`
+**Response Example:**
 ```json
 {
-  "eventId": "evt_123456",
-  "service": "journal",
-  "status": "delivered",
-  "message": "Successfully processed"
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-**Implementation Details** (app/api/v1/tran.py:520-594):
-- Endpoint for Pub/Sub notifications
-- Used for inter-service communication
+### 16. Subtotal
 
-## Tenant API
+**POST** `/api/v1/carts/{cart_id}/subtotal`
 
-### 21. Create Tenant
+Calculate the subtotal for a cart.
 
-**Path**: `/api/v1/tenants`  
-**Method**: POST  
-**Authentication**: Required (API Key)  
-**Description**: Set up database for new tenant
+Updates the cart with calculated subtotals and tax information.
 
-**Implementation File**: app/api/v1/tenant.py
+**Path Parameters:**
 
-## Cache API
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `cart_id` | string | Yes | - |
 
-### 22. Update Terminal Status
+**Query Parameters:**
 
-**Path**: `/api/v1/cache/terminal/status`  
-**Method**: PUT  
-**Authentication**: Required (API Key)  
-**Description**: Update terminal cache status
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
 
-**Implementation File**: app/api/v1/cache.py
+**Response:**
 
-### 23. Clear Terminal Cache
+**data Field:** `Cart`
 
-**Path**: `/api/v1/cache/terminal`  
-**Method**: DELETE  
-**Authentication**: Required (API Key)  
-**Description**: Clear terminal cache
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+| `cartId` | string | Yes | - |
+| `cartStatus` | string | Yes | - |
+| `subtotalAmount` | number | Yes | - |
+| `balanceAmount` | number | Yes | - |
 
-**Implementation File**: app/api/v1/cache.py
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-## State Machine
+### Transaction
 
-### Cart State Transitions
+### 17. Get Transactions By Query
 
-**Implementation Directory**: app/services/states/
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
-1. **InitialState** → **IdleState**
-   - Initial transition when cart is created
+Get transactions based on query parameters.
 
-2. **IdleState** → **EnteringItemState**
-   - When first item is added
+Retrieves a paginated list of transactions matching the specified filters.
+The tenant ID in the path must match the tenant ID from the authentication token.
 
-3. **EnteringItemState** → **PayingState**
-   - When subtotal calculation is executed
+**Path Parameters:**
 
-4. **PayingState** → **CompletedState**
-   - When billing process is completed
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
 
-5. **PayingState** → **EnteringItemState**
-   - When item entry is resumed
+**Query Parameters:**
 
-6. **Any State** → **CancelledState**
-   - When cancellation is processed
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `business_date` | string | No | - | - |
+| `open_counter` | integer | No | - | - |
+| `transaction_type` | array | No | - | - |
+| `receipt_no` | integer | No | - | - |
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `include_cancelled` | boolean | No | False | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
 
-## Plugin System
+**Response:**
 
-### Payment Plugins
+**data Field:** `array[Tran]`
 
-**Implementation Directory**: app/services/strategies/payments/
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
 
-- **PaymentByCash** (ID: "01"): Cash payment
-- **PaymentByCashless** (ID: "11"): Cashless payment
-- **PaymentByOthers** (ID: "12"): Other payment methods
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "tenantId": "string",
+      "storeCode": "string",
+      "storeName": "string",
+      "terminalNo": 0,
+      "totalAmount": 0.0,
+      "totalAmountWithTax": 0.0,
+      "totalQuantity": 0,
+      "totalDiscountAmount": 0.0,
+      "depositAmount": 0.0,
+      "changeAmount": 0.0
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-### Sales Promotion Plugins
+### 18. Get Transaction By Tranasction No
 
-**Implementation Directory**: app/services/strategies/sales_promotions/
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`
 
-- **SalesPromoSample** (ID: "101"): Sample sales promotion
+Get a single transaction by its transaction number.
 
-### Receipt Data Plugins
+Retrieves detailed information about a specific transaction identified by its number.
+The tenant ID in the path must match the tenant ID from the authentication token.
 
-**Implementation Directory**: app/services/strategies/receipt_data/
+**Path Parameters:**
 
-- **ReceiptDataSample** (ID: "default", "32"): Receipt data generation
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+| `transaction_no` | integer | Yes | - |
 
-## Scheduled Jobs
+**Query Parameters:**
 
-### Republish Undelivered Messages
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
 
-**Implementation File**: app/cron/republish_undelivery_message.py
+**Response:**
 
-- **Execution Interval**: Every 5 minutes
-- **Check Period**: Past 24 hours
-- **Failure Criteria**: More than 15 minutes elapsed
-- **Target**: Undelivered transaction logs
+**data Field:** `Tran`
 
-## Event Publishing
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
 
-### Dapr Pub/Sub Topics
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
-1. **tranlog_report**: Transaction logs (for reporting)
-2. **tranlog_status**: Transaction status updates
-3. **cashlog_report**: Cash in/out logs
-4. **opencloselog_report**: Open/close logs
+### 19. Notify Delivery Status
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`
+
+Notify the delivery status of a transaction.
+
+Updates the delivery status of a specific transaction based on the provided information.
+The terminal making this request must be in the same store as the original transaction.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `message` | string | No | - |
+
+**Request Example:**
+```json
+{
+  "event_id": "string",
+  "service": "string",
+  "status": "string",
+  "message": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `DeliveryStatusUpdateResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `event_id` | string | Yes | - |
+| `service` | string | Yes | - |
+| `status` | string | Yes | - |
+| `success` | boolean | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "event_id": "string",
+    "service": "string",
+    "status": "string",
+    "success": true
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 20. Return Transaction By Transaction No
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`
+
+Process a transaction return.
+
+Creates a return transaction based on an original transaction and processes any required refund payments.
+The terminal making this request must be in the same store as the original transaction.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+| `transaction_no` | integer | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+**Request Example:**
+```json
+[
+  {
+    "paymentCode": "string",
+    "amount": 0,
+    "detail": "string"
+  }
+]
+```
+
+**Response:**
+
+**data Field:** `Tran`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. Void Transaction By Transaction No
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`
+
+Void (cancel) a transaction.
+
+Marks a transaction as voided and processes any required refund payments.
+The terminal making this request must match the terminal that created the transaction.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+| `transaction_no` | integer | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | Yes | - | - |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+**Request Example:**
+```json
+[
+  {
+    "paymentCode": "string",
+    "amount": 0,
+    "detail": "string"
+  }
+]
+```
+
+**Response:**
+
+**data Field:** `Tran`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `storeName` | string | No | - |
+| `terminalNo` | integer | Yes | - |
+| `totalAmount` | number | Yes | - |
+| `totalAmountWithTax` | number | Yes | - |
+| `totalQuantity` | integer | Yes | - |
+| `totalDiscountAmount` | number | Yes | - |
+| `depositAmount` | number | Yes | - |
+| `changeAmount` | number | Yes | - |
+| `stampDutyAmount` | number | No | - |
+| `receiptNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+| `transactionType` | integer | Yes | - |
+| `businessDate` | string | No | - |
+| `generateDateTime` | string | No | - |
+| `lineItems` | array[BaseTranLineItem] | No | - |
+| `payments` | array[BaseTranPayment] | No | - |
+| `taxes` | array[BaseTranTax] | No | - |
+| `subtotalDiscounts` | array[BaseDiscount] | No | - |
+| `receiptText` | string | No | - |
+| `journalText` | string | No | - |
+| `receipts` | array[object] | No | - |
+| `staff` | BaseTranStaff | No | - |
+| `status` | BaseTranStatus | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "storeName": "string",
+    "terminalNo": 0,
+    "totalAmount": 0.0,
+    "totalAmountWithTax": 0.0,
+    "totalQuantity": 0,
+    "totalDiscountAmount": 0.0,
+    "depositAmount": 0.0,
+    "changeAmount": 0.0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Cache
+
+### 22. Clear terminal cache
+
+**DELETE** `/api/v1/cache/terminal`
+
+Clear all entries from the terminal information cache
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 23. Get terminal cache status
+
+**GET** `/api/v1/cache/terminal/status`
+
+Get current status of the terminal information cache
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ## Error Codes
 
-Cart service uses the following error code system:
-- **30XXYY**: Cart service specific errors
-  - XX: Feature identifier
-  - YY: Specific error number
+Error responses are returned in the following format:
 
-## Middleware
-
-**Implementation File**: app/main.py
-
-1. **CORS** (lines 53-59): Allow access from all origins
-2. **Request Logging** (line 62): Log all HTTP requests
-3. **Exception Handler** (line 65): Unified error response format
-
-## Database
-
-### Collections
-- `carts`: Cart information
-- `terminal_counter`: Terminal counters
-- `tranlog`: Transaction logs
-- `transaction_status`: Transaction status
-
-### Cache
-- Uses Dapr State Store (cartstore)
-- Terminal information cache (TTL: 300 seconds)
-
-## Notes
-
-1. **API Key Authentication**: Required for all business endpoints
-2. **State Machine**: Only operations following state transition rules are allowed
-3. **Plugin Configuration**: Dynamic loading via plugins.json
-4. **Asynchronous Processing**: All DB operations are asynchronous
-5. **Event Publishing**: Asynchronous events via Dapr
-6. **Multi-tenancy**: Independent database per tenant
-7. **Cart Expiration**: 24 hours from creation
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

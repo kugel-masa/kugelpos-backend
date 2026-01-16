@@ -14,7 +14,7 @@
 
 **コレクション名:** `journal`
 
-**継承:** `BaseDocumentModel`
+**継承:** `AbstractDocument`
 
 **フィールド定義:**
 
@@ -23,19 +23,20 @@
 | tenant_id | string | ✓ | テナント識別子 |
 | store_code | string | ✓ | 店舗コード |
 | terminal_no | integer | ✓ | 端末番号 |
-| transaction_no | string | - | トランザクション番号（売上取引用） |
+| transaction_no | integer | - | トランザクション番号（売上取引用） |
 | transaction_type | integer | ✓ | トランザクションタイプコード |
 | business_date | string | ✓ | ビジネス日付（YYYYMMDD形式） |
-| open_counter | integer | - | 端末セッションカウンター |
-| business_counter | integer | - | ビジネス操作カウンター |
+| open_counter | integer | ✓ | 端末セッションカウンター |
+| business_counter | integer | ✓ | ビジネス操作カウンター |
 | receipt_no | integer | - | レシート番号 |
-| amount | float | - | 金額（正/負） |
-| quantity | float | - | 数量合計 |
+| amount | float | - | 金額（正/負、デフォルト: 0.0） |
+| quantity | integer | - | 数量合計（デフォルト: 0） |
 | staff_id | string | - | スタッフ識別子 |
 | user_id | string | - | ユーザー識別子 |
-| generate_date_time | datetime | ✓ | 生成日時 |
+| generate_date_time | string | ✓ | 生成日時（ISO 8601形式） |
 | journal_text | string | ✓ | 人間が読める形式のジャーナルテキスト |
-| receipt_text | string | - | フォーマット済みレシートテキスト |
+| receipt_text | string | ✓ | フォーマット済みレシートテキスト |
+| receipts | array[ReceiptDocument] | - | 複数レシートドキュメント（顧客控え、店舗控え等） |
 
 **インデックス:**
 - ユニーク複合: (tenant_id, store_code, terminal_no, transaction_type, generate_date_time)
@@ -52,26 +53,28 @@
 
 **コレクション名:** `log_cash_in_out`
 
-**継承:** `BaseDocumentModel`
+**継承:** `AbstractDocument`
 
 **フィールド定義:**
 
 | フィールド名 | 型 | 必須 | 説明 |
 |------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
+| tenant_id | string | - | テナント識別子 |
+| store_code | string | - | 店舗コード |
 | store_name | string | - | 店舗名 |
-| terminal_no | integer | ✓ | 端末番号 |
+| terminal_no | integer | - | 端末番号 |
 | staff_id | string | - | スタッフ識別子 |
 | staff_name | string | - | スタッフ名 |
-| business_date | string | ✓ | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | ✓ | セッションカウンター |
-| business_counter | integer | ✓ | ビジネスカウンター |
-| generate_date_time | datetime | ✓ | 操作日時 |
-| amount | float | ✓ | 金額（入金:正、出金:負） |
+| business_date | string | - | ビジネス日付（YYYYMMDD） |
+| open_counter | integer | - | セッションカウンター |
+| business_counter | integer | - | ビジネスカウンター |
+| generate_date_time | string | - | 操作日時（ISO 8601形式） |
+| amount | float | - | 金額（入金:正、出金:負） |
 | description | string | - | 操作理由/説明 |
 | receipt_text | string | - | レシートテキスト |
 | journal_text | string | - | ジャーナルテキスト |
+
+**注:** 全フィールドはOptionalで定義されていますが、実際の運用では主要フィールドは必須として扱われます。
 
 **インデックス:**
 - 複合: (tenant_id, store_code, terminal_no, business_date)
@@ -83,30 +86,32 @@
 
 **コレクション名:** `log_open_close`
 
-**継承:** `BaseDocumentModel`
+**継承:** `AbstractDocument`
 
 **フィールド定義:**
 
 | フィールド名 | 型 | 必須 | 説明 |
 |------------|------|----------|-------------|
-| tenant_id | string | ✓ | テナント識別子 |
-| store_code | string | ✓ | 店舗コード |
+| tenant_id | string | - | テナント識別子 |
+| store_code | string | - | 店舗コード |
 | store_name | string | - | 店舗名 |
-| terminal_no | integer | ✓ | 端末番号 |
+| terminal_no | integer | - | 端末番号 |
 | staff_id | string | - | スタッフ識別子 |
 | staff_name | string | - | スタッフ名 |
-| business_date | string | ✓ | ビジネス日付（YYYYMMDD） |
-| open_counter | integer | ✓ | セッションカウンター |
-| business_counter | integer | ✓ | ビジネスカウンター |
-| operation | string | ✓ | 操作タイプ（'open'/'close'） |
-| generate_date_time | datetime | ✓ | 操作日時 |
+| business_date | string | - | ビジネス日付（YYYYMMDD） |
+| open_counter | integer | - | セッションカウンター |
+| business_counter | integer | - | ビジネスカウンター |
+| operation | string | - | 操作タイプ（'open'/'close'） |
+| generate_date_time | string | - | 操作日時（ISO 8601形式） |
 | terminal_info | TerminalInfoDocument | - | 端末情報スナップショット |
 | cart_transaction_count | integer | - | 取引数（close時） |
 | cart_transaction_last_no | integer | - | 最終取引番号（close時） |
 | cash_in_out_count | integer | - | 現金操作数（close時） |
-| cash_in_out_last_datetime | datetime | - | 最終現金操作日時（close時） |
+| cash_in_out_last_datetime | string | - | 最終現金操作日時（close時、ISO 8601形式） |
 | receipt_text | string | - | レシートテキスト |
 | journal_text | string | - | ジャーナルテキスト |
+
+**注:** 全フィールドはOptionalで定義されていますが、実際の運用では主要フィールドは必須として扱われます。
 
 **インデックス:**
 - 複合: (tenant_id, store_code, terminal_no, business_date, open_counter)

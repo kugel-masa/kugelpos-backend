@@ -8,21 +8,21 @@
 
 ### 接続情報
 
-**エンドポイント:** `WebSocket /api/v1/ws/{tenant_id}/{store_code}`
+**エンドポイント:** `WebSocket /ws/{tenant_id}/{store_code}`
 
-**実装場所:** `/services/stock/app/routers/websocket_router.py:21`
+**実装場所:** `/services/stock/app/api/v1/stock.py:996`
 
 **認証:** JWT認証（クエリパラメータ経由）
 
 **URL例:**
 ```
-ws://localhost:8006/api/v1/ws/tenant001/STORE001?token={jwt_token}
+ws://localhost:8006/ws/tenant001/STORE001?token={jwt_token}
 ```
 
 ## 認証メカニズム
 
 ### JWT認証
-**実装場所:** `/services/stock/app/routers/websocket_router.py:29`
+**実装場所:** `/services/stock/app/api/v1/stock.py:1028`
 
 WebSocketプロトコルの制約により、認証トークンはクエリパラメータとして送信します：
 
@@ -45,7 +45,9 @@ async def verify_jwt_from_query(token: str) -> Optional[User]:
 {
   "type": "connection",
   "status": "connected",
-  "message": "WebSocket connected successfully"
+  "tenant_id": "tenant001",
+  "store_code": "STORE001",
+  "message": "Connected to stock alert service"
 }
 ```
 
@@ -91,14 +93,15 @@ async def verify_jwt_from_query(token: str) -> Optional[User]:
 
 ### ConnectionManager
 
-**実装場所:** `/services/stock/app/services/websocket/connection_manager.py`
+**実装場所:** `/services/stock/app/websocket/connection_manager.py`
 
 ```python
 class ConnectionManager:
     """WebSocket接続を管理するマネージャー"""
-    
+
     def __init__(self):
-        self.active_connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
+        # Structure: {tenant_id: {store_code: set(websocket_connections)}}
+        self._connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
         self._lock = asyncio.Lock()
 ```
 
@@ -118,23 +121,19 @@ class ConnectionManager:
 
 ### AlertService
 
-**実装場所:** `/services/stock/app/services/websocket/alert_service.py`
+**実装場所:** `/services/stock/app/services/alert_service.py`
 
 **主要機能:**
 
 1. **アラート判定ロジック**
    ```python
-   async def check_and_send_alerts(
-       self,
-       tenant_id: str,
-       store_code: str,
-       item: StockItemDocument
-   )
+   async def check_and_send_alerts(self, stock: StockDocument) -> None:
+       """Check stock levels and send alerts if necessary"""
    ```
 
 2. **アラートタイプ**
-   - `reorder_point`: 在庫数 ≤ 発注点
-   - `minimum_stock`: 在庫数 < 最小在庫
+   - `reorder_point`: 在庫数 ≤ 発注点（reorder_point > 0 の場合のみ）
+   - `minimum_stock`: 在庫数 < 最小在庫（minimum_quantity > 0 の場合のみ）
 
 3. **クールダウン機能**
    - デフォルト: 60秒
@@ -143,45 +142,43 @@ class ConnectionManager:
 
 ### クールダウン実装
 
-**実装場所:** `/services/stock/app/repositories/alert_cooldown_repository.py`
+AlertService内でインメモリ辞書（`recent_alerts`）を使用して管理されます。
 
 ```python
-class AlertCooldownRepository:
-    """アラートクールダウンを管理するリポジトリ"""
-    
-    async def is_in_cooldown(
-        self,
-        alert_type: str,
-        tenant_id: str,
-        store_code: str,
-        item_code: str
-    ) -> bool
+class AlertService:
+    def __init__(self, connection_manager: ConnectionManager):
+        self.connection_manager = connection_manager
+        self.alert_cooldown = settings.ALERT_COOLDOWN_SECONDS
+        self.recent_alerts: Dict[str, datetime] = {}  # Track recent alerts
+        self._cleanup_task = None
+
+    def _should_send_alert(self, alert_key: str) -> bool:
+        """Check if we should send an alert based on cooldown"""
 ```
 
 **クリーンアップ:**
-- 10分ごとにバックグラウンドタスクで古いレコードを削除
-- 実装: `/services/stock/app/services/websocket/alert_service.py:60`
+- 10分ごとにバックグラウンドタスク（`_cleanup_old_alerts`）で古いレコードを削除
+- 実装: `/services/stock/app/services/alert_service.py:38`
 
 ## 統合ポイント
 
 ### 1. 在庫更新時のトリガー
 
-**実装場所:** `/services/stock/app/services/stock_service.py:239`
+**実装場所:** `/services/stock/app/services/stock_service.py:96`
 
 ```python
-# 在庫更新後にアラートチェック
-await self.alert_service.check_and_send_alerts(
-    tenant_id=tenant_id,
-    store_code=store_code,
-    item=updated_item
-)
+# Check for alerts if alert service is available
+if self._alert_service:
+    await self._alert_service.check_and_send_alerts(updated_stock)
 ```
 
-### 2. トランザクション処理時
+### 2. WebSocket接続確立時
 
-**実装場所:** `/services/stock/app/services/transaction_handler.py:100`
+**実装場所:** `/services/stock/app/api/v1/stock.py:1079`
 
-トランザクションログ処理後、在庫変更がある場合にアラートチェック
+WebSocket接続確立時に現在のアラート状態を送信:
+- 発注点以下の在庫アラート
+- 最小在庫以下の在庫アラート
 
 ## パフォーマンス特性
 

@@ -2,27 +2,30 @@
 
 ## Overview
 
-The Report service provides various report generation capabilities for the Kugelpos POS system. It generates sales reports, category reports, item reports, and provides both real-time (flash) and daily aggregated data. The service features an extensible design through plugin architecture for report types.
+Generates sales reports and daily summaries. Uses plugin architecture for extensibility.
+
+## Service Information
+
+- **Port**: 8004
+- **Framework**: FastAPI
+- **Database**: MongoDB (Motor async driver)
 
 ## Base URL
-- Local environment: `http://localhost:8004`
-- Production environment: `https://report.{domain}`
+
+- Local Environment: `http://localhost:8004`
+- Production Environment: `https://report.{domain}`
 
 ## Authentication
 
-The Report service supports two authentication methods:
+The following authentication methods are supported:
 
-### 1. JWT Token (Bearer Token)
-- Header: `Authorization: Bearer {token}`
-- Purpose: Report viewing and generation by administrators
-
-### 2. API Key Authentication
+### API Key Authentication
 - Header: `X-API-Key: {api_key}`
-- Purpose: Report retrieval from terminals (with journal integration)
+- Usage: API calls from terminals
 
-## Field Format
-
-All API requests/responses use **camelCase** format.
+### JWT Token Authentication
+- Header: `Authorization: Bearer {token}`
+- Usage: System operations by administrators
 
 ## Common Response Format
 
@@ -31,294 +34,334 @@ All API requests/responses use **camelCase** format.
   "success": true,
   "code": 200,
   "message": "Operation completed successfully",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## Report Types
-
-| Type ID | Name | Description |
-|----------|------|-------------|
-| sales | Sales Report | Basic aggregation of sales amounts, transaction counts, etc. |
-| category | Category Report | Category-wise sales aggregation (not implemented) |
-| item | Item Report | Item-wise sales aggregation (not implemented) |
-
-## Report Scopes
-
-| Scope ID | Name | Description |
-|--------|------|-------------|
-| flash | Flash Report | Real-time aggregation (current session) |
-| daily | Daily Report | Daily aggregation (requires all terminals closed) |
 
 ## API Endpoints
 
-### 1. Get Store Report
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/reports`
+### System
 
-Retrieves store-wide reports.
+### 1. Root
 
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
+**GET** `/`
 
-**Query Parameters:**
-- `report_scope` (string, required): Report scope (flash/daily)
-- `report_type` (string, required): Report type (sales)
-- `business_date` (string, required): Business date (YYYYMMDD)
-- `open_counter` (integer): Open counter (for flash reports)
-- `business_counter` (integer): Business counter
-- `limit` (integer, default: 100): Page size
-- `page` (integer, default: 1): Page number
-- `sort` (string): Sort conditions
+Root endpoint that returns a welcome message.
+Useful for health checks and API verification.
 
-**Response Example (Sales Report):**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "Sales report fetched successfully",
-  "data": {
-    "tenantId": "tenant001",
-    "storeCode": "STORE001",
-    "storeName": "Store 001",
-    "terminalNo": null,
-    "businessDate": "20240101",
-    "reportScope": "daily",
-    "reportType": "sales",
-    "salesGross": {
-      "itemCount": 500,
-      "transactionCount": 150,
-      "totalAmount": 125000.00
-    },
-    "salesNet": {
-      "itemCount": 495,
-      "transactionCount": 148,
-      "totalAmount": 120000.00
-    },
-    "discountForLineitems": {
-      "itemCount": 20,
-      "transactionCount": 15,
-      "totalAmount": -2000.00
-    },
-    "discountForSubtotal": {
-      "itemCount": 0,
-      "transactionCount": 10,
-      "totalAmount": -1000.00
-    },
-    "returns": {
-      "itemCount": 5,
-      "transactionCount": 2,
-      "totalAmount": -2000.00
-    },
-    "taxes": [
-      {
-        "taxCode": "TAX_10",
-        "taxType": "STANDARD",
-        "taxName": "Standard Tax Rate",
-        "itemCount": 400,
-        "targetAmount": 100000.00,
-        "taxAmount": 10000.00
-      },
-      {
-        "taxCode": "TAX_8",
-        "taxType": "REDUCED",
-        "taxName": "Reduced Tax Rate",
-        "itemCount": 100,
-        "targetAmount": 25000.00,
-        "taxAmount": 2000.00
-      }
-    ],
-    "payments": [
-      {
-        "paymentCode": "CASH",
-        "paymentName": "Cash",
-        "transactionCount": 100,
-        "totalAmount": 80000.00
-      },
-      {
-        "paymentCode": "CREDIT",
-        "paymentName": "Credit",
-        "transactionCount": 50,
-        "totalAmount": 45000.00
-      }
-    ],
-    "cash": {
-      "cashInCount": 5,
-      "cashInAmount": 10000.00,
-      "cashOutCount": 3,
-      "cashOutAmount": -5000.00,
-      "netCashMovement": 5000.00
-    },
-    "receiptText": "=== Daily Sales Report ===\n...",
-    "journalText": "=== Daily Sales Report ===\n..."
-  },
-  "operation": "get_report_for_store"
-}
-```
+**Response:**
 
-### 2. Get Terminal Report
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports`
+### 2. Health Check
 
-Retrieves reports for a specific terminal.
-
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (integer, required): Terminal number
-
-**Query Parameters:**
-Same as store report
-
-### 3. Receive Transaction (REST)
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
-
-REST endpoint for directly sending transaction data.
-
-**Request Body:**
-Transaction data conforming to kugel_common BaseTransaction structure
-
-### 4. Create Tenant
-**POST** `/api/v1/tenants`
-
-Initializes report service for a new tenant.
-
-**Request Body:**
-```json
-{
-  "tenantId": "tenant001"
-}
-```
-
-**Authentication:** JWT token required
-
-### 5. Health Check
 **GET** `/health`
 
-Checks service health.
+Health check endpoint for monitoring service health.
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
+}
+```
+
+### Tenant
+
+### 3. Create Tenant
+
+**POST** `/api/v1/tenants`
+
+Create and set up a new tenant in the report service.
+
+This endpoint initializes the database for a new tenant by creating all required
+collections, indexes, and other necessary structures. It is typically called during
+tenant onboarding after the tenant has been created in the account service.
+
+Authentication is required and the authenticated user must belong to the tenant
+being created. This ensures only authorized users can set up tenant resources.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "tenantId": "string"
+}
+```
+
+**Response:**
 
 **Response Example:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Service is healthy",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## Event Processing Endpoints (Dapr Pub/Sub)
+### Store
 
-### 6. Transaction Log Handler
-**POST** `/api/v1/tranlog`
+### 4. Get Report For Store
 
-**Topic:** `tranlog_report`
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/reports`
 
-Processes transaction logs from the Cart service.
+Get a report for the entire store.
 
-### 7. Cash Log Handler
+This endpoint requires either a JWT token or an API key with terminal_id.
+It provides different types of reports (sales, category, item) at different
+scopes (flash, daily) for the specified store.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | Terminal ID for api_key authentication |
+| `report_scope` | string | Yes | - | Scope of the report: flash, daily |
+| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `business_date` | string | No | - | Business date for flash and daily (singl |
+| `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
+| `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
+| `open_counter` | integer | No | - | Open counter for flash and daily, None f |
+| `business_counter` | integer | No | - | Business counter for the report |
+| `limit` | integer | No | 100 | Limit of the number of records to return |
+| `page` | integer | No | 1 | Page number to return |
+| `is_terminal_service` | string | No | False | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Get Report For Terminal
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports`
+
+Get a report for a specific terminal.
+
+This endpoint requires either a JWT token or an API key with terminal_id.
+It provides different types of reports (sales, category, item) at different
+scopes (flush, daily) for the specified terminal.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | Terminal ID for api_key authentication |
+| `report_scope` | string | Yes | - | Scope of the report: flash, daily |
+| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `business_date` | string | No | - | Business date for flash and daily (singl |
+| `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
+| `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
+| `open_counter` | integer | No | - | Open counter for flash and daily, None f |
+| `business_counter` | integer | No | - | Business counter for the report |
+| `limit` | integer | No | 100 | Limit of the number of records to return |
+| `page` | integer | No | 1 | Page number to return |
+| `is_terminal_service` | string | No | False | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+
+**Response:**
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Transaction
+
+### 6. Receive Transactions
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
+
+Direct API endpoint for receiving transaction data.
+
+This endpoint can be used as an alternative to the Dapr pub/sub mechanism
+when direct REST API calls are preferred. It requires authentication via
+token or API key.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+**Response:**
+
+**data Field:** `TranResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "transactionNo": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Event Processing
+
+### 7. Handle Cashlog
+
 **POST** `/api/v1/cashlog`
 
-**Topic:** `cashlog_report`
+Handle cash in/out logs received via Dapr pub/sub.
 
-Processes cash in/out logs from the Terminal service.
+This endpoint is called by Dapr when a cash log message is published
+to the 'topic-cashlog' topic in the 'pubsub-cashlog-report' component.
 
-### 8. Open/Close Log Handler
+**Response:**
+
+### 8. Handle Opencloselog
+
 **POST** `/api/v1/opencloselog`
 
-**Topic:** `opencloselog_report`
+Handle terminal open/close logs received via Dapr pub/sub.
 
-Processes open/close logs from the Terminal service.
+This endpoint is called by Dapr when an open/close log message is published
+to the 'topic-opencloselog' topic in the 'pubsub-opencloselog-report' component.
 
-## Report Structure Details
+**Response:**
 
-### SalesReportTemplate
-Basic structure for sales aggregation:
-```json
-{
-  "itemCount": 100,          // Number of items
-  "transactionCount": 50,    // Number of transactions
-  "totalAmount": 10000.00    // Total amount
-}
-```
+### 9. Handle Tranlog
 
-### TaxReportTemplate
-Tax aggregation structure:
-```json
-{
-  "taxCode": "TAX_10",
-  "taxType": "STANDARD",
-  "taxName": "Standard Tax Rate",
-  "itemCount": 100,
-  "targetAmount": 10000.00,   // Taxable amount
-  "taxAmount": 1000.00        // Tax amount
-}
-```
+**POST** `/api/v1/tranlog`
 
-### PaymentReportTemplate
-Payment method aggregation structure:
-```json
-{
-  "paymentCode": "CASH",
-  "paymentName": "Cash",
-  "transactionCount": 50,
-  "totalAmount": 10000.00
-}
-```
+Handle transaction logs received via Dapr pub/sub.
 
-### CashReportTemplate
-Cash in/out aggregation structure:
-```json
-{
-  "cashInCount": 5,           // Number of cash in operations
-  "cashInAmount": 10000.00,   // Cash in amount
-  "cashOutCount": 3,          // Number of cash out operations
-  "cashOutAmount": -5000.00,  // Cash out amount
-  "netCashMovement": 5000.00  // Net cash movement
-}
-```
+This endpoint is called by Dapr when a transaction log message is published
+to the 'topic-tranlog' topic in the 'pubsub-tranlog-report' component.
+
+**Response:**
 
 ## Error Codes
 
-Report service uses error codes in the 412XX-413XX range:
+Error responses are returned in the following format:
 
-### Report Basic Operation Related (4120X)
-- `412001`: Report not found
-- `412002`: Report validation error
-- `412003`: Report generation error
-- `412004`: Invalid report type
-- `412005`: Invalid report scope
-- `412006`: Report date error
-- `412007`: Report data error
-
-### Report Verification Related (4121XX)
-- `412101`: Terminal not closed
-- `412102`: Required logs missing
-- `412103`: Log count mismatch
-- `412104`: Transaction log missing
-- `412105`: Cash in/out log missing
-- `412106`: Open/close log missing
-- `412107`: Data verification failed
-
-### Other Report Related (413XX)
-- `413001`: Receipt generation error
-- `413002`: Journal generation error
-- `413003`: Export error
-- `413004`: Import error
-- `413005`: Daily info error
-- `413006`: External service error
-
-## Special Notes
-
-1. **Daily Report Prerequisites**: All terminals must be closed
-2. **Data Validation**: Before daily report generation, validates:
-   - Existence of close logs for all terminals
-   - Consistency of cash in/out log counts
-   - Consistency of transaction log counts
-3. **Idempotency**: Duplicate processing prevention by event ID
-4. **Plugin Extension**: New report types can be added via plugins
-5. **Journal Integration**: Reports are automatically sent to journal when using API key authentication
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

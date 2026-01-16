@@ -1,28 +1,31 @@
-# ジャーナルサービス API仕様
+# ジャーナルサービス API仕様書
 
 ## 概要
 
-ジャーナルサービスは、Kugelpos POSシステムの電子ジャーナル管理機能を提供します。全ての取引記録、現金操作、端末開閉情報を永続的に保存し、監査・コンプライアンス要件に対応します。
+電子ジャーナルとトランザクションログを保存・管理するサービスです。
+
+## サービス情報
+
+- **ポート**: 8005
+- **フレームワーク**: FastAPI
+- **データベース**: MongoDB (Motor async driver)
 
 ## ベースURL
-- ローカル環境: `http://localhost:8005`  
+
+- ローカル環境: `http://localhost:8005`
 - 本番環境: `https://journal.{domain}`
 
 ## 認証
 
-ジャーナルサービスは2つの認証方法をサポートしています：
+以下の認証方法をサポートしています：
 
-### 1. JWTトークン（Bearerトークン）
-- ヘッダー: `Authorization: Bearer {token}`
-- 用途: 管理者によるジャーナル検索・照会
-
-### 2. APIキー認証
+### APIキー認証
 - ヘッダー: `X-API-Key: {api_key}`
-- 用途: 端末からのジャーナル作成
+- 用途: 端末からのAPI呼び出し
 
-## フィールド形式
-
-すべてのAPIリクエスト/レスポンスは**camelCase**形式を使用します。
+### JWTトークン認証
+- ヘッダー: `Authorization: Bearer {token}`
+- 用途: 管理者によるシステム操作
 
 ## 共通レスポンス形式
 
@@ -31,271 +34,374 @@
   "success": true,
   "code": 200,
   "message": "操作が正常に完了しました",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## トランザクションタイプコード
-
-| コード | 説明 |
-|------|------|
-| 101 | 通常売上 |
-| -101 | 通常売上取消 |
-| 102 | 返品売上 |
-| 201 | 売上取消 |
-| 202 | 返品取消 |
-| 301 | レジ開け |
-| 302 | レジ締め |
-| 401 | 現金入金 |
-| 402 | 現金出金 |
-| 501 | 売上レポート |
-| 502 | その他レポート |
 
 ## APIエンドポイント
 
-### 1. ジャーナル作成
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/journals`
+### システム
 
-新規ジャーナルエントリーを作成します。
+### 1. ルートエンドポイント
 
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード  
-- `terminal_no` (integer, 必須): 端末番号
+**GET** `/`
 
-**リクエストボディ:**
-```json
-{
-  "transactionNo": "0001",
-  "transactionType": 101,
-  "businessDate": "2024-01-01",
-  "businessCounter": 100,
-  "openCounter": 1,
-  "receiptNo": "R0001",
-  "amount": 99.00,
-  "quantity": 2.0,
-  "staffId": "STF001",
-  "userId": "user001",
-  "journalText": "=== 売上取引 ===\n...",
-  "receiptText": "=== レシート ===\n..."
-}
-```
+ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。
+
+**レスポンス:**
+
+### 2. ヘルスチェック
+
+**GET** `/health`
+
+ヘルスチェックエンドポイントです。サービスの稼働状態を監視します。
+
+**レスポンス:**
 
 **レスポンス例:**
 ```json
 {
-  "success": true,
-  "code": 200,
-  "message": "Transaction received successfully. tenant_id: tenant001, store_code: store001, terminal_no: 1",
-  "data": {
-    "tenantId": "tenant001",
-    "storeCode": "store001",
-    "terminalNo": 1,
-    "transactionNo": "0001",
-    "transactionType": 101,
-    "businessDate": "2024-01-01",
-    "receiptNo": "R0001",
-    "amount": 99.00,
-    "generateDateTime": "2024-01-01T10:30:00Z"
-  },
-  "operation": "create_journal"
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
 }
 ```
 
-### 2. ジャーナル検索
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/journals`
+### テナント
 
-複数条件でジャーナルエントリーを検索します。
+### 3. テナント作成
 
-**パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
+**POST** `/api/v1/tenants`
+
+新しいテナントを作成します。必要なデータベースコレクションとインデックスをセットアップします。
 
 **クエリパラメータ:**
-- `terminals` (string): 端末番号（カンマ区切り）
-- `transaction_types` (string): トランザクションタイプ（カンマ区切り）
-- `business_date_from` (string): 開始ビジネス日付（YYYY-MM-DD）
-- `business_date_to` (string): 終了ビジネス日付（YYYY-MM-DD）
-- `generate_date_time_from` (string): 開始生成日時（YYYYMMDDTHHMMSS）
-- `generate_date_time_to` (string): 終了生成日時（YYYYMMDDTHHMMSS）
-- `receipt_no_from` (string): 開始レシート番号
-- `receipt_no_to` (string): 終了レシート番号
-- `keywords` (string): キーワード検索（カンマ区切り）
-- `page` (integer, デフォルト: 1): ページ番号
-- `limit` (integer, デフォルト: 100, 最大: 1000): ページサイズ
-- `sort` (string): ソート順（例: "generateDateTime:-1"）
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "tenantId": "string"
+}
+```
+
+**レスポンス:**
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Journals found successfully. tenant_id: tenant001, store_code: store001",
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 店舗
+
+### 4. ジャーナル一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/journals`
+
+ジャーナルエントリを取得します。フィルタリング付きのジャーナルレコードを返します。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminals` | array | No | - | - |
+| `transaction_types` | array | No | - | Transaction type NormalSales->101, Norma |
+| `business_date_from` | string | No | - | YYYYMMDD |
+| `business_date_to` | string | No | - | YYYYMMDD |
+| `generate_date_time_from` | string | No | - | YYYYMMDDTHHMMSS |
+| `generate_date_time_to` | string | No | - | YYYYMMDDTHHMMSS |
+| `receipt_no_from` | integer | No | - | - |
+| `receipt_no_to` | integer | No | - | - |
+| `keywords` | array | No | - | Search keywords |
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+
+**レスポンス:**
+
+**dataフィールド:** `array[JournalSchema]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | tenant id |
+| `storeCode` | string | Yes | store code |
+| `terminalNo` | integer | Yes | terminal no |
+| `journalSeqNo` | integer | No | delete in future |
+| `transactionNo` | integer | No | transaction_no |
+| `transactionType` | integer | Yes | transaction type |
+| `businessDate` | string | Yes | business date |
+| `openCounter` | integer | Yes | open counter |
+| `businessCounter` | integer | Yes | business counter |
+| `generateDateTime` | string | Yes | generate date time |
+| `receiptNo` | integer | No | receipt no |
+| `amount` | number | No | total_amount_with_tax |
+| `quantity` | integer | No | total_quantity |
+| `staffId` | string | No | staff id |
+| `userId` | string | No | user id |
+| `content` | string | No | delete in future |
+| `journalText` | string | Yes | journal text |
+| `receiptText` | string | Yes | receipt text |
+| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
   "data": [
     {
-      "tenantId": "tenant001",
-      "storeCode": "store001",
-      "terminalNo": 1,
-      "transactionNo": "0001",
-      "transactionType": 101,
-      "businessDate": "2024-01-01",
-      "businessCounter": 100,
-      "openCounter": 1,
-      "receiptNo": "R0001",
-      "amount": 99.00,
-      "quantity": 2.0,
-      "staffId": "STF001",
-      "userId": "user001",
-      "generateDateTime": "2024-01-01T10:30:00Z",
-      "journalText": "=== 売上取引 ===\n...",
-      "receiptText": "=== レシート ===\n..."
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "journalSeqNo": -1,
+      "transactionNo": 0,
+      "transactionType": 0,
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0,
+      "generateDateTime": "string"
     }
   ],
   "metadata": {
-    "total": 150,
-    "page": 1,
-    "limit": 50,
-    "pages": 3
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
   },
-  "operation": "search_journals"
+  "operation": "string"
 }
 ```
 
-### 3. トランザクション受信（REST）
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
+### 5. ジャーナルデータ受信
 
-直接トランザクションデータを送信するRESTエンドポイント。
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/journals`
+
+ジャーナルデータを受信します。端末からのジャーナルエントリを処理します。
 
 **パスパラメータ:**
-- `tenant_id` (string, 必須): テナント識別子
-- `store_code` (string, 必須): 店舗コード
-- `terminal_no` (integer, 必須): 端末番号
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
 
 **リクエストボディ:**
-ジャーナル作成エンドポイントと同じ構造
 
-### 4. テナント作成
-**POST** `/api/v1/tenants`
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | tenant id |
+| `storeCode` | string | Yes | store code |
+| `terminalNo` | integer | Yes | terminal no |
+| `journalSeqNo` | integer | No | delete in future |
+| `transactionNo` | integer | No | transaction_no |
+| `transactionType` | integer | Yes | transaction type |
+| `businessDate` | string | Yes | business date |
+| `openCounter` | integer | Yes | open counter |
+| `businessCounter` | integer | Yes | business counter |
+| `generateDateTime` | string | Yes | generate date time |
+| `receiptNo` | integer | No | receipt no |
+| `amount` | number | No | total_amount_with_tax |
+| `quantity` | integer | No | total_quantity |
+| `staffId` | string | No | staff id |
+| `userId` | string | No | user id |
+| `content` | string | No | delete in future |
+| `journalText` | string | Yes | journal text |
+| `receiptText` | string | Yes | receipt text |
+| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
 
-新規テナント用のジャーナルサービスを初期化します。
-
-**リクエストボディ:**
+**リクエスト例:**
 ```json
 {
-  "tenantId": "tenant001"
+  "tenantId": "string",
+  "storeCode": "string",
+  "terminalNo": 0,
+  "journalSeqNo": -1,
+  "transactionNo": 0,
+  "transactionType": 0,
+  "businessDate": "string",
+  "openCounter": 0,
+  "businessCounter": 0,
+  "generateDateTime": "string"
 }
 ```
 
-**認証:** JWTトークンが必要
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "テナント作成が完了しました: tenant001",
-  "data": {
-    "tenantId": "tenant001"
-  },
-  "operation": "create_tenant"
-}
-```
-
-### 5. ヘルスチェック
-**GET** `/health`
-
-サービスの健全性を確認します。
+**レスポンス:**
 
 **レスポンス例:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "サービスは正常です",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected",
-    "dapr_sidecar": "connected",
-    "dapr_state_store": "connected",
-    "pubsub_topics": "subscribed"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## イベント処理エンドポイント（Dapr Pub/Sub）
+### トランザクション
 
-### 6. トランザクションログハンドラー
-**POST** `/api/v1/tranlog`
+### 6. 取引データ受信
 
-**トピック:** `tranlog_report`
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
-カートサービスからのトランザクションログを処理します。
+取引データを受信します。カートサービスからの取引データを処理します。
 
-### 7. 現金ログハンドラー
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+**レスポンス:**
+
+**dataフィールド:** `TranResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "transactionNo": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### イベント処理
+
+### 7. 現金ログ処理
+
 **POST** `/api/v1/cashlog`
 
-**トピック:** `cashlog_report`  
+入出金ログを処理します。Dapr pub/sub経由で受信した入出金イベントを処理します。
 
-ターミナルサービスからの現金入出金ログを処理します。
+**レスポンス:**
 
-### 8. 開閉ログハンドラー
+### 8. 開閉店ログ処理
+
 **POST** `/api/v1/opencloselog`
 
-**トピック:** `opencloselog_report`
+開閉店ログを処理します。Dapr pub/sub経由で受信した端末状態変更イベントを処理します。
 
-ターミナルサービスからの端末開閉ログを処理します。
+**レスポンス:**
 
-## ソートオプション
+### 9. 取引ログ処理
 
-利用可能なソートフィールド:
-- `terminalNo`: 端末番号
-- `businessDate`: ビジネス日付
-- `transactionNo`: トランザクション番号
-- `receiptNo`: レシート番号
-- `generateDateTime`: 生成日時
-- `amount`: 金額
+**POST** `/api/v1/tranlog`
 
-デフォルトソート順:
-- `terminalNo:1, businessDate:1, receiptNo:1`（端末番号、ビジネス日付、レシート番号の昇順）
+取引ログを処理します。Dapr pub/sub経由で受信した取引ログイベントを処理します。
 
-方向:
-- `1`: 昇順
-- `-1`: 降順
+**レスポンス:**
 
 ## エラーコード
 
-ジャーナルサービスは410XX-411XX範囲のエラーコードを使用します：
+エラーレスポンスは以下の形式で返されます：
 
-### ジャーナル基本操作関連 (4100X)
-- `410001`: ジャーナルが見つかりません
-- `410002`: ジャーナルのバリデーションエラー
-- `410003`: ジャーナル作成エラー
-- `410004`: ジャーナル検索エラー
-- `410005`: ジャーナルフォーマットエラー
-- `410006`: ジャーナル日付エラー
-- `410007`: ジャーナルデータエラー
-
-### ジャーナル検証関連 (4101X)
-- `410101`: 端末が見つかりません
-- `410102`: 店舗が見つかりません
-- `410103`: 必要なログが欠落しています
-- `410104`: ログシーケンスエラー
-- `410105`: トランザクション検証エラー
-
-### その他のジャーナル関連 (411XX)
-- `411001`: レシート生成エラー
-- `411002`: ジャーナルテキスト生成エラー
-- `411003`: エクスポートエラー
-- `411004`: インポートエラー
-- `411005`: トランザクションレシートエラー
-- `411006`: 外部サービスエラー
-
-## 特記事項
-
-1. **冪等性**: イベントIDによる重複処理防止
-2. **データ保持**: 永続保存（自動削除なし）
-3. **全文検索**: journal_text内のキーワード検索対応
-4. **非同期処理**: 全ての操作は非同期実行
-5. **Circuit Breaker**: 外部サービス障害時の自動復旧
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "エラーメッセージ",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

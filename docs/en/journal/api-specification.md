@@ -2,27 +2,30 @@
 
 ## Overview
 
-The Journal service provides electronic journal management capabilities for the Kugelpos POS system. It persistently stores all transaction records, cash operations, and terminal open/close information to meet audit and compliance requirements.
+Stores and manages electronic journal and transaction logs.
+
+## Service Information
+
+- **Port**: 8005
+- **Framework**: FastAPI
+- **Database**: MongoDB (Motor async driver)
 
 ## Base URL
-- Local environment: `http://localhost:8005`
-- Production environment: `https://journal.{domain}`
+
+- Local Environment: `http://localhost:8005`
+- Production Environment: `https://journal.{domain}`
 
 ## Authentication
 
-The Journal service supports two authentication methods:
+The following authentication methods are supported:
 
-### 1. JWT Token (Bearer Token)
-- Header: `Authorization: Bearer {token}`
-- Purpose: Journal search and inquiry by administrators
-
-### 2. API Key Authentication
+### API Key Authentication
 - Header: `X-API-Key: {api_key}`
-- Purpose: Journal creation from terminals
+- Usage: API calls from terminals
 
-## Field Format
-
-All API requests/responses use **camelCase** format.
+### JWT Token Authentication
+- Header: `Authorization: Bearer {token}`
+- Usage: System operations by administrators
 
 ## Common Response Format
 
@@ -31,271 +34,415 @@ All API requests/responses use **camelCase** format.
   "success": true,
   "code": 200,
   "message": "Operation completed successfully",
-  "data": { ... },
-  "operation": "function_name"
+  "data": {
+    "...": "..."
+  },
+  "operation": "operation_name"
 }
 ```
-
-## Transaction Type Codes
-
-| Code | Description |
-|------|------|
-| 101 | Standard sale |
-| -101 | Standard sale cancellation |
-| 102 | Return sale |
-| 201 | Sale void |
-| 202 | Return void |
-| 301 | Cash drawer open |
-| 302 | Cash drawer close |
-| 401 | Cash in |
-| 402 | Cash out |
-| 501 | Sales report |
-| 502 | Other report |
 
 ## API Endpoints
 
-### 1. Create Journal
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/journals`
+### System
 
-Creates a new journal entry.
+### 1. Root
 
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (integer, required): Terminal number
+**GET** `/`
 
-**Request Body:**
-```json
-{
-  "transactionNo": "0001",
-  "transactionType": 101,
-  "businessDate": "2024-01-01",
-  "businessCounter": 100,
-  "openCounter": 1,
-  "receiptNo": "R0001",
-  "amount": 99.00,
-  "quantity": 2.0,
-  "staffId": "STF001",
-  "userId": "user001",
-  "journalText": "=== Sales Transaction ===\n...",
-  "receiptText": "=== Receipt ===\n..."
-}
-```
+Root endpoint that returns a welcome message.
+Useful for health checks and API verification.
+
+**Response:**
+
+### 2. Health Check
+
+**GET** `/health`
+
+Health check endpoint for monitoring service health.
+
+**Response:**
 
 **Response Example:**
 ```json
 {
-  "success": true,
-  "code": 200,
-  "message": "Transaction received successfully. tenant_id: tenant001, store_code: store001, terminal_no: 1",
-  "data": {
-    "tenantId": "tenant001",
-    "storeCode": "store001",
-    "terminalNo": 1,
-    "transactionNo": "0001",
-    "transactionType": 101,
-    "businessDate": "2024-01-01",
-    "receiptNo": "R0001",
-    "amount": 99.00,
-    "generateDateTime": "2024-01-01T10:30:00Z"
-  },
-  "operation": "create_journal"
+  "status": "healthy",
+  "timestamp": "string",
+  "service": "string",
+  "version": "string",
+  "checks": {}
 }
 ```
 
-### 2. Search Journals
-**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/journals`
+### Tenant
 
-Searches journal entries with multiple criteria.
+### 3. Create Tenant
 
-**Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
+**POST** `/api/v1/tenants`
+
+Setup the database for the tenant. This will create the required collections and indexes.
 
 **Query Parameters:**
-- `terminals` (string): Terminal numbers (comma-separated)
-- `transaction_types` (string): Transaction types (comma-separated)
-- `business_date_from` (string): Start business date (YYYY-MM-DD)
-- `business_date_to` (string): End business date (YYYY-MM-DD)
-- `generate_date_time_from` (string): Start generation date/time (YYYYMMDDTHHMMSS)
-- `generate_date_time_to` (string): End generation date/time (YYYYMMDDTHHMMSS)
-- `receipt_no_from` (string): Start receipt number
-- `receipt_no_to` (string): End receipt number
-- `keywords` (string): Keyword search (comma-separated)
-- `page` (integer, default: 1): Page number
-- `limit` (integer, default: 100, max: 1000): Page size
-- `sort` (string): Sort order (e.g., "generateDateTime:-1")
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "tenantId": "string"
+}
+```
+
+**Response:**
 
 **Response Example:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Journals found successfully. tenant_id: tenant001, store_code: store001",
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Store
+
+### 4. Get Journals
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/journals`
+
+Retrieve journal entries with various filtering options.
+
+This endpoint provides a flexible search interface for journal entries, allowing
+filtering by terminal, transaction type, date ranges, receipt numbers, and keywords.
+Results can be paginated and sorted.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminals` | array | No | - | - |
+| `transaction_types` | array | No | - | Transaction type NormalSales->101, Norma |
+| `business_date_from` | string | No | - | YYYYMMDD |
+| `business_date_to` | string | No | - | YYYYMMDD |
+| `generate_date_time_from` | string | No | - | YYYYMMDDTHHMMSS |
+| `generate_date_time_to` | string | No | - | YYYYMMDDTHHMMSS |
+| `receipt_no_from` | integer | No | - | - |
+| `receipt_no_to` | integer | No | - | - |
+| `keywords` | array | No | - | Search keywords |
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+
+**Response:**
+
+**data Field:** `array[JournalSchema]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | tenant id |
+| `storeCode` | string | Yes | store code |
+| `terminalNo` | integer | Yes | terminal no |
+| `journalSeqNo` | integer | No | delete in future |
+| `transactionNo` | integer | No | transaction_no |
+| `transactionType` | integer | Yes | transaction type |
+| `businessDate` | string | Yes | business date |
+| `openCounter` | integer | Yes | open counter |
+| `businessCounter` | integer | Yes | business counter |
+| `generateDateTime` | string | Yes | generate date time |
+| `receiptNo` | integer | No | receipt no |
+| `amount` | number | No | total_amount_with_tax |
+| `quantity` | integer | No | total_quantity |
+| `staffId` | string | No | staff id |
+| `userId` | string | No | user id |
+| `content` | string | No | delete in future |
+| `journalText` | string | Yes | journal text |
+| `receiptText` | string | Yes | receipt text |
+| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
   "data": [
     {
-      "tenantId": "tenant001",
-      "storeCode": "store001",
-      "terminalNo": 1,
-      "transactionNo": "0001",
-      "transactionType": 101,
-      "businessDate": "2024-01-01",
-      "businessCounter": 100,
-      "openCounter": 1,
-      "receiptNo": "R0001",
-      "amount": 99.00,
-      "quantity": 2.0,
-      "staffId": "STF001",
-      "userId": "user001",
-      "generateDateTime": "2024-01-01T10:30:00Z",
-      "journalText": "=== Sales Transaction ===\n...",
-      "receiptText": "=== Receipt ===\n..."
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "journalSeqNo": -1,
+      "transactionNo": 0,
+      "transactionType": 0,
+      "businessDate": "string",
+      "openCounter": 0,
+      "businessCounter": 0,
+      "generateDateTime": "string"
     }
   ],
   "metadata": {
-    "total": 150,
-    "page": 1,
-    "limit": 50,
-    "pages": 3
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
   },
-  "operation": "search_journals"
+  "operation": "string"
 }
 ```
 
-### 3. Receive Transaction (REST)
-**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
+### 5. Receive Journals
 
-REST endpoint for directly sending transaction data.
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/journals`
+
+Create a new journal entry.
+
+This endpoint allows terminals to submit journal entries for storage and later retrieval.
+Journal entries represent receipts, cash operations, and other terminal activities.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
 
 **Path Parameters:**
-- `tenant_id` (string, required): Tenant identifier
-- `store_code` (string, required): Store code
-- `terminal_no` (integer, required): Terminal number
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
 
 **Request Body:**
-Same structure as the journal creation endpoint
 
-### 4. Create Tenant
-**POST** `/api/v1/tenants`
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | tenant id |
+| `storeCode` | string | Yes | store code |
+| `terminalNo` | integer | Yes | terminal no |
+| `journalSeqNo` | integer | No | delete in future |
+| `transactionNo` | integer | No | transaction_no |
+| `transactionType` | integer | Yes | transaction type |
+| `businessDate` | string | Yes | business date |
+| `openCounter` | integer | Yes | open counter |
+| `businessCounter` | integer | Yes | business counter |
+| `generateDateTime` | string | Yes | generate date time |
+| `receiptNo` | integer | No | receipt no |
+| `amount` | number | No | total_amount_with_tax |
+| `quantity` | integer | No | total_quantity |
+| `staffId` | string | No | staff id |
+| `userId` | string | No | user id |
+| `content` | string | No | delete in future |
+| `journalText` | string | Yes | journal text |
+| `receiptText` | string | Yes | receipt text |
+| `receipts` | array[ReceiptDocument] | No | Multiple receipt documents (customer, merchant, jo |
 
-Initializes journal service for a new tenant.
-
-**Request Body:**
+**Request Example:**
 ```json
 {
-  "tenantId": "tenant001"
+  "tenantId": "string",
+  "storeCode": "string",
+  "terminalNo": 0,
+  "journalSeqNo": -1,
+  "transactionNo": 0,
+  "transactionType": 0,
+  "businessDate": "string",
+  "openCounter": 0,
+  "businessCounter": 0,
+  "generateDateTime": "string"
 }
 ```
 
-**Authentication:** JWT token required
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 201,
-  "message": "Tenant creation completed: tenant001",
-  "data": {
-    "tenantId": "tenant001"
-  },
-  "operation": "create_tenant"
-}
-```
-
-### 5. Health Check
-**GET** `/health`
-
-Checks service health.
+**Response:**
 
 **Response Example:**
 ```json
 {
   "success": true,
   "code": 200,
-  "message": "Service is healthy",
-  "data": {
-    "status": "healthy",
-    "mongodb": "connected",
-    "dapr_sidecar": "connected",
-    "dapr_state_store": "connected",
-    "pubsub_topics": "subscribed"
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
   },
-  "operation": "health_check"
+  "data": {},
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
 }
 ```
 
-## Event Processing Endpoints (Dapr Pub/Sub)
+### Transaction
 
-### 6. Transaction Log Handler
-**POST** `/api/v1/tranlog`
+### 6. Receive Transactions
 
-**Topic:** `tranlog_report`
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
-Processes transaction logs from the Cart service.
+Direct API endpoint for receiving transaction data.
 
-### 7. Cash Log Handler
+This endpoint can be used as an alternative to the Dapr pub/sub mechanism
+when direct REST API calls are preferred. It requires authentication via
+token or API key.
+
+The function validates the tenant ID from the security credentials,
+processes the transaction data, and generates the corresponding journal entries.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+**Response:**
+
+**data Field:** `TranResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `transactionNo` | integer | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "transactionNo": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Event Processing
+
+### 7. Handle Cashlog
+
 **POST** `/api/v1/cashlog`
 
-**Topic:** `cashlog_report`
+Handle cash in/out logs received via Dapr pub/sub.
 
-Processes cash in/out logs from the Terminal service.
+This endpoint is called by Dapr when a cash log message is published
+to the 'topic-cashlog' topic. It processes the cash movement data and
+generates the corresponding journal entries.
 
-### 8. Open/Close Log Handler
+Cash logs represent non-sales cash movements like float, paid-ins, and payouts.
+
+**Response:**
+
+### 8. Handle Opencloselog
+
 **POST** `/api/v1/opencloselog`
 
-**Topic:** `opencloselog_report`
+Handle terminal open/close logs received via Dapr pub/sub.
 
-Processes terminal open/close logs from the Terminal service.
+This endpoint is called by Dapr when an open/close log message is published
+to the 'topic-opencloselog' topic. It processes the terminal session data
+and generates the corresponding journal entries.
 
-## Sort Options
+These logs mark the beginning and end of a terminal's business session
+and include details like starting cash, ending cash, and reconciliation.
 
-Available sort fields:
-- `terminalNo`: Terminal number
-- `businessDate`: Business date
-- `transactionNo`: Transaction number
-- `receiptNo`: Receipt number
-- `generateDateTime`: Generation date/time
-- `amount`: Amount
+**Response:**
 
-Default sort order:
-- `terminalNo:1, businessDate:1, receiptNo:1` (terminal number, business date, receipt number ascending)
+### 9. Handle Tranlog
 
-Direction:
-- `1`: Ascending
-- `-1`: Descending
+**POST** `/api/v1/tranlog`
+
+Handle transaction logs received via Dapr pub/sub.
+
+This endpoint is called by Dapr when a transaction log message is published
+to the 'topic-tranlog' topic. It processes the transaction data and generates
+the corresponding journal entries.
+
+The journal service uses this data to create human-readable receipt text
+and maintains a searchable record of all transactions.
+
+**Response:**
 
 ## Error Codes
 
-Journal service uses error codes in the 410XX-411XX range:
+Error responses are returned in the following format:
 
-### Journal Basic Operation Related (4100X)
-- `410001`: Journal not found
-- `410002`: Journal validation error
-- `410003`: Journal creation error
-- `410004`: Journal search error
-- `410005`: Journal format error
-- `410006`: Journal date error
-- `410007`: Journal data error
-
-### Journal Verification Related (4101X)
-- `410101`: Terminal not found
-- `410102`: Store not found
-- `410103`: Required logs missing
-- `410104`: Log sequence error
-- `410105`: Transaction validation error
-
-### Other Journal Related (411XX)
-- `411001`: Receipt generation error
-- `411002`: Journal text generation error
-- `411003`: Export error
-- `411004`: Import error
-- `411005`: Transaction receipt error
-- `411006`: External service error
-
-## Special Notes
-
-1. **Idempotency**: Duplicate processing prevention by event ID
-2. **Data Retention**: Permanent storage (no automatic deletion)
-3. **Full-text Search**: Keyword search support within journal_text
-4. **Asynchronous Processing**: All operations executed asynchronously
-5. **Circuit Breaker**: Automatic recovery during external service failures
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Error message",
+  "errorCode": "ERROR_CODE",
+  "operation": "operation_name"
+}
+```

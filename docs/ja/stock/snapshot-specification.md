@@ -10,58 +10,58 @@
 
 在庫スナップショットの完全な状態を保存するドキュメント。
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "store_code": "string",
-  "snapshot_id": "string (UUID)",
-  "total_items": "integer",
-  "total_quantity": "decimal",
-  "stocks": [
-    {
-      "item_code": "string",
-      "quantity": "decimal",
-      "minimum_quantity": "decimal",
-      "reorder_point": "decimal",
-      "reorder_quantity": "decimal"
-    }
-  ],
-  "created_by": "string",
-  "generate_date_time": "string (ISO 8601)",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
+**実装場所:** `/services/stock/app/models/documents/stock_snapshot_document.py`
+
+```python
+class StockSnapshotDocument(AbstractDocument):
+    id: Optional[str] = Field(None, alias="_id")
+    tenant_id: str
+    store_code: str
+    total_items: int
+    total_quantity: float
+    stocks: List[StockSnapshotItem] = Field(default_factory=list)
+    created_by: str
+    generate_date_time: Optional[str] = None  # ISO 8601形式
+```
+
+**StockSnapshotItem サブドキュメント:**
+```python
+class StockSnapshotItem(BaseModel):
+    item_code: str
+    quantity: float
+    minimum_quantity: Optional[float] = None
+    reorder_point: Optional[float] = None
+    reorder_quantity: Optional[float] = None
 ```
 
 **フィールド説明:**
-- `snapshot_id`: スナップショットの一意識別子（UUID形式）
 - `total_items`: スナップショット時点の総アイテム数
 - `total_quantity`: スナップショット時点の総在庫数量
 - `stocks`: 各商品の在庫情報の配列
-- `created_by`: スナップショット作成者（"system"または操作者ID）
+- `created_by`: スナップショット作成者（"system"または"scheduled_system"または操作者ID）
 - `generate_date_time`: スナップショット生成日時（ISO 8601形式）
 
 ### SnapshotScheduleDocument
 
-スナップショットの自動作成スケジュール設定。
+スナップショットの自動作成スケジュール設定。テナント単位で1つのスケジュールを管理。
 
-```json
-{
-  "_id": "ObjectId",
-  "tenant_id": "string",
-  "schedule_interval": "string (daily/weekly/monthly)",
-  "schedule_hour": "integer (0-23)",
-  "schedule_minute": "integer (0-59)",
-  "schedule_day_of_week": "integer (0-6, optional)",
-  "schedule_day_of_month": "integer (1-31, optional)",
-  "retention_days": "integer (30-365)",
-  "target_stores": ["string"],
-  "enabled": "boolean",
-  "last_executed_at": "datetime",
-  "created_at": "datetime",
-  "updated_at": "datetime"
-}
+**実装場所:** `/services/stock/app/models/documents/snapshot_schedule_document.py`
+
+```python
+class SnapshotScheduleDocument(AbstractDocument):
+    tenant_id: str
+    enabled: bool = True
+    schedule_interval: str  # "daily", "weekly", "monthly"
+    schedule_hour: int  # 0-23
+    schedule_minute: int = 0  # 0-59
+    schedule_day_of_week: Optional[int] = None  # 0-6 (for weekly, 0=Monday)
+    schedule_day_of_month: Optional[int] = None  # 1-31 (for monthly)
+    retention_days: int = 30
+    target_stores: List[str] = ["all"]  # ["all"] or specific store codes
+    last_executed_at: Optional[datetime] = None
+    next_execution_at: Optional[datetime] = None
+    created_by: str = "system"
+    updated_by: str = "system"
 ```
 
 **フィールド説明:**
@@ -69,21 +69,23 @@
 - `schedule_hour/minute`: 実行時刻
 - `schedule_day_of_week`: 週次スケジュールの曜日（0=月曜日）
 - `schedule_day_of_month`: 月次スケジュールの日付
-- `retention_days`: スナップショット保持期間（日数）
+- `retention_days`: スナップショット保持期間（日数、デフォルト30）
 - `target_stores`: 対象店舗（["all"]で全店舗）
 - `enabled`: スケジュールの有効/無効
+- `next_execution_at`: 次回実行予定日時
+- `created_by/updated_by`: 作成者/更新者（デフォルト "system"）
 
 ## スナップショット操作
 
 ### 1. 手動スナップショット作成
 
-**実装場所:** `/services/stock/app/services/snapshot_service.py:54`
+**実装場所:** `/services/stock/app/services/snapshot_service.py:20`
 
 ```python
 async def create_snapshot_async(
-    self, 
-    tenant_id: str, 
-    store_code: str, 
+    self,
+    tenant_id: str,
+    store_code: str,
     created_by: str = "system"
 ) -> StockSnapshotDocument
 ```
@@ -102,20 +104,20 @@ async def create_snapshot_async(
 ### 2. スナップショット照会
 
 #### 一覧取得
-**実装場所:** `/services/stock/app/services/snapshot_service.py:94`
+**実装場所:** `/services/stock/app/services/snapshot_service.py:76`
 
 ```python
 async def get_snapshots_async(
-    self, 
-    tenant_id: str, 
+    self,
+    tenant_id: str,
     store_code: str,
-    page: int = 1,
-    limit: int = 100
+    skip: int = 0,
+    limit: int = 20
 ) -> Tuple[List[StockSnapshotDocument], int]
 ```
 
 #### 日付範囲検索
-**実装場所:** `/services/stock/app/services/snapshot_service.py:134`
+**実装場所:** `/services/stock/app/services/snapshot_service.py:88`
 
 ```python
 async def get_snapshots_by_date_range_async(
@@ -123,15 +125,28 @@ async def get_snapshots_by_date_range_async(
     tenant_id: str,
     store_code: str,
     start_date: datetime,
-    end_date: datetime,
-    page: int = 1,
+    end_date: datetime
+) -> List[StockSnapshotDocument]
+```
+
+#### 生成日時範囲検索
+**実装場所:** `/services/stock/app/services/snapshot_service.py:104`
+
+```python
+async def get_snapshots_by_generate_date_time_async(
+    self,
+    tenant_id: str,
+    store_code: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    skip: int = 0,
     limit: int = 100
 ) -> Tuple[List[StockSnapshotDocument], int]
 ```
 
 ### 3. スケジュール管理
 
-**実装場所:** `/services/stock/app/scheduler/multi_tenant_snapshot_scheduler.py`
+**実装場所:** `/services/stock/app/services/multi_tenant_snapshot_scheduler.py`
 
 #### スケジューラーアーキテクチャ
 
@@ -139,48 +154,56 @@ async def get_snapshots_by_date_range_async(
 class MultiTenantSnapshotScheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
-        self._running_locks = {}  # 重複実行防止
+        self.tenant_jobs: Dict[str, str] = {}  # {tenant_id: job_id}
+        self._lock = asyncio.Lock()  # For thread-safe operations
 ```
 
 **主要メソッド:**
 
-1. **スケジュール追加/更新**
+1. **初期化**
    ```python
-   async def add_or_update_schedule(
-       self, 
-       tenant_id: str, 
-       schedule: SnapshotSchedule
-   )
+   async def initialize(self, get_db_func)
    ```
 
-2. **スケジュール削除**
+2. **スケジュール追加/更新**
    ```python
-   async def remove_schedule(self, tenant_id: str)
+   async def update_tenant_schedule(self, schedule: SnapshotScheduleDocument)
    ```
 
-3. **実行ロジック**
+3. **スケジュール削除**
    ```python
-   async def _execute_snapshot_job(self, tenant_id: str)
+   async def remove_tenant_schedule(self, tenant_id: str)
+   ```
+
+4. **実行ロジック**
+   ```python
+   async def _execute_tenant_snapshot(self, tenant_id: str, schedule: SnapshotScheduleDocument)
+   ```
+
+5. **ステータス取得**
+   ```python
+   def get_status(self) -> dict
    ```
 
 **実行フロー:**
 1. 重複実行チェック（メモリ内ロック）
 2. スケジュール設定を取得
-3. 対象店舗リストを決定
-4. 各店舗でスナップショットを作成
+3. 対象店舗リストを決定（`_get_target_stores`）
+4. 各店舗でスナップショットを作成（`created_by="scheduled_system"`）
 5. 実行結果をログ記録
 6. `last_executed_at`を更新
 
 ### 4. メンテナンス機能
 
 #### 古いスナップショットの削除
-**実装場所:** `/services/stock/app/services/snapshot_service.py:184`
+**実装場所:** `/services/stock/app/services/snapshot_service.py:94`
 
 ```python
 async def cleanup_old_snapshots_async(
-    self, 
-    tenant_id: str, 
-    retention_days: int
+    self,
+    tenant_id: str,
+    store_code: str,
+    retention_days: int = 90
 ) -> int
 ```
 
@@ -193,33 +216,31 @@ async def cleanup_old_snapshots_async(
 
 ### stock_snapshots コレクション
 
-```javascript
-// ユニークインデックス
-db.stock_snapshots.createIndex(
-    { "snapshot_id": 1 }, 
-    { unique: true }
-)
-
-// 複合インデックス（照会用）
-db.stock_snapshots.createIndex(
-    { "tenant_id": 1, "store_code": 1, "generate_date_time": -1 }
-)
-
-// TTLインデックス（自動削除用）
-db.stock_snapshots.createIndex(
-    { "created_at": 1 }, 
-    { expireAfterSeconds: variable }  // 動的に設定
-)
+```python
+class Settings:
+    name = "stock_snapshots"
+    indexes = [
+        {"keys": [("tenant_id", 1), ("store_code", 1), ("created_at", -1)]},
+        {"keys": [("tenant_id", 1), ("store_code", 1), ("generate_date_time", -1)]},
+    ]
 ```
+
+**TTLインデックス:**
+- TTLインデックスは`StockSnapshotRepository.ensure_ttl_index()`で動的に設定
+- スケジュール設定の`retention_days`に基づいて設定
+- 実装場所: `/services/stock/app/services/multi_tenant_snapshot_scheduler.py:100`
 
 ### snapshot_schedules コレクション
 
-```javascript
-// ユニークインデックス
-db.snapshot_schedules.createIndex(
-    { "tenant_id": 1 }, 
-    { unique: true }
-)
+```python
+class Settings:
+    name = "snapshot_schedules"
+    indexes = [
+        {
+            "keys": [("tenant_id", 1)],
+            "unique": True,
+        }
+    ]
 ```
 
 ## スケジュール設定例

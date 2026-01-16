@@ -28,7 +28,7 @@
 | user | UserInfoDocument | - | ユーザー情報 |
 | staff | StaffDocument | - | スタッフ情報 |
 | sales | SalesDocument | - | 売上サマリー情報 |
-| cart_status | string | ✓ | カート状態（Initial/Idle/EnteringItem/Paying/Completed/Cancelled） |
+| status | string | - | カート状態（Initial/Idle/EnteringItem/Paying/Completed/Cancelled） |
 | generate_date_time | datetime | - | カート生成日時 |
 | business_date | string | - | ビジネス日付（YYYYMMDD） |
 | subtotal_amount | float | - | 税金と割引前の合計 |
@@ -121,7 +121,7 @@ CartDocumentと同じフィールド構造に加えて：
 
 **コレクション名:** `status_tran`
 
-**継承:** `BaseDocumentModel`
+**継承:** `AbstractDocument`
 
 **フィールド定義:**
 
@@ -130,14 +130,14 @@ CartDocumentと同じフィールド構造に加えて：
 | tenant_id | string | ✓ | テナント識別子 |
 | store_code | string | ✓ | 店舗コード |
 | terminal_no | integer | ✓ | ターミナル番号 |
-| transaction_no | string | ✓ | トランザクション番号 |
-| is_voided | boolean | - | 取消状態フラグ |
-| is_refunded | boolean | - | 返品状態フラグ |
-| void_transaction_no | string | - | 取消トランザクション番号 |
-| void_date_time | datetime | - | 取消日時 |
+| transaction_no | integer | ✓ | トランザクション番号 |
+| is_voided | boolean | - | 取消状態フラグ（デフォルト: false） |
+| is_refunded | boolean | - | 返品状態フラグ（デフォルト: false） |
+| void_transaction_no | integer | - | 取消トランザクション番号 |
+| void_date_time | string | - | 取消日時（ISO 8601文字列） |
 | void_staff_id | string | - | 取消実行スタッフID |
-| return_transaction_no | string | - | 返品トランザクション番号 |
-| return_date_time | datetime | - | 返品日時 |
+| return_transaction_no | integer | - | 返品トランザクション番号 |
+| return_date_time | string | - | 返品日時（ISO 8601文字列） |
 | return_staff_id | string | - | 返品実行スタッフID |
 
 **インデックス:**
@@ -173,7 +173,7 @@ pub/subメッセージ配信状況を追跡するドキュメント。
 
 **コレクション名:** `status_tran_delivery`
 
-**継承:** `BaseDocumentModel`
+**継承:** `AbstractDocument`
 
 **フィールド定義:**
 
@@ -181,18 +181,25 @@ pub/subメッセージ配信状況を追跡するドキュメント。
 |------------|------|----------|-------------|
 | event_id | string | ✓ | イベント識別子（UUID） |
 | published_at | datetime | ✓ | 発行日時 |
-| status | string | ✓ | 全体配信状況 |
+| status | string | ✓ | 全体配信状況（published/delivered/partially_delivered/failed） |
+| tenant_id | string | ✓ | テナント識別子 |
+| store_code | string | ✓ | 店舗コード |
+| terminal_no | integer | ✓ | ターミナル番号 |
+| transaction_no | integer | ✓ | トランザクション番号 |
+| business_date | string | ✓ | 営業日（YYYYMMDD） |
+| open_counter | integer | ✓ | 開設回数 |
 | payload | dict | ✓ | メッセージペイロード |
-| services | array[ServiceStatus] | ✓ | サービス別配信状況 |
+| services | array[ServiceStatus] | - | サービス別配信状況 |
+| last_updated_at | datetime | ✓ | 最終更新日時 |
 
 **ServiceStatusサブドキュメント:**
 
 | フィールド名 | 型 | 必須 | 説明 |
 |------------|------|----------|-------------|
 | service_name | string | ✓ | サービス名 |
-| status | string | ✓ | 配信状況（pending/delivered/failed） |
-| delivered_at | datetime | - | 配信日時 |
-| error_message | string | - | エラーメッセージ |
+| status | string | - | 配信状況（pending/received/failed、デフォルト: pending） |
+| received_at | datetime | - | 受信日時 |
+| message | string | - | エラーメッセージなど |
 
 **インデックス:**
 - event_id (unique)

@@ -105,24 +105,47 @@ kugel_common/
 ### リポジトリパターン (`abstract_repository.py`)
 
 ```python
-class AbstractRepository(Generic[T]):
+class AbstractRepository(ABC, Generic[Tdocument]):
     """型安全なCRUD操作を提供する汎用リポジトリ"""
-    
-    async def find_by_id_async(self, id: str) -> Optional[T]
-    async def find_by_filter_async(self, filter_dict: dict) -> List[T]
-    async def create_async(self, entity: T) -> T
-    async def update_async(self, entity: T) -> T
-    async def delete_async(self, id: str) -> bool
-    async def paginate_async(self, page: int, limit: int, **kwargs) -> PaginatedResult[T]
+
+    def __init__(self, collection_name: str, document_class: Type[Tdocument], db: AsyncIOMotorDatabase)
+
+    # トランザクション管理
+    async def start_transaction(self) -> AsyncIOMotorClientSession
+    async def commit_transaction(self)
+    async def abort_transaction(self)
+    def set_session(self, session: AsyncIOMotorClientSession)
+
+    # CRUD操作
+    async def create_async(self, document: Tdocument) -> bool
+    async def get_one_async(self, filter: dict) -> Tdocument
+    async def get_all_async(self, max: int = 0) -> list[Tdocument]
+    async def get_list_async(self, filter: dict, max: int = 0) -> list[Tdocument]
+    async def get_list_async_with_sort_and_paging(
+        self, filter: dict, limit: int = 0, page: int = 1, sort: list[tuple[str, int]] = None
+    ) -> list[Tdocument]
+    async def get_paginated_list_async(
+        self, filter: dict, limit: int = 0, page: int = 1, sort: list[tuple[str, int]] = None
+    ) -> PaginatedResult[Tdocument]
+    async def replace_one_async(self, filter: dict, document: Tdocument) -> bool
+    async def update_one_async(self, filter: dict, new_values: dict, max_retries: int = 3, retry_interval: float = 0.1) -> bool
+    async def delete_async(self, search_dict: dict) -> bool
+
+    # 集約操作
+    async def execute_pipeline(self, pipeline: list[dict]) -> list[dict]
+
+    # ユーティリティ
+    def make_shard_key(self, keys: list[str]) -> str
 ```
 
 #### 主要機能
 
-- **型安全性**: Python Genericsによる型安全なCRUD操作
-- **トランザクション**: マルチドキュメントトランザクション対応
-- **ページネーション**: 組み込みページネーション機能
-- **リトライ機能**: WriteConflict（MongoDB コード112）の自動リトライ
-- **一括操作**: 集約パイプラインサポート
+- **型安全性**: Python Genericsによる型安全なCRUD操作（Tdocumentは型パラメータ）
+- **トランザクション**: マルチドキュメントトランザクション対応（start/commit/abort）
+- **ページネーション**: 組み込みページネーション機能（get_paginated_list_async）
+- **リトライ機能**: WriteConflict（MongoDB コード112）の自動リトライ（update_one_async）
+- **集約パイプライン**: execute_pipelineによる集約クエリ実行
+- **セッション共有**: 複数リポジトリでセッションを共有してクロスコレクショントランザクション対応
 
 ### ドキュメントモデル
 
@@ -355,24 +378,25 @@ class RequestLogMiddleware:
 ```python
 class TransactionType(Enum):
     """トランザクション種別"""
-    
-    # 販売操作（文字列値）
-    NORMAL_SALE = "101"      # 通常販売
-    RETURN_SALE = "102"      # 返品
-    VOID_SALE = "201"        # 販売取消
-    VOID_RETURN = "202"      # 返品取消
-    
+
+    # 販売操作（整数値）
+    NormalSales: int = 101           # 通常販売
+    NormalSalesCancel: int = -101    # 通常販売取消（精算前）
+    ReturnSales: int = 102           # 返品
+    VoidSales: int = 201             # 販売取消
+    VoidReturn: int = 202            # 返品取消
+
     # 端末操作
-    TERMINAL_OPEN = "301"    # 開店
-    TERMINAL_CLOSE = "302"   # 閉店
-    
+    Open: int = 301                  # 開店
+    Close: int = 302                 # 閉店
+
     # 現金操作
-    CASH_IN = "401"          # 現金入金
-    CASH_OUT = "402"         # 現金出金
-    
+    CashIn: int = 401                # 現金入金
+    CashOut: int = 402               # 現金出金
+
     # レポート
-    FLASH_REPORT = "501"     # 中間報告
-    DAILY_REPORT = "502"     # 日次報告
+    FlashReport: int = 501           # 中間報告
+    DailyReport: int = 502           # 日次報告
 ```
 
 ### 税計算・端数処理
@@ -380,15 +404,15 @@ class TransactionType(Enum):
 ```python
 class TaxType(Enum):
     """税種別"""
-    EXTERNAL = "EXTERNAL"  # 外税（加算）
-    INTERNAL = "INTERNAL"  # 内税（含む）
-    EXEMPT = "EXEMPT"      # 非課税
+    External: str = "External"  # 外税（価格に加算）
+    Internal: str = "Internal"  # 内税（価格に含む）
+    Exempt: str = "Exempt"      # 非課税
 
 class RoundMethod(Enum):
-    """端数処理方法（RoundingMethodではなくRoundMethod）"""
-    ROUND = "ROUND"  # 四捨五入
-    FLOOR = "FLOOR"  # 切り捨て
-    CEIL = "CEIL"   # 切り上げ
+    """端数処理方法"""
+    Round = "Round"  # 四捨五入
+    Floor = "Floor"  # 切り捨て
+    Ceil = "Ceil"    # 切り上げ
 ```
 
 ### 時刻管理 (`misc.py`)
@@ -509,34 +533,49 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
     """店舗別商品マスタのリポジトリ実装例"""
-    
+
     def __init__(self, db: AsyncIOMotorDatabase, tenant_id: str, store_code: str):
         # AbstractRepositoryのコンストラクタにコレクション名、ドキュメントクラス、DBインスタンスを渡す
         super().__init__("item_store_master", ItemStoreMasterDocument, db)
         self.tenant_id = tenant_id
         self.store_code = store_code
-    
+
     async def get_item_store_by_code(self, item_code: str) -> ItemStoreMasterDocument:
         """商品コードで店舗別商品情報を取得"""
-        filter = {
-            "tenant_id": self.tenant_id, 
-            "store_code": self.store_code, 
+        filter_dict = {
+            "tenant_id": self.tenant_id,
+            "store_code": self.store_code,
             "item_code": item_code
         }
         # AbstractRepositoryのget_one_asyncメソッドを使用
-        return await self.get_one_async(filter)
-    
-    async def create_item_store_async(self, item_store_doc: ItemStoreMasterDocument) -> ItemStoreMasterDocument:
+        return await self.get_one_async(filter_dict)
+
+    async def get_items_by_category(self, category_code: str, page: int = 1, limit: int = 100) -> list:
+        """カテゴリコードで店舗別商品リストを取得（ページネーション付き）"""
+        filter_dict = {
+            "tenant_id": self.tenant_id,
+            "store_code": self.store_code,
+            "category_code": category_code
+        }
+        # ページネーション付きリスト取得
+        return await self.get_paginated_list_async(filter_dict, limit=limit, page=page)
+
+    async def create_item_store_async(self, item_store_doc: ItemStoreMasterDocument) -> bool:
         """新規店舗別商品を作成"""
         item_store_doc.tenant_id = self.tenant_id
         item_store_doc.store_code = self.store_code
-        # AbstractRepositoryのcreate_asyncメソッドを使用
-        success = await self.create_async(item_store_doc)
-        if success:
-            return item_store_doc
-        else:
-            raise Exception("Failed to create item store")
+        # AbstractRepositoryのcreate_asyncメソッドを使用（成功時Trueを返す）
+        return await self.create_async(item_store_doc)
 
+    async def update_price_async(self, item_code: str, new_price: float) -> bool:
+        """店舗別価格を更新"""
+        filter_dict = {
+            "tenant_id": self.tenant_id,
+            "store_code": self.store_code,
+            "item_code": item_code
+        }
+        # update_one_asyncは部分更新に使用（WriteConflictの自動リトライ付き）
+        return await self.update_one_async(filter_dict, {"store_price": new_price})
 ```
 
 ### 2. 認証の使用
