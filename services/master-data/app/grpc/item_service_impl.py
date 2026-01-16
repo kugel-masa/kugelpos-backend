@@ -71,8 +71,6 @@ class ItemServiceImpl(item_service_pb2_grpc.ItemServiceServicer):
             logger.info(f"gRPC GetItemDetail success: item_code={item.item_code}, price={price}")
             return response
 
-        except DocumentNotFoundException:
-            raise
         except Exception as e:
             logger.error(f"gRPC GetItemDetail error: {e}", exc_info=True)
             context.set_code(grpc.StatusCode.INTERNAL)
