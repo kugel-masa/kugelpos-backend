@@ -15,7 +15,6 @@ pytest = "*"
 pytest-asyncio = "*"
 python-jose = {extras=["cryptography"], version = "*"}
 kugel_common = {file = "commons/dist/kugel_common-0.1.33-py3-none-any.whl"}
-
 httpx = "*"
 aiohttp = "*"
 pydantic-xml = {extras = ["lxml"], version = "*"}
@@ -28,6 +27,8 @@ apscheduler = "*"
 flake8 = "*"
 black = "*"
 mypy = "*"
+locust = "*"
+pandas = "*"
 
 [requires]
 python_version = "3.12"

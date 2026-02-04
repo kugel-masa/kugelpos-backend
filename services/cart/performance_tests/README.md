@@ -1,379 +1,221 @@
 # Cart Service Performance Tests
 
-This directory contains performance tests for the Cart Service using [Locust](https://locust.io/), a modern load testing tool.
+Performance testing tools for the Cart Service using [Locust](https://locust.io/).
 
-## 🎯 Multi-Terminal Mode (Default)
+## Directory Structure
 
-**IMPORTANT:** As of the latest update, all performance tests use **Multi-Terminal Mode** by default.
-
-### What is Multi-Terminal Mode?
-
-- Each Locust user is assigned a **unique terminal_id**
-- Prevents `threading.Lock()` contention on `transaction_no` generation
-- More realistic testing (simulates multiple POS terminals in real stores)
-- Significantly more accurate performance measurements
-
-### Why is this important?
-
-**Previous (Single-Terminal) Mode:**
-- All users shared one `terminal_id` → Lock contention
-- High response time variability (CV > 100%)
-- Unrealistic performance bottleneck
-
-**Current (Multi-Terminal) Mode:**
-- Each user has unique `terminal_id` → No lock contention
-- Low response time variability (CV < 50% expected)
-- Accurate representation of real-world usage
-
-## Overview
-
-The performance tests simulate realistic cart operations:
-
-1. **Create Cart** - Initialize a new shopping cart
-2. **Add Items (x20)** - Add 20 items with 5-second intervals between each item
-3. **Cancel Cart** - Cancel the cart transaction
-4. **Wait** - Wait 5 seconds before repeating the scenario
-
-## Test Patterns
-
-Two predefined test patterns are available:
-
-| Pattern | Users | Spawn Rate | Duration | Description |
-|---------|-------|------------|----------|-------------|
-| **Pattern 1** | 20 | 2/sec | 5 minutes | Moderate load test |
-| **Pattern 2** | 40 | 4/sec | 5 minutes | High load test |
-
-## Prerequisites
-
-1. **Environment Setup**
-   - Ensure `.env.test` file exists in project root with required variables:
-     ```bash
-     TENANT_ID=your_tenant_id
-     API_KEY=your_api_key
-     BASE_URL_CART=http://localhost:8003  # Optional, defaults to localhost
-     ```
-
-2. **Install Dependencies**
-   ```bash
-   cd services/cart
-   pipenv install --dev
-   ```
-
-3. **Start Cart Service**
-   ```bash
-   # From project root
-   cd scripts
-   ./start.sh
-
-   # Or start cart service individually
-   cd services
-   docker-compose up -d cart mongodb redis
-   ```
+```
+performance_tests/
+├── scripts/                    # Execution scripts
+│   ├── run_perf_test.sh       # Main test runner
+│   └── run_multiple_tests.sh  # Sequential multi-pattern execution
+├── results/                    # Test result output
+├── results_backup/             # Result backups
+├── locustfile.py              # Test scenarios
+├── setup_test_data.py         # Test data setup
+├── cleanup_test_data.py       # Test data cleanup
+├── config.py                  # Configuration
+├── generate_item_chart.py     # Chart generation
+└── generate_comparison_report.py # Comparison report generation
+```
 
 ## Quick Start
 
-### Option 1: Automated Test Execution (Recommended)
-
-```bash
-cd services/cart/performance_tests
-
-# Run all patterns with automatic setup/cleanup
-# Multi-terminal mode is automatically enabled
-./run_perf_test.sh
-```
-
-This will:
-1. Create 50 terminals (multi-terminal mode)
-2. Run Pattern 1 (20 users) and Pattern 2 (40 users)
-3. Clean up test data
-
-### Option 2: Manual Setup + Test
-
-```bash
-# Step 1: Setup test data with multi-terminal mode (creates 50 terminals by default)
-./run_perf_test.sh setup
-
-# Or specify number of terminals
-./run_perf_test.sh setup 100
-
-# Step 2: Run specific pattern
-./run_perf_test.sh pattern1   # 20 users
-./run_perf_test.sh pattern2   # 40 users
-
-# Or custom pattern
-./run_perf_test.sh custom 50 10m   # 50 users for 10 minutes
-
-# Step 3: Cleanup when done
-./run_perf_test.sh cleanup
-```
-
-### Option 3: Multiple Patterns Test
-
-```bash
-# Run 20, 30, 40, 50 user tests sequentially
-./run_multiple_tests.sh
-```
-
-This will:
-- Run each pattern with service restart
-- Backup results to `results_backup/TIMESTAMP/`
-- Generate comparison report
-
-### Show Help
-
-```bash
-./run_perf_test.sh help
-```
-
-## Advanced Usage
-
-### Web UI Mode (Interactive)
-
-For interactive testing with real-time charts:
-
-```bash
-cd services/cart/performance_tests
-
-# First, setup test data (multi-terminal mode)
-./run_perf_test.sh setup 100
-
-# Then run Locust Web UI with multi-terminal mode
-pipenv run locust -f locustfile_multi_terminal.py --host=http://localhost:8003
-```
-
-Then open http://localhost:8089 in your browser and configure:
-- Number of users
-- Spawn rate
-- Host URL (pre-filled)
-
-**Note:** Make sure to run `setup` first to create `terminals_config.json` for multi-terminal mode.
-
-### Single-Terminal Mode (For Comparison Only)
-
-To test single-terminal performance (for comparison with multi-terminal):
-
-```bash
-# Use the original locustfile
-pipenv run locust -f locustfile.py --host=http://localhost:8003
-```
-
-⚠️ **Warning:** Single-terminal mode has lock contention issues and is not recommended for production testing.
-
-### Custom Parameters via Environment Variables
-
-Override default test parameters:
-
-```bash
-# Custom scenario parameters
-export PERF_TEST_ITEMS_PER_CART=10        # Default: 20
-export PERF_TEST_ITEM_ADD_INTERVAL=3      # Default: 5 seconds
-export PERF_TEST_POST_CANCEL_WAIT=2       # Default: 5 seconds
-
-# Custom test execution parameters
-export PERF_TEST_NUM_USERS=50             # Default: 20
-export PERF_TEST_SPAWN_RATE=5             # Default: 2
-export PERF_TEST_RUN_TIME=10m             # Default: 5m
-
-# Run with custom parameters
-./run_perf_test.sh
-```
-
-### Direct Locust Command
-
-Run Locust directly with custom arguments:
-
-```bash
-cd services/cart/performance_tests
-
-# Example: 100 users, 10 users/sec spawn rate, 10 minute duration
-pipenv run locust \
-    -f locustfile.py \
-    --host=http://localhost:8003 \
-    --users 100 \
-    --spawn-rate 10 \
-    --run-time 10m \
-    --headless \
-    --html=results/custom_test.html
-```
-
-## Output and Reports
-
-Test results are saved to the `results/` directory:
-
-```
-performance_tests/results/
-├── Pattern_1_20users_20250118_143022.html          # HTML report
-├── Pattern_1_20users_20250118_143022_stats.csv     # Request statistics
-├── Pattern_1_20users_20250118_143022_history.csv   # Time-series data
-├── Pattern_1_20users_20250118_143022_failures.csv  # Failure details
-├── Pattern_2_40users_20250118_144522.html
-└── ...
-```
-
-### Understanding the Reports
-
-**HTML Report** (`*.html`)
-- Summary statistics (requests, failures, response times)
-- Response time charts
-- Requests per second charts
-- Detailed request statistics table
-
-**Stats CSV** (`*_stats.csv`)
-- Request type, name, count
-- Failure count and rate
-- Response time metrics (min, max, median, 95th percentile)
-- Requests per second
-
-**History CSV** (`*_history.csv`)
-- Time-series data at 1-second intervals
-- User count over time
-- Request rate over time
-- Response time over time
-
-## Configuration
-
-### Test Scenario Configuration
-
-Edit `config.py` to modify default values:
-
-```python
-@dataclass
-class PerformanceTestConfig:
-    # Authentication
-    api_key: str
-    tenant_id: str
-
-    # Test scenario parameters
-    items_per_cart: int = 20        # Number of items per cart
-    item_add_interval: int = 5       # Seconds between item additions
-    post_cancel_wait: int = 5        # Seconds after cart cancellation
-
-    # Test execution parameters
-    num_users: int = 20              # Concurrent users
-    spawn_rate: int = 2              # Users spawned per second
-    run_time: str = "5m"             # Test duration
-
-    # Target URL
-    base_url: str = "http://localhost:8003"
-```
-
-### Test Patterns
-
-Modify test patterns in `config.py`:
-
-```python
-TEST_PATTERNS = {
-    "pattern1": {
-        "PERF_TEST_NUM_USERS": "20",
-        "PERF_TEST_SPAWN_RATE": "2",
-        "PERF_TEST_RUN_TIME": "5m",
-        "description": "20 concurrent users for 5 minutes"
-    },
-    "pattern2": {
-        "PERF_TEST_NUM_USERS": "40",
-        "PERF_TEST_SPAWN_RATE": "4",
-        "PERF_TEST_RUN_TIME": "5m",
-        "description": "40 concurrent users for 5 minutes"
-    }
-}
-```
-
-## Troubleshooting
-
-### API_KEY or TENANT_ID not found
-
-Ensure `.env.test` file exists in project root:
-```bash
-cp .env.test.sample .env.test
-# Edit .env.test with your values
-```
-
-### Connection Refused
-
-1. Check if cart service is running:
-   ```bash
-   curl http://localhost:8003/health
-   ```
-
-2. Check docker containers:
-   ```bash
-   cd services
-   docker-compose ps
-   ```
-
-3. Check logs:
-   ```bash
-   docker-compose logs -f cart
-   ```
-
-### High Failure Rate
-
-- Check MongoDB and Redis are running
-- Check service logs for errors
-- Reduce number of concurrent users
-- Increase spawn rate interval (spawn users more slowly)
-
-### Locust Not Installed
+### 1. Install Dependencies
 
 ```bash
 cd services/cart
 pipenv install --dev
 ```
 
-## Performance Metrics
+### 2. Start Services
 
-### Key Metrics to Monitor
+```bash
+cd scripts
+./start.sh
+```
 
-1. **Response Time**
-   - 50th percentile (median): Typical user experience
-   - 95th percentile: Worst-case for 95% of users
-   - 99th percentile: Worst-case for 99% of users
+### 3. Run Tests
 
-2. **Requests per Second (RPS)**
-   - Total RPS: System throughput
-   - Per-endpoint RPS: Identify bottlenecks
+```bash
+cd services/cart/performance_tests
 
-3. **Failure Rate**
-   - Should be 0% or very low (<1%)
-   - High failure rate indicates system overload
+# Fully automated execution (setup → test → cleanup)
+./scripts/run_perf_test.sh all
 
-4. **User Load**
-   - Maximum users the system can handle
-   - At what point does performance degrade?
+# Or manual steps
+./scripts/run_perf_test.sh setup 50    # Create 50 terminals
+./scripts/run_perf_test.sh pattern1    # 20 users × 5 min
+./scripts/run_perf_test.sh pattern2    # 40 users × 5 min
+./scripts/run_perf_test.sh cleanup     # Cleanup
+```
 
-### Example Baseline Metrics
+## Test Scenario
 
-These are example targets (adjust based on requirements):
+Each virtual user repeats the following flow:
 
-- **Response Time (95th percentile)**
-  - Create Cart: < 500ms
-  - Add Item: < 300ms
-  - Cancel Cart: < 400ms
+1. **Create Cart** - `POST /api/v1/carts`
+2. **Add Items × 20** - `POST /api/v1/carts/{id}/lineItems` (3-second intervals)
+3. **Cancel Cart** - `POST /api/v1/carts/{id}/cancel`
+4. **Wait** - Return to step 1 after 3 seconds
 
-- **Throughput**
-  - 20 users: > 100 RPS
-  - 40 users: > 200 RPS
+## Test Patterns
 
-- **Failure Rate**
-  - All patterns: < 0.1%
+| Pattern | Users | Spawn Rate | Duration |
+|---------|-------|------------|----------|
+| pattern1 | 20 | 2/sec | 5 min |
+| pattern2 | 40 | 4/sec | 5 min |
+| custom | any | auto | any |
 
-## Best Practices
+### Custom Pattern
 
-1. **Run tests during low-traffic periods** to avoid affecting production
-2. **Start with lower load** (Pattern 1) before running higher load tests
-3. **Monitor system resources** (CPU, memory, database) during tests
-4. **Establish baselines** before making performance improvements
-5. **Compare results** after optimization changes
-6. **Clean test data** between runs if needed
+```bash
+./scripts/run_perf_test.sh custom 100 10m  # 100 users × 10 min
+```
 
-## Related Documentation
+## Configuration
 
-- [Locust Documentation](https://docs.locust.io/)
-- [Cart Service API Documentation](../app/api/v1/cart.py)
-- [Project Main README](../../../README.md)
+Override settings via environment variables:
 
-## License
+```bash
+export PERF_TEST_NUM_USERS=50        # Number of users
+export PERF_TEST_SPAWN_RATE=5        # Spawn rate (/sec)
+export PERF_TEST_RUN_TIME=10m        # Run time
+export PERF_TEST_ITEMS_PER_CART=10   # Items per cart
+export PERF_TEST_ITEM_ADD_INTERVAL=2 # Item add interval (sec)
+```
 
-Copyright 2025 masa@kugel
+## Multi-Terminal Mode
 
-Licensed under the Apache License, Version 2.0
+Tests run in **multi-terminal mode**:
+
+- Each Locust user is assigned a unique `terminal_id`
+- Avoids `threading.Lock()` contention
+- Simulates realistic store operations (multiple POS terminals)
+
+## Web UI Mode
+
+For interactive testing:
+
+```bash
+# After setup
+./scripts/run_perf_test.sh setup 50
+
+# Start Web UI
+cd services/cart/performance_tests
+pipenv run locust -f locustfile.py --host=http://localhost:8003
+```
+
+Open http://localhost:8089 in your browser
+
+## Output Files
+
+Results are saved to `results/`:
+
+| File | Description |
+|------|-------------|
+| `*.html` | HTML report (with charts) |
+| `*_stats.csv` | Request statistics |
+| `*_stats_history.csv` | Time-series data |
+| `*_failures.csv` | Failure details |
+| `*_add_item.html` | Item addition chart |
+
+## Sequential Multi-Pattern Execution
+
+Run multiple user count patterns sequentially for benchmarking and generate comparison reports.
+
+### How to Run
+
+```bash
+./scripts/run_multiple_tests.sh
+```
+
+### Execution Flow
+
+For each pattern, the following is automatically executed:
+
+1. Restart services (`scripts/stop.sh` → `scripts/start.sh`)
+2. Cleanup previous test data
+3. Setup test data (terminals = users + 10)
+4. Run performance test (10 minutes)
+5. Backup results to `results_backup/YYYYMMDD_HHMMSS/`
+6. Cleanup test data
+
+### Default Patterns
+
+| Pattern | Users | Terminals | Duration |
+|---------|-------|-----------|----------|
+| 1 | 20 | 30 | 10 min |
+| 2 | 30 | 40 | 10 min |
+| 3 | 40 | 50 | 10 min |
+| 4 | 50 | 60 | 10 min |
+
+### Estimated Time
+
+Approximately 1-1.5 hours (including setup/cleanup)
+
+### Output
+
+```
+results_backup/
+└── 20260204_153000/
+    ├── 20users/
+    │   ├── Custom_20users_*.html
+    │   └── Custom_20users_*.csv
+    ├── 30users/
+    ├── 40users/
+    ├── 50users/
+    └── comparison_report_*.html    # Comparison report
+```
+
+### Comparison Report
+
+An HTML report comparing all patterns is automatically generated:
+
+- Response time comparison across patterns
+- Throughput comparison
+- Failure rate comparison
+
+### Changing Patterns
+
+Edit lines 71-72 in `scripts/run_multiple_tests.sh`:
+
+```bash
+TEST_PATTERNS=(20 30 40 50)  # Array of user counts
+TEST_DURATION="10m"          # Duration for each pattern
+```
+
+Examples:
+
+```bash
+# Short tests
+TEST_PATTERNS=(10 20)
+TEST_DURATION="5m"
+
+# High load tests
+TEST_PATTERNS=(50 100 150 200)
+TEST_DURATION="15m"
+```
+
+## Troubleshooting
+
+### API_KEY not found
+
+```bash
+# .env.test is required
+cp .env.test.sample .env.test
+```
+
+### Connection refused
+
+```bash
+# Check if service is running
+curl http://localhost:8003/health
+```
+
+### terminals_config.json not found
+
+```bash
+# Run setup
+./scripts/run_perf_test.sh setup 50
+```
