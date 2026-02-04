@@ -57,17 +57,20 @@ NC='\033[0m' # No Color
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PERF_TEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Output directory for test results
-OUTPUT_DIR="${SCRIPT_DIR}/results"
-BACKUP_BASE_DIR="${SCRIPT_DIR}/results_backup"
+OUTPUT_DIR="${PERF_TEST_DIR}/results"
+BACKUP_BASE_DIR="${PERF_TEST_DIR}/results_backup"
 
 # Timestamp for this test run
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}"
 
 # Test patterns: users and duration
-TEST_PATTERNS=(20 30 40 50)
+#TEST_PATTERNS=(20 30 40 50)
+#TEST_DURATION="10m"
+TEST_PATTERNS=(50 100)
 TEST_DURATION="10m"
 
 # Error tracking
@@ -147,8 +150,8 @@ run_test_pattern() {
     # Step 1: Restart services
     print_info "Step 1/6: Restarting services..."
 
-    # Get the scripts directory (3 levels up from performance_tests)
-    local SCRIPTS_DIR="${SCRIPT_DIR}/../../../scripts"
+    # Get the scripts directory (3 levels up from performance_tests to project root)
+    local SCRIPTS_DIR="${PERF_TEST_DIR}/../../../scripts"
 
     # Stop services
     if bash "${SCRIPTS_DIR}/stop.sh" --prod; then
@@ -289,8 +292,8 @@ main() {
     # Generate comparison report
     print_info "Generating comparison report..."
 
-    cd "${SCRIPT_DIR}" || {
-        print_error "Failed to change directory to ${SCRIPT_DIR}"
+    cd "${PERF_TEST_DIR}" || {
+        print_error "Failed to change directory to ${PERF_TEST_DIR}"
         PARTIAL_FAILURES+=("report: failed to change directory")
         return
     }
@@ -307,7 +310,7 @@ main() {
         print_error "Failed to generate comparison report (non-critical)"
         PARTIAL_FAILURES+=("report: generation failed")
         print_warning "You can manually generate the report by running:"
-        echo "  cd ${SCRIPT_DIR}"
+        echo "  cd ${PERF_TEST_DIR}"
         echo "  pipenv run python generate_comparison_report.py ${BACKUP_DIR}"
     fi
 

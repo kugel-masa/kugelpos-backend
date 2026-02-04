@@ -40,11 +40,12 @@ NC='\033[0m' # No Color
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CART_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PERF_TEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CART_DIR="$(cd "${PERF_TEST_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${CART_DIR}/../.." && pwd)"
 
 # Output directory for test results
-OUTPUT_DIR="${SCRIPT_DIR}/results"
+OUTPUT_DIR="${PERF_TEST_DIR}/results"
 mkdir -p "${OUTPUT_DIR}"
 
 # Timestamp for this test run
@@ -68,16 +69,16 @@ setup_test_data() {
     print_message "${BLUE}" "Setting up test data (Multi-Terminal Mode)..."
     print_message "${BLUE}" "  Creating ${num_terminals} terminals..."
 
-    cd "${SCRIPT_DIR}"
+    cd "${PERF_TEST_DIR}"
 
     # Use multi-terminal setup script
-    pipenv run python setup_test_data_multi_terminal.py "${num_terminals}"
+    pipenv run python setup_test_data.py "${num_terminals}"
 
     if [ $? -eq 0 ]; then
         print_message "${GREEN}" "  ✓ Test data setup completed (${num_terminals} terminals created)"
 
         # Verify terminals_config.json was created
-        if [ -f "${SCRIPT_DIR}/terminals_config.json" ]; then
+        if [ -f "${PERF_TEST_DIR}/terminals_config.json" ]; then
             print_message "${GREEN}" "  ✓ Terminal configuration saved"
         else
             print_message "${RED}" "  ✗ Error: terminals_config.json not found"
@@ -95,7 +96,7 @@ setup_test_data() {
 cleanup_test_data() {
     print_message "${BLUE}" "Cleaning up test data..."
 
-    cd "${SCRIPT_DIR}"
+    cd "${PERF_TEST_DIR}"
     pipenv run python cleanup_test_data.py
 
     if [ $? -eq 0 ]; then
@@ -105,8 +106,8 @@ cleanup_test_data() {
     fi
 
     # Remove terminals_config.json if it exists
-    if [ -f "${SCRIPT_DIR}/terminals_config.json" ]; then
-        rm -f "${SCRIPT_DIR}/terminals_config.json"
+    if [ -f "${PERF_TEST_DIR}/terminals_config.json" ]; then
+        rm -f "${PERF_TEST_DIR}/terminals_config.json"
         print_message "${GREEN}" "  ✓ Terminal configuration removed"
     fi
 }
@@ -182,20 +183,19 @@ run_test_pattern() {
     local csv_failures="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_failures.csv"
 
     # Check if terminals_config.json exists (multi-terminal mode)
-    local locustfile="locustfile.py"
-    if [ -f "${SCRIPT_DIR}/terminals_config.json" ]; then
-        locustfile="locustfile_multi_terminal.py"
-        print_message "${GREEN}" "  Using Multi-Terminal Mode (${locustfile})"
+    if [ -f "${PERF_TEST_DIR}/terminals_config.json" ]; then
+        print_message "${GREEN}" "  Using Multi-Terminal Mode"
     else
-        print_message "${YELLOW}" "  Warning: terminals_config.json not found, using single-terminal mode"
-        print_message "${YELLOW}" "  Run './run_perf_test.sh setup' to create multi-terminal configuration"
+        print_message "${RED}" "  Error: terminals_config.json not found"
+        print_message "${YELLOW}" "  Run './run_perf_test.sh setup' to create terminal configuration"
+        exit 1
     fi
 
     # Run Locust
-    cd "${SCRIPT_DIR}"
+    cd "${PERF_TEST_DIR}"
 
     pipenv run locust \
-        -f "${locustfile}" \
+        -f "locustfile.py" \
         --host="${BASE_URL_CART}" \
         --users="${num_users}" \
         --spawn-rate="${spawn_rate}" \
@@ -215,6 +215,7 @@ run_test_pattern() {
         # Generate Add Item specific chart
         local add_item_chart="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_add_item.html"
         print_message "${BLUE}" "\n  Generating Add Item chart..."
+        cd "${PERF_TEST_DIR}"
         pipenv run python generate_item_chart.py "${csv_stats}" "${add_item_chart}"
         if [ $? -eq 0 ]; then
             print_message "${GREEN}" "  Add Item Chart: ${add_item_chart}"
@@ -329,12 +330,11 @@ EXAMPLES:
     $0 cleanup              # Cleanup test data only
 
 MULTI-TERMINAL MODE:
-    This script automatically uses multi-terminal mode to avoid lock contention:
+    This script uses multi-terminal mode to avoid lock contention:
     - Each Locust user is assigned a unique terminal_id
     - Prevents threading.Lock() contention on transaction_no generation
     - More realistic performance testing (simulates multiple POS terminals)
-    - If terminals_config.json exists, uses locustfile_multi_terminal.py
-    - Otherwise, falls back to single-terminal mode (locustfile.py)
+    - Requires terminals_config.json (created by 'setup' command)
 
 REQUIREMENTS:
     - Services running (account, terminal, master-data, cart)

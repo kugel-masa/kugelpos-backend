@@ -21,3 +21,4 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+terminals_config.json
