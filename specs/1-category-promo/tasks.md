@@ -47,7 +47,7 @@
 
 ---
 
-#### Task 5: APIスキーマ作成
+#### Task 3: APIスキーマ作成
 
 **サービス**: master-data
 **ファイル**:
@@ -74,7 +74,7 @@
 
 ### Phase 2-2: master-data 実装
 
-#### Task 3: PromotionMasterRepository作成
+#### Task 4: PromotionMasterRepository作成
 
 **サービス**: master-data
 **ファイル**: `services/master-data/app/models/repositories/promotion_master_repository.py`
@@ -101,12 +101,12 @@
 
 ---
 
-#### Task 4: PromotionMasterService作成
+#### Task 5: PromotionMasterService作成
 
 **サービス**: master-data
 **ファイル**: `services/master-data/app/services/promotion_master_service.py`
 **優先度**: 高
-**依存**: Task 3
+**依存**: Task 4
 
 **内容**:
 - ビジネスロジックを実装
@@ -127,7 +127,7 @@
 **サービス**: master-data
 **ファイル**: `services/master-data/app/api/v1/promotion_master.py`
 **優先度**: 高
-**依存**: Task 4, Task 5
+**依存**: Task 3, Task 5
 
 **内容**:
 - FastAPI routerを作成
@@ -181,7 +181,7 @@
 
 ---
 
-#### Task 14: プロモーションマスタ単体テスト
+#### Task 9: プロモーションマスタ単体テスト
 
 **サービス**: master-data
 **ファイル**: `services/master-data/tests/test_promotion_master.py`
@@ -202,7 +202,7 @@
 
 ### Phase 2-3: cart 実装
 
-#### Task 9: CategoryPromoPlugin作成
+#### Task 10: CategoryPromoPlugin作成
 
 **サービス**: cart
 **ファイル**: `services/cart/app/services/strategies/sales_promo/category_promo.py`
@@ -227,12 +227,12 @@
 
 ---
 
-#### Task 10: プラグイン登録
+#### Task 11: プラグイン登録
 
 **サービス**: cart
 **ファイル**: `services/cart/app/services/strategies/plugins.json`
 **優先度**: 高
-**依存**: Task 9
+**依存**: Task 10
 
 **内容**:
 - CategoryPromoPluginを登録
@@ -256,12 +256,12 @@
 
 ---
 
-#### Task 11: プラグイン呼び出し実装
+#### Task 12: プラグイン呼び出し実装
 
 **サービス**: cart
 **ファイル**: `services/cart/app/services/cart_service.py`
 **優先度**: 高
-**依存**: Task 9, Task 10
+**依存**: Task 10, Task 11
 
 **内容**:
 - `add_items_to_cart_async` メソッド内で:
@@ -275,12 +275,12 @@
 
 ---
 
-#### Task 12: 取引ログへのプロモーション情報記録
+#### Task 13: 取引ログへのプロモーション情報記録
 
 **サービス**: cart
 **ファイル**: `services/cart/app/services/tran_service.py`
 **優先度**: 高
-**依存**: Task 1, Task 11
+**依存**: Task 1, Task 12
 
 **内容**:
 - CartDocumentからTransactionLogへの変換時に
@@ -292,12 +292,12 @@
 
 ---
 
-#### Task 15: プロモーション適用統合テスト
+#### Task 14: プロモーション適用統合テスト
 
 **サービス**: cart
 **ファイル**: `services/cart/tests/test_category_promo.py`
 **優先度**: 高
-**依存**: Task 11
+**依存**: Task 12
 
 **内容**:
 - プロモーション適用の統合テスト
@@ -315,12 +315,12 @@
 
 ### Phase 2-4: report 実装
 
-#### Task 13: プロモーション実績集計プラグイン作成
+#### Task 15: プロモーション実績集計プラグイン作成
 
 **サービス**: report
 **ファイル**: `services/report/app/services/plugins/promotion_report_maker.py`
 **優先度**: 中
-**依存**: Task 12
+**依存**: Task 13
 
 **内容**:
 - プロモーション実績集計ロジックを実装
@@ -338,7 +338,7 @@
 **サービス**: report
 **ファイル**: `services/report/tests/test_promotion_report.py`
 **優先度**: 中
-**依存**: Task 13
+**依存**: Task 15
 
 **内容**:
 - 実績集計のテスト
@@ -360,33 +360,33 @@ Task 1 (commons: DiscountInfo拡張)
     │                                  │
 Task 2 (master-data: Document)         │
     │                                  │
-    ├── Task 5 (Schemas)               │
+    ├── Task 3 (Schemas)               │
     │       │                          │
-    ├── Task 3 (Repository)            │
+    ├── Task 4 (Repository)            │
     │       │                          │
-    │       └── Task 4 (Service)       │
+    │       └── Task 5 (Service)       │
     │               │                  │
-    │               └── Task 6 (API)   │
+    │               └── Task 6 (API) ──┤
     │                       │          │
     │                       ├── Task 7 (Router)
     │                       │          │
-    │                       └── Task 14 (Test)
+    │                       └── Task 9 (Test)
     │                                  │
     └── Task 8 (Index)                 │
                                        │
-Task 9 (cart: Plugin) ─────────────────┘
+Task 10 (cart: Plugin) ────────────────┘
     │
-    ├── Task 10 (Plugin登録)
+    ├── Task 11 (Plugin登録)
     │       │
-    │       └── Task 11 (呼び出し)
+    │       └── Task 12 (呼び出し)
     │               │
-    │               ├── Task 12 (取引ログ)
+    │               ├── Task 13 (取引ログ)
     │               │       │
-    │               │       └── Task 13 (report集計)
+    │               │       └── Task 15 (report集計)
     │               │               │
     │               │               └── Task 16 (Test)
     │               │
-    │               └── Task 15 (Test)
+    │               └── Task 14 (Test)
 ```
 
 ## 見積もり
