@@ -24,7 +24,7 @@ $ARGUMENTS
 
 | 環境 | DOMAIN | RESOURCE_GROUP | STATUS |
 |------|--------|----------------|--------|
-| dev | thankfulbeach-66ab2349.japaneast.azurecontainerapps.io | rg-sakura-pos-dev | Available |
+| dev | `<your-app-name>.japaneast.azurecontainerapps.io` | `<your-resource-group>` | Configure in .env |
 | staging | (TBD) | (TBD) | Not configured |
 | prod | (TBD) | (TBD) | Not configured |
 
