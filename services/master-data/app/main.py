@@ -53,6 +53,7 @@ from app.api.v1.settings_master import router as v1_settings_master_router
 from app.api.v1.category_master import router as v1_category_master_router
 from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.tax_master import router as v1_tax_master_router
+from app.api.v1.promotion_master import router as v1_promotion_master_router
 from app.config.settings import settings
 from app.grpc.server import start_grpc_server, stop_grpc_server
 
@@ -109,6 +110,10 @@ app.include_router(
 app.include_router(v1_tenant_router, prefix="/api/v1", tags=["Tenant"])  # Tenant management operations
 
 app.include_router(v1_tax_master_router, prefix="/api/v1", tags=["Tax Master"])  # Tax configuration (rates, rules)
+
+app.include_router(
+    v1_promotion_master_router, prefix="/api/v1", tags=["Promotion Master"]
+)  # Promotion management (discounts, campaigns)
 
 # Add middleware to log all HTTP requests with service name "master-data"
 app.middleware("http")(log_requests("master-data"))

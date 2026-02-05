@@ -16,6 +16,8 @@ from app.api.common.schemas import (
     BaseItemBookTab,
     BaseItemBookButton,
     BaseTaxMasterResponse,
+    BasePromotionResponse,
+    BaseCategoryPromoDetail,
 )
 from app.models.documents.item_common_master_document import ItemCommonMasterDocument
 from app.models.documents.item_store_master_document import ItemStoreMasterDocument
@@ -30,6 +32,7 @@ from app.models.documents.item_book_master_document import (
     ItemBookButton,
 )
 from app.models.documents.tax_master_document import TaxMasterDocument
+from app.models.documents.promotion_master_document import PromotionMasterDocument
 
 logger = getLogger(__name__)
 
@@ -202,3 +205,43 @@ class SchemasTransformer:
 
         logger.debug(f"return_tax: {return_tax}")
         return return_tax
+
+    def transform_promotion(self, promotion_doc: PromotionMasterDocument) -> BasePromotionResponse:
+        logger.debug(f"promotion_master: {promotion_doc}")
+
+        category_promo_detail = None
+        if promotion_doc.category_promo_detail:
+            category_promo_detail = BaseCategoryPromoDetail(
+                target_store_codes=promotion_doc.category_promo_detail.target_store_codes or [],
+                target_category_codes=promotion_doc.category_promo_detail.target_category_codes,
+                discount_rate=promotion_doc.category_promo_detail.discount_rate,
+            )
+
+        return BasePromotionResponse(
+            promotion_code=promotion_doc.promotion_code,
+            promotion_type=promotion_doc.promotion_type,
+            name=promotion_doc.name,
+            description=promotion_doc.description,
+            start_datetime=(
+                promotion_doc.start_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+                if promotion_doc.start_datetime
+                else None
+            ),
+            end_datetime=(
+                promotion_doc.end_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+                if promotion_doc.end_datetime
+                else None
+            ),
+            is_active=promotion_doc.is_active,
+            category_promo_detail=category_promo_detail,
+            entry_datetime=(
+                promotion_doc.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                if promotion_doc.created_at
+                else None
+            ),
+            last_update_datetime=(
+                promotion_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                if promotion_doc.updated_at
+                else None
+            ),
+        )

@@ -2,9 +2,10 @@
 from logging import getLogger
 
 from app.models.documents.staff_master_document import StaffMasterDocument
-from app.api.common.schemas import BasePaymentResponse, BaseStaffResponse
+from app.api.common.schemas import BasePaymentResponse, BaseStaffResponse, BasePromotionResponse
 from app.api.common.schemas_transformer import SchemasTransformer
 from app.models.documents.payment_master_document import PaymentMasterDocument
+from app.models.documents.promotion_master_document import PromotionMasterDocument
 
 logger = getLogger(__name__)
 
@@ -27,4 +28,12 @@ class SchemasTransformerV1(SchemasTransformer):
             return super().transform_payment(payment_doc)
         except Exception as e:
             logger.error(f"Error transforming payment document: {e}")
+            raise e
+
+    def transform_promotion(self, promotion_doc: PromotionMasterDocument) -> BasePromotionResponse:
+        logger.debug(f"Transforming promotion document: {promotion_doc}")
+        try:
+            return super().transform_promotion(promotion_doc)
+        except Exception as e:
+            logger.error(f"Error transforming promotion document: {e}")
             raise e

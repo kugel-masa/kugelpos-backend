@@ -94,6 +94,19 @@ async def create_master_staff_collection(tenant_id: str):
     )
 
 
+# create master promotion collection
+async def create_master_promotion_collection(tenant_id: str):
+    name = settings.DB_COLLECTION_NAME_PROMOTION_MASTER
+    index_keys_list = [
+        {"keys": {"tenant_id": 1, "promotion_code": 1}, "unique": True},
+        {"keys": {"tenant_id": 1, "promotion_type": 1, "is_active": 1}, "unique": False},
+        {"keys": {"tenant_id": 1, "is_active": 1, "start_datetime": 1, "end_datetime": 1}, "unique": False},
+    ]
+    await create_some_collection(
+        tenant_id=tenant_id, collection_name=name, index_keys_list=index_keys_list, index_name=name + "_index"
+    )
+
+
 # create request log collection
 async def create_request_log_collection(tenant_id: str):
     name = settings.DB_COLLECTION_NAME_REQUEST_LOG
@@ -115,6 +128,7 @@ async def create_collections(tenant_id: str):
     await create_master_settings_collection(tenant_id)
     await create_master_staff_collection(tenant_id)
     await create_request_log_collection(tenant_id)
+    await create_master_promotion_collection(tenant_id)
 
     # add more collections here
 

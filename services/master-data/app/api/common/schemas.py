@@ -604,6 +604,88 @@ class BaseItemBookButtonDeleteResponse(BaseItemBookTabDeleteResponse):
     pos_y: int
 
 
+# Promotion Master
+class BaseCategoryPromoDetail(BaseSchemaModel):
+    """
+    Base Category Promotion Detail Schema
+
+    Defines fields for category-specific promotion configuration.
+    Includes target store codes, target category codes, and discount rate.
+    """
+
+    target_store_codes: Optional[list[str]] = []
+    target_category_codes: list[str]
+    discount_rate: float
+
+
+class BasePromotionResponse(BaseSchemaModel):
+    """
+    Base Promotion Response Schema
+
+    Defines all fields required for promotion master responses.
+    Includes promotion code, type, name, description, datetime range,
+    active flag, category promo detail, and timestamps.
+    """
+
+    promotion_code: str
+    promotion_type: str
+    name: str
+    description: Optional[str] = None
+    start_datetime: str
+    end_datetime: str
+    is_active: bool
+    category_promo_detail: Optional[BaseCategoryPromoDetail] = None
+    entry_datetime: str
+    last_update_datetime: Optional[str] = None
+
+
+class BasePromotionCreateRequest(BaseSchemaModel):
+    """
+    Base Promotion Creation Request Schema
+
+    Defines fields required for creating a new promotion record.
+    Includes promotion code, type, name, description, datetime range,
+    active flag, and category promo detail.
+    """
+
+    promotion_code: str
+    promotion_type: str
+    name: str
+    description: Optional[str] = None
+    start_datetime: str
+    end_datetime: str
+    is_active: Optional[bool] = True
+    category_promo_detail: Optional[BaseCategoryPromoDetail] = None
+
+
+class BasePromotionUpdateRequest(BaseSchemaModel):
+    """
+    Base Promotion Update Request Schema
+
+    Defines fields required for updating an existing promotion record.
+    Includes name, description, datetime range, active flag, and category promo detail.
+    Promotion code and type cannot be changed.
+    """
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    start_datetime: Optional[str] = None
+    end_datetime: Optional[str] = None
+    is_active: Optional[bool] = None
+    category_promo_detail: Optional[BaseCategoryPromoDetail] = None
+
+
+class BasePromotionDeleteResponse(BaseSchemaModel):
+    """
+    Base Promotion Delete Response Schema
+
+    Defines fields for returning the identification of a deleted promotion.
+    Includes the deleted promotion code.
+    """
+
+    promotion_code: str
+
+
 # Tax Master (from settings)
 class BaseTaxMasterResponse(BaseSchemaModel):
     """

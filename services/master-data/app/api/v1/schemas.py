@@ -51,6 +51,11 @@ from app.api.common.schemas import (
     BaseItemBookTabDeleteResponse,
     BaseItemBookButtonDeleteResponse,
     BaseTaxMasterResponse,
+    BaseCategoryPromoDetail,
+    BasePromotionResponse,
+    BasePromotionCreateRequest,
+    BasePromotionUpdateRequest,
+    BasePromotionDeleteResponse,
 )
 
 # Staff related schema definitions
@@ -517,6 +522,64 @@ class TaxMasterResponse(BaseTaxMasterResponse):
     Defines the response format for tax master data from the API.
     Contains tax code, tax type, tax name, rate value, rounding digit,
     rounding method, and other information.
+    """
+
+    pass
+
+
+# Promotion master related schema definitions
+
+
+class CategoryPromoDetail(BaseCategoryPromoDetail):
+    """
+    Category Promotion Detail Schema
+
+    Defines category-specific promotion configuration.
+    Contains target store codes, target category codes, and discount rate.
+    """
+
+    pass
+
+
+class PromotionCreateRequest(BasePromotionCreateRequest):
+    """
+    Promotion Creation Request Schema
+
+    Contains promotion code, type, name, description, datetime range,
+    active flag, and category promo detail used to create a new promotion record.
+    """
+
+    pass
+
+
+class PromotionUpdateRequest(BasePromotionUpdateRequest):
+    """
+    Promotion Update Request Schema
+
+    Used to update an existing promotion record.
+    Contains name, description, datetime range, active flag, and category promo detail.
+    """
+
+    pass
+
+
+class PromotionResponse(BasePromotionResponse):
+    """
+    Promotion Response Schema
+
+    Defines the response format for promotion data from the API.
+    Contains detailed promotion information along with creation and last update timestamps.
+    """
+
+    pass
+
+
+class PromotionDeleteResponse(BasePromotionDeleteResponse):
+    """
+    Promotion Delete Response Schema
+
+    Used to return the result of a promotion deletion operation.
+    Contains the code of the deleted promotion.
     """
 
     pass

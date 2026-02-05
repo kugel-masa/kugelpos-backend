@@ -64,7 +64,7 @@ class BaseTransaction(AbstractDocument):
     class DiscountInfo(BaseDocumentModel):
         """
         Nested class representing discount information for a transaction.
-        
+
         Contains details about discounts applied to line items or the entire transaction.
         """
         seq_no: Optional[int] = None
@@ -72,6 +72,8 @@ class BaseTransaction(AbstractDocument):
         discount_value: Optional[float] = 0.0
         discount_amount: Optional[float] = 0.0
         detail: Optional[str] = None
+        promotion_code: Optional[str] = None
+        promotion_type: Optional[str] = None
 
     class LineItem(BaseDocumentModel):
         """
