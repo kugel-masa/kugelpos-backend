@@ -19,14 +19,14 @@ class AbstractSalesPromo(ABC):
         pass
 
     @abstractmethod
-    def apply(self, cart_doc, sales_promo_code, value):
+    async def apply(self, cart_doc, sales_promo_code=None, value=None):
         """
         Apply the sales promotion to a cart.
 
         Args:
             cart_doc: The cart document to apply the promotion to
-            sales_promo_code: The promotion code identifying the type of promotion
-            value: The promotion value (e.g., discount amount or percentage)
+            sales_promo_code: The promotion code identifying the type of promotion (optional)
+            value: The promotion value (e.g., discount amount or percentage) (optional)
 
         Returns:
             Updated cart document with the promotion applied

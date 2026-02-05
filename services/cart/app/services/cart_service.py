@@ -36,6 +36,9 @@ from app.models.repositories.item_master_grpc_repository import ItemMasterGrpcRe
 from app.models.repositories.payment_master_web_repository import (
     PaymentMasterWebRepository,
 )
+from app.models.repositories.promotion_master_web_repository import (
+    PromotionMasterWebRepository,
+)
 from app.models.repositories.settings_master_web_repository import (
     SettingsMasterWebRepository,
 )
@@ -49,6 +52,8 @@ from app.services.logics import add_discount_to_cart_logic
 from app.services.logics import calc_line_item_logic
 from app.services.logics import calc_subtotal_logic
 from app.services.strategies.payments.abstract_payment import AbstractPayment
+from app.services.strategies.sales_promo.abstract_sales_promo import AbstractSalesPromo
+from app.services.strategies.sales_promo.category_promo import CategoryPromoPlugin
 from app.services.tran_service import TranService
 from app.enums.cart_status import CartStatus
 from app.utils.settings import get_setting_value
@@ -84,6 +89,7 @@ class CartService(ICartService):
         payment_master_repo: PaymentMasterWebRepository,
         store_info_repo: StoreInfoWebRepository,
         tran_service: TranService,
+        promotion_master_repo: PromotionMasterWebRepository = None,
         cart_id: str = None,
     ) -> None:
         """
@@ -99,6 +105,7 @@ class CartService(ICartService):
             payment_master_repo: Repository for payment master data
             store_info_repo: Repository for store information
             tran_service: Transaction service for creating transaction logs
+            promotion_master_repo: Repository for promotion master data (optional)
             cart_id: Optional ID of an existing cart to operate on
         """
         self.terminal_info = terminal_info
@@ -110,6 +117,7 @@ class CartService(ICartService):
         self.payment_master_repo = payment_master_repo
         self.store_info_repo = store_info_repo
         self.tran_service = tran_service
+        self.promotion_master_repo = promotion_master_repo
 
         self.cart_id = cart_id
         self.current_cart = None
@@ -119,7 +127,13 @@ class CartService(ICartService):
 
         try:
             # Load sales promotion strategy plugins
-            self.sales_promo_strategies = self.strategy_manager.load_strategies("sales_promo_strategies")
+            self.sales_promo_strategies: list[AbstractSalesPromo] = self.strategy_manager.load_strategies(
+                "sales_promo_strategies"
+            )
+            # Set promotion master repository for plugins that need it
+            for sales_promo_strategy in self.sales_promo_strategies:
+                if isinstance(sales_promo_strategy, CategoryPromoPlugin):
+                    sales_promo_strategy.set_promotion_master_repository(self.promotion_master_repo)
             logger.debug(f"sales_promo_strategies: {self.sales_promo_strategies}")
 
             # Load payment strategy plugins and set payment master repository
@@ -334,12 +348,37 @@ class CartService(ICartService):
             logger.debug(f"cart_item: {cart_item}")
             cart_doc.line_items.append(cart_item)
 
+        # Apply sales promotion strategies (e.g., category-based discounts)
+        cart_doc = await self._apply_sales_promotions_async(cart_doc)
+
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)
 
         # Save to cache
         await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.EnteringItem)
 
+        return cart_doc
+
+    async def _apply_sales_promotions_async(self, cart_doc: CartDocument) -> CartDocument:
+        """
+        Apply all registered sales promotion strategies to the cart.
+
+        Iterates through all loaded sales promotion strategies and applies them
+        to the cart. Each strategy may modify line item discounts.
+
+        Args:
+            cart_doc: The cart document to apply promotions to
+
+        Returns:
+            CartDocument: The cart document with promotions applied
+        """
+        for sales_promo_strategy in self.sales_promo_strategies:
+            try:
+                cart_doc = await sales_promo_strategy.apply(cart_doc)
+            except Exception as e:
+                # Log the error but don't fail the cart operation
+                logger.warning(f"Failed to apply sales promotion strategy: {e}")
+                continue
         return cart_doc
 
     # Cancel a line item in the cart

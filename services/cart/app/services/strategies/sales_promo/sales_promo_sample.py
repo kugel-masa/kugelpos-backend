@@ -21,7 +21,7 @@ class SalesPromoSample(AbstractSalesPromo):
         super().__init__()
         self.sales_promo_code = sales_promo_code
 
-    def apply(self, cart_doc, sales_promo_code, value):
+    async def apply(self, cart_doc, sales_promo_code=None, value=None):
         """
         Apply the sample sales promotion to a cart.
 
@@ -32,8 +32,8 @@ class SalesPromoSample(AbstractSalesPromo):
 
         Args:
             cart_doc: The cart document to apply the promotion to
-            sales_promo_code: The promotion code identifying the type of promotion
-            value: The promotion value (e.g., discount amount or percentage)
+            sales_promo_code: The promotion code identifying the type of promotion (optional)
+            value: The promotion value (e.g., discount amount or percentage) (optional)
 
         Returns:
             The cart document (unchanged in this sample implementation)

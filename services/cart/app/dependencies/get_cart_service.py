@@ -89,6 +89,9 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
     from app.models.repositories.settings_master_web_repository import (
         SettingsMasterWebRepository,
     )
+    from app.models.repositories.promotion_master_web_repository import (
+        PromotionMasterWebRepository,
+    )
     from kugel_common.models.repositories.store_info_web_repository import (
         StoreInfoWebRepository,
     )
@@ -126,6 +129,7 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         terminal_info=terminal_info,
     )
     store_info_repo = StoreInfoWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
+    promotion_master_repo = PromotionMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
 
     tran_service = TranService(
         terminal_info=terminal_info,
@@ -147,5 +151,6 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         item_master_repo=item_master_repo,
         payment_master_repo=payment_master_repo,
         tran_service=tran_service,
+        promotion_master_repo=promotion_master_repo,
         cart_id=cart_id,
     )

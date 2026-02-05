@@ -3,7 +3,13 @@
         {
             "module": "app.services.strategies.sales_promo.sales_promo_sample",
             "class": "SalesPromoSample",
-            "args": ["101"], 
+            "args": ["101"],
+            "kwargs": {}
+        },
+        {
+            "module": "app.services.strategies.sales_promo.category_promo",
+            "class": "CategoryPromoPlugin",
+            "args": ["category_promo"],
             "kwargs": {}
         }
     ],
