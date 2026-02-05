@@ -37,4 +37,17 @@ venv/
 
 # ignore claude files
 claude-*
-.claude/
+.claude/settings.local.json
+.claude/settings.json
+
+# ignore serena MCP cache only (track project.yml and memories/)
+.serena/cache/
+
+# ignore test output files
+**/cashless_receipt_output/
+**/cash_receipt_output/
+**/void_return_receipt_output/
+
+# ignore git worktree directories
+worktree/
+worktrees/
