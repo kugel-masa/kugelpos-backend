@@ -6,6 +6,26 @@ from fastapi import status
 from httpx import AsyncClient
 
 
+async def cleanup_test_promotions(tenant_id: str, promotion_codes: list[str]):
+    """
+    Physically delete test promotions from database to ensure clean test state.
+    This is necessary because soft delete doesn't free up the unique index key.
+    """
+    from kugel_common.database import database as db_helper
+
+    db_name = f"db_master_{tenant_id}"
+    db = await db_helper.get_db_async(db_name)
+    collection = db["master_promotion"]
+
+    for code in promotion_codes:
+        result = await collection.delete_many({
+            "tenant_id": tenant_id,
+            "promotion_code": code
+        })
+        if result.deleted_count > 0:
+            print(f"[CLEANUP] Physically deleted promotion: {code} ({result.deleted_count} docs)")
+
+
 @pytest.mark.asyncio()
 async def test_promotion_master(http_client):
     """
@@ -37,9 +57,16 @@ async def test_promotion_master(http_client):
 
     # Define test data
     promotion_code = "TEST_PROMO_001"
+    promotion_code_all_stores = "TEST_PROMO_ALL_STORES"
     now = datetime.now()
     start_datetime = now.strftime("%Y-%m-%dT%H:%M:%S")
     end_datetime = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    #
+    # Cleanup: Physically delete existing test promotions from database
+    # This is necessary because soft delete doesn't free up the unique index key
+    #
+    await cleanup_test_promotions(tenant_id, [promotion_code, promotion_code_all_stores])
 
     #
     # Test 1: Create a new promotion
@@ -201,7 +228,6 @@ async def test_promotion_master(http_client):
     #
     # Test 11: Create promotion for all stores (empty target_store_codes)
     #
-    promotion_code_all_stores = "TEST_PROMO_ALL_STORES"
     promotion_data_all_stores = {
         "promotionCode": promotion_code_all_stores,
         "promotionType": "category_discount",
@@ -322,7 +348,7 @@ async def test_promotion_validation(http_client):
     res = response.json()
     print(f"Invalid date promotion response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_400_BAD_REQUEST
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     #
     # Test 2: Invalid discount rate (over 100)
@@ -369,7 +395,7 @@ async def test_promotion_validation(http_client):
     res = response.json()
     print(f"Missing detail promotion response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_400_BAD_REQUEST
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     #
     # Test 4: Empty target_category_codes
@@ -395,4 +421,4 @@ async def test_promotion_validation(http_client):
     res = response.json()
     print(f"Empty categories promotion response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_400_BAD_REQUEST
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY

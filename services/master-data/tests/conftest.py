@@ -9,6 +9,37 @@ import pytest_asyncio
 from dotenv import load_dotenv
 
 
+async def ensure_admin_user_exists(tenant_id: str, account_base_url: str):
+    """
+    Ensure admin user exists for the specified tenant.
+    This function makes tests reproducible by registering the admin user if not exists.
+    """
+    from httpx import AsyncClient
+    from fastapi import status
+
+    async with AsyncClient() as client:
+        # First try to get a token to check if admin user exists
+        token_url = f"{account_base_url}/api/v1/accounts/token"
+        login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
+        response = await client.post(url=token_url, data=login_data)
+
+        if response.status_code == status.HTTP_200_OK:
+            print(f"Admin user already exists for tenant: {tenant_id}")
+            return
+
+        # If token fails, register the admin user
+        print(f"Registering admin user for tenant: {tenant_id}")
+        register_url = f"{account_base_url}/api/v1/accounts/register"
+        register_data = {"username": "admin", "password": "admin", "tenant_id": tenant_id}
+        response = await client.post(url=register_url, json=register_data)
+
+        if response.status_code == status.HTTP_201_CREATED:
+            print(f"Admin user registered successfully for tenant: {tenant_id}")
+        else:
+            response_data = response.json()
+            print(f"Admin user registration response: {response_data}")
+
+
 @pytest.fixture(scope="session")
 def set_env_vars():
 
@@ -32,10 +63,12 @@ def set_env_vars():
     if is_local:
         os.environ["BASE_URL_MASTER_DATA"] = "http://localhost:8002"
         os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001/api/v1"
+        os.environ["BASE_URL_ACCOUNT"] = "http://localhost:8000"
         os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
     else:
         os.environ["BASE_URL_MASTER_DATA"] = f"https://master-data.{remote_server}"
         os.environ["BASE_URL_TERMINAL"] = f"https://terminal.{remote_server}/api/v1"
+        os.environ["BASE_URL_ACCOUNT"] = f"https://account.{remote_server}"
         os.environ["TOKEN_URL"] = f"https://account.{remote_server}/api/v1/accounts/token"
 
     os.environ["DB_NAME_PREFIX"] = "db_master"
@@ -52,12 +85,25 @@ def set_env_vars():
     del os.environ["TOKEN_URL"]
     del os.environ["BASE_URL_MASTER_DATA"]
     del os.environ["BASE_URL_TERMINAL"]
+    del os.environ["BASE_URL_ACCOUNT"]
     del os.environ["STORE_CODE"]
     del os.environ["MANAGEMENT"]
 
 
 @pytest_asyncio.fixture(scope="function")
-async def http_client(set_env_vars):
+async def setup_auth(set_env_vars):
+    """
+    Ensure admin user exists before running tests that require authentication.
+    This fixture should be used by tests that need to authenticate with the account service.
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    account_base_url = os.environ.get("BASE_URL_ACCOUNT")
+    await ensure_admin_user_exists(tenant_id, account_base_url)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def http_client(set_env_vars, setup_auth):
     from httpx import AsyncClient
 
     print("Setting up http client for external API")

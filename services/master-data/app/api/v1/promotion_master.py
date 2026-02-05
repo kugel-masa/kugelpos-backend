@@ -301,11 +301,12 @@ async def update_promotion(
         if promotion.is_active is not None:
             update_data["is_active"] = promotion.is_active
         if promotion.category_promo_detail is not None:
-            update_data["category_promo_detail"] = PromotionMasterDocument.CategoryPromoDetail(
+            category_promo_detail = PromotionMasterDocument.CategoryPromoDetail(
                 target_store_codes=promotion.category_promo_detail.target_store_codes or [],
                 target_category_codes=promotion.category_promo_detail.target_category_codes,
                 discount_rate=promotion.category_promo_detail.discount_rate,
             )
+            update_data["category_promo_detail"] = category_promo_detail.model_dump()
 
         updated_promotion = await service.update_promotion_async(
             promotion_code=promotion_code, update_data=update_data
