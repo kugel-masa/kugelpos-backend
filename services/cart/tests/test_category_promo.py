@@ -1,9 +1,32 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 import pytest
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import status
 from httpx import AsyncClient
+
+
+async def cleanup_test_promotions(tenant_id: str, promotion_codes: list[str]):
+    """
+    Physically delete test promotions from database to ensure clean test state.
+    This is necessary because soft delete doesn't free up the unique index key.
+    """
+    from kugel_common.database import database as db_helper
+
+    # Reset the MongoDB client to use the current event loop
+    await db_helper.reset_client_async()
+
+    db_name = f"db_master_{tenant_id}"
+    db = await db_helper.get_db_async(db_name)
+    collection = db["master_promotion"]
+
+    for code in promotion_codes:
+        result = await collection.delete_many({
+            "tenant_id": tenant_id,
+            "promotion_code": code
+        })
+        if result.deleted_count > 0:
+            print(f"[CLEANUP] Physically deleted promotion: {code} ({result.deleted_count} docs)")
 
 
 async def get_authentication_token():
@@ -56,7 +79,8 @@ async def create_test_promotion(token: str, tenant_id: str, store_code: str):
     base_url = os.environ.get("BASE_URL_MASTER_DATA")
     header = {"Authorization": f"Bearer {token}"}
 
-    now = datetime.now()
+    # Use UTC time to ensure promotion is active (MongoDB stores/compares in UTC)
+    now = datetime.now(timezone.utc)
     start_datetime = now.strftime("%Y-%m-%dT%H:%M:%S")
     end_datetime = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -115,16 +139,26 @@ async def test_category_promo_applied_to_cart(http_client):
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
 
+    # Cleanup: Physically delete existing test promotions from database
+    await cleanup_test_promotions(tenant_id, ["TEST_CART_PROMO"])
+
     # Get token and create promotion
     token = await get_authentication_token()
     promotion_code = await create_test_promotion(token, tenant_id, store_code)
+
+    terminal_id = os.environ.get("TERMINAL_ID")
 
     try:
         # Open terminal
         await open_terminal(tenant_id)
 
-        # Create cart
-        response = await http_client.post("/api/v1/cart", headers=header)
+        # Create cart with terminal_id in query params and required body
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
         res = response.json()
         print(f"Create cart response: {res}")
         assert response.status_code == status.HTTP_201_CREATED
@@ -132,10 +166,12 @@ async def test_category_promo_applied_to_cart(http_client):
         cart_id = res.get("data").get("cartId")
         print(f"Cart ID: {cart_id}")
 
-        # Add item with category "001" (item code "0001" should have category "001")
-        add_item_data = [{"item_code": "0001", "unit_price": None, "quantity": 2}]
+        # Add item with category "001" (item code "49-01" should have category "001")
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 2}]
         response = await http_client.post(
-            f"/api/v1/cart/{cart_id}/items", json=add_item_data, headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -178,36 +214,51 @@ async def test_category_promo_applied_to_cart(http_client):
 
 
 @pytest.mark.asyncio()
-async def test_category_promo_discount_restricted(http_client):
+async def test_category_promo_respects_discount_restriction(http_client):
     """
-    Test that category promotions are NOT applied to items with is_discount_restricted=True.
+    Test that category promotions respect the is_discount_restricted flag.
 
-    This test verifies that the plugin respects the is_discount_restricted flag.
+    This test verifies that:
+    - Items with is_discount_restricted=False get discounts applied
+    - Items with is_discount_restricted=True don't get category discounts
+
+    Note: The behavior depends on the item's is_discount_restricted flag in master data.
     """
     tenant_id = os.environ.get("TENANT_ID")
     store_code = os.environ.get("STORE_CODE")
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
 
+    # Cleanup: Physically delete existing test promotions from database
+    await cleanup_test_promotions(tenant_id, ["TEST_CART_PROMO"])
+
     # Get token and create promotion
     token = await get_authentication_token()
     promotion_code = await create_test_promotion(token, tenant_id, store_code)
+
+    terminal_id = os.environ.get("TERMINAL_ID")
 
     try:
         # Open terminal
         await open_terminal(tenant_id)
 
-        # Create cart
-        response = await http_client.post("/api/v1/cart", headers=header)
+        # Create cart with terminal_id in query params and required body
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
 
-        # Add item that might have is_discount_restricted=True
-        # (depends on master data setup)
-        add_item_data = [{"item_code": "0001", "unit_price": None, "quantity": 1}]
+        # Add item with category "001" (item code "49-01" should have category "001")
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/cart/{cart_id}/items", json=add_item_data, headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -215,21 +266,33 @@ async def test_category_promo_discount_restricted(http_client):
 
         # Check the item
         line_items = res.get("data").get("lineItems", [])
-        if len(line_items) > 0:
-            added_item = line_items[0]
-            is_restricted = added_item.get("isDiscountRestricted", False)
-            discounts = added_item.get("discounts", [])
+        assert len(line_items) > 0
 
-            print(f"is_discount_restricted: {is_restricted}")
-            print(f"discounts: {discounts}")
+        added_item = line_items[0]
+        is_restricted = added_item.get("isDiscountRestricted", False)
+        discounts = added_item.get("discounts", [])
+        category_code = added_item.get("categoryCode")
 
+        print(f"category_code: {category_code}")
+        print(f"is_discount_restricted: {is_restricted}")
+        print(f"discounts: {discounts}")
+
+        # Verify discount behavior based on restriction status
+        category_discounts = [
+            d for d in discounts if d.get("promotionType") == "category_discount"
+        ]
+
+        if is_restricted:
             # If restricted, there should be no category discounts
-            if is_restricted:
-                category_discounts = [
-                    d for d in discounts if d.get("promotionType") == "category_discount"
-                ]
-                assert len(category_discounts) == 0, "Discount applied to restricted item!"
-                print("Correctly skipped discount for restricted item")
+            assert len(category_discounts) == 0, "Discount applied to restricted item!"
+            print("Correctly skipped discount for restricted item")
+        else:
+            # If not restricted and category matches, discount should be applied
+            if category_code == "001":
+                assert len(category_discounts) > 0, "Discount not applied to non-restricted item!"
+                print("Correctly applied discount to non-restricted item")
+            else:
+                print(f"Item category {category_code} doesn't match promotion target 001")
 
     finally:
         # Cleanup
@@ -245,12 +308,16 @@ async def test_category_promo_all_stores(http_client):
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
 
+    # Cleanup: Physically delete existing test promotions from database
+    await cleanup_test_promotions(tenant_id, ["TEST_ALL_STORES_PROMO"])
+
     # Get token
     token = await get_authentication_token()
     base_url = os.environ.get("BASE_URL_MASTER_DATA")
     auth_header = {"Authorization": f"Bearer {token}"}
 
-    now = datetime.now()
+    # Use UTC time to ensure promotion is active (MongoDB stores/compares in UTC)
+    now = datetime.now(timezone.utc)
     start_datetime = now.strftime("%Y-%m-%dT%H:%M:%S")
     end_datetime = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -274,20 +341,29 @@ async def test_category_promo_all_stores(http_client):
             f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
         )
 
+    terminal_id = os.environ.get("TERMINAL_ID")
+
     try:
         # Open terminal
         await open_terminal(tenant_id)
 
-        # Create cart
-        response = await http_client.post("/api/v1/cart", headers=header)
+        # Create cart with terminal_id in query params and required body
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
 
-        # Add item
-        add_item_data = [{"item_code": "0001", "unit_price": None, "quantity": 1}]
+        # Add item with category "001" (item code "49-01" should have category "001")
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/cart/{cart_id}/items", json=add_item_data, headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -318,11 +394,15 @@ async def test_category_promo_best_discount_selected(http_client):
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
 
+    # Cleanup: Physically delete existing test promotions from database
+    await cleanup_test_promotions(tenant_id, ["TEST_PROMO_10PCT", "TEST_PROMO_15PCT"])
+
     token = await get_authentication_token()
     base_url = os.environ.get("BASE_URL_MASTER_DATA")
     auth_header = {"Authorization": f"Bearer {token}"}
 
-    now = datetime.now()
+    # Use UTC time to ensure promotion is active (MongoDB stores/compares in UTC)
+    now = datetime.now(timezone.utc)
     start_datetime = now.strftime("%Y-%m-%dT%H:%M:%S")
     end_datetime = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -360,20 +440,29 @@ async def test_category_promo_best_discount_selected(http_client):
         await client.post(f"/tenants/{tenant_id}/promotions", json=promo1_data, headers=auth_header)
         await client.post(f"/tenants/{tenant_id}/promotions", json=promo2_data, headers=auth_header)
 
+    terminal_id = os.environ.get("TERMINAL_ID")
+
     try:
         # Open terminal
         await open_terminal(tenant_id)
 
-        # Create cart
-        response = await http_client.post("/api/v1/cart", headers=header)
+        # Create cart with terminal_id in query params and required body
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
 
-        # Add item
-        add_item_data = [{"item_code": "0001", "unit_price": None, "quantity": 1}]
+        # Add item with category "001" (item code "49-01" should have category "001")
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/cart/{cart_id}/items", json=add_item_data, headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")

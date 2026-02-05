@@ -63,7 +63,10 @@ class PromotionMasterWebRepository:
 
         client = await get_pooled_client("master-data")
         headers = {"X-API-KEY": self.terminal_info.api_key}
-        params = {"storeCode": store_code}
+        params = {
+            "storeCode": store_code,
+            "terminal_id": self.terminal_info.terminal_id,  # Required for API key authentication
+        }
         endpoint = f"/tenants/{self.tenant_id}/promotions/active"
 
         try:

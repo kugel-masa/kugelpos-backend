@@ -48,6 +48,8 @@ class SchemasTransformer:
                 discount_value=discount.discount_value,
                 discount_amount=discount.discount_amount,
                 discount_detail=discount.detail,
+                promotion_code=discount.promotion_code if hasattr(discount, "promotion_code") else None,
+                promotion_type=discount.promotion_type if hasattr(discount, "promotion_type") else None,
             )
             return_discounts.append(return_discount)
         logger.debug(f"transform_discounts: discounts->{return_discounts}")
@@ -69,6 +71,7 @@ class SchemasTransformer:
                 line_no=item.line_no,
                 item_code=item.item_code,
                 item_name=item.description,
+                category_code=item.category_code,
                 unit_price=item.unit_price,
                 unit_price_original=item.unit_price_original,
                 is_unit_price_changed=item.is_unit_price_changed,
@@ -77,6 +80,7 @@ class SchemasTransformer:
                 discounts=self.transform_discounts(item.discounts),
                 image_urls=item.image_urls if hasattr(item, "image_urls") else [],
                 is_cancelled=item.is_cancelled,
+                is_discount_restricted=item.is_discount_restricted if hasattr(item, "is_discount_restricted") else False,
             )
             return_line_items.append(line_item)
         return return_line_items

@@ -68,6 +68,8 @@ class BaseDiscount(BaseSchemmaModel):
     discount_value: float
     discount_amount: float
     discount_detail: Optional[str] = "no detail"
+    promotion_code: Optional[str] = None
+    promotion_type: Optional[str] = None
 
 
 # Transaction Related Schemas
@@ -82,6 +84,7 @@ class BaseTranLineItem(BaseSchemmaModel):
     line_no: int
     item_code: str
     item_name: str
+    category_code: Optional[str] = None
     unit_price: float
     unit_price_original: Optional[float] = None
     is_unit_price_changed: bool
@@ -90,6 +93,7 @@ class BaseTranLineItem(BaseSchemmaModel):
     discounts: list[BaseDiscount]
     image_urls: list[str]
     is_cancelled: bool
+    is_discount_restricted: Optional[bool] = False
 
 
 class BaseTranPayment(BaseSchemmaModel):
