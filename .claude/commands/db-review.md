@@ -1,18 +1,18 @@
 ---
-description: MongoDB aggregation pipelineのCartesian Product問題をレビュー
+description: Review MongoDB aggregation pipeline for Cartesian Product issues
 ---
 
 ## Overview
 
-MongoDB aggregation pipelineのレビュー用スキル。
-**複数の$unwind操作によるCartesian Product問題**を検出します。
+Skill for reviewing MongoDB aggregation pipelines.
+**Detects Cartesian Product issues caused by multiple $unwind operations.**
 
 ## CRITICAL RULE
 
 **NEVER USE $push AFTER MULTIPLE $unwind OPERATIONS**
 
-複数の配列を`$unwind`するとCartesian productが発生。
-配列を再収集する場合は**必ず`$addToSet`**を使用。
+Multiple `$unwind` operations on arrays cause Cartesian products.
+When re-collecting arrays, **always use `$addToSet`**.
 
 ### Example
 

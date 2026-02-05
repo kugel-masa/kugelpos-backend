@@ -1,5 +1,5 @@
 ---
-description: サービスのビルドを実行
+description: Build services (all/specific/common package)
 ---
 
 ## User Input
@@ -11,22 +11,22 @@ $ARGUMENTS
 **Usage:** `/build [OPTIONS] [SERVICES...]`
 
 **Examples:**
-- `/build` → 全サービスをビルド
-- `/build cart journal` → 特定サービスのみビルド
-- `/build --with-common` → 共通パッケージ + 全サービス
-- `/build --common-only` → 共通パッケージのみ
-- `/build --no-cache` → キャッシュなしでビルド
-- `/build --parallel` → 並列ビルド
+- `/build` → Build all services
+- `/build cart journal` → Build specific services only
+- `/build --with-common` → Common package + all services
+- `/build --common-only` → Common package only
+- `/build --no-cache` → Build without cache
+- `/build --parallel` → Parallel build
 
 ## Build Options
 
-| オプション | 説明 |
-|-----------|------|
-| `--with-common` | 共通パッケージをビルド後、全サービスをビルド |
-| `--common-only` | 共通パッケージのみビルド（サービスはビルドしない） |
-| `--no-cache` | Dockerキャッシュを使わずにビルド |
-| `--parallel` | 並列でビルド（高速だがログが混在） |
-| `--increment-version` | 共通パッケージのバージョンをインクリメント |
+| Option | Description |
+|--------|-------------|
+| `--with-common` | Build common package first, then all services |
+| `--common-only` | Build common package only (skip services) |
+| `--no-cache` | Build without Docker cache |
+| `--parallel` | Parallel build (faster but logs are mixed) |
+| `--increment-version` | Increment common package version |
 
 ## Available Services
 
@@ -42,40 +42,40 @@ $ARGUMENTS
 
 ## Build Commands
 
-### 1. 全サービスビルド（Docker）
+### 1. Build All Services (Docker)
 ```bash
 cd scripts && ./build.sh
 ```
 
-### 2. 特定サービスのみビルド
+### 2. Build Specific Services Only
 ```bash
 cd scripts && ./build.sh cart journal
 ```
 
-### 3. 共通パッケージ + 全サービス
+### 3. Common Package + All Services
 ```bash
-# 共通パッケージをビルド＆配布し、pipenv環境を再構築
+# Build & distribute common package, rebuild pipenv environments
 ./scripts/update_common_and_rebuild.sh
 
-# その後、Dockerイメージをビルド
+# Then build Docker images
 cd scripts && ./build.sh
 ```
 
-### 4. 共通パッケージのみ
+### 4. Common Package Only
 ```bash
-# ビルドのみ
+# Build only
 ./scripts/run_build_common.sh
 
-# ビルド＆全サービスに配布
+# Build & distribute to all services
 ./scripts/run_build_common.sh && ./scripts/run_copy_common.sh
 ```
 
-### 5. バージョンインクリメント付きビルド
+### 5. Build with Version Increment
 ```bash
 ./scripts/update_common_and_rebuild.sh --increment-version
 ```
 
-### 6. キャッシュなし / 並列ビルド
+### 6. No Cache / Parallel Build
 ```bash
 cd scripts && ./build.sh --no-cache
 cd scripts && ./build.sh --parallel
@@ -84,32 +84,32 @@ cd scripts && ./build.sh --no-cache --parallel cart report
 
 ## Typical Workflows
 
-### 開発中（コード変更後）
+### During Development (After Code Changes)
 ```bash
-# 特定サービスのみ再ビルド
+# Rebuild specific service only
 cd scripts && ./build.sh cart
 ```
 
-### 共通パッケージ変更後
+### After Common Package Changes
 ```bash
-# 共通パッケージを全サービスに反映
+# Apply common package to all services
 ./scripts/update_common_and_rebuild.sh
 ```
 
-### クリーンビルド
+### Clean Build
 ```bash
 cd scripts && ./build.sh --no-cache
 ```
 
-### リリース前
+### Before Release
 ```bash
-# バージョンアップ + 全ビルド
+# Version bump + full build
 ./scripts/update_common_and_rebuild.sh --increment-version
 cd scripts && ./build.sh
 ```
 
 ## Notes
 
-- ビルド後は `./scripts/start.sh` でサービスを起動
-- ビルドエラー時は `docker-compose logs <service>` でログ確認
-- pipenv環境のみ再構築: `./scripts/rebuild_pipenv.sh`
+- After build, start services with `./scripts/start.sh`
+- On build errors, check logs with `docker-compose logs <service>`
+- To rebuild pipenv only: `./scripts/rebuild_pipenv.sh`

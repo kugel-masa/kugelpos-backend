@@ -1,5 +1,5 @@
 ---
-description: サービスの起動・停止・再起動を実行
+description: Start, stop, or restart services (including Dapr sidecars)
 ---
 
 ## User Input
@@ -11,25 +11,25 @@ $ARGUMENTS
 **Usage:** `/service <ACTION> [SERVICES...] [OPTIONS]`
 
 **Examples:**
-- `/service start` → 全サービス起動
-- `/service stop` → 全サービス停止
-- `/service restart cart report` → cart, reportを再起動（Daprサイドカー含む）
-- `/service stop --clean` → 停止 + データ削除
-- `/service logs cart` → ログ表示
+- `/service start` → Start all services
+- `/service stop` → Stop all services
+- `/service restart cart report` → Restart cart and report (with Dapr sidecars)
+- `/service stop --clean` → Stop + delete data
+- `/service logs cart` → Show logs
 
 ## Actions
 
 | Action | Description |
 |--------|-------------|
-| `start` | サービス起動（MongoDB replica set初期化含む） |
-| `stop` | サービス停止 |
-| `restart` | サービス再起動（Daprサイドカー含む） |
-| `status` | サービス状態確認 |
-| `logs` | ログ表示 |
+| `start` | Start services (includes MongoDB replica set initialization) |
+| `stop` | Stop services |
+| `restart` | Restart services (with Dapr sidecars) |
+| `status` | Check service status |
+| `logs` | Show logs |
 
 ## Service & Dapr Sidecar Mapping
 
-**重要:** 特定サービス再起動時は、Daprサイドカーも同時に再起動が必要
+**Important:** When restarting specific services, Dapr sidecars must also be restarted
 
 | Service | Dapr Sidecar | Port |
 |---------|--------------|------|
@@ -43,86 +43,86 @@ $ARGUMENTS
 
 ## Commands
 
-### 全サービス起動
+### Start All Services
 ```bash
 ./scripts/start.sh
 ```
 
-### 全サービス停止
+### Stop All Services
 ```bash
 ./scripts/stop.sh
 ```
 
-### 停止 + データ削除
+### Stop + Delete Data
 ```bash
 ./scripts/stop.sh --clean
 ```
 
-### 特定サービス再起動（Daprサイドカー含む）
+### Restart Specific Services (with Dapr Sidecars)
 ```bash
-# cart を再起動
+# Restart cart
 cd services && docker-compose restart cart dapr_cart
 
-# 複数サービスを再起動
+# Restart multiple services
 cd services && docker-compose restart cart dapr_cart report dapr_report
 
-# master-data を再起動（アンダースコアに注意）
+# Restart master-data (note the underscore)
 cd services && docker-compose restart master-data dapr_master_data
 ```
 
-### 特定サービスのみ起動
+### Start Specific Services Only
 ```bash
 cd services && docker-compose up -d cart dapr_cart
 ```
 
-### 特定サービスのみ停止
+### Stop Specific Services Only
 ```bash
 cd services && docker-compose stop cart dapr_cart
 ```
 
-### サービス状態確認
+### Check Service Status
 ```bash
 cd services && docker-compose ps
 ```
 
-### ログ表示
+### Show Logs
 ```bash
-# 全サービス
+# All services
 cd services && docker-compose logs -f
 
-# 特定サービス + Dapr
+# Specific service + Dapr
 cd services && docker-compose logs -f cart dapr_cart
 
-# 直近100行
+# Last 100 lines
 cd services && docker-compose logs --tail=100 cart dapr_cart
 ```
 
 ## Typical Workflows
 
-### 開発開始
+### Start Development
 ```bash
 ./scripts/start.sh
 ```
 
-### 開発終了
+### End Development
 ```bash
 ./scripts/stop.sh
 ```
 
-### コード変更後（特定サービス）
+### After Code Changes (Specific Service)
 ```bash
-# ビルド → 再起動（Dapr含む）
+# Build → Restart (with Dapr)
 cd scripts && ./build.sh cart
 cd services && docker-compose restart cart dapr_cart
 ```
 
-### 問題発生時（クリーンリスタート）
+### On Issues (Clean Restart)
 ```bash
 ./scripts/stop.sh --clean
 ./scripts/start.sh
 ```
 
-### デバッグ時
+### Debugging
 ```bash
 cd services
 docker-compose restart cart dapr_cart && docker-compose logs -f cart dapr_cart
@@ -131,12 +131,12 @@ docker-compose restart cart dapr_cart && docker-compose logs -f cart dapr_cart
 ## Quick Reference
 
 ```bash
-# よく使うコマンド
-./scripts/start.sh                                    # 全起動
-./scripts/stop.sh                                     # 全停止
-cd services && docker-compose restart cart dapr_cart  # cart再起動
-cd services && docker-compose logs -f cart            # ログ監視
-cd services && docker-compose ps                      # 状態確認
+# Common commands
+./scripts/start.sh                                    # Start all
+./scripts/stop.sh                                     # Stop all
+cd services && docker-compose restart cart dapr_cart  # Restart cart
+cd services && docker-compose logs -f cart            # Watch logs
+cd services && docker-compose ps                      # Check status
 ```
 
 ## Service URLs (Local)
@@ -153,18 +153,18 @@ cd services && docker-compose ps                      # 状態確認
 
 ## Troubleshooting
 
-### MongoDB接続エラー
+### MongoDB Connection Error
 ```bash
 ./scripts/init-mongodb-replica.sh
 ```
 
-### ポート競合
+### Port Conflict
 ```bash
 lsof -i :8003
 kill -9 $(lsof -t -i :8003)
 ```
 
-### 全リセット
+### Full Reset
 ```bash
 ./scripts/stop.sh --clean
 ./scripts/reset-mongodb.sh

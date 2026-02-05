@@ -1,5 +1,5 @@
 ---
-description: Azure Container Appsへのデプロイを実行
+description: Deploy to Azure Container Apps
 ---
 
 ## User Input
@@ -10,25 +10,25 @@ $ARGUMENTS
 
 **Usage:** `/deploy <VERSION> [--env <ENVIRONMENT>]`
 
-- `VERSION`: デプロイするバージョンタグ (例: v0.2.1)
-- `--env`: 環境指定 (dev/staging/prod) - デフォルト: dev
+- `VERSION`: Version tag to deploy (e.g., v0.2.1)
+- `--env`: Environment (dev/staging/prod) - Default: dev
 
 **Examples:**
-- `/deploy v0.2.1` → dev環境にデプロイ
-- `/deploy v0.2.1 --env staging` → staging環境にデプロイ
-- `/deploy v0.2.1 --env prod` → 本番環境にデプロイ
+- `/deploy v0.2.1` → Deploy to dev environment
+- `/deploy v0.2.1 --env staging` → Deploy to staging environment
+- `/deploy v0.2.1 --env prod` → Deploy to production environment
 
 ## Environment Configuration
 
-環境に応じて以下の変数を設定:
+Configure the following variables per environment:
 
-| 環境 | DOMAIN | RESOURCE_GROUP | STATUS |
-|------|--------|----------------|--------|
+| Environment | DOMAIN | RESOURCE_GROUP | STATUS |
+|-------------|--------|----------------|--------|
 | dev | `<your-app-name>.japaneast.azurecontainerapps.io` | `<your-resource-group>` | Configure in .env |
 | staging | (TBD) | (TBD) | Not configured |
 | prod | (TBD) | (TBD) | Not configured |
 
-**Note:** staging/prod環境は後日追加予定。使用時はエラーを返す。
+**Note:** staging/prod environments will be added later. Using them will return an error.
 
 ## Release Steps
 

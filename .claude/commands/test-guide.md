@@ -1,5 +1,5 @@
 ---
-description: テスト実行ガイドとEvent Loop問題への対処
+description: Test execution guide and Event Loop issue handling
 ---
 
 ## Quick Commands
@@ -9,7 +9,7 @@ description: テスト実行ガイドとEvent Loop問題への対処
 ./scripts/run_all_tests.sh
 
 # All services with progress
-./scritps/run_all_tests_with_progress.sh
+./scripts/run_all_tests_with_progress.sh
 
 # Single service
 cd services/<service>
