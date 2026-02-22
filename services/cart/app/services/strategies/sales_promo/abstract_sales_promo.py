@@ -18,6 +18,10 @@ class AbstractSalesPromo(ABC):
         """Initialize the sales promotion strategy."""
         pass
 
+    def configure(self, tenant_id: str, terminal_info) -> None:
+        """Override to set up plugin-specific repositories using shared infrastructure."""
+        pass
+
     @abstractmethod
     async def apply(self, cart_doc, sales_promo_code=None, value=None):
         """

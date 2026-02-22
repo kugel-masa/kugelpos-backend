@@ -33,16 +33,17 @@ class CategoryPromoPlugin(AbstractSalesPromo):
         self._sales_promo_code = sales_promo_code
         self.promotion_master_repo: Optional[PromotionMasterWebRepository] = None
 
-    def set_promotion_master_repository(
-        self, promotion_master_repo: PromotionMasterWebRepository
-    ) -> None:
+    def configure(self, tenant_id: str, terminal_info) -> None:
         """
-        Set the promotion master repository for this plugin.
+        Configure the plugin with a promotion master repository.
 
         Args:
-            promotion_master_repo: Repository for accessing promotion information
+            tenant_id: The tenant identifier for multi-tenancy
+            terminal_info: Terminal information for the current session
         """
-        self.promotion_master_repo = promotion_master_repo
+        self.promotion_master_repo = PromotionMasterWebRepository(
+            tenant_id=tenant_id, terminal_info=terminal_info
+        )
 
     async def apply(
         self, cart_doc: CartDocument, sales_promo_code: str = None, value: float = None

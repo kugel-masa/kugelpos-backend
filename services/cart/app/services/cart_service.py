@@ -36,9 +36,6 @@ from app.models.repositories.item_master_grpc_repository import ItemMasterGrpcRe
 from app.models.repositories.payment_master_web_repository import (
     PaymentMasterWebRepository,
 )
-from app.models.repositories.promotion_master_web_repository import (
-    PromotionMasterWebRepository,
-)
 from app.models.repositories.settings_master_web_repository import (
     SettingsMasterWebRepository,
 )
@@ -53,7 +50,6 @@ from app.services.logics import calc_line_item_logic
 from app.services.logics import calc_subtotal_logic
 from app.services.strategies.payments.abstract_payment import AbstractPayment
 from app.services.strategies.sales_promo.abstract_sales_promo import AbstractSalesPromo
-from app.services.strategies.sales_promo.category_promo import CategoryPromoPlugin
 from app.services.tran_service import TranService
 from app.enums.cart_status import CartStatus
 from app.utils.settings import get_setting_value
@@ -89,7 +85,6 @@ class CartService(ICartService):
         payment_master_repo: PaymentMasterWebRepository,
         store_info_repo: StoreInfoWebRepository,
         tran_service: TranService,
-        promotion_master_repo: PromotionMasterWebRepository = None,
         cart_id: str = None,
     ) -> None:
         """
@@ -105,7 +100,6 @@ class CartService(ICartService):
             payment_master_repo: Repository for payment master data
             store_info_repo: Repository for store information
             tran_service: Transaction service for creating transaction logs
-            promotion_master_repo: Repository for promotion master data (optional)
             cart_id: Optional ID of an existing cart to operate on
         """
         self.terminal_info = terminal_info
@@ -117,7 +111,6 @@ class CartService(ICartService):
         self.payment_master_repo = payment_master_repo
         self.store_info_repo = store_info_repo
         self.tran_service = tran_service
-        self.promotion_master_repo = promotion_master_repo
 
         self.cart_id = cart_id
         self.current_cart = None
@@ -130,10 +123,12 @@ class CartService(ICartService):
             self.sales_promo_strategies: list[AbstractSalesPromo] = self.strategy_manager.load_strategies(
                 "sales_promo_strategies"
             )
-            # Set promotion master repository for plugins that need it
-            for sales_promo_strategy in self.sales_promo_strategies:
-                if isinstance(sales_promo_strategy, CategoryPromoPlugin):
-                    sales_promo_strategy.set_promotion_master_repository(self.promotion_master_repo)
+            # Configure each plugin with shared infrastructure
+            for strategy in self.sales_promo_strategies:
+                strategy.configure(
+                    tenant_id=self.terminal_info.tenant_id,
+                    terminal_info=self.terminal_info,
+                )
             logger.debug(f"sales_promo_strategies: {self.sales_promo_strategies}")
 
             # Load payment strategy plugins and set payment master repository
