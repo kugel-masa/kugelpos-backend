@@ -209,12 +209,12 @@ class SchemasTransformer:
     def transform_promotion(self, promotion_doc: PromotionMasterDocument) -> BasePromotionResponse:
         logger.debug(f"promotion_master: {promotion_doc}")
 
-        category_promo_detail = None
-        if promotion_doc.category_promo_detail:
-            category_promo_detail = BaseCategoryPromoDetail(
-                target_store_codes=promotion_doc.category_promo_detail.target_store_codes or [],
-                target_category_codes=promotion_doc.category_promo_detail.target_category_codes,
-                discount_rate=promotion_doc.category_promo_detail.discount_rate,
+        detail = None
+        if promotion_doc.detail:
+            detail = BaseCategoryPromoDetail(
+                target_store_codes=promotion_doc.detail.target_store_codes or [],
+                target_category_codes=promotion_doc.detail.target_category_codes,
+                discount_rate=promotion_doc.detail.discount_rate,
             )
 
         return BasePromotionResponse(
@@ -233,7 +233,7 @@ class SchemasTransformer:
                 else None
             ),
             is_active=promotion_doc.is_active,
-            category_promo_detail=category_promo_detail,
+            detail=detail,
             entry_datetime=(
                 promotion_doc.created_at.strftime("%Y-%m-%d %H:%M:%S")
                 if promotion_doc.created_at

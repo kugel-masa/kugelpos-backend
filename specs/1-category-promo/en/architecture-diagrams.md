@@ -141,7 +141,7 @@ classDiagram
         +start_datetime: datetime
         +end_datetime: datetime
         +is_active: bool
-        +category_promo_detail: CategoryPromoDetail
+        +detail: dict
     }
 
     class CategoryPromoDetail {

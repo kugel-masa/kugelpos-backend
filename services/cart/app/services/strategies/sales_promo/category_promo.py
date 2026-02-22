@@ -2,12 +2,31 @@
 from logging import getLogger
 from typing import Optional
 
+from pydantic import BaseModel, ConfigDict
+
+from kugel_common.utils.misc import to_lower_camel
+from app.enums.discount_type import DiscountType
 from app.services.strategies.sales_promo.abstract_sales_promo import AbstractSalesPromo
 from app.models.repositories.promotion_master_web_repository import PromotionMasterWebRepository
 from app.models.documents.cart_document import CartDocument
+from app.models.documents.promotion_master_document import PromotionMasterDocument
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
 logger = getLogger(__name__)
+
+
+class CategoryPromoDetail(BaseModel):
+    """
+    Plugin-local model for category promotion detail.
+
+    Parsed from the generic detail dict on PromotionMasterDocument.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_lower_camel)
+
+    target_store_codes: Optional[list[str]] = []
+    target_category_codes: list[str] = []
+    discount_rate: float = 0.0
 
 
 class CategoryPromoPlugin(AbstractSalesPromo):
@@ -116,6 +135,24 @@ class CategoryPromoPlugin(AbstractSalesPromo):
 
         return cart_doc
 
+    def _parse_detail(self, promo: PromotionMasterDocument) -> Optional[CategoryPromoDetail]:
+        """
+        Parse the generic detail dict into a CategoryPromoDetail model.
+
+        Args:
+            promo: The promotion document with a raw detail dict
+
+        Returns:
+            CategoryPromoDetail if parsing succeeds, None otherwise
+        """
+        if promo.detail is None:
+            return None
+        try:
+            return CategoryPromoDetail(**promo.detail)
+        except Exception as e:
+            logger.warning(f"Failed to parse detail for promotion {promo.promotion_code}: {e}")
+            return None
+
     def _build_category_promotion_map(self, promotions: list) -> dict:
         """
         Build a mapping of category codes to their best promotion.
@@ -134,12 +171,13 @@ class CategoryPromoPlugin(AbstractSalesPromo):
             if promo.promotion_type != "category_discount":
                 continue
 
-            if promo.category_promo_detail is None:
+            detail = self._parse_detail(promo)
+            if detail is None:
                 continue
 
-            discount_rate = promo.category_promo_detail.discount_rate
+            discount_rate = detail.discount_rate
 
-            for category_code in promo.category_promo_detail.target_category_codes:
+            for category_code in detail.target_category_codes:
                 existing = category_map.get(category_code)
                 if existing is None or discount_rate > existing["discount_rate"]:
                     category_map[category_code] = {
@@ -192,7 +230,7 @@ class CategoryPromoPlugin(AbstractSalesPromo):
         # Create discount info
         discount_info = BaseTransaction.DiscountInfo(
             seq_no=len(line_item.discounts) + 1 if line_item.discounts else 1,
-            discount_type="percent",
+            discount_type=DiscountType.DiscountPercentage.value,
             discount_value=discount_rate,
             discount_amount=discount_amount,
             detail=promotion_info.get("name", "Category Promotion"),

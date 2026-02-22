@@ -634,7 +634,7 @@ class BasePromotionResponse(BaseSchemaModel):
     start_datetime: str
     end_datetime: str
     is_active: bool
-    category_promo_detail: Optional[BaseCategoryPromoDetail] = None
+    detail: Optional[BaseCategoryPromoDetail] = None
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 
@@ -645,7 +645,7 @@ class BasePromotionCreateRequest(BaseSchemaModel):
 
     Defines fields required for creating a new promotion record.
     Includes promotion code, type, name, description, datetime range,
-    active flag, and category promo detail.
+    active flag, and type-specific detail.
     """
 
     promotion_code: str
@@ -655,7 +655,7 @@ class BasePromotionCreateRequest(BaseSchemaModel):
     start_datetime: str
     end_datetime: str
     is_active: Optional[bool] = True
-    category_promo_detail: Optional[BaseCategoryPromoDetail] = None
+    detail: Optional[BaseCategoryPromoDetail] = None
 
 
 class BasePromotionUpdateRequest(BaseSchemaModel):
@@ -663,7 +663,7 @@ class BasePromotionUpdateRequest(BaseSchemaModel):
     Base Promotion Update Request Schema
 
     Defines fields required for updating an existing promotion record.
-    Includes name, description, datetime range, active flag, and category promo detail.
+    Includes name, description, datetime range, active flag, and type-specific detail.
     Promotion code and type cannot be changed.
     """
 
@@ -672,7 +672,7 @@ class BasePromotionUpdateRequest(BaseSchemaModel):
     start_datetime: Optional[str] = None
     end_datetime: Optional[str] = None
     is_active: Optional[bool] = None
-    category_promo_detail: Optional[BaseCategoryPromoDetail] = None
+    detail: Optional[BaseCategoryPromoDetail] = None
 
 
 class BasePromotionDeleteResponse(BaseSchemaModel):

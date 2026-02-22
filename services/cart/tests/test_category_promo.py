@@ -92,7 +92,7 @@ async def create_test_promotion(token: str, tenant_id: str, store_code: str):
         "startDatetime": start_datetime,
         "endDatetime": end_datetime,
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [store_code],
             "targetCategoryCodes": ["001"],
             "discountRate": 10.0,
@@ -182,31 +182,27 @@ async def test_category_promo_applied_to_cart(http_client):
         line_items = res.get("data").get("lineItems", [])
         assert len(line_items) > 0
 
-        # Find the item we added
         added_item = line_items[0]
         print(f"Added item: {added_item}")
 
-        # Check if category matches
-        category_code = added_item.get("categoryCode")
-        print(f"Item category: {category_code}")
+        # Verify category matches promotion target
+        assert added_item.get("categoryCode") == "001", (
+            f"Expected category '001' but got '{added_item.get('categoryCode')}'"
+        )
 
-        # Check if discount was applied (if category matches promotion)
-        if category_code == "001":
-            discounts = added_item.get("discounts", [])
-            print(f"Discounts: {discounts}")
+        # Verify discount was applied
+        discounts = added_item.get("discounts", [])
+        category_discounts = [
+            d for d in discounts if d.get("promotionType") == "category_discount"
+        ]
+        assert len(category_discounts) > 0, "Category discount not applied!"
 
-            # Verify discount has promotion_code
-            if len(discounts) > 0:
-                discount = discounts[0]
-                assert discount.get("promotionCode") == promotion_code
-                assert discount.get("promotionType") == "category_discount"
-                assert discount.get("discountType") == "percent"
-                assert discount.get("discountValue") == 10.0
-                print("Category promotion applied successfully!")
-            else:
-                print("No discounts applied - item may have is_discount_restricted=True")
-        else:
-            print(f"Item category {category_code} does not match promotion target 001")
+        discount = category_discounts[0]
+        assert discount.get("promotionCode") == promotion_code
+        assert discount.get("promotionType") == "category_discount"
+        assert discount.get("discountType") == "DiscountPercentage"
+        assert discount.get("discountValue") == 10.0
+        print("Category promotion applied successfully!")
 
     finally:
         # Cleanup: delete test promotion
@@ -329,7 +325,7 @@ async def test_category_promo_all_stores(http_client):
         "startDatetime": start_datetime,
         "endDatetime": end_datetime,
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [],  # Empty means all stores
             "targetCategoryCodes": ["001"],
             "discountRate": 5.0,
@@ -371,13 +367,24 @@ async def test_category_promo_all_stores(http_client):
 
         # Check if promotion was applied
         line_items = res.get("data").get("lineItems", [])
-        if len(line_items) > 0:
-            added_item = line_items[0]
-            discounts = added_item.get("discounts", [])
-            print(f"Item discounts: {discounts}")
+        assert len(line_items) > 0
 
-            # Should have a discount from the all-stores promotion
-            # (unless another promotion has higher discount rate)
+        added_item = line_items[0]
+        assert added_item.get("categoryCode") == "001", (
+            f"Expected category '001' but got '{added_item.get('categoryCode')}'"
+        )
+
+        discounts = added_item.get("discounts", [])
+        category_discounts = [
+            d for d in discounts if d.get("promotionType") == "category_discount"
+        ]
+        assert len(category_discounts) > 0, "All-stores promotion not applied!"
+
+        discount = category_discounts[0]
+        assert discount.get("promotionCode") == "TEST_ALL_STORES_PROMO"
+        assert discount.get("discountType") == "DiscountPercentage"
+        assert discount.get("discountValue") == 5.0
+        print("All-stores promotion applied successfully!")
 
     finally:
         # Cleanup
@@ -414,7 +421,7 @@ async def test_category_promo_best_discount_selected(http_client):
         "startDatetime": start_datetime,
         "endDatetime": end_datetime,
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [store_code],
             "targetCategoryCodes": ["001"],
             "discountRate": 10.0,
@@ -429,7 +436,7 @@ async def test_category_promo_best_discount_selected(http_client):
         "startDatetime": start_datetime,
         "endDatetime": end_datetime,
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [store_code],
             "targetCategoryCodes": ["001"],
             "discountRate": 15.0,
@@ -470,23 +477,349 @@ async def test_category_promo_best_discount_selected(http_client):
 
         # Check if the best discount was applied
         line_items = res.get("data").get("lineItems", [])
-        if len(line_items) > 0:
-            added_item = line_items[0]
-            category_code = added_item.get("categoryCode")
-            discounts = added_item.get("discounts", [])
-            print(f"Item category: {category_code}")
-            print(f"Item discounts: {discounts}")
+        assert len(line_items) > 0
 
-            if category_code == "001" and len(discounts) > 0:
-                # Should have the 15% discount (best)
-                discount = discounts[0]
-                assert discount.get("discountValue") == 15.0, (
-                    f"Expected 15% discount but got {discount.get('discountValue')}%"
-                )
-                assert discount.get("promotionCode") == "TEST_PROMO_15PCT"
-                print("Best discount (15%) correctly selected!")
+        added_item = line_items[0]
+        assert added_item.get("categoryCode") == "001", (
+            f"Expected category '001' but got '{added_item.get('categoryCode')}'"
+        )
+
+        discounts = added_item.get("discounts", [])
+        category_discounts = [
+            d for d in discounts if d.get("promotionType") == "category_discount"
+        ]
+        assert len(category_discounts) > 0, "No category discount applied!"
+
+        # Should have the 15% discount (best)
+        discount = category_discounts[0]
+        assert discount.get("discountValue") == 15.0, (
+            f"Expected 15% discount but got {discount.get('discountValue')}%"
+        )
+        assert discount.get("promotionCode") == "TEST_PROMO_15PCT"
+        print("Best discount (15%) correctly selected!")
 
     finally:
         # Cleanup
         await delete_test_promotion(token, tenant_id, "TEST_PROMO_10PCT")
         await delete_test_promotion(token, tenant_id, "TEST_PROMO_15PCT")
+
+
+@pytest.mark.asyncio()
+async def test_category_promo_not_applied_to_non_matching_category(http_client):
+    """
+    Test that category promotions are NOT applied when item category does not match.
+
+    Creates a promotion targeting category "999" (non-existent),
+    then adds item "49-01" (category "001") and verifies no discount is applied.
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
+    api_key = os.environ.get("API_KEY")
+    header = {"X-API-KEY": api_key}
+
+    promo_code = "TEST_NON_MATCH_PROMO"
+    await cleanup_test_promotions(tenant_id, [promo_code])
+
+    token = await get_authentication_token()
+    base_url = os.environ.get("BASE_URL_MASTER_DATA")
+    auth_header = {"Authorization": f"Bearer {token}"}
+
+    now = datetime.now(timezone.utc)
+    promotion_data = {
+        "promotionCode": promo_code,
+        "promotionType": "category_discount",
+        "name": "Non-matching Category Promotion",
+        "startDatetime": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        "endDatetime": (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "isActive": True,
+        "detail": {
+            "targetStoreCodes": [store_code],
+            "targetCategoryCodes": ["999"],  # No items have this category
+            "discountRate": 20.0,
+        },
+    }
+
+    async with AsyncClient(base_url=base_url) as client:
+        response = await client.post(
+            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
+        )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    terminal_id = os.environ.get("TERMINAL_ID")
+
+    try:
+        await open_terminal(tenant_id)
+
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_201_CREATED
+        cart_id = res.get("data").get("cartId")
+
+        # Add item with category "001" - does NOT match promotion target "999"
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
+        )
+        res = response.json()
+        print(f"Add item response: {res}")
+        assert response.status_code == status.HTTP_200_OK
+
+        line_items = res.get("data").get("lineItems", [])
+        assert len(line_items) > 0
+
+        added_item = line_items[0]
+        assert added_item.get("categoryCode") == "001"
+
+        category_discounts = [
+            d for d in added_item.get("discounts", [])
+            if d.get("promotionType") == "category_discount"
+        ]
+        assert len(category_discounts) == 0, (
+            "Discount should NOT be applied when category does not match!"
+        )
+        print("Correctly skipped discount for non-matching category")
+
+    finally:
+        await delete_test_promotion(token, tenant_id, promo_code)
+
+
+@pytest.mark.asyncio()
+async def test_category_promo_inactive_not_applied(http_client):
+    """
+    Test that inactive promotions (isActive=false) are NOT applied.
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
+    api_key = os.environ.get("API_KEY")
+    header = {"X-API-KEY": api_key}
+
+    promo_code = "TEST_INACTIVE_PROMO"
+    await cleanup_test_promotions(tenant_id, [promo_code])
+
+    token = await get_authentication_token()
+    base_url = os.environ.get("BASE_URL_MASTER_DATA")
+    auth_header = {"Authorization": f"Bearer {token}"}
+
+    now = datetime.now(timezone.utc)
+    promotion_data = {
+        "promotionCode": promo_code,
+        "promotionType": "category_discount",
+        "name": "Inactive Promotion",
+        "startDatetime": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        "endDatetime": (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "isActive": False,  # Inactive
+        "detail": {
+            "targetStoreCodes": [store_code],
+            "targetCategoryCodes": ["001"],
+            "discountRate": 10.0,
+        },
+    }
+
+    async with AsyncClient(base_url=base_url) as client:
+        response = await client.post(
+            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
+        )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    terminal_id = os.environ.get("TERMINAL_ID")
+
+    try:
+        await open_terminal(tenant_id)
+
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_201_CREATED
+        cart_id = res.get("data").get("cartId")
+
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
+        )
+        res = response.json()
+        print(f"Add item response: {res}")
+        assert response.status_code == status.HTTP_200_OK
+
+        line_items = res.get("data").get("lineItems", [])
+        assert len(line_items) > 0
+
+        added_item = line_items[0]
+        category_discounts = [
+            d for d in added_item.get("discounts", [])
+            if d.get("promotionCode") == promo_code
+        ]
+        assert len(category_discounts) == 0, (
+            "Inactive promotion should NOT be applied!"
+        )
+        print("Correctly skipped inactive promotion")
+
+    finally:
+        await delete_test_promotion(token, tenant_id, promo_code)
+
+
+@pytest.mark.asyncio()
+async def test_category_promo_expired_not_applied(http_client):
+    """
+    Test that expired promotions (endDatetime in the past) are NOT applied.
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
+    api_key = os.environ.get("API_KEY")
+    header = {"X-API-KEY": api_key}
+
+    promo_code = "TEST_EXPIRED_PROMO"
+    await cleanup_test_promotions(tenant_id, [promo_code])
+
+    token = await get_authentication_token()
+    base_url = os.environ.get("BASE_URL_MASTER_DATA")
+    auth_header = {"Authorization": f"Bearer {token}"}
+
+    # Create promotion that already expired (ended 1 hour ago)
+    now = datetime.now(timezone.utc)
+    promotion_data = {
+        "promotionCode": promo_code,
+        "promotionType": "category_discount",
+        "name": "Expired Promotion",
+        "startDatetime": (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "endDatetime": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "isActive": True,
+        "detail": {
+            "targetStoreCodes": [store_code],
+            "targetCategoryCodes": ["001"],
+            "discountRate": 10.0,
+        },
+    }
+
+    async with AsyncClient(base_url=base_url) as client:
+        response = await client.post(
+            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
+        )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    terminal_id = os.environ.get("TERMINAL_ID")
+
+    try:
+        await open_terminal(tenant_id)
+
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_201_CREATED
+        cart_id = res.get("data").get("cartId")
+
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
+        )
+        res = response.json()
+        print(f"Add item response: {res}")
+        assert response.status_code == status.HTTP_200_OK
+
+        line_items = res.get("data").get("lineItems", [])
+        assert len(line_items) > 0
+
+        added_item = line_items[0]
+        category_discounts = [
+            d for d in added_item.get("discounts", [])
+            if d.get("promotionCode") == promo_code
+        ]
+        assert len(category_discounts) == 0, (
+            "Expired promotion should NOT be applied!"
+        )
+        print("Correctly skipped expired promotion")
+
+    finally:
+        await delete_test_promotion(token, tenant_id, promo_code)
+
+
+@pytest.mark.asyncio()
+async def test_category_promo_discount_amount_calculation(http_client):
+    """
+    Test that discount amount is calculated correctly.
+
+    Item "49-01" has unit_price=100, quantity=2 → base_amount=200
+    Promotion: 10% discount → discount_amount should be 20
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
+    api_key = os.environ.get("API_KEY")
+    header = {"X-API-KEY": api_key}
+
+    await cleanup_test_promotions(tenant_id, ["TEST_CART_PROMO"])
+
+    token = await get_authentication_token()
+    promotion_code = await create_test_promotion(token, tenant_id, store_code)
+
+    terminal_id = os.environ.get("TERMINAL_ID")
+
+    try:
+        await open_terminal(tenant_id)
+
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_201_CREATED
+        cart_id = res.get("data").get("cartId")
+
+        # Add item with quantity=2 to verify amount calculation
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 2}]
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header
+        )
+        res = response.json()
+        print(f"Add item response: {res}")
+        assert response.status_code == status.HTTP_200_OK
+
+        line_items = res.get("data").get("lineItems", [])
+        assert len(line_items) > 0
+
+        added_item = line_items[0]
+        unit_price = added_item.get("unitPrice")
+        quantity = added_item.get("quantity")
+        print(f"unit_price: {unit_price}, quantity: {quantity}")
+
+        category_discounts = [
+            d for d in added_item.get("discounts", [])
+            if d.get("promotionType") == "category_discount"
+        ]
+        assert len(category_discounts) > 0, "Category discount not applied!"
+
+        discount = category_discounts[0]
+        assert discount.get("discountValue") == 10.0
+
+        # Verify discount amount: unit_price * quantity * rate / 100
+        expected_amount = round(unit_price * quantity * 10.0 / 100, 0)
+        actual_amount = discount.get("discountAmount")
+        print(f"expected_amount: {expected_amount}, actual_amount: {actual_amount}")
+        assert actual_amount == expected_amount, (
+            f"Expected discount amount {expected_amount} but got {actual_amount}"
+        )
+        print(f"Discount amount correctly calculated: {actual_amount}")
+
+    finally:
+        await delete_test_promotion(token, tenant_id, promotion_code)

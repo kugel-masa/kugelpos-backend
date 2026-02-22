@@ -79,7 +79,7 @@ async def test_promotion_master(http_client):
         "startDatetime": start_datetime,
         "endDatetime": end_datetime,
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [store_code],
             "targetCategoryCodes": ["BEV001", "BEV002"],
             "discountRate": 10.0,
@@ -98,7 +98,7 @@ async def test_promotion_master(http_client):
     assert res.get("data").get("promotionType") == "category_discount"
     assert res.get("data").get("name") == "Test Summer Sale"
     assert res.get("data").get("isActive") is True
-    assert res.get("data").get("categoryPromoDetail").get("discountRate") == 10.0
+    assert res.get("data").get("detail").get("discountRate") == 10.0
 
     #
     # Test 2: Create duplicate promotion (should fail)
@@ -183,7 +183,7 @@ async def test_promotion_master(http_client):
     update_data = {
         "name": "Test Summer Sale Extended",
         "description": "15% off on beverages - Extended!",
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [store_code],
             "targetCategoryCodes": ["BEV001", "BEV002", "BEV003"],
             "discountRate": 15.0,
@@ -199,7 +199,7 @@ async def test_promotion_master(http_client):
     assert response.status_code == status.HTTP_200_OK
     assert res.get("success") is True
     assert res.get("data").get("name") == "Test Summer Sale Extended"
-    assert res.get("data").get("categoryPromoDetail").get("discountRate") == 15.0
+    assert res.get("data").get("detail").get("discountRate") == 15.0
 
     #
     # Test 9: Update non-existent promotion (should fail)
@@ -235,7 +235,7 @@ async def test_promotion_master(http_client):
         "startDatetime": start_datetime,
         "endDatetime": end_datetime,
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [],  # Empty means all stores
             "targetCategoryCodes": ["FOOD001"],
             "discountRate": 5.0,
@@ -250,7 +250,7 @@ async def test_promotion_master(http_client):
     print(f"Create all-stores promotion response: {res}")
     assert response.status_code == status.HTTP_201_CREATED
     assert res.get("success") is True
-    assert res.get("data").get("categoryPromoDetail").get("targetStoreCodes") == []
+    assert res.get("data").get("detail").get("targetStoreCodes") == []
 
     #
     # Test 12: Delete promotion
@@ -334,7 +334,7 @@ async def test_promotion_validation(http_client):
         "startDatetime": (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
         "endDatetime": now.strftime("%Y-%m-%dT%H:%M:%S"),  # End before start
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [],
             "targetCategoryCodes": ["CAT001"],
             "discountRate": 10.0,
@@ -360,7 +360,7 @@ async def test_promotion_validation(http_client):
         "startDatetime": now.strftime("%Y-%m-%dT%H:%M:%S"),
         "endDatetime": (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [],
             "targetCategoryCodes": ["CAT001"],
             "discountRate": 150.0,  # Over 100%
@@ -376,7 +376,7 @@ async def test_promotion_validation(http_client):
     assert res.get("success") is False
 
     #
-    # Test 3: Category discount without category_promo_detail
+    # Test 3: Category discount without detail
     #
     missing_detail_promotion = {
         "promotionCode": "MISSING_DETAIL_PROMO",
@@ -385,7 +385,7 @@ async def test_promotion_validation(http_client):
         "startDatetime": now.strftime("%Y-%m-%dT%H:%M:%S"),
         "endDatetime": (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
         "isActive": True,
-        # categoryPromoDetail is missing
+        # detail is missing
     }
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/promotions",
@@ -407,7 +407,7 @@ async def test_promotion_validation(http_client):
         "startDatetime": now.strftime("%Y-%m-%dT%H:%M:%S"),
         "endDatetime": (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
         "isActive": True,
-        "categoryPromoDetail": {
+        "detail": {
             "targetStoreCodes": [],
             "targetCategoryCodes": [],  # Empty
             "discountRate": 10.0,

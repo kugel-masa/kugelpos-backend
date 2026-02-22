@@ -23,7 +23,7 @@ PromotionMasterDocument
 ├── end_datetime: datetime           # End datetime
 ├── is_active: bool                  # Active flag
 ├── is_deleted: bool                 # Soft delete flag
-├── category_promo_detail: object    # Category promotion detail (type-specific)
+├── detail: object                   # Type-specific promotion detail
 │   ├── target_store_codes: list[str]     # Target store codes (empty = all stores)
 │   ├── target_category_codes: list[str]  # Target category codes
 │   └── discount_rate: float              # Discount rate (%)
@@ -44,7 +44,7 @@ PromotionMasterDocument
 | end_datetime | datetime | Yes | Effective end datetime |
 | is_active | bool | Yes | Active/inactive flag (default: true) |
 | is_deleted | bool | Yes | Soft delete flag (default: false) |
-| category_promo_detail | object | No | Category promotion-specific details |
+| detail | object | No | Type-specific promotion details |
 
 **Category promotion detail**:
 
@@ -67,7 +67,7 @@ PromotionMasterDocument
 1. `promotion_code` must be unique within tenant_id
 2. `end_datetime` > `start_datetime`
 3. `discount_rate` must satisfy 0 < rate <= 100
-4. When `promotion_type` is "category_discount", `category_promo_detail` is required
+4. When `promotion_type` is "category_discount", `detail` is required
 5. `target_category_codes` must contain at least one element
 
 ---

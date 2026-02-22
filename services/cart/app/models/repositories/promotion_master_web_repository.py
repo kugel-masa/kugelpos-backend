@@ -34,7 +34,6 @@ class PromotionMasterWebRepository:
         self.tenant_id = tenant_id
         self.terminal_info = terminal_info
         self.base_url = settings.BASE_URL_MASTER_DATA
-        self._cached_promotions: list[PromotionMasterDocument] = None
 
     async def get_active_promotions_by_store_async(
         self, store_code: str = None
@@ -56,10 +55,6 @@ class PromotionMasterWebRepository:
         """
         if store_code is None:
             store_code = self.terminal_info.store_code
-
-        # Return cached promotions if available
-        if self._cached_promotions is not None:
-            return self._cached_promotions
 
         client = await get_pooled_client("master-data")
         headers = {"X-API-KEY": self.terminal_info.api_key}
@@ -88,11 +83,4 @@ class PromotionMasterWebRepository:
                 logger.warning(f"Failed to parse promotion data: {promo_data}, error: {e}")
                 continue
 
-        # Cache the promotions
-        self._cached_promotions = promotions
-
         return promotions
-
-    def clear_cache(self):
-        """Clear the cached promotions."""
-        self._cached_promotions = None

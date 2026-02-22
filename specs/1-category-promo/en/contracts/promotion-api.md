@@ -42,7 +42,7 @@ Definition of the promotion management API to be added to the master-data servic
   "startDatetime": "2026-07-01T00:00:00",
   "endDatetime": "2026-08-31T23:59:59",
   "isActive": true,
-  "categoryPromoDetail": {
+  "detail": {
     "targetStoreCodes": ["STORE001", "STORE002"],
     "targetCategoryCodes": ["BEV001", "BEV002"],
     "discountRate": 10.0
@@ -67,7 +67,7 @@ Definition of the promotion management API to be added to the master-data servic
     "startDatetime": "2026-07-01T00:00:00",
     "endDatetime": "2026-08-31T23:59:59",
     "isActive": true,
-    "categoryPromoDetail": {
+    "detail": {
       "targetStoreCodes": ["STORE001", "STORE002"],
       "targetCategoryCodes": ["BEV001", "BEV002"],
       "discountRate": 10.0
@@ -118,7 +118,7 @@ Definition of the promotion management API to be added to the master-data servic
       "startDatetime": "2026-07-01T00:00:00",
       "endDatetime": "2026-08-31T23:59:59",
       "isActive": true,
-      "categoryPromoDetail": {
+      "detail": {
         "targetCategoryCodes": ["BEV001", "BEV002"],
         "discountRate": 10.0
       }
@@ -161,7 +161,7 @@ Retrieves currently active promotions.
       "promotionCode": "SUMMER2026_BEVERAGE",
       "promotionType": "category_discount",
       "name": "Summer Beverage Campaign",
-      "categoryPromoDetail": {
+      "detail": {
         "targetStoreCodes": ["STORE001", "STORE002"],
         "targetCategoryCodes": ["BEV001", "BEV002"],
         "discountRate": 10.0
@@ -192,7 +192,7 @@ Retrieves currently active promotions.
     "startDatetime": "2026-07-01T00:00:00",
     "endDatetime": "2026-08-31T23:59:59",
     "isActive": true,
-    "categoryPromoDetail": {
+    "detail": {
       "targetCategoryCodes": ["BEV001", "BEV002"],
       "discountRate": 10.0
     },
@@ -220,7 +220,7 @@ Retrieves currently active promotions.
 {
   "name": "Summer Beverage Campaign (Extended)",
   "endDatetime": "2026-09-30T23:59:59",
-  "categoryPromoDetail": {
+  "detail": {
     "targetCategoryCodes": ["BEV001", "BEV002", "BEV003"],
     "discountRate": 15.0
   }
@@ -241,7 +241,7 @@ Retrieves currently active promotions.
     "promotionType": "category_discount",
     "name": "Summer Beverage Campaign (Extended)",
     "endDatetime": "2026-09-30T23:59:59",
-    "categoryPromoDetail": {
+    "detail": {
       "targetCategoryCodes": ["BEV001", "BEV002", "BEV003"],
       "discountRate": 15.0
     },
@@ -298,7 +298,7 @@ class PromotionCreateRequest(BaseModel):
     start_datetime: datetime = Field(..., alias="startDatetime")
     end_datetime: datetime = Field(..., alias="endDatetime")
     is_active: bool = Field(True, alias="isActive")
-    category_promo_detail: Optional[CategoryPromoDetail] = Field(None, alias="categoryPromoDetail")
+    detail: Optional[BaseCategoryPromoDetail] = Field(None, alias="detail")
 ```
 
 ### CategoryPromoDetail
@@ -321,7 +321,7 @@ class PromotionResponse(BaseModel):
     start_datetime: datetime = Field(..., alias="startDatetime")
     end_datetime: datetime = Field(..., alias="endDatetime")
     is_active: bool = Field(..., alias="isActive")
-    category_promo_detail: Optional[CategoryPromoDetail] = Field(None, alias="categoryPromoDetail")
+    detail: Optional[BaseCategoryPromoDetail] = Field(None, alias="detail")
     entry_datetime: Optional[str] = Field(None, alias="entryDatetime")
     last_update_datetime: Optional[str] = Field(None, alias="lastUpdateDatetime")
 ```

@@ -173,7 +173,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
             "start_datetime": {"$lte": current_time},
             "end_datetime": {"$gte": current_time},
             "promotion_type": "category_discount",
-            "category_promo_detail.target_category_codes": category_code,
+            "detail.target_category_codes": category_code,
         }
         return await self.get_list_async(query_filter)
 
@@ -204,8 +204,8 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
             "start_datetime": {"$lte": current_time},
             "end_datetime": {"$gte": current_time},
             "$or": [
-                {"category_promo_detail.target_store_codes": {"$size": 0}},
-                {"category_promo_detail.target_store_codes": store_code},
+                {"detail.target_store_codes": {"$size": 0}},
+                {"detail.target_store_codes": store_code},
             ],
         }
         return await self.get_list_async(query_filter)

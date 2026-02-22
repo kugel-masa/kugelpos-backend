@@ -42,7 +42,7 @@ class PromotionMasterService:
         end_datetime: datetime,
         description: Optional[str] = None,
         is_active: bool = True,
-        category_promo_detail: Optional[
+        detail: Optional[
             PromotionMasterDocument.CategoryPromoDetail
         ] = None,
     ) -> PromotionMasterDocument:
@@ -57,7 +57,7 @@ class PromotionMasterService:
             end_datetime: End datetime of the promotion
             description: Optional description of the promotion
             is_active: Whether the promotion is active
-            category_promo_detail: Category-specific promotion details
+            detail: Type-specific promotion details
 
         Returns:
             Newly created PromotionMasterDocument
@@ -71,20 +71,20 @@ class PromotionMasterService:
             message = "end_datetime must be after start_datetime"
             raise InvalidRequestDataException(message, logger)
 
-        # Validate category_promo_detail for category_discount type
+        # Validate detail for category_discount type
         if promotion_type == "category_discount":
-            if category_promo_detail is None:
-                message = "category_promo_detail is required for category_discount type"
+            if detail is None:
+                message = "detail is required for category_discount type"
                 raise InvalidRequestDataException(message, logger)
             if (
-                not category_promo_detail.target_category_codes
-                or len(category_promo_detail.target_category_codes) == 0
+                not detail.target_category_codes
+                or len(detail.target_category_codes) == 0
             ):
                 message = "target_category_codes must contain at least one category code"
                 raise InvalidRequestDataException(message, logger)
             if (
-                category_promo_detail.discount_rate <= 0
-                or category_promo_detail.discount_rate > 100
+                detail.discount_rate <= 0
+                or detail.discount_rate > 100
             ):
                 message = "discount_rate must be between 0 and 100"
                 raise InvalidRequestDataException(message, logger)
@@ -105,7 +105,7 @@ class PromotionMasterService:
         promotion_doc.start_datetime = start_datetime
         promotion_doc.end_datetime = end_datetime
         promotion_doc.is_active = is_active
-        promotion_doc.category_promo_detail = category_promo_detail
+        promotion_doc.detail = detail
 
         return await self.promotion_master_repo.create_promotion_async(promotion_doc)
 
@@ -222,9 +222,9 @@ class PromotionMasterService:
             result = []
             for promo in store_promotions:
                 if (
-                    promo.category_promo_detail
+                    promo.detail
                     and category_code
-                    in promo.category_promo_detail.target_category_codes
+                    in promo.detail.target_category_codes
                 ):
                     if promotion_type is None or promo.promotion_type == promotion_type:
                         result.append(promo)
@@ -283,9 +283,9 @@ class PromotionMasterService:
             message = "end_datetime must be after start_datetime"
             raise InvalidRequestDataException(message, logger)
 
-        # Validate discount_rate if category_promo_detail is updated
-        if "category_promo_detail" in update_data and update_data["category_promo_detail"]:
-            detail = update_data["category_promo_detail"]
+        # Validate discount_rate if detail is updated
+        if "detail" in update_data and update_data["detail"]:
+            detail = update_data["detail"]
             if isinstance(detail, dict):
                 rate = detail.get("discount_rate")
                 if rate is not None and (rate <= 0 or rate > 100):

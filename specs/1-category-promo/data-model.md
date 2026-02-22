@@ -23,7 +23,7 @@ PromotionMasterDocument
 ├── end_datetime: datetime           # 終了日時
 ├── is_active: bool                  # 有効フラグ
 ├── is_deleted: bool                 # 論理削除フラグ
-├── category_promo_detail: object    # カテゴリプロモーション詳細（タイプ固有）
+├── detail: object                   # タイプ固有のプロモーション詳細
 │   ├── target_store_codes: list[str]     # 対象店舗コード（空=全店舗）
 │   ├── target_category_codes: list[str]  # 対象カテゴリコード
 │   └── discount_rate: float              # 割引率（%）
@@ -44,7 +44,7 @@ PromotionMasterDocument
 | end_datetime | datetime | Yes | 有効終了日時 |
 | is_active | bool | Yes | 有効/無効フラグ（デフォルト: true） |
 | is_deleted | bool | Yes | 論理削除フラグ（デフォルト: false） |
-| category_promo_detail | object | No | カテゴリプロモーション固有の詳細 |
+| detail | object | No | タイプ固有のプロモーション詳細 |
 
 **カテゴリプロモーション詳細**:
 
@@ -67,7 +67,7 @@ PromotionMasterDocument
 1. `promotion_code` は tenant_id 内で一意
 2. `end_datetime` > `start_datetime`
 3. `discount_rate` は 0 < rate <= 100
-4. `promotion_type` が "category_discount" の場合、`category_promo_detail` は必須
+4. `promotion_type` が "category_discount" の場合、`detail` は必須
 5. `target_category_codes` は少なくとも1つの要素を含む
 
 ---

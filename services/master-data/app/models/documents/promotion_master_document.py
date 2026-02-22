@@ -54,7 +54,7 @@ class PromotionMasterDocument(AbstractDocument):
     end_datetime: Optional[datetime] = None
     is_active: bool = True
     is_deleted: bool = False
-    category_promo_detail: Optional[CategoryPromoDetail] = None
+    detail: Optional[CategoryPromoDetail] = None
 
     @field_validator("end_datetime")
     @classmethod
