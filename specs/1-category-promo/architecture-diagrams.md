@@ -53,6 +53,10 @@ sequenceDiagram
     POS->>+CartAPI: POST /carts/{cartId}/lineItems<br/>[itemCode, quantity]
     CartAPI->>+CartSvc: add_items_to_cart_async()
 
+    Note over CartSvc: 0. プラグイン初期化（CartService構築時）
+    CartSvc->>Plugin: configure(tenant_id, terminal_info)
+    Plugin->>Plugin: PromotionMasterWebRepository生成
+
     Note over CartSvc: 1. 商品情報取得・明細追加
     CartSvc->>CartSvc: 商品マスタから情報取得
     CartSvc->>CartSvc: CartLineItem作成
@@ -105,6 +109,7 @@ sequenceDiagram
 classDiagram
     class AbstractSalesPromo {
         <<abstract>>
+        +configure(tenant_id, terminal_info)
         +apply(cart_doc, sales_promo_code, value) CartDocument
         +sales_promo_code() string
     }
@@ -112,7 +117,7 @@ classDiagram
     class CategoryPromoPlugin {
         -_sales_promo_code: string
         -promotion_master_repo: PromotionMasterWebRepository
-        +set_promotion_master_repository(repo)
+        +configure(tenant_id, terminal_info)
         +apply(cart_doc) CartDocument
         -_build_category_promotion_map(promotions) dict
         -_has_category_promotion(line_item) bool

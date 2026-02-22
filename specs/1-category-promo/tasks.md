@@ -211,6 +211,9 @@
 
 **内容**:
 - AbstractSalesPromoを継承
+- `configure` メソッドをオーバーライド:
+  - `tenant_id` と `terminal_info` を受け取り、内部で `PromotionMasterWebRepository` を生成
+  - CartServiceはプラグイン固有の型を知る必要がない（Open/Closed Principle）
 - `apply` メソッドを実装:
   - master-dataから有効プロモーションを取得（店舗コード指定）
   - 現在の店舗がプロモーション対象かを確認（target_store_codes）
@@ -220,6 +223,7 @@
   - DiscountInfoにpromotion_code, promotion_typeを設定
 
 **受入条件**:
+- [x] `configure()` でリポジトリを自己生成する
 - [x] プロモーション適用ロジックが正しい
 - [x] 店舗指定が正しく動作する（指定店舗のみ、または全店舗）
 - [x] 最安値選択が正しく動作する
