@@ -56,7 +56,7 @@ master-dataサービスに追加するプロモーション管理APIの定義。
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 201,
   "message": "Promotion SUMMER2026_BEVERAGE created successfully",
   "data": {
@@ -107,7 +107,7 @@ master-dataサービスに追加するプロモーション管理APIの定義。
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotions retrieved successfully",
   "data": [
@@ -124,11 +124,12 @@ master-dataサービスに追加するプロモーション管理APIの定義。
       }
     }
   ],
-  "pagination": {
-    "totalCount": 15,
-    "totalPages": 1,
-    "currentPage": 1,
-    "limit": 20
+  "metadata": {
+    "total": 15,
+    "page": 1,
+    "limit": 20,
+    "sort": "promotion_code:asc",
+    "filter": {}
   }
 }
 ```
@@ -153,7 +154,7 @@ master-dataサービスに追加するプロモーション管理APIの定義。
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Active promotions retrieved successfully",
   "data": [
@@ -181,7 +182,7 @@ master-dataサービスに追加するプロモーション管理APIの定義。
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotion SUMMER2026_BEVERAGE found successfully",
   "data": {
@@ -233,7 +234,7 @@ master-dataサービスに追加するプロモーション管理APIの定義。
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotion SUMMER2026_BEVERAGE updated successfully",
   "data": {
@@ -262,7 +263,7 @@ master-dataサービスに追加するプロモーション管理APIの定義。
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotion SUMMER2026_BEVERAGE deleted successfully",
   "data": {

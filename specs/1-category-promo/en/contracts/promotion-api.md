@@ -56,7 +56,7 @@ Definition of the promotion management API to be added to the master-data servic
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 201,
   "message": "Promotion SUMMER2026_BEVERAGE created successfully",
   "data": {
@@ -107,7 +107,7 @@ Definition of the promotion management API to be added to the master-data servic
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotions retrieved successfully",
   "data": [
@@ -124,11 +124,12 @@ Definition of the promotion management API to be added to the master-data servic
       }
     }
   ],
-  "pagination": {
-    "totalCount": 15,
-    "totalPages": 1,
-    "currentPage": 1,
-    "limit": 20
+  "metadata": {
+    "total": 15,
+    "page": 1,
+    "limit": 20,
+    "sort": "promotion_code:asc",
+    "filter": {}
   }
 }
 ```
@@ -153,7 +154,7 @@ Retrieves currently active promotions.
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Active promotions retrieved successfully",
   "data": [
@@ -181,7 +182,7 @@ Retrieves currently active promotions.
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotion SUMMER2026_BEVERAGE found successfully",
   "data": {
@@ -233,7 +234,7 @@ Retrieves currently active promotions.
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotion SUMMER2026_BEVERAGE updated successfully",
   "data": {
@@ -262,7 +263,7 @@ Performs a soft delete (`is_deleted = true`).
 
 ```json
 {
-  "status": "success",
+  "success": true,
   "code": 200,
   "message": "Promotion SUMMER2026_BEVERAGE deleted successfully",
   "data": {
