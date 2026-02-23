@@ -41,15 +41,9 @@ class CategoryPromoPlugin(AbstractSalesPromo):
     apply promotions to items that have this flag set to True.
     """
 
-    def __init__(self, sales_promo_code: str) -> None:
-        """
-        Initialize the category promotion plugin.
-
-        Args:
-            sales_promo_code: The code that identifies this promotion type
-        """
+    def __init__(self) -> None:
+        """Initialize the category promotion plugin."""
         super().__init__()
-        self._sales_promo_code = sales_promo_code
         self.promotion_master_repo: Optional[PromotionMasterWebRepository] = None
 
     def configure(self, tenant_id: str, terminal_info) -> None:
@@ -64,9 +58,7 @@ class CategoryPromoPlugin(AbstractSalesPromo):
             tenant_id=tenant_id, terminal_info=terminal_info
         )
 
-    async def apply(
-        self, cart_doc: CartDocument, sales_promo_code: str = None, value: float = None
-    ) -> CartDocument:
+    async def apply(self, cart_doc: CartDocument) -> CartDocument:
         """
         Apply category-based promotions to cart items.
 
@@ -79,8 +71,6 @@ class CategoryPromoPlugin(AbstractSalesPromo):
 
         Args:
             cart_doc: The cart document to apply promotions to
-            sales_promo_code: Unused (for interface compatibility)
-            value: Unused (for interface compatibility)
 
         Returns:
             CartDocument: The updated cart document with promotions applied
