@@ -8,7 +8,6 @@ import inspect
 from kugel_common.status_codes import StatusCodes
 from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
 from kugel_common.schemas.api_response import ApiResponse
-from kugel_common.exceptions import DocumentNotFoundException
 
 from app.api.v1.schemas import (
     PromotionCreateRequest,
