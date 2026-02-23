@@ -343,10 +343,7 @@ class CartService(ICartService):
             logger.debug(f"cart_item: {cart_item}")
             cart_doc.line_items.append(cart_item)
 
-        # Apply sales promotion strategies (e.g., category-based discounts)
-        cart_doc = await self._apply_sales_promotions_async(cart_doc)
-
-        # Calculate subtotal
+        # Calculate subtotal (promotions are re-evaluated inside __subtotal_async)
         cart_doc = await self.__subtotal_async(cart_doc)
 
         # Save to cache
@@ -354,24 +351,28 @@ class CartService(ICartService):
 
         return cart_doc
 
-    async def _apply_sales_promotions_async(self, cart_doc: CartDocument) -> CartDocument:
+    async def _apply_sales_promotions_async(
+        self, cart_doc: CartDocument, phase: str = "line_item"
+    ) -> CartDocument:
         """
-        Apply all registered sales promotion strategies to the cart.
+        Apply sales promotion strategies matching the specified execution phase.
 
-        Iterates through all loaded sales promotion strategies and applies them
-        to the cart. Each strategy may modify line item discounts.
+        Iterates through all loaded sales promotion strategies and applies those
+        whose execution_phase matches the given phase parameter.
 
         Args:
             cart_doc: The cart document to apply promotions to
+            phase: Execution phase to filter plugins ('line_item' or 'subtotal')
 
         Returns:
             CartDocument: The cart document with promotions applied
         """
         for sales_promo_strategy in self.sales_promo_strategies:
+            if sales_promo_strategy.execution_phase != phase:
+                continue
             try:
                 cart_doc = await sales_promo_strategy.apply(cart_doc)
             except Exception as e:
-                # Log the error but don't fail the cart operation
                 logger.warning(f"Failed to apply sales promotion strategy: {e}")
                 continue
         return cart_doc
@@ -540,9 +541,13 @@ class CartService(ICartService):
 
     async def __subtotal_async(self, cart_doc: CartDocument) -> CartDocument:
         """
-        Internal helper method to calculate all cart totals.
+        Internal helper method to apply promotions and calculate all cart totals.
 
-        Delegates the calculation logic to calc_subtotal_logic module.
+        Uses a two-phase promotion model:
+        1. Line-item phase: promotions that operate on individual items (e.g., category discounts)
+        2. Subtotal phase: promotions that require the subtotal amount (e.g., threshold discounts)
+
+        The subtotal phase only runs if any plugins are registered for it.
 
         Args:
             cart_doc: The cart document to calculate totals for
@@ -550,7 +555,17 @@ class CartService(ICartService):
         Returns:
             CartDocument: The cart document with updated totals
         """
-        return await calc_subtotal_logic.calc_subtotal_async(cart_doc, self.tax_master_repo)
+        # Phase 1: line-item level promotions (e.g., category discounts)
+        cart_doc = await self._apply_sales_promotions_async(cart_doc, phase="line_item")
+        cart_doc = await calc_subtotal_logic.calc_subtotal_async(cart_doc, self.tax_master_repo)
+
+        # Phase 2: subtotal level promotions (e.g., subtotal threshold discounts)
+        # Only run if any plugins are registered for the subtotal phase
+        if any(s.execution_phase == "subtotal" for s in self.sales_promo_strategies):
+            cart_doc = await self._apply_sales_promotions_async(cart_doc, phase="subtotal")
+            cart_doc = await calc_subtotal_logic.calc_subtotal_async(cart_doc, self.tax_master_repo)
+
+        return cart_doc
 
     # Add discount to the cart subtotal
     async def add_discount_to_cart_async(self, add_discount_list: list[dict[str, any]]) -> CartDocument:

@@ -260,21 +260,29 @@ Detailed implementation tasks for the category promotion feature.
 
 ---
 
-#### Task 12: Plugin Invocation Implementation
+#### Task 12: Plugin Invocation Implementation (Two-Phase Model)
 
 **Service**: cart
-**File**: `services/cart/app/services/cart_service.py`
+**Files**:
+- `services/cart/app/services/strategies/sales_promo/abstract_sales_promo.py`
+- `services/cart/app/services/cart_service.py`
+
 **Priority**: High
 **Dependencies**: Task 10, Task 11
 
 **Description**:
-- Within the `add_items_to_cart_async` method:
-  - After adding items and before subtotal calculation
-  - Call `apply` on each sales_promo_strategy
+- Add `execution_phase` property to `AbstractSalesPromo` (default: `"line_item"`)
+- Add `phase` parameter to `_apply_sales_promotions_async()` to filter plugins by phase
+- Change `__subtotal_async()` to a two-phase model:
+  1. Apply line_item-phase promotions → calculate subtotal
+  2. Only if subtotal-phase plugins exist: apply subtotal-phase promotions → recalculate
+- No base code changes (cart_service.py) needed when adding new plugins
 
 **Acceptance Criteria**:
-- [x] Plugin is invoked
-- [x] Executed at the correct timing
+- [x] `execution_phase` property is added to AbstractSalesPromo
+- [x] Plugins are filtered based on phase
+- [x] Second pass is skipped when no subtotal-phase plugins exist
+- [x] Existing category promotion tests pass
 - [x] Error handling is appropriate
 
 ---

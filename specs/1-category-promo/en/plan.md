@@ -40,7 +40,7 @@ Based on the functional requirements in [spec.md](./spec.md), it defines the tec
 
 | Item | Result |
 |------|--------|
-| Plugin invocation timing | Within `add_items_to_cart_async`, after item addition and before subtotal calculation |
+| Plugin invocation timing | Within `__subtotal_async`, using a two-phase model (line_item → subtotal calc → subtotal → recalc). Plugins self-declare their execution phase via the `execution_phase` property |
 | Existing DiscountInfo structure | seq_no, discount_type, discount_value, discount_amount, detail |
 | Method for adding promotion info | Store promotion_code in DiscountInfo.detail, or add new fields |
 | master-data to cart communication | HTTP calls via DaprClientHelper |
@@ -54,6 +54,7 @@ Based on the functional requirements in [spec.md](./spec.md), it defines the tec
 | Category detail storage method | Nested within the same document | Prioritize simplicity; type-specific collections to be considered in the future |
 | DiscountInfo extension | Add promotion_code and promotion_type fields | Required for performance aggregation |
 | Caching strategy | No cache for initial release | Add if performance issues arise |
+| Plugin execution phase | Self-declaration via `execution_phase` property (Plan B) | No base code changes needed when adding new plugins. Default `"line_item"` (before subtotal), `"subtotal"` (after subtotal). Second pass is skipped if no subtotal-phase plugins exist |
 
 ## Phase 1: Data Model Design
 

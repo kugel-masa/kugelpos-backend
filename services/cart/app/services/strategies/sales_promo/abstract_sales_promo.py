@@ -22,6 +22,14 @@ class AbstractSalesPromo(ABC):
         """Override to set up plugin-specific repositories using shared infrastructure."""
         pass
 
+    @property
+    def execution_phase(self) -> str:
+        """Execution phase: 'line_item' (before subtotal) or 'subtotal' (after subtotal).
+
+        Override in subclass to change phase. Default is 'line_item'.
+        """
+        return "line_item"
+
     @abstractmethod
     async def apply(self, cart_doc, sales_promo_code=None, value=None):
         """

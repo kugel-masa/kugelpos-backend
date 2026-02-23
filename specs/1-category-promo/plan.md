@@ -40,7 +40,7 @@
 
 | 項目 | 結果 |
 |------|------|
-| プラグイン呼び出しタイミング | `add_items_to_cart_async` 内、アイテム追加後・小計計算前 |
+| プラグイン呼び出しタイミング | `__subtotal_async` 内、2フェーズモデル（line_item→小計計算→subtotal→再計算）。プラグインは `execution_phase` プロパティで実行フェーズを自己宣言する |
 | 既存DiscountInfo構造 | seq_no, discount_type, discount_value, discount_amount, detail |
 | プロモーション情報の追加方法 | DiscountInfo.detailにpromotion_codeを格納、または新規フィールド追加 |
 | master-data → cart 通信 | DaprClientHelper経由のHTTP呼び出し |
@@ -54,6 +54,7 @@
 | カテゴリ詳細の格納方法 | 同一ドキュメント内にネスト | シンプルさ優先、タイプ別コレクションは将来検討 |
 | DiscountInfoの拡張 | promotion_code, promotion_typeフィールド追加 | 実績集計に必要 |
 | キャッシュ戦略 | 初期リリースではキャッシュなし | パフォーマンス問題発生時に追加 |
+| プラグイン実行フェーズ | `execution_phase` プロパティによる自己宣言（B案） | 新規プラグイン追加時にベースコード修正不要。デフォルト `"line_item"`（小計前）、`"subtotal"`（小計後）の2フェーズ。subtotalフェーズのプラグインがない場合は第2パスをスキップ |
 
 ## フェーズ1: データモデル設計
 

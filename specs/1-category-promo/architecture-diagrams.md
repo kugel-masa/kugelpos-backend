@@ -61,23 +61,20 @@ sequenceDiagram
     CartSvc->>CartSvc: 商品マスタから情報取得
     CartSvc->>CartSvc: CartLineItem作成
 
-    Note over CartSvc: 2. プロモーション適用
+    Note over CartSvc: 2. __subtotal_async() 呼び出し（2フェーズモデル）
+
+    Note over CartSvc: 2a. Phase 1: line_itemフェーズのプロモーション適用
+    CartSvc->>CartSvc: _apply_sales_promotions_async(phase="line_item")
     CartSvc->>+Plugin: apply(cart_doc)
 
     Plugin->>+PromoRepo: get_active_promotions_by_store_async()
+    PromoRepo->>+MasterAPI: GET /promotions/active<br/>?storeCode={code}&terminal_id={id}
+    MasterAPI->>+MongoDB: 有効プロモーション検索<br/>(is_active=true, 期間内)
+    MongoDB-->>-MasterAPI: プロモーション一覧
+    MasterAPI-->>-PromoRepo: Response [promotions]
+    PromoRepo-->>-Plugin: プロモーション一覧
 
-    alt キャッシュあり
-        PromoRepo-->>Plugin: キャッシュされたプロモーション
-    else キャッシュなし
-        PromoRepo->>+MasterAPI: GET /promotions/active<br/>?storeCode={code}&terminal_id={id}
-        MasterAPI->>+MongoDB: 有効プロモーション検索<br/>(is_active=true, 期間内)
-        MongoDB-->>-MasterAPI: プロモーション一覧
-        MasterAPI-->>-PromoRepo: Response [promotions]
-        PromoRepo->>PromoRepo: キャッシュに保存
-        PromoRepo-->>-Plugin: プロモーション一覧
-    end
-
-    Note over Plugin: 3. カテゴリ→プロモーションマップ構築
+    Note over Plugin: カテゴリ→プロモーションマップ構築
     Plugin->>Plugin: _build_category_promotion_map()
     Note right of Plugin: カテゴリごとに最高割引率を選択
 
@@ -95,9 +92,12 @@ sequenceDiagram
 
     Plugin-->>-CartSvc: 更新されたcart_doc
 
-    Note over CartSvc: 4. 小計・税計算
-    CartSvc->>CartSvc: calculate_subtotal()
-    CartSvc->>CartSvc: calculate_taxes()
+    Note over CartSvc: 2b. 1回目の小計・税計算
+    CartSvc->>CartSvc: calc_subtotal_async()
+
+    Note over CartSvc: 2c. Phase 2: subtotalフェーズのプロモーション適用<br/>（該当プラグインがある場合のみ実行）
+    CartSvc->>CartSvc: _apply_sales_promotions_async(phase="subtotal")
+    CartSvc->>CartSvc: calc_subtotal_async()（再計算）
 
     CartSvc-->>-CartAPI: CartDocument
     CartAPI-->>-POS: Response<br/>{lineItems: [{discounts: [...]}]}
@@ -109,6 +109,7 @@ sequenceDiagram
 classDiagram
     class AbstractSalesPromo {
         <<abstract>>
+        +execution_phase: string &#61; "line_item"
         +configure(tenant_id, terminal_info)
         +apply(cart_doc, sales_promo_code, value) CartDocument
         +sales_promo_code() string
@@ -124,13 +125,13 @@ classDiagram
         -_apply_promotion_to_line_item(line_item, promo_info)
     }
 
+    note for AbstractSalesPromo "execution_phase property&#10;'line_item': 小計計算前に実行（デフォルト）&#10;'subtotal': 小計計算後に実行"
+
     class PromotionMasterWebRepository {
         -tenant_id: string
         -terminal_info: TerminalInfoDocument
         -base_url: string
-        -_cached_promotions: list
         +get_active_promotions_by_store_async(store_code) list
-        +clear_cache()
     }
 
     class PromotionMasterDocument {
@@ -321,7 +322,7 @@ flowchart TB
             Discounts["discounts[]"]
 
             subgraph DiscountInfo["discount"]
-                DType["discountType: 'percent'"]
+                DType["discountType: 'DiscountPercentage'"]
                 DValue["discountValue: 10.0"]
                 DAmount["discountAmount: 100"]
                 PCode["promotionCode: 'SUMMER_SALE'"]

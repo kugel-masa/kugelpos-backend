@@ -260,21 +260,29 @@
 
 ---
 
-#### Task 12: プラグイン呼び出し実装
+#### Task 12: プラグイン呼び出し実装（2フェーズモデル）
 
 **サービス**: cart
-**ファイル**: `services/cart/app/services/cart_service.py`
+**ファイル**:
+- `services/cart/app/services/strategies/sales_promo/abstract_sales_promo.py`
+- `services/cart/app/services/cart_service.py`
+
 **優先度**: 高
 **依存**: Task 10, Task 11
 
 **内容**:
-- `add_items_to_cart_async` メソッド内で:
-  - アイテム追加後、小計計算前に
-  - 各sales_promo_strategyの`apply`を呼び出し
+- `AbstractSalesPromo` に `execution_phase` プロパティを追加（デフォルト: `"line_item"`）
+- `_apply_sales_promotions_async()` に `phase` パラメータを追加し、プラグインをフェーズでフィルタリング
+- `__subtotal_async()` を2フェーズモデルに変更:
+  1. line_itemフェーズのプロモーション適用 → 小計計算
+  2. subtotalフェーズのプラグインがある場合のみ: subtotalフェーズのプロモーション適用 → 再計算
+- 新規プラグイン追加時にベースコード（cart_service.py）の修正が不要になる
 
 **受入条件**:
-- [x] プラグインが呼び出される
-- [x] 正しいタイミングで実行される
+- [x] `execution_phase` プロパティがAbstractSalesPromoに追加されている
+- [x] プラグインがフェーズに基づいてフィルタリングされる
+- [x] subtotalフェーズのプラグインがない場合、第2パスがスキップされる
+- [x] 既存のカテゴリプロモーションテストが通る
 - [x] エラーハンドリングが適切
 
 ---

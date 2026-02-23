@@ -61,23 +61,20 @@ sequenceDiagram
     CartSvc->>CartSvc: Retrieve info from product master
     CartSvc->>CartSvc: Create CartLineItem
 
-    Note over CartSvc: 2. Apply promotion
+    Note over CartSvc: 2. __subtotal_async() called (two-phase model)
+
+    Note over CartSvc: 2a. Phase 1: Apply line_item-phase promotions
+    CartSvc->>CartSvc: _apply_sales_promotions_async(phase="line_item")
     CartSvc->>+Plugin: apply(cart_doc)
 
     Plugin->>+PromoRepo: get_active_promotions_by_store_async()
+    PromoRepo->>+MasterAPI: GET /promotions/active<br/>?storeCode={code}&terminal_id={id}
+    MasterAPI->>+MongoDB: Search active promotions<br/>(is_active=true, within period)
+    MongoDB-->>-MasterAPI: Promotion list
+    MasterAPI-->>-PromoRepo: Response [promotions]
+    PromoRepo-->>-Plugin: Promotion list
 
-    alt Cache hit
-        PromoRepo-->>Plugin: Cached promotions
-    else Cache miss
-        PromoRepo->>+MasterAPI: GET /promotions/active<br/>?storeCode={code}&terminal_id={id}
-        MasterAPI->>+MongoDB: Search active promotions<br/>(is_active=true, within period)
-        MongoDB-->>-MasterAPI: Promotion list
-        MasterAPI-->>-PromoRepo: Response [promotions]
-        PromoRepo->>PromoRepo: Save to cache
-        PromoRepo-->>-Plugin: Promotion list
-    end
-
-    Note over Plugin: 3. Build category-to-promotion map
+    Note over Plugin: Build category-to-promotion map
     Plugin->>Plugin: _build_category_promotion_map()
     Note right of Plugin: Select highest discount rate per category
 
@@ -95,9 +92,12 @@ sequenceDiagram
 
     Plugin-->>-CartSvc: Updated cart_doc
 
-    Note over CartSvc: 4. Subtotal & tax calculation
-    CartSvc->>CartSvc: calculate_subtotal()
-    CartSvc->>CartSvc: calculate_taxes()
+    Note over CartSvc: 2b. First subtotal & tax calculation
+    CartSvc->>CartSvc: calc_subtotal_async()
+
+    Note over CartSvc: 2c. Phase 2: Apply subtotal-phase promotions<br/>(only runs if subtotal-phase plugins exist)
+    CartSvc->>CartSvc: _apply_sales_promotions_async(phase="subtotal")
+    CartSvc->>CartSvc: calc_subtotal_async() (recalculate)
 
     CartSvc-->>-CartAPI: CartDocument
     CartAPI-->>-POS: Response<br/>{lineItems: [{discounts: [...]}]}
@@ -109,6 +109,7 @@ sequenceDiagram
 classDiagram
     class AbstractSalesPromo {
         <<abstract>>
+        +execution_phase: string &#61; "line_item"
         +configure(tenant_id, terminal_info)
         +apply(cart_doc, sales_promo_code, value) CartDocument
         +sales_promo_code() string
@@ -124,13 +125,13 @@ classDiagram
         -_apply_promotion_to_line_item(line_item, promo_info)
     }
 
+    note for AbstractSalesPromo "execution_phase property&#10;'line_item': runs before subtotal (default)&#10;'subtotal': runs after subtotal"
+
     class PromotionMasterWebRepository {
         -tenant_id: string
         -terminal_info: TerminalInfoDocument
         -base_url: string
-        -_cached_promotions: list
         +get_active_promotions_by_store_async(store_code) list
-        +clear_cache()
     }
 
     class PromotionMasterDocument {
@@ -321,7 +322,7 @@ flowchart TB
             Discounts["discounts[]"]
 
             subgraph DiscountInfo["discount"]
-                DType["discountType: 'percent'"]
+                DType["discountType: 'DiscountPercentage'"]
                 DValue["discountValue: 10.0"]
                 DAmount["discountAmount: 100"]
                 PCode["promotionCode: 'SUMMER_SALE'"]
