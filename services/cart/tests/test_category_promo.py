@@ -823,3 +823,171 @@ async def test_category_promo_discount_amount_calculation(http_client):
 
     finally:
         await delete_test_promotion(token, tenant_id, promotion_code)
+
+
+@pytest.mark.asyncio()
+async def test_category_promo_in_tranlog_after_checkout(http_client):
+    """
+    Test that category promotion info is preserved in tranlog after checkout.
+
+    Verifies:
+    1. Bill response contains promotion_code/promotion_type in discounts
+    2. discount_amount > 0 after calc_line_item_logic recalculation
+    3. totalDiscountAmount > 0 in sales info
+    4. Saved tranlog (via transaction detail API) contains promotion fields
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
+    terminal_id = os.environ.get("TERMINAL_ID")
+    api_key = os.environ.get("API_KEY")
+    header = {"X-API-KEY": api_key}
+
+    # terminal_no is the last segment of terminal_id (e.g., "T001-5678-9" → 9)
+    terminal_no = int(terminal_id.split("-")[-1])
+
+    # Cleanup
+    await cleanup_test_promotions(tenant_id, ["TEST_CART_PROMO"])
+
+    # Get token and create promotion
+    token = await get_authentication_token()
+    promotion_code = await create_test_promotion(token, tenant_id, store_code)
+
+    try:
+        # Open terminal
+        await open_terminal(tenant_id)
+
+        # 1. Create cart
+        cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
+        response = await http_client.post(
+            f"/api/v1/carts?terminal_id={terminal_id}",
+            json=cart_body,
+            headers=header,
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_201_CREATED
+        assert res.get("success") is True
+        cart_id = res.get("data").get("cartId")
+        print(f"Cart ID: {cart_id}")
+
+        # 2. Add item with category "001"
+        add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 2}]
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=add_item_data,
+            headers=header,
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_200_OK
+        assert res.get("success") is True
+
+        # Sanity check: discount applied at add-item time
+        line_items = res.get("data").get("lineItems", [])
+        assert len(line_items) > 0
+        category_discounts = [
+            d for d in line_items[0].get("discounts", [])
+            if d.get("promotionType") == "category_discount"
+        ]
+        assert len(category_discounts) > 0, "Category discount not applied at add-item!"
+        print("Sanity check passed: discount applied at add-item time")
+
+        # 3. Subtotal → get totalAmountWithTax for payment
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+            headers=header,
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_200_OK
+        total_amount_with_tax = res.get("data").get("totalAmountWithTax")
+        print(f"totalAmountWithTax: {total_amount_with_tax}")
+
+        # 4. Cash payment (pay enough to cover total)
+        payment_amount = int(total_amount_with_tax) + 1000  # overpay to ensure coverage
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+            json=[{"paymentCode": "01", "amount": payment_amount}],
+            headers=header,
+        )
+        res = response.json()
+        assert response.status_code == status.HTTP_200_OK
+
+        # 5. Bill (checkout)
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
+            headers=header,
+        )
+        res = response.json()
+        print(f"Bill response status: {response.status_code}")
+        assert response.status_code == status.HTTP_200_OK
+        assert res.get("success") is True
+
+        bill_data = res.get("data")
+        assert bill_data.get("cartStatus") == "Completed"
+
+        # 5a. Verify bill lineItems discounts contain promotion info
+        bill_line_items = bill_data.get("lineItems", [])
+        assert len(bill_line_items) > 0
+
+        bill_discounts = [
+            d for d in bill_line_items[0].get("discounts", [])
+            if d.get("promotionType") == "category_discount"
+        ]
+        assert len(bill_discounts) > 0, (
+            "promotionType missing from bill response discounts!"
+        )
+        bill_discount = bill_discounts[0]
+        assert bill_discount.get("promotionCode") == promotion_code, (
+            f"Expected promotionCode '{promotion_code}' in bill but got "
+            f"'{bill_discount.get('promotionCode')}'"
+        )
+        assert bill_discount.get("promotionType") == "category_discount"
+        assert bill_discount.get("discountAmount") > 0, (
+            "discountAmount should be > 0 after calc_line_item_logic recalculation"
+        )
+        print(f"Bill discount: {bill_discount}")
+
+        # 5b. Verify totalDiscountAmount > 0 in sales info
+        total_discount_amount = bill_data.get("totalDiscountAmount", 0)
+        assert total_discount_amount > 0, (
+            f"totalDiscountAmount should be > 0 but got {total_discount_amount}"
+        )
+        print(f"totalDiscountAmount: {total_discount_amount}")
+
+        # 6. Retrieve saved tranlog via transaction detail API
+        transaction_no = bill_data.get("transactionNo")
+        assert transaction_no is not None, "transactionNo missing from bill response"
+        print(f"transactionNo: {transaction_no}")
+
+        response = await http_client.get(
+            f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}"
+            f"/transactions/{transaction_no}?terminal_id={terminal_id}",
+            headers=header,
+        )
+        res = response.json()
+        print(f"Transaction detail response status: {response.status_code}")
+        assert response.status_code == status.HTTP_200_OK
+        assert res.get("success") is True
+
+        tran_data = res.get("data")
+        tran_line_items = tran_data.get("lineItems", [])
+        assert len(tran_line_items) > 0
+
+        tran_discounts = [
+            d for d in tran_line_items[0].get("discounts", [])
+            if d.get("promotionType") == "category_discount"
+        ]
+        assert len(tran_discounts) > 0, (
+            "promotionType missing from saved tranlog discounts!"
+        )
+        tran_discount = tran_discounts[0]
+        assert tran_discount.get("promotionCode") == promotion_code, (
+            f"Expected promotionCode '{promotion_code}' in tranlog but got "
+            f"'{tran_discount.get('promotionCode')}'"
+        )
+        assert tran_discount.get("promotionType") == "category_discount"
+        assert tran_discount.get("discountAmount") > 0
+        print(f"Tranlog discount: {tran_discount}")
+        print("Category promotion correctly preserved in tranlog after checkout!")
+
+    finally:
+        # Cleanup
+        await delete_test_promotion(token, tenant_id, promotion_code)
