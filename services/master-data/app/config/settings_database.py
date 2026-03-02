@@ -13,3 +13,4 @@ class DBCollectionSettings(BaseSettings):
     DB_COLLECTION_NAME_SETTINGS_MASTER: str = "master_settings"
     DB_COLLECTION_NAME_KEY_PRESET_MASTER: str = "master_key_preset"
     DB_COLLECTION_NAME_TAX_MASTER: str = "master_tax"
+    DB_COLLECTION_NAME_PROMOTION_MASTER: str = "master_promotion"

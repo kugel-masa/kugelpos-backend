@@ -18,26 +18,27 @@ class AbstractSalesPromo(ABC):
         """Initialize the sales promotion strategy."""
         pass
 
+    def configure(self, tenant_id: str, terminal_info) -> None:
+        """Override to set up plugin-specific repositories using shared infrastructure."""
+        pass
+
+    @property
+    def execution_phase(self) -> str:
+        """Execution phase: 'line_item' (before subtotal) or 'subtotal' (after subtotal).
+
+        Override in subclass to change phase. Default is 'line_item'.
+        """
+        return "line_item"
+
     @abstractmethod
-    def apply(self, cart_doc, sales_promo_code, value):
+    async def apply(self, cart_doc):
         """
         Apply the sales promotion to a cart.
 
         Args:
             cart_doc: The cart document to apply the promotion to
-            sales_promo_code: The promotion code identifying the type of promotion
-            value: The promotion value (e.g., discount amount or percentage)
 
         Returns:
             Updated cart document with the promotion applied
         """
         pass
-
-    def sales_promo_code(self) -> str:
-        """
-        Get the promotion code for this strategy.
-
-        Returns:
-            str: The promotion code string
-        """
-        return self.sales_promo_code

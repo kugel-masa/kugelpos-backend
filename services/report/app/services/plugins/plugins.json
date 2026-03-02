@@ -19,6 +19,11 @@
             "module": "app.services.plugins.payment_report_maker",
             "class": "PaymentReportMaker",
             "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
+        },
+        "promotion": {
+            "module": "app.services.plugins.promotion_report_maker",
+            "class": "PromotionReportMaker",
+            "args": ["<tran_repository>", "<cash_in_out_log_repository>", "<open_close_log_repository>"]
         }
     }
 }

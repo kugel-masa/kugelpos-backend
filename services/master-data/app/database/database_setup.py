@@ -1,5 +1,4 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from typing import Optional
 from app.config.settings import settings
 from logging import getLogger
 
@@ -94,6 +93,19 @@ async def create_master_staff_collection(tenant_id: str):
     )
 
 
+# create master promotion collection
+async def create_master_promotion_collection(tenant_id: str):
+    name = settings.DB_COLLECTION_NAME_PROMOTION_MASTER
+    index_keys_list = [
+        {"keys": {"tenant_id": 1, "promotion_code": 1}, "unique": True},
+        {"keys": {"tenant_id": 1, "promotion_type": 1, "is_active": 1}, "unique": False},
+        {"keys": {"tenant_id": 1, "is_active": 1, "start_datetime": 1, "end_datetime": 1}, "unique": False},
+    ]
+    await create_some_collection(
+        tenant_id=tenant_id, collection_name=name, index_keys_list=index_keys_list, index_name=name + "_index"
+    )
+
+
 # create request log collection
 async def create_request_log_collection(tenant_id: str):
     name = settings.DB_COLLECTION_NAME_REQUEST_LOG
@@ -115,6 +127,7 @@ async def create_collections(tenant_id: str):
     await create_master_settings_collection(tenant_id)
     await create_master_staff_collection(tenant_id)
     await create_request_log_collection(tenant_id)
+    await create_master_promotion_collection(tenant_id)
 
     # add more collections here
 
