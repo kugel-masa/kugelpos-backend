@@ -93,7 +93,7 @@ class TestCategoryPromoPluginApply:
         assert len(result.line_items[0].discounts) == 1
         discount = result.line_items[0].discounts[0]
         assert discount.discount_value == 10.0
-        assert discount.discount_amount == 20.0
+        assert discount.discount_amount == 0.0  # actual amount is calculated by calc_line_item_logic
         assert discount.promotion_type == "category_discount"
 
     @pytest.mark.asyncio
@@ -249,8 +249,9 @@ class TestCategoryPromoPluginApply:
 
         result = await plugin.apply(cart)
 
-        # 150 * 3 * 10% = 45
-        assert result.line_items[0].discounts[0].discount_amount == 45.0
+        # discount_amount is calculated by calc_line_item_logic, not by plugin
+        assert result.line_items[0].discounts[0].discount_amount == 0.0
+        assert result.line_items[0].discounts[0].discount_value == 10.0
 
 
 class TestCategoryPromoDetailParsing:
@@ -259,21 +260,19 @@ class TestCategoryPromoDetailParsing:
     def test_parse_camelcase_detail(self):
         """CamelCase keys from API response are parsed correctly."""
         data = {
-            "targetStoreCodes": ["S001"],
             "targetCategoryCodes": ["001", "002"],
             "discountRate": 15.0,
         }
         detail = CategoryPromoDetail.model_validate(data)
         assert detail.target_category_codes == ["001", "002"]
-        assert detail.target_store_codes == ["S001"]
         assert detail.discount_rate == 15.0
 
-    def test_parse_detail_with_missing_optional_store(self):
-        """target_store_codes defaults to empty list when not provided."""
+    def test_parse_detail_with_defaults(self):
+        """Fields default correctly when only required data is provided."""
         data = {"targetCategoryCodes": ["001"], "discountRate": 5.0}
         detail = CategoryPromoDetail.model_validate(data)
-        assert detail.target_store_codes == []
         assert detail.target_category_codes == ["001"]
+        assert detail.discount_rate == 5.0
 
     def test_parse_invalid_detail_returns_none_via_plugin(self):
         """Invalid detail dict causes _parse_detail to return None."""
