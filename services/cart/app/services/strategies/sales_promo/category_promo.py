@@ -149,7 +149,9 @@ class CategoryPromoPlugin(AbstractSalesPromo):
             logger.warning(f"Failed to parse detail for promotion {promo.promotion_code}: {e}")
             return None
 
-    def _build_category_promotion_map(self, promotions: list) -> dict[str, PromotionInfo]:
+    def _build_category_promotion_map(
+        self, promotions: list[PromotionMasterDocument]
+    ) -> dict[str, PromotionInfo]:
         """
         Build a mapping of category codes to their best promotion.
 
@@ -159,9 +161,9 @@ class CategoryPromoPlugin(AbstractSalesPromo):
             promotions: List of PromotionMasterDocument objects
 
         Returns:
-            dict: Mapping of category_code to (promotion_code, promotion_type, discount_rate)
+            dict[str, PromotionInfo]: Mapping of category_code to PromotionInfo
         """
-        category_map = {}
+        category_map: dict[str, PromotionInfo] = {}
 
         for promo in promotions:
             if promo.promotion_type != "category_discount":
