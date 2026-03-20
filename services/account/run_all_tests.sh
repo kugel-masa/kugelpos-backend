@@ -22,6 +22,10 @@ test_files=(
     "tests/test_setup_data.py"
     "tests/test_health.py"
     "tests/test_operations.py"
+    # Unit tests
+    "tests/test_database_setup.py"
+    "tests/test_auth.py"
+    "tests/test_account_endpoints.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

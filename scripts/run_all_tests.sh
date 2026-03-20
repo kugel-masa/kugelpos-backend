@@ -21,7 +21,7 @@ echo "Running all tests for microservices..."
 
 # Set required environment variables for testing
 echo "Setting required environment variables for testing..."
-export SECRET_KEY="test-secret-key-123456789"
+export SECRET_KEY="test-secret-key-for-development-only"
 export PUBSUB_NOTIFY_API_KEY="test-api-key-123456789"
 
 # Check and create .env.test file if needed

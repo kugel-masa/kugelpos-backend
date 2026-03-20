@@ -52,6 +52,18 @@ test_files=(
     "tests/test_reorder_alerts.py"
     "tests/test_websocket_alerts.py"
     "tests/test_websocket_reorder_new.py"
+    # Unit tests
+    "tests/test_stock_exceptions.py"
+    "tests/test_state_store_manager.py"
+    "tests/test_repositories.py"
+    "tests/test_connection_manager.py"
+    "tests/test_stock_service.py"
+    "tests/test_snapshot_service.py"
+    "tests/test_alert_service.py"
+    "tests/test_snapshot_scheduler_unit.py"
+    "tests/test_api_stock.py"
+    "tests/test_api_stock_tenant.py"
+    "tests/test_api_snapshots.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

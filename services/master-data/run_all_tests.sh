@@ -23,6 +23,21 @@ test_files=(
     "tests/test_health.py"
     "tests/test_operations.py"
     "tests/test_promotion_master.py"
+    # Unit tests
+    "tests/test_master_data_exceptions.py"
+    "tests/test_json_settings.py"
+    "tests/test_repositories.py"
+    "tests/test_master_services.py"
+    "tests/test_promotion_master_service.py"
+    "tests/test_item_book_master_service.py"
+    "tests/test_api_tenant.py"
+    "tests/test_api_category.py"
+    "tests/test_api_item.py"
+    "tests/test_api_item_store.py"
+    "tests/test_api_payment.py"
+    "tests/test_api_settings.py"
+    "tests/test_api_staff.py"
+    "tests/test_api_tax.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

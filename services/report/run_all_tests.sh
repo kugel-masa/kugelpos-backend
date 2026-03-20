@@ -38,6 +38,17 @@ test_files=(
     "tests/test_edge_cases.py"  # Edge case tests (empty arrays, rounding, etc.)
     "tests/test_cancelled_transactions.py"  # Cancelled transaction handling tests
     "tests/test_split_payment_bug.py"  # Run last to avoid affecting other tests
+    # Unit tests
+    "tests/unit/test_report_exceptions.py"
+    "tests/unit/test_report_utils.py"
+    "tests/unit/test_state_store_manager.py"
+    "tests/unit/test_repositories.py"
+    "tests/unit/test_report_plugin_manager.py"
+    "tests/unit/test_report_service.py"
+    "tests/unit/test_log_service.py"
+    "tests/unit/test_api_report.py"
+    "tests/unit/test_api_tenant.py"
+    "tests/unit/test_api_tran.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

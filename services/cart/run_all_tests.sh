@@ -40,6 +40,18 @@ test_files=(
     "tests/test_tran_service_status.py"
     "tests/test_tran_service_unit_simple.py"
     "tests/test_transaction_status_repository.py"
+    "tests/test_cart_exceptions.py"
+    "tests/test_cart_utils.py"
+    "tests/test_repositories.py"
+    "tests/test_web_repositories.py"
+    "tests/test_cart_logics.py"
+    "tests/test_cart_state_manager.py"
+    "tests/test_cart_service.py"
+    "tests/test_tran_service.py"
+    "tests/test_category_promo_plugin.py"
+    "tests/test_api_cache.py"
+    "tests/test_api_cart.py"
+    "tests/test_api_tran.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}
