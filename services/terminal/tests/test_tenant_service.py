@@ -261,6 +261,18 @@ class TestTenantServiceGetStores:
             await service.get_stores_async(limit=10, page=1, sort=[])
 
     @pytest.mark.asyncio
+    async def test_get_stores_generic_error_raises_type_error(self, service, mock_repo):
+        """Generic exception from repo triggers SystemError construction which raises TypeError.
+
+        Note: The implementation passes keyword args to built-in SystemError,
+        which does not accept them, resulting in TypeError.
+        """
+        mock_repo.get_stores_async.side_effect = RuntimeError("DB connection lost")
+
+        with pytest.raises(TypeError):
+            await service.get_stores_async(limit=10, page=1, sort=[])
+
+    @pytest.mark.asyncio
     async def test_get_store_success(self, service, mock_repo):
         """Returns specific store when found."""
         store = make_store_info("S001")

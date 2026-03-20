@@ -315,3 +315,155 @@ class TestSetReorderParameters:
         await svc.set_reorder_parameters_async("T001", "S001", "ITEM-01", 25.0, 50.0)
 
         mock_alert.check_and_send_alerts.assert_called_once_with(updated_stock)
+
+
+# ---------------------------------------------------------------------------
+# process_transaction_async
+# ---------------------------------------------------------------------------
+
+class TestProcessTransaction:
+    def _make_tran_data(self, transaction_type=101, is_cancelled=False, line_items=None):
+        return {
+            "tenant_id": "T001",
+            "store_code": "S001",
+            "terminal_no": 1,
+            "transaction_no": 100,
+            "transaction_type": transaction_type,
+            "sales": {"is_cancelled": is_cancelled},
+            "line_items": line_items or [
+                {"item_code": "ITEM-01", "quantity": 2, "is_cancelled": False},
+            ],
+        }
+
+    @pytest.mark.asyncio
+    async def test_normal_sales_reduces_stock(self):
+        """NormalSales(101) reduces stock (sign=-1)."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
+
+        svc.update_stock_async.assert_called_once()
+        call_kwargs = svc.update_stock_async.call_args[1]
+        assert call_kwargs["quantity_change"] == -2  # 2 * -1
+
+    @pytest.mark.asyncio
+    async def test_void_sales_restores_stock(self):
+        """VoidSales(201) restores stock (sign=+1)."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=201))
+
+        call_kwargs = svc.update_stock_async.call_args[1]
+        assert call_kwargs["quantity_change"] == 2
+
+    @pytest.mark.asyncio
+    async def test_return_sales_restores_stock(self):
+        """ReturnSales(102) restores stock (sign=+1)."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=102))
+
+        call_kwargs = svc.update_stock_async.call_args[1]
+        assert call_kwargs["quantity_change"] == 2
+
+    @pytest.mark.asyncio
+    async def test_void_return_reduces_stock(self):
+        """VoidReturn(202) reduces stock (sign=-1)."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=202))
+
+        call_kwargs = svc.update_stock_async.call_args[1]
+        assert call_kwargs["quantity_change"] == -2
+
+    @pytest.mark.asyncio
+    async def test_cancelled_transaction_skipped(self):
+        """Cancelled transaction does not update stock."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+
+        await svc.process_transaction_async(self._make_tran_data(is_cancelled=True))
+
+        svc.update_stock_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_line_item_skipped(self):
+        """Cancelled line item in transaction is skipped."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+        items = [
+            {"item_code": "ITEM-01", "quantity": 2, "is_cancelled": True},
+            {"item_code": "ITEM-02", "quantity": 3, "is_cancelled": False},
+        ]
+
+        await svc.process_transaction_async(self._make_tran_data(line_items=items))
+
+        assert svc.update_stock_async.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unknown_transaction_type_skipped(self):
+        """Unknown transaction type does not update stock."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=999))
+
+        svc.update_stock_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_multiple_line_items_processed(self):
+        """Multiple non-cancelled line items are all processed."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+        items = [
+            {"item_code": "ITEM-01", "quantity": 1, "is_cancelled": False},
+            {"item_code": "ITEM-02", "quantity": 3, "is_cancelled": False},
+        ]
+
+        await svc.process_transaction_async(self._make_tran_data(line_items=items))
+
+        assert svc.update_stock_async.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_process_transaction_exception_is_logged_and_reraised(self):
+        """When update_stock_async raises, exception is caught, logged, and re-raised (lines 188-190)."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock(side_effect=RuntimeError("db failure"))
+
+        with pytest.raises(RuntimeError, match="db failure"):
+            await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
+
+
+# ---------------------------------------------------------------------------
+# set_reorder_parameters_async - new stock with alert_service (line 239)
+# ---------------------------------------------------------------------------
+
+class TestSetReorderParametersWithAlert:
+    @pytest.mark.asyncio
+    async def test_new_stock_triggers_alert_check(self):
+        """Creating NEW stock via set_reorder_parameters_async triggers alert check (line 239)."""
+        mock_db = MagicMock()
+        mock_alert = AsyncMock()
+        with patch("app.services.stock_service.StockRepository") as MockStockRepo, \
+             patch("app.services.stock_service.StockUpdateRepository") as MockUpdateRepo:
+            stock_repo = AsyncMock()
+            update_repo = AsyncMock()
+            MockStockRepo.return_value = stock_repo
+            MockUpdateRepo.return_value = update_repo
+            svc = StockService(database=mock_db, alert_service=mock_alert)
+            svc._stock_repository = stock_repo
+            svc._stock_update_repository = update_repo
+
+        # Stock does not exist yet
+        stock_repo.find_by_item_async.return_value = None
+        stock_repo.create_async.return_value = None
+
+        result = await svc.set_reorder_parameters_async("T001", "S001", "NEW-ITEM", 25.0, 50.0)
+
+        assert result is True
+        stock_repo.create_async.assert_called_once()
+        mock_alert.check_and_send_alerts.assert_called_once()

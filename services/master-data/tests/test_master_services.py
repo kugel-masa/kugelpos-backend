@@ -14,7 +14,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from kugel_common.exceptions import DocumentNotFoundException, DocumentAlreadyExistsException
+from kugel_common.exceptions import DocumentNotFoundException, DocumentAlreadyExistsException, InvalidRequestDataException
 
 from app.services.category_master_service import CategoryMasterService
 from app.models.documents.category_master_document import CategoryMasterDocument
@@ -681,3 +681,402 @@ class TestItemStoreMasterService:
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_item_async("NONEXISTENT")
+
+
+# ---------------------------------------------------------------------------
+# PaymentMasterService - additional coverage
+# ---------------------------------------------------------------------------
+
+class TestPaymentMasterServiceAdditional:
+    @pytest.fixture
+    def repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, repo):
+        return PaymentMasterService(payment_master_repository=repo)
+
+    @pytest.mark.asyncio
+    async def test_update_payment_code_mismatch_raises(self, service, repo):
+        """Lines 143-145: payment_code in update_data differs from path."""
+        with pytest.raises(InvalidRequestDataException):
+            await service.update_payment_async(
+                "PAY-01", {"payment_code": "PAY-XX", "description": "Updated"}
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_removes_payment_code_from_data(self, service, repo):
+        """Line 155: payment_code is removed from update_data before repo call."""
+        doc = PaymentMasterDocument()
+        repo.get_payment_by_code.return_value = doc
+        updated = PaymentMasterDocument()
+        repo.update_payment_async.return_value = updated
+
+        data = {"payment_code": "PAY-01", "description": "Updated"}
+        result = await service.update_payment_async("PAY-01", data)
+
+        assert result == updated
+        # Verify payment_code was removed before passing to repo
+        call_args = repo.update_payment_async.call_args
+        assert "payment_code" not in call_args[0][1]
+
+
+# ---------------------------------------------------------------------------
+# StaffMasterService - additional coverage
+# ---------------------------------------------------------------------------
+
+class TestStaffMasterServiceAdditional:
+    @pytest.fixture
+    def repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, repo):
+        return StaffMasterService(staff_master_repo=repo)
+
+    @pytest.mark.asyncio
+    async def test_update_id_mismatch_raises(self, service, repo):
+        """Lines 132-134: id in update_data differs from path staff_id."""
+        with pytest.raises(InvalidRequestDataException):
+            await service.update_staff_async(
+                "ST01", {"id": "ST-OTHER", "staff_name": "Bob"}
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_removes_id_from_data(self, service, repo):
+        """Line 145: id is removed from update_data before repo call."""
+        doc = StaffMasterDocument()
+        repo.get_staff_by_id_async.return_value = doc
+        updated = StaffMasterDocument()
+        repo.update_staff_async.return_value = updated
+
+        data = {"id": "ST01", "staff_name": "Bob"}
+        result = await service.update_staff_async("ST01", data)
+
+        assert result == updated
+        call_args = repo.update_staff_async.call_args
+        assert "id" not in call_args[0][1]
+
+
+# ---------------------------------------------------------------------------
+# ItemCommonMasterService - additional coverage
+# ---------------------------------------------------------------------------
+
+class TestItemCommonMasterServiceAdditional:
+    @pytest.fixture
+    def repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, repo):
+        return ItemCommonMasterService(item_common_master_repo=repo)
+
+    @pytest.mark.asyncio
+    async def test_update_removes_item_code_from_data(self, service, repo):
+        """Line 178: item_code is removed from update_data when it matches."""
+        doc = ItemCommonMasterDocument()
+        repo.get_item_by_code_async.return_value = doc
+        updated = ItemCommonMasterDocument()
+        repo.update_item_async.return_value = updated
+
+        data = {"item_code": "ITEM-01", "description": "New"}
+        result = await service.update_item_async("ITEM-01", data)
+
+        assert result == updated
+        call_args = repo.update_item_async.call_args
+        assert "item_code" not in call_args[0][1]
+
+
+# ---------------------------------------------------------------------------
+# TaxMasterService - additional coverage
+# ---------------------------------------------------------------------------
+
+class TestTaxMasterServiceAdditional:
+    @pytest.fixture
+    def repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, repo):
+        return TaxMasterService(tax_master_repo=repo)
+
+    @pytest.mark.asyncio
+    async def test_get_all_taxes_paginated_with_reverse_sort(self, service, repo):
+        """Lines 82-84: sort with direction=-1 (reverse)."""
+        tax1 = TaxMasterDocument()
+        tax1.tax_code = "A"
+        tax2 = TaxMasterDocument()
+        tax2.tax_code = "B"
+        tax3 = TaxMasterDocument()
+        tax3.tax_code = "C"
+        repo.load_all_taxes.return_value = [tax1, tax2, tax3]
+
+        result, total = await service.get_all_taxes_paginated_async(
+            limit=10, page=1, sort=[("tax_code", -1)]
+        )
+
+        assert total == 3
+        # Should be sorted in reverse order by tax_code
+        assert result[0].tax_code == "C"
+        assert result[1].tax_code == "B"
+        assert result[2].tax_code == "A"
+
+    @pytest.mark.asyncio
+    async def test_get_all_taxes_paginated_ascending_sort(self, service, repo):
+        """Sort with direction=1 (ascending)."""
+        tax1 = TaxMasterDocument()
+        tax1.tax_code = "C"
+        tax2 = TaxMasterDocument()
+        tax2.tax_code = "A"
+        repo.load_all_taxes.return_value = [tax1, tax2]
+
+        result, total = await service.get_all_taxes_paginated_async(
+            limit=10, page=1, sort=[("tax_code", 1)]
+        )
+
+        assert total == 2
+        assert result[0].tax_code == "A"
+        assert result[1].tax_code == "C"
+
+
+# ---------------------------------------------------------------------------
+# SettingsMasterService - additional coverage
+# ---------------------------------------------------------------------------
+
+class TestSettingsMasterServiceAdditional:
+    @pytest.fixture
+    def repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, repo):
+        return SettingsMasterService(settings_master_repo=repo)
+
+    @pytest.mark.asyncio
+    async def test_get_settings_value_store_terminal_match(self, service, repo):
+        """Lines 112-122: priority lookup - store+terminal specific match."""
+        from app.models.documents.settings_master_document import SettingsValue
+
+        doc = SettingsMasterDocument()
+        doc.default_value = "default"
+        doc.values = [
+            SettingsValue(store_code="S1", terminal_no=1, value="store_terminal"),
+            SettingsValue(store_code="S1", terminal_no=None, value="store_only"),
+            SettingsValue(store_code=None, terminal_no=None, value="global"),
+        ]
+        repo.get_settings_by_name_async.return_value = doc
+
+        result = await service.get_settings_value_by_name_async("KEY", "S1", 1)
+        assert result == "store_terminal"
+
+    @pytest.mark.asyncio
+    async def test_get_settings_value_store_only_match(self, service, repo):
+        """Priority lookup - store specific match (no terminal match)."""
+        from app.models.documents.settings_master_document import SettingsValue
+
+        doc = SettingsMasterDocument()
+        doc.default_value = "default"
+        doc.values = [
+            SettingsValue(store_code="S1", terminal_no=None, value="store_only"),
+            SettingsValue(store_code=None, terminal_no=None, value="global"),
+        ]
+        repo.get_settings_by_name_async.return_value = doc
+
+        result = await service.get_settings_value_by_name_async("KEY", "S1", 99)
+        assert result == "store_only"
+
+    @pytest.mark.asyncio
+    async def test_get_settings_value_global_match(self, service, repo):
+        """Priority lookup - global match (no store/terminal match)."""
+        from app.models.documents.settings_master_document import SettingsValue
+
+        doc = SettingsMasterDocument()
+        doc.default_value = "default"
+        doc.values = [
+            SettingsValue(store_code=None, terminal_no=None, value="global"),
+        ]
+        repo.get_settings_by_name_async.return_value = doc
+
+        result = await service.get_settings_value_by_name_async("KEY", "S2", 1)
+        assert result == "global"
+
+    @pytest.mark.asyncio
+    async def test_get_settings_value_falls_back_to_default(self, service, repo):
+        """Lines 124-125: no values match, returns default_value."""
+        doc = SettingsMasterDocument()
+        doc.default_value = "fallback"
+        doc.values = [
+            MagicMock(
+                model_dump=MagicMock(
+                    return_value={"store_code": "OTHER", "terminal_no": 99, "value": "nope"}
+                )
+            ),
+        ]
+        repo.get_settings_by_name_async.return_value = doc
+
+        result = await service.get_settings_value_by_name_async("KEY", "S1", 1)
+        assert result == "fallback"
+
+    @pytest.mark.asyncio
+    async def test_get_settings_value_not_found_raises(self, service, repo):
+        """Lines 107-109: setting not found raises DocumentNotFoundException."""
+        repo.get_settings_by_name_async.return_value = None
+
+        with pytest.raises(DocumentNotFoundException):
+            await service.get_settings_value_by_name_async("MISSING", "S1", 1)
+
+    @pytest.mark.asyncio
+    async def test_update_name_mismatch_raises(self, service, repo):
+        """Lines 176-178: name in update_data differs from path name."""
+        with pytest.raises(InvalidRequestDataException):
+            await service.update_settings_async(
+                "KEY-01", {"name": "KEY-OTHER", "default_value": "new"}
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_removes_name_from_data(self, service, repo):
+        """Lines 188-189: name is removed from update_data before repo call."""
+        doc = SettingsMasterDocument()
+        repo.get_settings_by_name_async.return_value = doc
+        updated = SettingsMasterDocument()
+        repo.update_settings_async.return_value = updated
+
+        data = {"name": "KEY-01", "default_value": "new"}
+        result = await service.update_settings_async("KEY-01", data)
+
+        assert result == updated
+        call_args = repo.update_settings_async.call_args
+        assert "name" not in call_args[0][1]
+
+    @pytest.mark.asyncio
+    async def test_update_processes_default_value_json(self, service, repo):
+        """Lines 192-193: default_value is processed through ensure_json_format."""
+        doc = SettingsMasterDocument()
+        repo.get_settings_by_name_async.return_value = doc
+        updated = SettingsMasterDocument()
+        repo.update_settings_async.return_value = updated
+
+        data = {"default_value": "[{'a': 1}]"}
+        await service.update_settings_async("KEY-01", data)
+
+        call_args = repo.update_settings_async.call_args
+        assert call_args[0][1]["default_value"] == '[{"a": 1}]'
+
+    @pytest.mark.asyncio
+    async def test_update_processes_values_list(self, service, repo):
+        """Lines 196-197: values list is processed through process_setting_values."""
+        doc = SettingsMasterDocument()
+        repo.get_settings_by_name_async.return_value = doc
+        updated = SettingsMasterDocument()
+        repo.update_settings_async.return_value = updated
+
+        data = {"values": [{"value": "[{'x': 1}]"}]}
+        await service.update_settings_async("KEY-01", data)
+
+        call_args = repo.update_settings_async.call_args
+        assert call_args[0][1]["values"][0]["value"] == '[{"x": 1}]'
+
+
+# ---------------------------------------------------------------------------
+# ItemStoreMasterService - additional coverage
+# ---------------------------------------------------------------------------
+
+class TestItemStoreMasterServiceAdditional:
+    @pytest.fixture
+    def store_repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def common_repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, store_repo, common_repo):
+        return ItemStoreMasterService(
+            item_store_master_repo=store_repo,
+            item_common_master_repo=common_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_item_store_detail_with_store_data(self, service, store_repo, common_repo):
+        """Lines 153-192: get detail combining common and store data."""
+        common_doc = ItemCommonMasterDocument()
+        common_doc.tenant_id = "T1"
+        common_doc.item_code = "ITEM-01"
+        common_doc.description = "Test Item"
+        common_doc.description_short = "TI"
+        common_doc.description_long = "Test Item Long"
+        common_doc.unit_price = 100.0
+        common_doc.unit_cost = 80.0
+        common_doc.item_details = []
+        common_doc.image_urls = []
+        common_doc.category_code = "CAT-01"
+        common_doc.tax_code = "TAX-01"
+        common_doc.is_discount_restricted = False
+        common_doc.updated_at = "2025-01-01"
+        common_doc.created_at = "2025-01-01"
+        common_repo.get_item_by_code_async.return_value = common_doc
+
+        store_doc = ItemStoreMasterDocument()
+        store_doc.store_code = "S1"
+        store_doc.store_price = 120.0
+        store_doc.updated_at = "2025-02-01"
+        store_doc.created_at = "2025-02-01"
+        store_repo.get_item_store_by_code.return_value = store_doc
+
+        result = await service.get_item_store_detail_by_code_async("ITEM-01")
+
+        assert result.item_code == "ITEM-01"
+        assert result.store_code == "S1"
+        assert result.store_price == 120.0
+        assert result.description == "Test Item"
+
+    @pytest.mark.asyncio
+    async def test_get_item_store_detail_no_store_data(self, service, store_repo, common_repo):
+        """Lines 181-184: store data not found, only common data returned."""
+        common_doc = ItemCommonMasterDocument()
+        common_doc.tenant_id = "T1"
+        common_doc.item_code = "ITEM-01"
+        common_doc.description = "Test Item"
+        common_doc.unit_price = 100.0
+        common_doc.unit_cost = 80.0
+        common_repo.get_item_by_code_async.return_value = common_doc
+
+        store_repo.get_item_store_by_code.return_value = None
+
+        result = await service.get_item_store_detail_by_code_async("ITEM-01")
+
+        assert result.item_code == "ITEM-01"
+        assert result.store_code is None
+        assert result.store_price is None
+
+    @pytest.mark.asyncio
+    async def test_get_item_store_detail_common_not_found_raises(self, service, store_repo, common_repo):
+        """Lines 160-162: common item not found raises DocumentNotFoundException."""
+        common_repo.get_item_by_code_async.return_value = None
+
+        with pytest.raises(DocumentNotFoundException):
+            await service.get_item_store_detail_by_code_async("NONEXISTENT")
+
+    @pytest.mark.asyncio
+    async def test_update_item_code_mismatch_raises(self, service, store_repo, common_repo):
+        """Lines 211-213: item_code in update_data differs from path."""
+        with pytest.raises(InvalidRequestDataException):
+            await service.update_item_async(
+                "ITEM-01", {"item_code": "ITEM-XX", "store_price": 150.0}
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_removes_item_code_from_data(self, service, store_repo, common_repo):
+        """Lines 223-224: item_code is removed from update_data before repo call."""
+        doc = ItemStoreMasterDocument()
+        store_repo.get_item_store_by_code.return_value = doc
+        updated = ItemStoreMasterDocument()
+        store_repo.update_item_store_async.return_value = updated
+
+        data = {"item_code": "ITEM-01", "store_price": 150.0}
+        result = await service.update_item_async("ITEM-01", data)
+
+        assert result == updated
+        call_args = store_repo.update_item_store_async.call_args
+        assert "item_code" not in call_args[0][1]
