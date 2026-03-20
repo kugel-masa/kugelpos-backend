@@ -212,17 +212,12 @@ class CategoryPromoPlugin(AbstractSalesPromo):
             promotion_info: Dict containing promotion_code, promotion_type, discount_rate, name
         """
         discount_rate = promotion_info["discount_rate"]
-        base_amount = line_item.unit_price * line_item.quantity
 
-        # Calculate discount amount (percentage based)
-        discount_amount = round(base_amount * (discount_rate / 100), 0)
-
-        # Create discount info
+        # Create discount info (discount_amount is calculated by calc_line_item_logic)
         discount_info = BaseTransaction.DiscountInfo(
             seq_no=len(line_item.discounts) + 1 if line_item.discounts else 1,
             discount_type=DiscountType.DiscountPercentage.value,
             discount_value=discount_rate,
-            discount_amount=discount_amount,
             detail=promotion_info.get("name", "Category Promotion"),
             promotion_code=promotion_info["promotion_code"],
             promotion_type=promotion_info["promotion_type"],
@@ -236,5 +231,5 @@ class CategoryPromoPlugin(AbstractSalesPromo):
 
         logger.info(
             f"Applied promotion {promotion_info['promotion_code']} to line {line_item.line_no}: "
-            f"{discount_rate}% discount = {discount_amount} yen"
+            f"{discount_rate}% discount"
         )
