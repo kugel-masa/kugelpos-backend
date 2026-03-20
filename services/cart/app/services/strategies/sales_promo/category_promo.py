@@ -1,6 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
-from typing import Optional
+from typing import Optional, TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +13,13 @@ from app.models.documents.promotion_master_document import PromotionMasterDocume
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
 logger = getLogger(__name__)
+
+
+class PromotionInfo(TypedDict):
+    promotion_code: str
+    promotion_type: str
+    discount_rate: float
+    name: str
 
 
 class CategoryPromoDetail(BaseModel):
@@ -142,7 +149,7 @@ class CategoryPromoPlugin(AbstractSalesPromo):
             logger.warning(f"Failed to parse detail for promotion {promo.promotion_code}: {e}")
             return None
 
-    def _build_category_promotion_map(self, promotions: list) -> dict:
+    def _build_category_promotion_map(self, promotions: list) -> dict[str, PromotionInfo]:
         """
         Build a mapping of category codes to their best promotion.
 
@@ -188,17 +195,10 @@ class CategoryPromoPlugin(AbstractSalesPromo):
         Returns:
             bool: True if a category_discount promotion is already applied
         """
-        if not line_item.discounts:
-            return False
-
-        for discount in line_item.discounts:
-            if discount.promotion_type == "category_discount":
-                return True
-
-        return False
+        return any(d.promotion_type == "category_discount" for d in (line_item.discounts or []))
 
     def _apply_promotion_to_line_item(
-        self, line_item: CartDocument.CartLineItem, promotion_info: dict
+        self, line_item: CartDocument.CartLineItem, promotion_info: PromotionInfo
     ) -> None:
         """
         Apply a promotion discount to a line item.
