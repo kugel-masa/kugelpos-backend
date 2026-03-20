@@ -236,3 +236,210 @@ class TestLogService:
         # Assert
         journal_call_args = journal_service.receive_journal_async.call_args[0][0]
         assert journal_call_args["transaction_type"] == expected_type
+
+
+from app.models.documents.cash_in_out_log import CashInOutLog
+from app.models.documents.open_close_log import OpenCloseLog
+
+
+class TestLogServiceCashlog:
+    """Test cases for LogService.receive_cashlog_async."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        tran_repo = AsyncMock(spec=TranlogRepository)
+        cash_repo = AsyncMock(spec=CashInOutLogRepository)
+        open_close_repo = AsyncMock(spec=OpenCloseLogRepository)
+        journal_service = AsyncMock(spec=JournalService)
+        journal_service.journal_repository = AsyncMock()
+        return tran_repo, cash_repo, open_close_repo, journal_service
+
+    @pytest.fixture
+    def log_service(self, mock_repositories):
+        tran_repo, cash_repo, open_close_repo, journal_service = mock_repositories
+        return LogService(
+            tran_repository=tran_repo,
+            cash_in_out_log_repository=cash_repo,
+            open_close_log_repository=open_close_repo,
+            journal_service=journal_service,
+        )
+
+    @pytest.fixture
+    def base_cashlog(self):
+        return CashInOutLog(
+            tenant_id="T001",
+            store_code="S001",
+            terminal_no=1,
+            staff_id="ST01",
+            business_date="20240101",
+            open_counter=1,
+            business_counter=10,
+            generate_date_time="2024-01-01T10:00:00",
+            amount=5000.0,
+            journal_text="Cash in",
+            receipt_text="Cash in receipt",
+        )
+
+    @pytest.mark.asyncio
+    async def test_receive_cashlog_cash_in(self, log_service, base_cashlog, mock_repositories):
+        """Positive amount → TransactionType.CashIn."""
+        _, cash_repo, _, journal_service = mock_repositories
+        mock_session = AsyncMock()
+        cash_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        cash_repo.create_cash_in_out_log.return_value = base_cashlog
+
+        result = await log_service.receive_cashlog_async(base_cashlog)
+
+        assert result == base_cashlog
+        journal_service.receive_journal_async.assert_called_once()
+        call_arg = journal_service.receive_journal_async.call_args[0][0]
+        assert call_arg["transaction_type"] == TransactionType.CashIn.value
+
+    @pytest.mark.asyncio
+    async def test_receive_cashlog_cash_out(self, log_service, base_cashlog, mock_repositories):
+        """Negative amount → TransactionType.CashOut."""
+        _, cash_repo, _, journal_service = mock_repositories
+        base_cashlog.amount = -3000.0
+        mock_session = AsyncMock()
+        cash_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        cash_repo.create_cash_in_out_log.return_value = base_cashlog
+
+        result = await log_service.receive_cashlog_async(base_cashlog)
+
+        assert result == base_cashlog
+        call_arg = journal_service.receive_journal_async.call_args[0][0]
+        assert call_arg["transaction_type"] == TransactionType.CashOut.value
+
+    @pytest.mark.asyncio
+    async def test_receive_cashlog_rollback_on_error(self, log_service, base_cashlog, mock_repositories):
+        """Exception during journal creation triggers rollback."""
+        _, cash_repo, _, journal_service = mock_repositories
+        mock_session = AsyncMock()
+        cash_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        journal_service.receive_journal_async.side_effect = Exception("journal error")
+
+        with pytest.raises(Exception, match="journal error"):
+            await log_service.receive_cashlog_async(base_cashlog)
+
+        cash_repo.abort_transaction.assert_called_once()
+
+    @pytest.mark.parametrize("amount,expected_type", [
+        (1.0, TransactionType.CashIn.value),
+        (99999.0, TransactionType.CashIn.value),
+        (-1.0, TransactionType.CashOut.value),
+        (-99999.0, TransactionType.CashOut.value),
+    ])
+    @pytest.mark.asyncio
+    async def test_cashlog_type_parametrized(self, log_service, base_cashlog, mock_repositories, amount, expected_type):
+        """Parametrized: amount sign determines transaction type."""
+        _, cash_repo, _, journal_service = mock_repositories
+        base_cashlog.amount = amount
+        mock_session = AsyncMock()
+        cash_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        cash_repo.create_cash_in_out_log.return_value = base_cashlog
+
+        await log_service.receive_cashlog_async(base_cashlog)
+
+        call_arg = journal_service.receive_journal_async.call_args[0][0]
+        assert call_arg["transaction_type"] == expected_type
+
+
+class TestLogServiceOpenCloseLog:
+    """Test cases for LogService.receive_open_close_log_async."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        tran_repo = AsyncMock(spec=TranlogRepository)
+        cash_repo = AsyncMock(spec=CashInOutLogRepository)
+        open_close_repo = AsyncMock(spec=OpenCloseLogRepository)
+        journal_service = AsyncMock(spec=JournalService)
+        journal_service.journal_repository = AsyncMock()
+        return tran_repo, cash_repo, open_close_repo, journal_service
+
+    @pytest.fixture
+    def log_service(self, mock_repositories):
+        tran_repo, cash_repo, open_close_repo, journal_service = mock_repositories
+        return LogService(
+            tran_repository=tran_repo,
+            cash_in_out_log_repository=cash_repo,
+            open_close_log_repository=open_close_repo,
+            journal_service=journal_service,
+        )
+
+    @pytest.fixture
+    def base_open_close_log(self):
+        return OpenCloseLog(
+            tenant_id="T001",
+            store_code="S001",
+            terminal_no=1,
+            staff_id="ST01",
+            business_date="20240101",
+            open_counter=1,
+            business_counter=10,
+            generate_date_time="2024-01-01T09:00:00",
+            operation="open",
+            journal_text="Terminal opened",
+            receipt_text="Open receipt",
+        )
+
+    @pytest.mark.asyncio
+    async def test_receive_open_log(self, log_service, base_open_close_log, mock_repositories):
+        """operation='open' → TransactionType.Open."""
+        _, _, open_close_repo, journal_service = mock_repositories
+        mock_session = AsyncMock()
+        open_close_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        open_close_repo.create_open_close_log.return_value = base_open_close_log
+
+        result = await log_service.receive_open_close_log_async(base_open_close_log)
+
+        assert result == base_open_close_log
+        call_arg = journal_service.receive_journal_async.call_args[0][0]
+        assert call_arg["transaction_type"] == TransactionType.Open.value
+
+    @pytest.mark.asyncio
+    async def test_receive_close_log(self, log_service, base_open_close_log, mock_repositories):
+        """operation='close' → TransactionType.Close."""
+        _, _, open_close_repo, journal_service = mock_repositories
+        base_open_close_log.operation = "close"
+        mock_session = AsyncMock()
+        open_close_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        open_close_repo.create_open_close_log.return_value = base_open_close_log
+
+        result = await log_service.receive_open_close_log_async(base_open_close_log)
+
+        assert result == base_open_close_log
+        call_arg = journal_service.receive_journal_async.call_args[0][0]
+        assert call_arg["transaction_type"] == TransactionType.Close.value
+
+    @pytest.mark.asyncio
+    async def test_receive_open_close_log_rollback_on_error(self, log_service, base_open_close_log, mock_repositories):
+        """Exception during journal creation triggers rollback."""
+        _, _, open_close_repo, journal_service = mock_repositories
+        mock_session = AsyncMock()
+        open_close_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        journal_service.receive_journal_async.side_effect = Exception("journal error")
+
+        with pytest.raises(Exception, match="journal error"):
+            await log_service.receive_open_close_log_async(base_open_close_log)
+
+        open_close_repo.abort_transaction.assert_called_once()
+
+    @pytest.mark.parametrize("operation,expected_type", [
+        ("open", TransactionType.Open.value),
+        ("close", TransactionType.Close.value),
+    ])
+    @pytest.mark.asyncio
+    async def test_open_close_type_parametrized(
+        self, log_service, base_open_close_log, mock_repositories, operation, expected_type
+    ):
+        """Parametrized: operation string determines transaction type."""
+        _, _, open_close_repo, journal_service = mock_repositories
+        base_open_close_log.operation = operation
+        mock_session = AsyncMock()
+        open_close_repo.start_transaction.return_value.__aenter__.return_value = mock_session
+        open_close_repo.create_open_close_log.return_value = base_open_close_log
+
+        await log_service.receive_open_close_log_async(base_open_close_log)
+
+        call_arg = journal_service.receive_journal_async.call_args[0][0]
+        assert call_arg["transaction_type"] == expected_type
