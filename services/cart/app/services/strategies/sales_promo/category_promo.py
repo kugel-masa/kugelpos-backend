@@ -24,7 +24,6 @@ class CategoryPromoDetail(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_lower_camel)
 
-    target_store_codes: Optional[list[str]] = []
     target_category_codes: list[str] = []
     discount_rate: float = 0.0
 
