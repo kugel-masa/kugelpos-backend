@@ -1,4 +1,5 @@
 import pytest
+import os
 from httpx import AsyncClient
 from kugel_common.utils.service_auth import create_service_token
 
@@ -7,11 +8,11 @@ from kugel_common.utils.service_auth import create_service_token
 async def test_flash_report_rejects_date_range_store(http_client: AsyncClient):
     """Test that flash reports reject date range parameters for store reports."""
     # Prepare test data
-    tenant_id = "T9999"
-    store_code = "S001"
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
     business_date_from = "20240101"
     business_date_to = "20240107"
-    
+
     # Create JWT token for authorization
     service_token = create_service_token(tenant_id, "report")
     headers = {"Authorization": f"Bearer {service_token}"}
@@ -78,12 +79,12 @@ async def test_flash_report_rejects_date_range_store(http_client: AsyncClient):
 async def test_flash_report_rejects_date_range_terminal(http_client: AsyncClient):
     """Test that flash reports reject date range parameters for terminal reports."""
     # Prepare test data
-    tenant_id = "T9999"
-    store_code = "S001"
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
     terminal_no = 1
     business_date_from = "20240101"
     business_date_to = "20240107"
-    
+
     # Create JWT token for authorization
     service_token = create_service_token(tenant_id, "report")
     headers = {"Authorization": f"Bearer {service_token}"}
@@ -150,10 +151,10 @@ async def test_flash_report_rejects_date_range_terminal(http_client: AsyncClient
 async def test_flash_report_accepts_single_date(http_client: AsyncClient):
     """Test that flash reports still accept single date parameter."""
     # Prepare test data
-    tenant_id = "T9999"
-    store_code = "S001"
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
     business_date = "20240101"
-    
+
     # Create JWT token for authorization
     service_token = create_service_token(tenant_id, "report")
     headers = {"Authorization": f"Bearer {service_token}"}
@@ -179,11 +180,11 @@ async def test_flash_report_accepts_single_date(http_client: AsyncClient):
 async def test_daily_report_accepts_date_range(http_client: AsyncClient):
     """Test that daily reports still accept date range parameters."""
     # Prepare test data
-    tenant_id = "T9999"
-    store_code = "S001"
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
     business_date_from = "20240101"
     business_date_to = "20240107"
-    
+
     # Create JWT token for authorization
     service_token = create_service_token(tenant_id, "report")
     headers = {"Authorization": f"Bearer {service_token}"}

@@ -743,12 +743,14 @@ async def test_payment_report_date_validation(http_client):
 async def test_payment_report_with_date_range(http_client):
     """Test payment report generation with date range."""
     from kugel_common.utils.service_auth import create_service_token
-    
-    token = create_service_token("sample01", "report")
+
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE")
+    token = create_service_token(tenant_id, "report")
     headers = {"authorization": f"Bearer {token}"}
 
     response = await http_client.get(
-        "/api/v1/tenants/sample01/stores/store001/reports",
+        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports",
         params={
             "report_scope": "daily",
             "report_type": "payment",
@@ -762,12 +764,12 @@ async def test_payment_report_with_date_range(http_client):
     data = response.json()
     assert data["success"] is True
     assert "data" in data
-    
+
     # Check that date range fields are present
     report_data = data["data"]
     assert "business_date_from" in report_data
     assert "business_date_to" in report_data
-    
+
     # Should have payment summary
     assert "payment_summary" in report_data
     assert isinstance(report_data["payment_summary"], list)
