@@ -127,13 +127,13 @@ Phase 2-4: report 実装
 
 | ファイル | 説明 |
 |---------|------|
-| `specs/1-category-promo/spec.md` | 機能仕様書 |
-| `specs/1-category-promo/spec_review.md` | レビュー記録 |
-| `specs/1-category-promo/plan.md` | 実装計画（本ファイル） |
-| `specs/1-category-promo/data-model.md` | データモデル設計 |
-| `specs/1-category-promo/contracts/` | API契約 |
-| `specs/1-category-promo/tasks.md` | 詳細タスク一覧 |
-| `specs/1-category-promo/checklists/requirements.md` | 仕様品質チェックリスト |
+| `specs/59-category-promo/spec.md` | 機能仕様書 |
+| `specs/59-category-promo/spec_review.md` | レビュー記録 |
+| `specs/59-category-promo/plan.md` | 実装計画（本ファイル） |
+| `specs/59-category-promo/data-model.md` | データモデル設計 |
+| `specs/59-category-promo/contracts/` | API契約 |
+| `specs/59-category-promo/tasks.md` | 詳細タスク一覧 |
+| `specs/59-category-promo/checklists/requirements.md` | 仕様品質チェックリスト |
 
 ## リスクと軽減策
 
