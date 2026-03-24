@@ -341,31 +341,48 @@ async def __get_tenant_id(
     is_terminal_service: Optional[bool] = False
 ):
     """
-    Internal helper function to retrieve tenant ID using either API key or OAuth token.
-    
+    Internal helper function to retrieve tenant ID using API key, terminal JWT, or user JWT.
+
+    Authentication priority (per contracts/terminal-auth-api.md):
+    1. Bearer token with token_type="terminal" (terminal JWT - local verification)
+    2. Bearer token (user JWT - existing OAuth2 flow)
+    3. X-API-KEY + terminal_id (legacy API key flow)
+
     Args:
         terminal_id: Optional terminal ID if using API key authentication
         api_key: Optional API key for terminal-based authentication
-        token: Optional OAuth token for user-based authentication
+        token: Optional OAuth/JWT token for token-based authentication
         is_terminal_service: Whether the caller is the terminal service itself
-        
+
     Returns:
         Tenant ID string
-        
+
     Raises:
-        HTTPException: If neither valid API key nor token is provided
+        HTTPException: If no valid authentication is provided
     """
+    # Priority 1 & 2: Try token-based authentication first
+    if token:
+        # Priority 1: Try terminal JWT (token_type="terminal")
+        try:
+            terminal_claims = verify_terminal_token(token)
+            logger.debug(f"Terminal JWT verified for {terminal_claims.get('terminal_id')}")
+            return terminal_claims.get("tenant_id")
+        except HTTPException:
+            pass  # Not a terminal token, fall through to user JWT
+
+        # Priority 2: Try user JWT (existing OAuth2 flow)
+        logger.debug("Token provided, trying user JWT")
+        user_dict = await get_current_user(token)
+        return user_dict.get("tenant_id")
+
+    # Priority 3: API key authentication (legacy flow)
     if terminal_id and api_key:
         logger.debug(f"Terminal_id: {terminal_id}, and API-KEY provided")
         terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service)
         return terminal_info.tenant_id
-    elif token:
-        logger.debug(f"Token provided")
-        user_dict = await get_current_user(token)
-        return user_dict.get("tenant_id")
-    else:
-        message = "Unauthorized access : No token or API-KEY provided"
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
+    message = "Unauthorized access : No token or API-KEY provided"
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
 
 async def get_tenant_id_with_security(
     terminal_id: str = Path(..., description="terminal_id should be provided in the path"),

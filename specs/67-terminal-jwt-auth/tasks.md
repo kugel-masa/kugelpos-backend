@@ -45,8 +45,8 @@
 
 ### Implementation
 
-- [ ] T005 [US1] POST /api/v1/auth/token エンドポイントを新規ファイル `services/terminal/app/api/v1/auth.py` に実装。X-API-KEYヘッダーからAPIキー取得、DBでターミナル情報をルックアップ、`create_terminal_token()` でJWT生成、contracts/terminal-auth-api.md のレスポンス形式 `{"success": true, "data": {"access_token", "token_type", "expires_in"}}` で返却。エラー時は401 + エラーコード "200101"。必要に応じて `services/terminal/app/dependencies/get_terminal_service.py` にAPIキーからターミナル情報を取得するauth依存関係ラッパーを追加
-- [ ] T006 [US1] `auth_router` を `services/terminal/app/main.py` に `/api/v1` プレフィックスで登録
+- [x] T005 [US1] POST /api/v1/auth/token エンドポイントを新規ファイル `services/terminal/app/api/v1/auth.py` に実装。X-API-KEYヘッダーからAPIキー取得、DBでターミナル情報をルックアップ、`create_terminal_token()` でJWT生成、contracts/terminal-auth-api.md のレスポンス形式 `{"success": true, "data": {"access_token", "token_type", "expires_in"}}` で返却。エラー時は401 + エラーコード "200101"。必要に応じて `services/terminal/app/dependencies/get_terminal_service.py` にAPIキーからターミナル情報を取得するauth依存関係ラッパーを追加
+- [x] T006 [US1] `auth_router` を `services/terminal/app/main.py` に `/api/v1` プレフィックスで登録
 - [ ] T007 [US1] POST /auth/token のテストを `services/terminal/tests/` に作成。正常系（有効APIキー→JWT返却）、異常系（無効APIキー→401）、未オープンターミナル（status反映、スタッフクレームなし）のテストケース
 
 **Checkpoint**: APIキーからJWTトークンを取得するフローが完全に動作
@@ -61,8 +61,8 @@
 
 ### Implementation
 
-- [ ] T008 [US2] `services/commons/src/kugel_common/security.py` の `__get_tenant_id()` を修正。Authorizationヘッダーのtokenがある場合、まずterminal JWT（token_type="terminal"）としてデコードを試行し、成功すればクレームからtenant_idを返却。失敗した場合は既存のユーザーJWTパスにフォールバック。認証優先順位は contracts/terminal-auth-api.md に準拠: (1) Bearer terminal JWT → (2) Bearer ユーザーJWT → (3) X-API-KEY
-- [ ] T009 [P] [US2] `services/report/app/dependencies/get_staff_info.py` の `get_requesting_staff_id()` を修正。tokenがterminal JWTの場合、クレームから直接staff_idを取得（terminal_info取得不要）
+- [x] T008 [US2] `services/commons/src/kugel_common/security.py` の `__get_tenant_id()` を修正。Authorizationヘッダーのtokenがある場合、まずterminal JWT（token_type="terminal"）としてデコードを試行し、成功すればクレームからtenant_idを返却。失敗した場合は既存のユーザーJWTパスにフォールバック。認証優先順位は contracts/terminal-auth-api.md に準拠: (1) Bearer terminal JWT → (2) Bearer ユーザーJWT → (3) X-API-KEY
+- [x] T009 [P] [US2] `services/report/app/dependencies/get_staff_info.py` の `get_requesting_staff_id()` を修正。tokenがterminal JWTの場合、クレームから直接staff_idを取得（terminal_info取得不要）
 - [ ] T010 [US2] `__get_tenant_id()` のterminal JWT対応テストを `services/commons/tests/` に追加。有効JWT→tenant_id抽出、期限切れJWT→401、不正署名→401のテストケース
 
 **Checkpoint**: 全サービス（master-data, journal, stock, report）がターミナルJWTでローカル認証可能。サービス間認証呼び出しが不要
@@ -77,7 +77,7 @@
 
 ### Implementation
 
-- [ ] T011 [US3] `services/terminal/app/api/v1/terminal.py` のライフサイクルエンドポイント（open, sign-in, sign-out, close）を修正。各操作成功後に更新された TerminalInfoDocument から `create_terminal_token()` でJWTを生成し、`X-New-Token` レスポンスヘッダーに設定。レスポンスボディは変更なし
+- [x] T011 [US3] `services/terminal/app/api/v1/terminal.py` のライフサイクルエンドポイント（open, sign-in, sign-out, close）を修正。各操作成功後に更新された TerminalInfoDocument から `create_terminal_token()` でJWTを生成し、`X-New-Token` レスポンスヘッダーに設定。レスポンスボディは変更なし
 - [ ] T012 [US3] ライフサイクルAPIのX-New-Tokenヘッダーテストを `services/terminal/tests/` に作成。open→status="Opened"+business_date+カウンター、sign-in→staff_id/staff_name追加、sign-out→staff_id/staff_name除去、close→status="Closed" のクレーム検証
 
 **Checkpoint**: ライフサイクル操作でJWTが自動再発行され、クライアントは常に最新のターミナル状態を反映したトークンを保持
