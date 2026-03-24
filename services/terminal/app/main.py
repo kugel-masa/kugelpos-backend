@@ -23,6 +23,7 @@ from kugel_common.exceptions import register_exception_handlers
 from app.config.settings import settings
 from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.terminal import router as v1_terminal_router
+from app.api.v1.auth import router as v1_auth_router
 from app.cron.republish_undelivery_message import (
     start_republish_undelivered_terminallog_job,
     shutdown_republish_undelivered_terminallog_job,
@@ -46,6 +47,7 @@ if IS_DEBUG:
 # Include the API routers with versioned prefixes  # This enables API versioning and proper routing of requests
 app.include_router(v1_tenant_router, prefix="/api/v1")
 app.include_router(v1_terminal_router, prefix="/api/v1")
+app.include_router(v1_auth_router, prefix="/api/v1")
 
 # Configure CORS (Cross-Origin Resource Sharing)  # This allows the API to be accessed from different domains/origins
 app.add_middleware(

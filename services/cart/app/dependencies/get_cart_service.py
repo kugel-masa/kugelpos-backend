@@ -12,7 +12,7 @@ from logging import getLogger
 
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
-from app.dependencies.terminal_cache_dependency import get_terminal_info_with_cache
+from app.dependencies.terminal_cache_dependency import get_terminal_info_with_jwt_or_cache
 from app.services.cart_service import CartService
 from app.services.tran_service import TranService
 from app.config.settings import settings
@@ -22,7 +22,7 @@ logger = getLogger(__name__)
 
 
 async def get_cart_service_async(
-    terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_cache),
+    terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_cache),
 ) -> CartService:
     """
     Dependency injection helper for cart service without cart_id.
@@ -38,7 +38,7 @@ async def get_cart_service_async(
 
 
 async def get_cart_service_with_cart_id_async(
-    terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_cache),
+    terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_cache),
     cart_id: str = Path(...),
 ) -> CartService:
     """

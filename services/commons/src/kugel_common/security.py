@@ -126,6 +126,73 @@ async def get_service_account_info(token: str = Depends(oauth2_scheme)):
         )
     return user_info
 
+def verify_terminal_token(token: str) -> dict:
+    """
+    Verify a terminal JWT token and return its claims.
+
+    Validates signature, expiration, and ensures token_type is "terminal".
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Dictionary of decoded claims
+
+    Raises:
+        HTTPException: If token is invalid, expired, or not a terminal token
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired terminal token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("token_type") != "terminal":
+            raise credentials_exception
+        if payload.get("tenant_id") is None:
+            raise credentials_exception
+        logger.debug(f"Verified terminal token for {payload.get('terminal_id')}")
+        return payload
+    except JWTError:
+        raise credentials_exception
+
+
+def terminal_claims_to_terminal_info(claims: dict) -> TerminalInfoDocument:
+    """
+    Convert JWT claims to a TerminalInfoDocument-compatible object.
+
+    Args:
+        claims: Decoded JWT claims dictionary
+
+    Returns:
+        TerminalInfoDocument populated from claims
+    """
+    terminal_info = TerminalInfoDocument(
+        tenant_id=claims.get("tenant_id"),
+        store_code=claims.get("store_code"),
+        terminal_no=claims.get("terminal_no"),
+        terminal_id=claims.get("terminal_id"),
+        status=claims.get("status"),
+        business_date=claims.get("business_date"),
+        open_counter=claims.get("open_counter"),
+        business_counter=claims.get("business_counter"),
+    )
+
+    # Reconstruct staff if present in claims
+    staff_id = claims.get("staff_id")
+    if staff_id:
+        terminal_info.staff = StaffMasterDocument(
+            tenant_id=claims.get("tenant_id"),
+            store_code=claims.get("store_code"),
+            id=staff_id,
+            name=claims.get("staff_name"),
+        )
+
+    return terminal_info
+
+
 """
 Authentication and authorization utilities for API Key-based authentication
 """
@@ -254,12 +321,13 @@ def transform_terminal_info(terminal_dict: dict) -> TerminalInfoDocument:
     return_terminal = TerminalInfoDocument(**terminal_dict)
     staff = terminal_dict.get("staff")
     if staff:
+        # Handle both camelCase (from HTTP API) and snake_case (from DB) field names
         staff_dict = {
             "tenant_id": return_terminal.tenant_id,
             "store_code": return_terminal.store_code,
-            "id": staff.get("staffId"),
-            "name": staff.get("staffName"),
-            "pin": staff.get("staffPin")
+            "id": staff.get("staffId") or staff.get("id"),
+            "name": staff.get("staffName") or staff.get("name"),
+            "pin": staff.get("staffPin") or staff.get("pin")
         }
         return_terminal.staff = StaffMasterDocument(**staff_dict)
     return return_terminal
@@ -274,31 +342,48 @@ async def __get_tenant_id(
     is_terminal_service: Optional[bool] = False
 ):
     """
-    Internal helper function to retrieve tenant ID using either API key or OAuth token.
-    
+    Internal helper function to retrieve tenant ID using API key, terminal JWT, or user JWT.
+
+    Authentication priority (per contracts/terminal-auth-api.md):
+    1. Bearer token with token_type="terminal" (terminal JWT - local verification)
+    2. Bearer token (user JWT - existing OAuth2 flow)
+    3. X-API-KEY + terminal_id (legacy API key flow)
+
     Args:
         terminal_id: Optional terminal ID if using API key authentication
         api_key: Optional API key for terminal-based authentication
-        token: Optional OAuth token for user-based authentication
+        token: Optional OAuth/JWT token for token-based authentication
         is_terminal_service: Whether the caller is the terminal service itself
-        
+
     Returns:
         Tenant ID string
-        
+
     Raises:
-        HTTPException: If neither valid API key nor token is provided
+        HTTPException: If no valid authentication is provided
     """
+    # Priority 1 & 2: Try token-based authentication first
+    if token:
+        # Priority 1: Try terminal JWT (token_type="terminal")
+        try:
+            terminal_claims = verify_terminal_token(token)
+            logger.debug(f"Terminal JWT verified for {terminal_claims.get('terminal_id')}")
+            return terminal_claims.get("tenant_id")
+        except HTTPException:
+            pass  # Not a terminal token, fall through to user JWT
+
+        # Priority 2: Try user JWT (existing OAuth2 flow)
+        logger.debug("Token provided, trying user JWT")
+        user_dict = await get_current_user(token)
+        return user_dict.get("tenant_id")
+
+    # Priority 3: API key authentication (legacy flow)
     if terminal_id and api_key:
         logger.debug(f"Terminal_id: {terminal_id}, and API-KEY provided")
         terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service)
         return terminal_info.tenant_id
-    elif token:
-        logger.debug(f"Token provided")
-        user_dict = await get_current_user(token)
-        return user_dict.get("tenant_id")
-    else:
-        message = "Unauthorized access : No token or API-KEY provided"
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
+    message = "Unauthorized access : No token or API-KEY provided"
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
 
 async def get_tenant_id_with_security(
     terminal_id: str = Path(..., description="terminal_id should be provided in the path"),

@@ -32,6 +32,8 @@ test_files=(
     "tests/test_api_journal.py"
     "tests/test_api_tenant.py"
     "tests/test_api_tran.py"
+    # JWT auth integration tests
+    "tests/test_journal_jwt_auth.py"
 )
 
 TOTAL_TESTS=${#test_files[@]}

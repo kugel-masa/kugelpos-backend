@@ -68,8 +68,13 @@ class StoreInfoWebRepository():
         """
         store_code = self.terminal_info.store_code
         async with get_service_client("terminal") as client:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {"terminal_id": self.terminal_info.terminal_id}
+            jwt_token = getattr(self.terminal_info, "jwt_token", None)
+            if jwt_token:
+                headers = {"Authorization": f"Bearer {jwt_token}"}
+                params = {}
+            else:
+                headers = {"X-API-KEY": self.terminal_info.api_key}
+                params = {"terminal_id": self.terminal_info.terminal_id}
             endpoint = f"/tenants/{self.tenant_id}/stores/{store_code}"
             
             try:

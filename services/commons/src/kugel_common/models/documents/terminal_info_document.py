@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Optional
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from kugel_common.utils.misc import to_lower_camel
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
@@ -39,6 +39,7 @@ class TerminalInfoDocument(AbstractDocument):
     initial_amount: Optional[float] = None
     physical_amount: Optional[float] = None
     api_key: Optional[str] = None
+    jwt_token: Optional[str] = Field(default=None, exclude=True)
     tags: Optional[list[str]] = None
 
     # camel case

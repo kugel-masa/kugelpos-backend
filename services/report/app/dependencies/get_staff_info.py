@@ -4,11 +4,11 @@
 Dependency injection functions for extracting staff information from requests.
 """
 
-from fastapi import Depends, Query, Security
+from fastapi import Depends, HTTPException, Query, Security
 from typing import Optional
 from logging import getLogger
 
-from kugel_common.security import api_key_header, oauth2_scheme, get_terminal_info, get_current_user
+from kugel_common.security import api_key_header, oauth2_scheme, get_terminal_info, get_current_user, verify_terminal_token
 
 logger = getLogger(__name__)
 
@@ -52,7 +52,18 @@ async def get_requesting_staff_id(
 
         # If using JWT token authentication
         elif token:
-            # no journal info created for JWT tokens
+            # Try terminal JWT first to extract staff_id from claims
+            try:
+                terminal_claims = verify_terminal_token(token)
+                staff_id = terminal_claims.get("staff_id")
+                if staff_id:
+                    logger.debug(f"Found staff ID from terminal JWT: {staff_id}")
+                    return staff_id
+                logger.debug("Terminal JWT has no staff_id (not signed in)")
+                return None
+            except HTTPException:
+                pass  # Not a terminal token, fall through
+            # User JWT - no staff info available
             return None
 
     except Exception as e:

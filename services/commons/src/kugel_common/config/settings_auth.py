@@ -38,3 +38,4 @@ class AuthSettings(BaseSettings):
     TOKEN_URL: str = "http://localhost:8000/api/v1/accounts/token"
     TOKEN_EXPIRE_MINUTES: int = 30
     PUBSUB_NOTIFY_API_KEY: str = "test-api-key-for-development-only"  # Override with environment variable in production
+    TERMINAL_TOKEN_EXPIRE_HOURS: int = 24

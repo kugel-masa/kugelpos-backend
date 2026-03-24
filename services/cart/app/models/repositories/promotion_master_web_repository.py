@@ -57,11 +57,16 @@ class PromotionMasterWebRepository:
             store_code = self.terminal_info.store_code
 
         client = await get_pooled_client("master-data")
-        headers = {"X-API-KEY": self.terminal_info.api_key}
-        params = {
-            "storeCode": store_code,
-            "terminal_id": self.terminal_info.terminal_id,  # Required for API key authentication
-        }
+        jwt_token = getattr(self.terminal_info, "jwt_token", None)
+        if jwt_token:
+            headers = {"Authorization": f"Bearer {jwt_token}"}
+            params = {"storeCode": store_code}
+        else:
+            headers = {"X-API-KEY": self.terminal_info.api_key}
+            params = {
+                "storeCode": store_code,
+                "terminal_id": self.terminal_info.terminal_id,
+            }
         endpoint = f"/tenants/{self.tenant_id}/promotions/active"
 
         try:

@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from fastapi import APIRouter, status, HTTPException, Depends, Query, Path
+from fastapi import APIRouter, status, HTTPException, Depends, Query, Path, Response
 from logging import getLogger
 import inspect
 from typing import Optional
@@ -7,6 +7,7 @@ from typing import Optional
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.status_codes import StatusCodes
 
+from kugel_common.utils.terminal_auth import create_terminal_token
 from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.api.v1.schemas import *
 from app.dependencies.get_terminal_service import (
@@ -341,6 +342,7 @@ async def update_terminal_function_mode(
 async def terminal_signin(
     terminal_id: str,
     terminal_signin: TerminalSignInRequest,
+    http_response: Response,
     tenant_id: str = Depends(get_tenant_id_with_security_wrapper),
 ):
     """
@@ -348,10 +350,12 @@ async def terminal_signin(
 
     This endpoint associates a staff member with a terminal for the duration of their shift.
     A terminal must have a staff member signed in before most operations can be performed.
+    Returns an X-New-Token header with updated JWT reflecting the new staff assignment.
 
     Args:
         terminal_id: ID of the terminal to sign into
         terminal_signin: Sign-in request containing staff ID
+        http_response: FastAPI Response object for setting headers
         tenant_id: Tenant ID extracted from authentication
 
     Returns:
@@ -365,6 +369,9 @@ async def terminal_signin(
         return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
     except Exception as e:
         raise e
+
+    # Issue new JWT with updated staff claims
+    http_response.headers["X-New-Token"] = create_terminal_token(terminal_info)
 
     response = ApiResponse(
         success=True,
@@ -388,15 +395,21 @@ async def terminal_signin(
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
     },
 )
-async def terminal_signout(terminal_id: str, tenant_id: str = Depends(get_tenant_id_with_security_wrapper)):
+async def terminal_signout(
+    terminal_id: str,
+    http_response: Response,
+    tenant_id: str = Depends(get_tenant_id_with_security_wrapper),
+):
     """
     Sign out from a terminal
 
     This endpoint removes the current staff association from a terminal
     at the end of their shift or when changing operators.
+    Returns an X-New-Token header with updated JWT reflecting staff removal.
 
     Args:
         terminal_id: ID of the terminal to sign out from
+        http_response: FastAPI Response object for setting headers
         tenant_id: Tenant ID extracted from authentication
 
     Returns:
@@ -409,6 +422,9 @@ async def terminal_signout(terminal_id: str, tenant_id: str = Depends(get_tenant
         return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
     except Exception as e:
         raise e
+
+    # Issue new JWT with staff claims removed
+    http_response.headers["X-New-Token"] = create_terminal_token(terminal_info)
 
     response = ApiResponse(
         success=True,
@@ -434,6 +450,7 @@ async def terminal_signout(terminal_id: str, tenant_id: str = Depends(get_tenant
 )
 async def terminal_open(
     terminal_id: str,
+    http_response: Response,
     terminal_open: TerminalOpenRequest = None,
     tenant_id: str = Depends(get_tenant_id_with_security_wrapper),
 ):
@@ -443,9 +460,11 @@ async def terminal_open(
     This endpoint transitions a terminal to the 'opened' state,
     making it ready for sales and other business operations.
     It also records the initial cash amount in the drawer.
+    Returns an X-New-Token header with updated JWT reflecting opened state.
 
     Args:
         terminal_id: ID of the terminal to open
+        http_response: FastAPI Response object for setting headers
         terminal_open: Open request containing initial cash amount
         tenant_id: Tenant ID extracted from authentication
 
@@ -461,6 +480,10 @@ async def terminal_open(
         return_json = SchemasTransformerV1().transform_open_log(open_log).model_dump()
     except Exception as e:
         raise e
+
+    # Fetch updated terminal info for JWT (open changes status, counters, business_date)
+    updated_info = await terminal_service.get_terminal_info_async()
+    http_response.headers["X-New-Token"] = create_terminal_token(updated_info)
 
     response = ApiResponse(
         success=True,
@@ -486,6 +509,7 @@ async def terminal_open(
 )
 async def terminal_close(
     terminal_id: str,
+    http_response: Response,
     terminal_close: TerminalCloseRequest = None,
     tenant_id: str = Depends(get_tenant_id_with_security_wrapper),
 ):
@@ -495,9 +519,11 @@ async def terminal_close(
     This endpoint transitions a terminal to the 'closed' state,
     ending the current business session. It records the final
     physical cash amount in the drawer and creates a closing report.
+    Returns an X-New-Token header with updated JWT reflecting closed state.
 
     Args:
         terminal_id: ID of the terminal to close
+        http_response: FastAPI Response object for setting headers
         terminal_close: Close request containing final physical cash amount
         tenant_id: Tenant ID extracted from authentication
 
@@ -513,6 +539,10 @@ async def terminal_close(
         return_json = SchemasTransformerV1().transform_close_log(close_log).model_dump()
     except Exception as e:
         raise e
+
+    # Fetch updated terminal info for JWT (close changes status)
+    updated_info = await terminal_service.get_terminal_info_async()
+    http_response.headers["X-New-Token"] = create_terminal_token(updated_info)
 
     response = ApiResponse(
         success=True,

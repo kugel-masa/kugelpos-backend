@@ -127,13 +127,13 @@ Phase 2-4: report Implementation
 
 | File | Description |
 |------|-------------|
-| `specs/1-category-promo/spec.md` | Functional specification |
-| `specs/1-category-promo/spec_review.md` | Review record |
-| `specs/1-category-promo/plan.md` | Implementation plan (this file) |
-| `specs/1-category-promo/data-model.md` | Data model design |
-| `specs/1-category-promo/contracts/` | API contracts |
-| `specs/1-category-promo/tasks.md` | Detailed task list |
-| `specs/1-category-promo/checklists/requirements.md` | Specification quality checklist |
+| `specs/59-category-promo/spec.md` | Functional specification |
+| `specs/59-category-promo/spec_review.md` | Review record |
+| `specs/59-category-promo/plan.md` | Implementation plan (this file) |
+| `specs/59-category-promo/data-model.md` | Data model design |
+| `specs/59-category-promo/contracts/` | API contracts |
+| `specs/59-category-promo/tasks.md` | Detailed task list |
+| `specs/59-category-promo/checklists/requirements.md` | Specification quality checklist |
 
 ## Risks and Mitigations
 
