@@ -321,12 +321,13 @@ def transform_terminal_info(terminal_dict: dict) -> TerminalInfoDocument:
     return_terminal = TerminalInfoDocument(**terminal_dict)
     staff = terminal_dict.get("staff")
     if staff:
+        # Handle both camelCase (from HTTP API) and snake_case (from DB) field names
         staff_dict = {
             "tenant_id": return_terminal.tenant_id,
             "store_code": return_terminal.store_code,
-            "id": staff.get("staffId"),
-            "name": staff.get("staffName"),
-            "pin": staff.get("staffPin")
+            "id": staff.get("staffId") or staff.get("id"),
+            "name": staff.get("staffName") or staff.get("name"),
+            "pin": staff.get("staffPin") or staff.get("pin")
         }
         return_terminal.staff = StaffMasterDocument(**staff_dict)
     return return_terminal
