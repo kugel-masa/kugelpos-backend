@@ -63,6 +63,7 @@ def create_terminal_token(
     else:
         expire = datetime.now(timezone.utc) + timedelta(hours=settings.TERMINAL_TOKEN_EXPIRE_HOURS)
 
+    claims["iat"] = datetime.now(timezone.utc)
     claims["exp"] = expire
 
     encoded_jwt = jwt.encode(claims, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

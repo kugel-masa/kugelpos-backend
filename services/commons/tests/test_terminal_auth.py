@@ -62,6 +62,7 @@ class TestCreateTerminalToken:
         assert claims["status"] == "Idle"
         assert claims["token_type"] == "terminal"
         assert claims["iss"] == "terminal-service"
+        assert "iat" in claims
         assert "exp" in claims
 
     def test_staff_claims_included_when_signed_in(self):

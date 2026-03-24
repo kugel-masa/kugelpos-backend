@@ -2,7 +2,7 @@
 Terminal info cache dependency for cart service.
 """
 
-from fastapi import Depends, Query, Security
+from fastapi import Depends, HTTPException, Query, Security, status
 from typing import Optional, List
 from logging import getLogger
 
@@ -90,7 +90,7 @@ async def get_terminal_info_with_jwt_or_cache(
             terminal_info.jwt_token = token
             logger.debug(f"Terminal info for {terminal_info.terminal_id} from JWT claims")
             return terminal_info
-        except Exception:
+        except HTTPException:
             pass  # Not a terminal JWT, fall through to legacy
 
     # Priority 2: Legacy API key + cache flow
@@ -98,7 +98,6 @@ async def get_terminal_info_with_jwt_or_cache(
         return await get_terminal_info_with_cache(terminal_id, api_key)
 
     # No valid authentication
-    from fastapi import HTTPException, status
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Terminal JWT or API key required",

@@ -4,7 +4,7 @@
 Dependency injection functions for extracting staff information from requests.
 """
 
-from fastapi import Depends, Query, Security
+from fastapi import Depends, HTTPException, Query, Security
 from typing import Optional
 from logging import getLogger
 
@@ -61,7 +61,7 @@ async def get_requesting_staff_id(
                     return staff_id
                 logger.debug("Terminal JWT has no staff_id (not signed in)")
                 return None
-            except Exception:
+            except HTTPException:
                 pass  # Not a terminal token, fall through
             # User JWT - no staff info available
             return None
