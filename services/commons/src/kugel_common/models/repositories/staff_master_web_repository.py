@@ -70,8 +70,13 @@ class StaffMasterWebRepository():
             RepositoryException: If there's an error communicating with the API
         """
         async with get_service_client("master-data") as client:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {"terminal_id": self.terminal_info.terminal_id}
+            jwt_token = getattr(self.terminal_info, "jwt_token", None)
+            if jwt_token:
+                headers = {"Authorization": f"Bearer {jwt_token}"}
+                params = {}
+            else:
+                headers = {"X-API-KEY": self.terminal_info.api_key}
+                params = {"terminal_id": self.terminal_info.terminal_id}
             endpoint = f"/tenants/{self.tenant_id}/staff/{id}"
             
             logger.debug(f"endpoint: {endpoint}, params: {params}, headers: {headers}")

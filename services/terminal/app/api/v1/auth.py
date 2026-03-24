@@ -88,7 +88,8 @@ async def _get_terminal_info_by_api_key(api_key: str):
         HTTPException: If the API key is invalid or terminal not found
     """
     from kugel_common.database import database as db_helper
-    from kugel_common.security import transform_terminal_info
+    from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+    from kugel_common.models.documents.staff_master_document import StaffMasterDocument
     from app.config.settings import settings as app_settings
 
     # Search for terminal with this API key across known tenant databases
@@ -106,7 +107,18 @@ async def _get_terminal_info_by_api_key(api_key: str):
 
         if terminal_dict:
             logger.debug(f"Found terminal with API key in database {db_name}")
-            return transform_terminal_info(terminal_dict)
+            # Build TerminalInfoDocument directly from DB (snake_case fields)
+            terminal_info = TerminalInfoDocument(**terminal_dict)
+            staff_data = terminal_dict.get("staff")
+            if staff_data and staff_data.get("id"):
+                terminal_info.staff = StaffMasterDocument(
+                    tenant_id=terminal_info.tenant_id,
+                    store_code=terminal_info.store_code,
+                    id=staff_data.get("id"),
+                    name=staff_data.get("name"),
+                    pin=staff_data.get("pin"),
+                )
+            return terminal_info
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

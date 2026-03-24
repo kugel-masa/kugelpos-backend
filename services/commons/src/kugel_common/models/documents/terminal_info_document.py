@@ -39,6 +39,7 @@ class TerminalInfoDocument(AbstractDocument):
     initial_amount: Optional[float] = None
     physical_amount: Optional[float] = None
     api_key: Optional[str] = None
+    jwt_token: Optional[str] = None
     tags: Optional[list[str]] = None
 
     # camel case
