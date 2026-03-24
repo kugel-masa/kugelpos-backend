@@ -29,6 +29,7 @@ test_files=(
     "tests/test_health.py"
     "tests/test_cart.py"
     "tests/test_cart_jwt_auth.py"
+    "tests/test_cart_jwt_full.py"
     "tests/test_category_promo.py"
     "tests/test_void_return.py"
     "tests/test_payment_cashless_error.py"
