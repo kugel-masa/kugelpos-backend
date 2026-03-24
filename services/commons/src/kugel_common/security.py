@@ -126,6 +126,73 @@ async def get_service_account_info(token: str = Depends(oauth2_scheme)):
         )
     return user_info
 
+def verify_terminal_token(token: str) -> dict:
+    """
+    Verify a terminal JWT token and return its claims.
+
+    Validates signature, expiration, and ensures token_type is "terminal".
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Dictionary of decoded claims
+
+    Raises:
+        HTTPException: If token is invalid, expired, or not a terminal token
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired terminal token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("token_type") != "terminal":
+            raise credentials_exception
+        if payload.get("tenant_id") is None:
+            raise credentials_exception
+        logger.debug(f"Verified terminal token for {payload.get('terminal_id')}")
+        return payload
+    except JWTError:
+        raise credentials_exception
+
+
+def terminal_claims_to_terminal_info(claims: dict) -> TerminalInfoDocument:
+    """
+    Convert JWT claims to a TerminalInfoDocument-compatible object.
+
+    Args:
+        claims: Decoded JWT claims dictionary
+
+    Returns:
+        TerminalInfoDocument populated from claims
+    """
+    terminal_info = TerminalInfoDocument(
+        tenant_id=claims.get("tenant_id"),
+        store_code=claims.get("store_code"),
+        terminal_no=claims.get("terminal_no"),
+        terminal_id=claims.get("terminal_id"),
+        status=claims.get("status"),
+        business_date=claims.get("business_date"),
+        open_counter=claims.get("open_counter"),
+        business_counter=claims.get("business_counter"),
+    )
+
+    # Reconstruct staff if present in claims
+    staff_id = claims.get("staff_id")
+    if staff_id:
+        terminal_info.staff = StaffMasterDocument(
+            tenant_id=claims.get("tenant_id"),
+            store_code=claims.get("store_code"),
+            id=staff_id,
+            name=claims.get("staff_name"),
+        )
+
+    return terminal_info
+
+
 """
 Authentication and authorization utilities for API Key-based authentication
 """

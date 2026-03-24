@@ -19,7 +19,7 @@
 
 **Purpose**: 共通設定にターミナルJWT有効期限の設定項目を追加
 
-- [ ] T001 `TERMINAL_TOKEN_EXPIRE_HOURS: int = 24` を `services/commons/src/kugel_common/config/settings_auth.py` に追加
+- [x] T001 `TERMINAL_TOKEN_EXPIRE_HOURS: int = 24` を `services/commons/src/kugel_common/config/settings_auth.py` に追加
 
 ---
 
@@ -29,9 +29,9 @@
 
 **CRITICAL**: このフェーズが完了するまでユーザーストーリーの実装は開始不可
 
-- [ ] T002 [P] `create_terminal_token()` 関数を新規ファイル `services/commons/src/kugel_common/utils/terminal_auth.py` に実装。TerminalInfoDocumentからJWTクレームを構築し、token_type="terminal", iss="terminal-service" を固定設定、SECRET_KEY + HS256 で署名。data-model.md のクレーム定義に準拠
-- [ ] T003 [P] `verify_terminal_token()` と `terminal_claims_to_terminal_info()` 関数を `services/commons/src/kugel_common/security.py` に追加。token_type="terminal" の検証、署名・有効期限チェック、JWTクレームからTerminalInfoDocument互換オブジェクトへの変換
-- [ ] T004 JWT生成・検証のユニットテストを `services/commons/tests/` に作成。正常系（クレーム検証）、有効期限切れ、不正署名、token_type不一致のテストケースを含む
+- [x] T002 [P] `create_terminal_token()` 関数を新規ファイル `services/commons/src/kugel_common/utils/terminal_auth.py` に実装。TerminalInfoDocumentからJWTクレームを構築し、token_type="terminal", iss="terminal-service" を固定設定、SECRET_KEY + HS256 で署名。data-model.md のクレーム定義に準拠
+- [x] T003 [P] `verify_terminal_token()` と `terminal_claims_to_terminal_info()` 関数を `services/commons/src/kugel_common/security.py` に追加。token_type="terminal" の検証、署名・有効期限チェック、JWTクレームからTerminalInfoDocument互換オブジェクトへの変換
+- [x] T004 JWT生成・検証のユニットテストを `services/commons/tests/` に作成。正常系（クレーム検証）、有効期限切れ、不正署名、token_type不一致のテストケースを含む
 
 **Checkpoint**: JWT生成・検証の基盤が動作。`create_terminal_token()` → JWT → `verify_terminal_token()` → クレーム → `terminal_claims_to_terminal_info()` → TerminalInfoDocument の往復が検証済み
 
