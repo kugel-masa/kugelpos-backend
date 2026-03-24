@@ -78,7 +78,11 @@ class TranlogWebRepository:
         terminal_no = self.terminal_info.terminal_no
 
         async with get_service_client("cart") as client:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
+            jwt_token = getattr(self.terminal_info, "jwt_token", None)
+            if jwt_token:
+                headers = {"Authorization": f"Bearer {jwt_token}"}
+            else:
+                headers = {"X-API-KEY": self.terminal_info.api_key}
             params = {
                 "terminal_id": self.terminal_info.terminal_id,
                 "business_date": business_date,
