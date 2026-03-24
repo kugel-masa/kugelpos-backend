@@ -99,7 +99,7 @@ Cartサービスがターミナルサービスからterminal_infoを取得する
 ### 機能要件
 
 - **FR-001**: ターミナルサービスにPOST /auth/tokenエンドポイントを提供し、X-API-KEYを受け付けて署名済みJWTを返すこと。
-- **FR-002**: ターミナルJWTに以下のクレームを含めること: tenant_id、store_code、terminal_no、terminal_id、staff_id、staff_name、business_date、open_counter、business_counter、status、iss（"terminal-service"）、token_type（"terminal"）、iat、exp。
+- **FR-002**: ターミナルJWTに以下のクレームを含めること: sub（"terminal:{terminal_id}"形式）、tenant_id、store_code、terminal_no、terminal_id、staff_id、staff_name、business_date、open_counter、business_counter、status、iss（"terminal-service"）、token_type（"terminal"）、iat、exp。
 - **FR-003**: ターミナルのライフサイクル状態変更時（open、sign-in、sign-out、close）にX-New-Tokenレスポンスヘッダーで新しいJWTを再発行すること。
 - **FR-004**: JWTの有効期限をデフォルト24時間とし、設定で変更可能とすること。
 - **FR-005**: kugel_common/security.pyに署名、有効期限、token_typeを検証するターミナルJWT検証関数を提供すること。
