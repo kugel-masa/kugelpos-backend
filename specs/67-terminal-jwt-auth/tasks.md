@@ -107,9 +107,9 @@
 
 ### Implementation
 
-- [ ] T015 [US5] `services/cart/app/dependencies/terminal_cache_dependency.py` に `get_terminal_info_with_jwt_or_cache()` を追加。JWTが提供された場合はクレームから `terminal_claims_to_terminal_info()` でTerminalInfoDocumentを構築（HTTP呼び出しなし）。構築時にjwt_tokenフィールドにも元のJWT文字列を保持し、T016のWebリポジトリでJWT転送に利用可能にする。APIキーが提供された場合は既存のキャッシュ付きフロー（後方互換、jwt_token=None）
-- [ ] T016 [US5] CartのWebリポジトリ（`services/cart/app/` 内の PaymentMasterWebRepository, ItemMasterWebRepository, SettingsMasterWebRepository）を修正。JWT利用可能時は `Authorization: Bearer <jwt>` ヘッダーで master-data を呼び出し。JWT未利用時は既存の `X-API-KEY` ヘッダー（後方互換）
-- [ ] T017 [US5] `services/cart/app/api/v1/tran.py` を修正し、JWT転送に対応。依存関数の切り替えを適用
+- [x] T015 [US5] `services/cart/app/dependencies/terminal_cache_dependency.py` に `get_terminal_info_with_jwt_or_cache()` を追加。JWTが提供された場合はクレームから `terminal_claims_to_terminal_info()` でTerminalInfoDocumentを構築（HTTP呼び出しなし）。構築時にjwt_tokenフィールドにも元のJWT文字列を保持し、T016のWebリポジトリでJWT転送に利用可能にする。APIキーが提供された場合は既存のキャッシュ付きフロー（後方互換、jwt_token=None）
+- [x] T016 [US5] CartのWebリポジトリ（`services/cart/app/` 内の PaymentMasterWebRepository, ItemMasterWebRepository, SettingsMasterWebRepository）を修正。JWT利用可能時は `Authorization: Bearer <jwt>` ヘッダーで master-data を呼び出し。JWT未利用時は既存の `X-API-KEY` ヘッダー（後方互換）
+- [x] T017 [US5] `services/cart/app/api/v1/tran.py` を修正し、JWT転送に対応。依存関数の切り替えを適用
 - [ ] T018 [US5] CartサービスのJWT対応テストを `services/cart/tests/` に作成。JWT提供時のTerminalInfoDocument構築、JWT転送でのmaster-data呼び出し、APIキー提供時の既存フロー（後方互換）のテストケース
 
 **Checkpoint**: Cartサービスがターミナルサービスへの認証呼び出しなしに動作し、master-dataへのJWT転送が機能

@@ -2,11 +2,17 @@
 Terminal info cache dependency for cart service.
 """
 
-from fastapi import Query, Security
+from fastapi import Depends, Query, Security
 from typing import Optional, List
 from logging import getLogger
 
-from kugel_common.security import api_key_header, get_terminal_info_from_terminal_service
+from kugel_common.security import (
+    api_key_header,
+    oauth2_scheme,
+    get_terminal_info_from_terminal_service,
+    verify_terminal_token,
+    terminal_claims_to_terminal_info,
+)
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.utils.terminal_cache import TerminalInfoCache
 from app.config.settings import settings
@@ -50,6 +56,53 @@ async def get_terminal_info_with_cache(
     logger.debug(f"Terminal info for {terminal_id} cached")
 
     return terminal_info
+
+
+async def get_terminal_info_with_jwt_or_cache(
+    terminal_id: Optional[str] = Query(None),
+    api_key: Optional[str] = Security(api_key_header),
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> TerminalInfoDocument:
+    """
+    FastAPI dependency that retrieves terminal info from JWT claims or cache.
+
+    Priority:
+    1. If a terminal JWT is provided, extract claims directly (no HTTP call)
+    2. If API key is provided, use the cached terminal service lookup (legacy)
+
+    The returned TerminalInfoDocument includes a jwt_token attribute when
+    constructed from JWT, enabling downstream JWT forwarding to master-data.
+
+    Args:
+        terminal_id: Optional terminal ID from query parameter (legacy flow)
+        api_key: Optional API key from header (legacy flow)
+        token: Optional Bearer token from Authorization header
+
+    Returns:
+        TerminalInfoDocument containing the terminal information
+    """
+    # Priority 1: Try terminal JWT
+    if token:
+        try:
+            claims = verify_terminal_token(token)
+            terminal_info = terminal_claims_to_terminal_info(claims)
+            # Store the original JWT for forwarding to other services
+            terminal_info.jwt_token = token
+            logger.debug(f"Terminal info for {terminal_info.terminal_id} from JWT claims")
+            return terminal_info
+        except Exception:
+            pass  # Not a terminal JWT, fall through to legacy
+
+    # Priority 2: Legacy API key + cache flow
+    if terminal_id and api_key:
+        return await get_terminal_info_with_cache(terminal_id, api_key)
+
+    # No valid authentication
+    from fastapi import HTTPException, status
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Terminal JWT or API key required",
+    )
 
 
 def clear_terminal_cache(tenant_id: Optional[str] = None) -> None:
