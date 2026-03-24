@@ -1,207 +1,207 @@
-# Upstream Changes Proposal — Kugelpos Backend
+# アップストリーム変更提案書 — Kugelpos Backend
 
-**Date**: 2026-03-24
-**Author**: masa@kugel
-**Purpose**: Decision material for fork maintainers on whether to adopt recent upstream changes
-**Target audience**: Project members of the forked repository
-
----
-
-## Executive Summary
-
-Three feature sets have been developed on the upstream repository since the last sync point. This document provides an objective evaluation of each to help you decide which to adopt, defer, or skip.
-
-| Change Set | Type | Risk | Effort to Adopt | Recommendation |
-|-----------|------|------|----------------|----------------|
-| **Category Promotion** (#58+#64) | New Feature | Low | Medium | Adopt if promotions are planned |
-| **Unit Test Coverage** (#62) | Quality | Very Low | Low | **Strongly recommend** |
-| **Terminal JWT Auth** (#67) | Architecture | Medium | High | **Strongly recommend** |
+**日付**: 2026-03-24
+**作成者**: masa@kugel
+**目的**: フォーク先のプロジェクトメンバーが、最近のアップストリーム変更を取り込むかどうかを判断するための資料
+**対象読者**: フォーク先リポジトリのプロジェクトメンバー
 
 ---
 
-## 1. Category-Based Promotion System
+## エグゼクティブサマリー
 
-**Issues**: #58 (feature) + #64 (bugfix)
-**PRs**: #59, #65, #66
-**Status**: Merged
-**Scale**: +8,321 / -66 lines, 54 files across 4 services
+前回の同期以降、アップストリームリポジトリで3つの変更セットが開発されました。本資料では、各変更セットを客観的に評価し、取り込み・延期・スキップの判断材料を提供します。
 
-### What It Does
+| 変更セット | 種別 | リスク | 取り込み工数 | 推奨 |
+|-----------|------|--------|------------|------|
+| **カテゴリプロモーション** (#58+#64) | 新機能 | 低 | 中 | プロモーション計画があれば取り込み |
+| **ユニットテスト拡充** (#62) | 品質向上 | 極低 | 低 | **強く推奨** |
+| **ターミナルJWT認証** (#67) | アーキテクチャ改善 | 中 | 高 | **強く推奨** |
 
-Adds an automatic percentage-discount system based on product category codes. When an item is added to the cart, the system checks if any active promotions match the item's category and applies the best discount rate.
+---
+
+## 1. カテゴリベースプロモーションシステム
+
+**Issue**: #58（機能）+ #64（バグ修正）
+**PR**: #59, #65, #66
+**ステータス**: マージ済み
+**規模**: +8,321 / -66行、54ファイル（4サービスに跨がる）
+
+### 概要
+
+商品カテゴリコードに基づく自動割引システム。カートに商品を追加すると、該当カテゴリに有効なプロモーションがあるか自動チェックし、最も有利な割引率を適用します。
 
 ```
-Customer buys item in category "CAT01"
-  → Promotion "10% off all CAT01 items" is active
-  → Discount automatically applied at subtotal
+顧客がカテゴリ「CAT01」の商品を購入
+  → プロモーション「CAT01全品10%OFF」が有効
+  → 小計計算時に自動的に割引を適用
 ```
 
-### Architecture
+### アーキテクチャ
 
-- **Plugin-based**: Implemented as a `sales_promo_strategy` plugin — no core cart logic modified
-- **Self-contained**: Plugin creates its own repository via `configure()`, following Open/Closed Principle
-- **Multi-service**: Spans commons, master-data (CRUD), cart (plugin), report (aggregation)
+- **プラグイン方式**: `sales_promo_strategy` プラグインとして実装。カートのコアロジックは変更なし
+- **自己完結型**: プラグインが `configure()` で独自のリポジトリを生成。開放閉鎖原則に準拠
+- **マルチサービス**: commons、master-data（CRUD）、cart（プラグイン）、report（集計）に跨がる
 
-### Services Affected
+### 影響を受けるサービス
 
-| Service | Change | Impact |
-|---------|--------|--------|
-| commons | `DiscountInfo` model extension | Low — additive field |
-| master-data | Promotion CRUD API (new endpoints) | None to existing endpoints |
-| cart | `CategoryPromoPlugin` loaded via `plugins.json` | None to existing cart logic |
-| report | `PromotionReportPlugin` for aggregation | None to existing reports |
+| サービス | 変更内容 | 既存機能への影響 |
+|---------|---------|---------------|
+| commons | `DiscountInfo` モデルのフィールド追加 | 低 — 追加のみ |
+| master-data | プロモーションCRUD API（新エンドポイント） | 既存エンドポイントへの影響なし |
+| cart | `CategoryPromoPlugin`（`plugins.json` で読み込み） | 既存カートロジックへの影響なし |
+| report | `PromotionReportPlugin`（集計用） | 既存レポートへの影響なし |
 
-### Adoption Considerations
+### 取り込み判断のポイント
 
-| Factor | Assessment |
-|--------|-----------|
-| **Breaking changes** | None. Plugin architecture means no existing code is modified |
-| **Merge conflicts** | Low risk. New files + minor model extensions |
-| **Can be deferred** | Yes. If promotions are not in your roadmap, this can be skipped entirely |
-| **Dependencies** | None. Self-contained feature |
-| **Test coverage** | Integration tests included. #64 fixes a redundant calculation bug |
+| 観点 | 評価 |
+|------|------|
+| **破壊的変更** | なし。プラグイン方式のため既存コードは未変更 |
+| **マージコンフリクト** | 低リスク。新規ファイル + 軽微なモデル拡張 |
+| **延期可能か** | 可能。プロモーションがロードマップにない場合はスキップ可 |
+| **他機能への依存** | なし。自己完結型 |
+| **テストカバレッジ** | 統合テスト付き。#64 は冗長な計算のバグ修正 |
 
-### Recommendation
+### 推奨
 
-**Adopt if category promotions are in your roadmap.** Skip if not — the plugin architecture ensures zero impact on existing functionality either way. The #64 bugfix is only relevant if #58 is adopted.
+**カテゴリプロモーションがロードマップにある場合は取り込みを推奨。** ない場合はスキップ可能。プラグイン方式のため、取り込まなくても既存機能への影響はゼロです。#64 のバグ修正は #58 を取り込む場合のみ関連します。
 
 ---
 
-## 2. Unit Test Coverage Improvement
+## 2. ユニットテストカバレッジ拡充
 
 **Issue**: #62
 **PR**: #63
-**Status**: Merged
-**Scale**: +24,071 / -28 lines, 80 files across all 7 services
+**ステータス**: マージ済み
+**規模**: +24,071 / -28行、80ファイル（全7サービス）
 
-### What It Does
+### 概要
 
-Adds comprehensive unit tests using `AsyncMock`/`MagicMock` for repository dependencies. Tests run without any running services (no Docker, no MongoDB, no Dapr required).
+`AsyncMock`/`MagicMock` を使用したリポジトリ依存のユニットテストを包括的に追加。サービス起動不要（Docker、MongoDB、Dapr なし）でテスト実行可能。
 
-### Coverage Before → After
+### カバレッジの変化
 
-| Service | Before | After | Key Areas Covered |
-|---------|--------|-------|-------------------|
-| account | 0% | ~50% | Auth logic, token validation |
-| terminal | 5% | ~55% | Terminal/tenant service logic |
-| master-data | 18% | ~60% | Promotion, item, category, payment services |
-| cart | 29% | ~65% | State machine edge cases, CategoryPromoPlugin |
-| journal | 33% | ~70% | Log service branching, journal CRUD |
-| stock | 20% | ~55% | Stock API, snapshot, alerts |
-| report | 54% | ~75% | Schema transformers, report endpoints |
+| サービス | 変更前 | 変更後 | 主なカバー領域 |
+|---------|-------|-------|-------------|
+| account | 0% | 約50% | 認証ロジック、トークン検証 |
+| terminal | 5% | 約55% | ターミナル/テナントサービスロジック |
+| master-data | 18% | 約60% | プロモーション、商品、カテゴリ、決済サービス |
+| cart | 29% | 約65% | ステートマシンのエッジケース、CategoryPromoPlugin |
+| journal | 33% | 約70% | ログサービス分岐、ジャーナルCRUD |
+| stock | 20% | 約55% | 在庫API、スナップショット、アラート |
+| report | 54% | 約75% | スキーマトランスフォーマー、レポートエンドポイント |
 
-### Adoption Considerations
+### 取り込み判断のポイント
 
-| Factor | Assessment |
-|--------|-----------|
-| **Breaking changes** | None. Test files only — no production code modified |
-| **Merge conflicts** | Very low. Tests are new files in `tests/` directories |
-| **Can be deferred** | Not recommended. Tests protect against regressions in future changes |
-| **Dependencies** | Partial dependency on #58 (CategoryPromoPlugin tests). Can be cherry-picked without |
-| **Maintenance cost** | Low. Tests use standard pytest + mock patterns |
+| 観点 | 評価 |
+|------|------|
+| **破壊的変更** | なし。テストファイルのみ — プロダクションコード未変更 |
+| **マージコンフリクト** | 極低。テストは `tests/` ディレクトリの新規ファイル |
+| **延期可能か** | 非推奨。テストは将来の変更時のリグレッション防止に有効 |
+| **他機能への依存** | #58 に部分的に依存（CategoryPromoPluginテスト）。個別にcherry-pick可能 |
+| **保守コスト** | 低。標準的な pytest + mock パターンを使用 |
 
-### Recommendation
+### 推奨
 
-**Strongly recommend adopting.** This is the lowest-risk, highest-value change set. Even if you skip #58 and #67, these tests will protect your existing codebase. Cherry-pick individual service test files if full adoption is not desired.
+**取り込みを強く推奨。** 最もリスクが低く、最も価値の高い変更セットです。#58 や #67 をスキップする場合でも、これらのテストは既存コードベースを保護します。全体取り込みが難しい場合は、サービス単位でcherry-pick可能です。
 
 ---
 
-## 3. Terminal JWT Authentication
+## 3. ターミナルJWT認証
 
 **Issue**: #67
 **PR**: #68
-**Status**: Open (pending review)
-**Scale**: +5,322 / -68 lines, 73 files across all services + commons
+**ステータス**: オープン（レビュー待ち）
+**規模**: +5,322 / -68行、73ファイル（全サービス + commons）
 
-### What It Does
+### 概要
 
-Replaces per-request API key verification (HTTP call to terminal service on every request) with JWT token-based authentication. Tokens are issued at terminal lifecycle events and verified locally by each service.
+リクエスト毎のAPIキー検証（ターミナルサービスへのHTTP呼び出し）を、JWTトークン認証に置き換え。トークンはターミナルのライフサイクルイベント時に発行され、各サービスでローカル検証を実現します。
 
-### Architecture Change
+### アーキテクチャの変化
 
 ```
-BEFORE (every request):
-  POS → [X-API-KEY] → Cart → [HTTP] → Terminal Service → DB lookup → response
-                            ↑ 50-100ms overhead per request
+変更前（リクエスト毎）:
+  POS → [X-API-KEY] → Cart → [HTTP呼び出し] → Terminal Service → DB検索 → 応答
+                             ↑ リクエスト毎に50〜100msのオーバーヘッド
 
-AFTER (JWT):
-  POS → [JWT] → Cart → Local verification (< 1ms) → response
-  JWT re-issued only at: open / sign-in / sign-out / close
+変更後（JWT）:
+  POS → [JWT] → Cart → ローカル検証（1ms未満）→ 応答
+  JWTの再発行タイミング: open / sign-in / sign-out / close のみ
 ```
 
-### Performance Impact
+### パフォーマンス改善効果
 
-Measured with Locust load tests (10 concurrent users, 2 minutes) on production configuration (gRPC + multi-worker):
+本番構成（gRPC有効 + マルチワーカー）でLocust負荷テストにより計測（同時10ユーザー、2分間）:
 
-| Metric | API Key Auth | JWT Auth | Improvement |
-|--------|:-----------:|:-------:|:----------:|
-| **Average response time** | 114ms | 36ms | **-68%** |
-| **P95 response time** | 200ms | 98ms | **-51%** |
-| **Add Item (avg)** | 101ms | 30ms | **-70%** |
-| **Add Item (P95)** | 200ms | 96ms | **-52%** |
+| 指標 | APIキー認証 | JWT認証 | 改善率 |
+|-----|:----------:|:------:|:-----:|
+| **平均レスポンスタイム** | 114ms | 36ms | **-68%** |
+| **P95レスポンスタイム** | 200ms | 98ms | **-51%** |
+| **商品追加（平均）** | 101ms | 30ms | **-70%** |
+| **商品追加（P95）** | 200ms | 96ms | **-52%** |
 
-### Services Affected
+### 影響を受けるサービス
 
-| Service | Change Type | Description |
-|---------|------------|-------------|
-| **commons** | Core change | JWT generation, verification, claims-to-model conversion, auth priority logic |
-| **terminal** | New endpoint + modification | `POST /auth/token`, X-New-Token header on lifecycle APIs |
-| **cart** | Significant modification | JWT-based dependency injection, 6 web repositories modified for JWT forwarding |
-| **report** | Minor modification | `get_requesting_staff_id` extracts staff_id from JWT claims |
-| **master-data, journal, stock** | No code change | Automatically supported via `__get_tenant_id()` modification in commons |
+| サービス | 変更種別 | 内容 |
+|---------|---------|------|
+| **commons** | コア変更 | JWT生成・検証・クレーム→モデル変換、認証優先順位ロジック |
+| **terminal** | 新エンドポイント + 既存修正 | `POST /auth/token`、ライフサイクルAPIにX-New-Tokenヘッダー |
+| **cart** | 大幅修正 | JWT対応依存関数注入、6つのWebリポジトリにJWT転送追加 |
+| **report** | 軽微な修正 | `get_requesting_staff_id` がJWTクレームからstaff_idを抽出 |
+| **master-data, journal, stock** | コード変更なし | commonsの `__get_tenant_id()` 修正で自動対応 |
 
-### Key Design Decisions
+### 主要な設計判断
 
-1. **Backward compatible**: API key auth continues to work. Auth priority: Terminal JWT → User JWT → API Key
-2. **No token revocation**: Tokens expire after 24h. Key rotation invalidates all tokens
-3. **Lifecycle re-issuance**: JWT is refreshed at state changes via `X-New-Token` response header
-4. **`jwt_token` on model**: Transport field added to `TerminalInfoDocument` with `Field(exclude=True)` to prevent DB persistence
+1. **後方互換**: APIキー認証は引き続き動作。認証優先順位: ターミナルJWT → ユーザーJWT → APIキー
+2. **トークン失効なし**: 24時間で有効期限切れ。鍵ローテーションで全トークンを無効化
+3. **ライフサイクル再発行**: 状態変更時に `X-New-Token` レスポンスヘッダーでJWTを更新
+4. **モデルへのjwt_token追加**: `TerminalInfoDocument` にトランスポート用フィールドを追加（`Field(exclude=True)` でDB永続化を防止）
 
-### Adoption Considerations
+### 取り込み判断のポイント
 
-| Factor | Assessment |
-|--------|-----------|
-| **Breaking changes** | None for API consumers. Full backward compatibility maintained |
-| **Merge conflicts** | Medium risk. `security.py`, `terminal.py`, and cart dependencies are heavily modified |
-| **Can be deferred** | Yes, but performance penalty continues. Most impactful under high load |
-| **Dependencies** | Requires #62 (unit tests) for full test coverage. Can work without #58 |
-| **Migration effort** | Client-side change needed: POS terminals must call `POST /auth/token` and store JWT. Existing API key flow continues working during migration |
-| **Rollback plan** | Remove JWT code paths. API key auth remains fully functional as fallback |
+| 観点 | 評価 |
+|------|------|
+| **破壊的変更** | APIコンシューマーに対してなし。完全な後方互換性を維持 |
+| **マージコンフリクト** | 中リスク。`security.py`、`terminal.py`、cart依存関数を大幅に修正 |
+| **延期可能か** | 可能。ただしパフォーマンスペナルティは継続。高負荷時に最も影響大 |
+| **他機能への依存** | #62（ユニットテスト）があると完全なテストカバレッジを得られる。#58 なしでも動作 |
+| **移行工数** | クライアント側の変更が必要: POSターミナルが `POST /auth/token` を呼び出しJWTを保存する。移行期間中は既存APIキー認証が継続動作 |
+| **ロールバック計画** | JWTコードパスを削除するだけ。APIキー認証がフォールバックとして完全に機能 |
 
-### Risk Assessment
+### リスク評価
 
-| Risk | Severity | Mitigation |
-|------|----------|-----------|
-| Shared SECRET_KEY compromise affects both user and terminal tokens | High | Monitor for anomalies; plan key rotation as future work |
-| JWT claims become stale between lifecycle events | Medium | 24h expiry limits staleness; lifecycle re-issuance covers most state changes |
-| Client fails to store X-New-Token | Low | Falls back to API key or stale JWT; backward compatibility ensures continued operation |
+| リスク | 深刻度 | 軽減策 |
+|--------|--------|--------|
+| 共有SECRET_KEYの漏洩がユーザー・ターミナル両方のトークンに影響 | 高 | 異常監視。鍵ローテーションを将来課題として計画 |
+| ライフサイクルイベント間でJWTクレームが古くなる | 中 | 24時間の有効期限で陳腐化を制限。ライフサイクル再発行がほとんどの状態変更をカバー |
+| クライアントがX-New-Tokenを保存しない | 低 | APIキーまたは古いJWTにフォールバック。後方互換性が継続動作を保証 |
 
-### Recommendation
+### 推奨
 
-**Strongly recommend adopting.** The 68% response time improvement is significant, especially for high-traffic POS operations. The backward-compatible design means zero client-side breakage during migration. The main adoption cost is merge conflict resolution in `security.py` and cart dependencies.
+**取り込みを強く推奨。** レスポンスタイム68%改善は、特に高トラフィックのPOS運用において大きな効果があります。後方互換設計のため、移行期間中のクライアント側の破壊的変更はゼロ。主な取り込みコストは `security.py` とcart依存関数のマージコンフリクト解消です。
 
 ---
 
-## Adoption Order
+## 取り込み順序の推奨
 
-If adopting all three, the recommended order is:
+### 全てを取り込む場合
 
 ```
-1. #62 (Unit Tests)     ← No risk, immediate value
-2. #58+#64 (Promotions) ← Independent feature, low conflict
-3. #67 (JWT Auth)       ← Largest change, benefits from #62 tests being in place
+1. #62（ユニットテスト）    ← リスクなし、即座に価値を発揮
+2. #58+#64（プロモーション）← 独立した機能、コンフリクト低
+3. #67（JWT認証）          ← 最大の変更。#62 のテストが先にあると安全
 ```
 
-If adopting selectively:
+### 選択的に取り込む場合
 
-- **Minimum**: #62 only (test coverage)
-- **Performance-focused**: #62 + #67 (tests + JWT auth)
-- **Feature-focused**: #62 + #58+#64 (tests + promotions)
+- **最小構成**: #62 のみ（テストカバレッジ）
+- **パフォーマンス重視**: #62 + #67（テスト + JWT認証）
+- **機能重視**: #62 + #58+#64（テスト + プロモーション）
 
 ---
 
-## Technical Contact
+## 技術的な問い合わせ
 
-For questions about implementation details, merge strategy, or migration planning:
+実装詳細、マージ戦略、移行計画についてのご質問:
 - GitHub: @kugel-masa
 - Issues: https://github.com/kugel-masa/kugelpos-backend/issues
