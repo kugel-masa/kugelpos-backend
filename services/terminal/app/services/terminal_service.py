@@ -677,7 +677,7 @@ class TerminalService:
             await self._publish_open_close_log(close_message)
         except Exception as e:
             message = f"Cannot publish open_close_log. terminal_id: {self.terminal_id}, terminal: {terminal}"
-            raise SystemError(message=message, logger=logger, original_exception=e)
+            raise TerminalCloseException(message=message, logger=logger, original_exception=e)
         return open_close_log
 
     # Terminal information retrieval methods
