@@ -6,44 +6,44 @@
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Cart as cart
+    participant POS
+    participant Cart
     participant Dapr as Dapr State
 
-    Client->>Cart: POST /cart/create
-    Cart->>Cart: ターミナル状態チェック
-    Cart->>Cart: スタッフサインインチェック
-    Cart->>Cart: 店舗情報/設定マスタ/税マスタ取得
-    Cart->>Cart: CartDocument 作成
-    Cart->>Dapr: カートキャッシュ保存
-    Cart-->>Client: cart_id 返却
+    POS->>Cart: POST /cart/create
+    Cart->>Cart: Terminal status check
+    Cart->>Cart: Staff sign-in check
+    Cart->>Cart: Get store/tax/settings master
+    Cart->>Cart: Create CartDocument
+    Cart->>Dapr: Save cart to cache
+    Cart-->>POS: cart_id
 ```
 
 ### After（変更後）
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Cart as cart
-    participant MD as master-data
+    participant POS
+    participant Cart
+    participant MasterData
     participant Dapr as Dapr State
 
-    Client->>Cart: POST /cart/create
-    Cart->>Cart: ターミナル状態チェック
-    Cart->>Cart: スタッフサインインチェック
-    Cart->>Cart: 店舗情報/設定マスタ/税マスタ取得
-    Note over Cart,MD: [追加] プロモーション取得(1回のみ)
-    Cart->>MD: GET /promotions/active
-    alt 成功
-        MD-->>Cart: プロモーション一覧
-        Cart->>Cart: ReferenceMasters.promotions に格納
-    else 失敗
-        MD-->>Cart: エラー
-        Cart-->>Client: CartCannotCreateException
+    POS->>Cart: POST /cart/create
+    Cart->>Cart: Terminal status check
+    Cart->>Cart: Staff sign-in check
+    Cart->>Cart: Get store/tax/settings master
+    Note over Cart,MasterData: [Added] Get promotions (once only)
+    Cart->>MasterData: GET /promotions/active
+    alt Success
+        MasterData-->>Cart: Promotion list
+        Cart->>Cart: Store in ReferenceMasters.promotions
+    else Failure
+        MasterData-->>Cart: Error
+        Cart-->>POS: CartCannotCreateException
     end
-    Cart->>Cart: CartDocument 作成(promotions埋め込み済み)
-    Cart->>Dapr: カートキャッシュ保存
-    Cart-->>Client: cart_id 返却
+    Cart->>Cart: Create CartDocument (promotions embedded)
+    Cart->>Dapr: Save cart to cache
+    Cart-->>POS: cart_id
 ```
 
 ---
@@ -54,42 +54,42 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Cart as cart
+    participant POS
+    participant Cart
     participant Plugin as CategoryPromoPlugin
-    participant MD as master-data
+    participant MasterData
 
-    Client->>Cart: POST /cart/add_item
-    Cart->>Cart: 商品マスタ取得/明細追加
+    POS->>Cart: POST /cart/add_item
+    Cart->>Cart: Get item master / add line item
     Cart->>Cart: __subtotal_async()
-    Note over Cart,MD: [毎回] プロモーション取得
+    Note over Cart,MasterData: [Every time] Fetch promotions
     Cart->>Plugin: apply(cart_doc)
-    Plugin->>MD: GET /promotions/active
-    MD-->>Plugin: プロモーション一覧
-    Plugin->>Plugin: カテゴリ照合/割引適用
-    Plugin-->>Cart: cart_doc(割引適用済み)
+    Plugin->>MasterData: GET /promotions/active
+    MasterData-->>Plugin: Promotion list
+    Plugin->>Plugin: Match category / apply discount
+    Plugin-->>Cart: cart_doc (discount applied)
     Cart->>Cart: calc_subtotal_async()
-    Cart-->>Client: cart_doc 返却
+    Cart-->>POS: cart_doc
 ```
 
 ### After（変更後）
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Cart as cart
+    participant POS
+    participant Cart
     participant Plugin as CategoryPromoPlugin
 
-    Client->>Cart: POST /cart/add_item
-    Cart->>Cart: 商品マスタ取得/明細追加
+    POS->>Cart: POST /cart/add_item
+    Cart->>Cart: Get item master / add line item
     Cart->>Cart: __subtotal_async()
-    Note over Cart,Plugin: [API呼び出しなし] 埋め込みデータ使用
-    Cart->>Cart: cart_doc.masters.promotions 取り出し
+    Note over Cart,Plugin: [No API call] Use embedded data
+    Cart->>Cart: Extract cart_doc.masters.promotions
     Cart->>Plugin: apply(cart_doc, promotions)
-    Plugin->>Plugin: カテゴリ照合/割引適用
-    Plugin-->>Cart: cart_doc(割引適用済み)
+    Plugin->>Plugin: Match category / apply discount
+    Plugin-->>Cart: cart_doc (discount applied)
     Cart->>Cart: calc_subtotal_async()
-    Cart-->>Client: cart_doc 返却
+    Cart-->>POS: cart_doc
 ```
 
 ---
@@ -100,72 +100,72 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Cart as cart
-    participant MD as master-data
+    participant POS
+    participant Cart
+    participant MasterData
 
-    Client->>Cart: カート作成
-    Cart-->>Client: cart_id
+    POS->>Cart: Create Cart
+    Cart-->>POS: cart_id
 
-    loop 商品登録 x 10回
-        Client->>Cart: 商品追加
-        Cart->>MD: GET /promotions/active
-        MD-->>Cart: プロモーション一覧
-        Cart-->>Client: cart_doc
+    loop Add Item x 10
+        POS->>Cart: Add Item
+        Cart->>MasterData: GET /promotions/active
+        MasterData-->>Cart: Promotion list
+        Cart-->>POS: cart_doc
     end
 
-    Client->>Cart: 小計
-    Cart->>MD: GET /promotions/active
-    MD-->>Cart: プロモーション一覧
-    Cart-->>Client: cart_doc
+    POS->>Cart: Subtotal
+    Cart->>MasterData: GET /promotions/active
+    MasterData-->>Cart: Promotion list
+    Cart-->>POS: cart_doc
 
-    Client->>Cart: 支払追加
-    Cart->>MD: GET /promotions/active
-    MD-->>Cart: プロモーション一覧
-    Cart-->>Client: cart_doc
+    POS->>Cart: Payment
+    Cart->>MasterData: GET /promotions/active
+    MasterData-->>Cart: Promotion list
+    Cart-->>POS: cart_doc
 
-    Client->>Cart: 精算
-    Cart->>MD: GET /promotions/active
-    MD-->>Cart: プロモーション一覧
-    Cart-->>Client: cart_doc
+    POS->>Cart: Bill
+    Cart->>MasterData: GET /promotions/active
+    MasterData-->>Cart: Promotion list
+    Cart-->>POS: cart_doc
 
-    Note over Cart,MD: API呼び出し 約13回
+    Note over Cart,MasterData: API calls: ~13 times
 ```
 
 ### After（変更後）- 10商品の典型的な取引
 
 ```mermaid
 sequenceDiagram
-    participant Client as クライアント
-    participant Cart as cart
-    participant MD as master-data
+    participant POS
+    participant Cart
+    participant MasterData
 
-    Client->>Cart: カート作成
-    Note over Cart,MD: プロモーション取得(1回のみ)
-    Cart->>MD: GET /promotions/active
-    MD-->>Cart: プロモーション一覧
-    Cart->>Cart: ReferenceMasters に埋め込み
-    Cart-->>Client: cart_id
+    POS->>Cart: Create Cart
+    Note over Cart,MasterData: Fetch promotions (once only)
+    Cart->>MasterData: GET /promotions/active
+    MasterData-->>Cart: Promotion list
+    Cart->>Cart: Store in cart document
+    Cart-->>POS: cart_id
 
-    loop 商品登録 x 10回
-        Client->>Cart: 商品追加
-        Cart->>Cart: 埋め込みデータで割引適用
-        Cart-->>Client: cart_doc
+    loop Add Item x 10
+        POS->>Cart: Add Item
+        Cart->>Cart: Apply discount from stored data
+        Cart-->>POS: cart_doc
     end
 
-    Client->>Cart: 小計
-    Cart->>Cart: 埋め込みデータで割引適用
-    Cart-->>Client: cart_doc
+    POS->>Cart: Subtotal
+    Cart->>Cart: Apply discount from stored data
+    Cart-->>POS: cart_doc
 
-    Client->>Cart: 支払追加
-    Cart->>Cart: 埋め込みデータで割引適用
-    Cart-->>Client: cart_doc
+    POS->>Cart: Payment
+    Cart->>Cart: Apply discount from stored data
+    Cart-->>POS: cart_doc
 
-    Client->>Cart: 精算
-    Cart->>Cart: 埋め込みデータで割引適用
-    Cart-->>Client: cart_doc
+    POS->>Cart: Bill
+    Cart->>Cart: Apply discount from stored data
+    Cart-->>POS: cart_doc
 
-    Note over Cart,MD: API呼び出し 1回
+    Note over Cart,MasterData: API calls: 1 time
 ```
 
 ---
