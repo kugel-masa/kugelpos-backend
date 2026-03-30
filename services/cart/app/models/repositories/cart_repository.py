@@ -16,6 +16,7 @@ from app.models.documents.cart_document import CartDocument
 from app.models.documents.settings_master_document import SettingsMasterDocument
 from app.models.documents.tax_master_document import TaxMasterDocument
 from app.models.documents.item_master_document import ItemMasterDocument
+from app.models.documents.promotion_master_document import PromotionMasterDocument
 from app.config.settings import settings
 from app.exceptions import NotFoundException, CannotCreateException, UpdateNotWorkException, CannotDeleteException
 from app.utils.dapr_statestore_session_helper import get_dapr_statestore_session
@@ -102,6 +103,7 @@ class CartRepository(AbstractRepository[CartDocument]):
         settings_master: list[SettingsMasterDocument],
         tax_master: list[TaxMasterDocument],
         item_master: list[ItemMasterDocument],
+        promotion_master: list[PromotionMasterDocument] = None,
     ) -> CartDocument:
         """
         This is the create_cart_async method
@@ -136,6 +138,7 @@ class CartRepository(AbstractRepository[CartDocument]):
         cart.masters.settings = settings_master
         cart.masters.taxes = tax_master
         cart.masters.items = item_master
+        cart.masters.promotions = promotion_master or []
         cart.staff = CartDocument.Staff(id=self.terminal_info.staff.id, name=self.terminal_info.staff.name)
         logger.debug(f"Cart business_date: {cart.business_date}, reference_date_tiem: {cart.sales.reference_date_time}")
         return cart

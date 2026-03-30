@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict
 from kugel_common.utils.misc import to_lower_camel
 from app.enums.discount_type import DiscountType
 from app.services.strategies.sales_promo.abstract_sales_promo import AbstractSalesPromo
-from app.models.repositories.promotion_master_web_repository import PromotionMasterWebRepository
 from app.models.documents.cart_document import CartDocument
 from app.models.documents.promotion_master_document import PromotionMasterDocument
 from kugel_common.models.documents.base_tranlog import BaseTransaction
@@ -50,21 +49,8 @@ class CategoryPromoPlugin(AbstractSalesPromo):
     def __init__(self) -> None:
         """Initialize the category promotion plugin."""
         super().__init__()
-        self.promotion_master_repo: Optional[PromotionMasterWebRepository] = None
 
-    def configure(self, tenant_id: str, terminal_info) -> None:
-        """
-        Configure the plugin with a promotion master repository.
-
-        Args:
-            tenant_id: The tenant identifier for multi-tenancy
-            terminal_info: Terminal information for the current session
-        """
-        self.promotion_master_repo = PromotionMasterWebRepository(
-            tenant_id=tenant_id, terminal_info=terminal_info
-        )
-
-    async def apply(self, cart_doc: CartDocument) -> CartDocument:
+    async def apply(self, cart_doc: CartDocument, promotions: list = None) -> CartDocument:
         """
         Apply category-based promotions to cart items.
 
@@ -77,20 +63,12 @@ class CategoryPromoPlugin(AbstractSalesPromo):
 
         Args:
             cart_doc: The cart document to apply promotions to
+            promotions: List of active promotion master documents (from ReferenceMasters)
 
         Returns:
             CartDocument: The updated cart document with promotions applied
         """
-        if self.promotion_master_repo is None:
-            logger.warning("Promotion master repository not set. Skipping category promotions.")
-            return cart_doc
-
-        # Get active promotions for the current store
-        try:
-            active_promotions = await self.promotion_master_repo.get_active_promotions_by_store_async()
-        except Exception as e:
-            logger.error(f"Failed to get active promotions: {e}")
-            return cart_doc
+        active_promotions = promotions or []
 
         if not active_promotions:
             logger.debug("No active promotions found")

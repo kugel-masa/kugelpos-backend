@@ -26,9 +26,9 @@
 
 **⚠️ CRITICAL**: このフェーズが完了しないとコア実装に進めない。
 
-- [ ] T001 [P] [FR-1] `ReferenceMasters` に `promotions` フィールドを追加し、`PromotionMasterDocument` をimportする in `services/cart/app/models/documents/cart_document.py`
-- [ ] T002 [P] [FR-2] `AbstractSalesPromo.apply()` のシグネチャに `promotions: list = None` パラメータを追加する in `services/cart/app/services/strategies/sales_promo/abstract_sales_promo.py`
-- [ ] T003 [FR-1] `create_cart_async()` に `promotion_master` パラメータを追加し、`cart.masters.promotions` に格納する in `services/cart/app/models/repositories/cart_repository.py`
+- [X] T001 [P] [FR-1] `ReferenceMasters` に `promotions` フィールドを追加し、`PromotionMasterDocument` をimportする in `services/cart/app/models/documents/cart_document.py`
+- [X] T002 [P] [FR-2] `AbstractSalesPromo.apply()` のシグネチャに `promotions: list = None` パラメータを追加する in `services/cart/app/services/strategies/sales_promo/abstract_sales_promo.py`
+- [X] T003 [FR-1] `create_cart_async()` に `promotion_master` パラメータを追加し、`cart.masters.promotions` に格納する in `services/cart/app/models/repositories/cart_repository.py`
 
 **Checkpoint**: データモデルとI/Fの変更が完了。既存テストはこの時点で一部失敗する可能性あり（apply()シグネチャ変更のため）。
 
@@ -38,12 +38,12 @@
 
 **Purpose**: プロモーション取得タイミングの移動とプラグイン改修。本機能の中核。
 
-- [ ] T004 [FR-1] `cart_service.py` の `__init__` に `PromotionMasterWebRepository` のインスタンス化を追加する（プラグインからサービスへ移動） in `services/cart/app/services/cart_service.py`
-- [ ] T005 [FR-1] `create_cart_async()` にプロモーションマスタ取得処理を追加し、`cart_repo.create_cart_async()` に渡す in `services/cart/app/services/cart_service.py`
-- [ ] T006 [FR-3] プロモーションマスタ取得失敗時に `CartCannotCreateException` を送出する処理を追加する in `services/cart/app/services/cart_service.py`
-- [ ] T007 [FR-2] `_apply_sales_promotions_async()` で `cart_doc.masters.promotions` を `strategy.apply()` に渡すよう変更する in `services/cart/app/services/cart_service.py`
-- [ ] T008 [P] [FR-2] `CategoryPromoPlugin.apply()` を変更し、渡された `promotions` パラメータを使用するようにする。`configure()` でのリポジトリ生成と `apply()` 内のAPI呼び出しを削除する in `services/cart/app/services/strategies/sales_promo/category_promo.py`
-- [ ] T009 [P] [FR-2] `SalesPromoSample.apply()` のシグネチャを `promotions: list = None` に合わせる in `services/cart/app/services/strategies/sales_promo/sales_promo_sample.py`
+- [X] T004 [FR-1] `cart_service.py` の `__init__` に `PromotionMasterWebRepository` のインスタンス化を追加する（プラグインからサービスへ移動） in `services/cart/app/services/cart_service.py`
+- [X] T005 [FR-1] `create_cart_async()` にプロモーションマスタ取得処理を追加し、`cart_repo.create_cart_async()` に渡す in `services/cart/app/services/cart_service.py`
+- [X] T006 [FR-3] プロモーションマスタ取得失敗時に `CartCannotCreateException` を送出する処理を追加する in `services/cart/app/services/cart_service.py`
+- [X] T007 [FR-2] `_apply_sales_promotions_async()` で `cart_doc.masters.promotions` を `strategy.apply()` に渡すよう変更する in `services/cart/app/services/cart_service.py`
+- [X] T008 [P] [FR-2] `CategoryPromoPlugin.apply()` を変更し、渡された `promotions` パラメータを使用するようにする。`configure()` でのリポジトリ生成と `apply()` 内のAPI呼び出しを削除する in `services/cart/app/services/strategies/sales_promo/category_promo.py`
+- [X] T009 [P] [FR-2] `SalesPromoSample.apply()` のシグネチャを `promotions: list = None` に合わせる in `services/cart/app/services/strategies/sales_promo/sales_promo_sample.py`
 
 **Checkpoint**: コア実装完了。カート作成時に1回だけプロモーションを取得し、プラグインはAPI呼び出しを行わない。
 
@@ -55,17 +55,17 @@
 
 ### 既存テスト修正
 
-- [ ] T010 [P] `apply()` シグネチャ変更に伴い、既存の CategoryPromoPlugin テストを修正する（promotionsパラメータの追加） in `services/cart/tests/test_category_promo_plugin.py`
-- [ ] T011 [P] `apply()` シグネチャ変更に伴い、既存のカテゴリプロモーション統合テストを修正する in `services/cart/tests/test_category_promo.py`
-- [ ] T012 [P] `create_cart_async` パラメータ変更に伴い、既存の cart_service テストを修正する in `services/cart/tests/test_cart_service.py`
+- [X] T010 [P] `apply()` シグネチャ変更に伴い、既存の CategoryPromoPlugin テストを修正する（promotionsパラメータの追加） in `services/cart/tests/test_category_promo_plugin.py`
+- [X] T011 [P] `apply()` シグネチャ変更に伴い、既存のカテゴリプロモーション統合テストを修正する in `services/cart/tests/test_category_promo.py`
+- [X] T012 [P] `create_cart_async` パラメータ変更に伴い、既存の cart_service テストを修正する in `services/cart/tests/test_cart_service.py`
 
 ### 新規テスト追加
 
-- [ ] T013 [P] [FR-1] [FR-4] 単体テスト: `ReferenceMasters` に `promotions` が格納されること、デフォルトが空リスト であること、`promotions` フィールドなしの既存カートJSONが正常にデシリアライズされることを確認する in `services/cart/tests/test_category_promo_plugin.py`
-- [ ] T014 [P] [FR-2] 単体テスト: `CategoryPromoPlugin.apply()` が渡された `promotions` リストを使用し、API呼び出しを行わないことを確認する in `services/cart/tests/test_category_promo_plugin.py`
-- [ ] T015 [P] [FR-3] 単体テスト: プロモーションマスタ取得失敗時に `CartCannotCreateException` が送出されることを確認する in `services/cart/tests/test_cart_service.py`
-- [ ] T016 [P] [FR-4] 単体テスト: プロモーション0件時にカート作成が正常に完了することを確認する in `services/cart/tests/test_cart_service.py`
-- [ ] T017 [FR-1] [FR-2] 統合テスト: カート作成→商品登録→精算の一連フローでプロモーションが正しく適用されることを確認する in `services/cart/tests/test_category_promo.py`
+- [X] T013 [P] [FR-1] [FR-4] 単体テスト: `ReferenceMasters` に `promotions` が格納されること、デフォルトが空リスト であること、`promotions` フィールドなしの既存カートJSONが正常にデシリアライズされることを確認する in `services/cart/tests/test_category_promo_plugin.py`
+- [X] T014 [P] [FR-2] 単体テスト: `CategoryPromoPlugin.apply()` が渡された `promotions` リストを使用し、API呼び出しを行わないことを確認する in `services/cart/tests/test_category_promo_plugin.py`
+- [X] T015 [P] [FR-3] 単体テスト: プロモーションマスタ取得失敗時に `CartCannotCreateException` が送出されることを確認する in `services/cart/tests/test_cart_service.py`
+- [X] T016 [P] [FR-4] 単体テスト: プロモーション0件時にカート作成が正常に完了することを確認する in `services/cart/tests/test_cart_service.py`
+- [X] T017 [FR-1] [FR-2] 統合テスト: カート作成→商品登録→精算の一連フローでプロモーションが正しく適用されることを確認する in `services/cart/tests/test_category_promo.py`
 
 **Checkpoint**: 全テスト通過。機能要件FR-1〜FR-4の受入条件を満たしていることを確認。
 
@@ -75,8 +75,8 @@
 
 **Purpose**: ドキュメント更新と最終確認
 
-- [ ] T018 [P] plan.md の「キャッシュ戦略」設計決定を「実装済み」に更新する in `specs/71-promotion-cache/plan.md`
-- [ ] T019 全テストスイートを実行し、既存機能へのリグレッションがないことを確認する
+- [X] T018 [P] plan.md の「キャッシュ戦略」設計決定を「実装済み」に更新する in `specs/71-promotion-cache/plan.md`
+- [X] T019 全テストスイートを実行し、既存機能へのリグレッションがないことを確認する
 
 ---
 

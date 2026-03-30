@@ -1,6 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.strategies.sales_promo.category_promo import CategoryPromoPlugin, CategoryPromoDetail
 from app.models.documents.cart_document import CartDocument
@@ -75,20 +74,16 @@ class TestCategoryPromoPluginApply:
 
     @pytest.fixture
     def plugin(self):
-        p = CategoryPromoPlugin()
-        p.promotion_master_repo = AsyncMock()
-        return p
+        return CategoryPromoPlugin()
 
     @pytest.mark.asyncio
     async def test_apply_discount_to_matching_category(self, plugin):
         """Item with matching category gets discount applied."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["001"], discount_rate=10.0)
-        ]
+        promotions = [make_promotion(target_category_codes=["001"], discount_rate=10.0)]
         line_item = make_line_item(category_code="001", unit_price=100.0, quantity=2)
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 1
         discount = result.line_items[0].discounts[0]
@@ -99,39 +94,33 @@ class TestCategoryPromoPluginApply:
     @pytest.mark.asyncio
     async def test_no_discount_for_non_matching_category(self, plugin):
         """Item with non-matching category gets no discount."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["002"], discount_rate=10.0)
-        ]
+        promotions = [make_promotion(target_category_codes=["002"], discount_rate=10.0)]
         line_item = make_line_item(category_code="001")
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 0
 
     @pytest.mark.asyncio
     async def test_skip_cancelled_line_item(self, plugin):
         """Cancelled items are skipped."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["001"])
-        ]
+        promotions = [make_promotion(target_category_codes=["001"])]
         line_item = make_line_item(category_code="001", is_cancelled=True)
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 0
 
     @pytest.mark.asyncio
     async def test_skip_discount_restricted_item(self, plugin):
         """Discount-restricted items are skipped."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["001"])
-        ]
+        promotions = [make_promotion(target_category_codes=["001"])]
         line_item = make_line_item(category_code="001", is_discount_restricted=True)
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 0
 
@@ -146,20 +135,18 @@ class TestCategoryPromoPluginApply:
             discount_amount=10.0,
             promotion_type="category_discount",
         )
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["001"], discount_rate=10.0)
-        ]
+        promotions = [make_promotion(target_category_codes=["001"], discount_rate=10.0)]
         line_item = make_line_item(category_code="001", discounts=[existing_discount])
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 1  # still just the existing one
 
     @pytest.mark.asyncio
     async def test_best_rate_selected_when_multiple_promotions(self, plugin):
         """When multiple promotions target the same category, the highest rate wins."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
+        promotions = [
             make_promotion("PROMO-LOW", discount_rate=5.0, target_category_codes=["001"]),
             make_promotion("PROMO-HIGH", discount_rate=20.0, target_category_codes=["001"]),
             make_promotion("PROMO-MID", discount_rate=10.0, target_category_codes=["001"]),
@@ -167,7 +154,7 @@ class TestCategoryPromoPluginApply:
         line_item = make_line_item(category_code="001", unit_price=100.0, quantity=1)
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 1
         assert result.line_items[0].discounts[0].discount_value == 20.0
@@ -176,55 +163,38 @@ class TestCategoryPromoPluginApply:
     @pytest.mark.asyncio
     async def test_no_promotions_returns_cart_unchanged(self, plugin):
         """No active promotions → cart returned unchanged."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = []
         line_item = make_line_item(category_code="001")
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=[])
 
         assert len(result.line_items[0].discounts) == 0
 
     @pytest.mark.asyncio
-    async def test_repo_error_returns_cart_unchanged(self, plugin):
-        """Repository error → cart returned unchanged (graceful degradation)."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.side_effect = Exception("API error")
+    async def test_none_promotions_returns_cart_unchanged(self, plugin):
+        """None promotions → cart returned unchanged."""
         line_item = make_line_item(category_code="001")
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
-
-        assert len(result.line_items[0].discounts) == 0
-
-    @pytest.mark.asyncio
-    async def test_repo_not_configured_returns_cart_unchanged(self):
-        """Plugin without configured repo returns cart unchanged."""
-        plugin = CategoryPromoPlugin()
-        # promotion_master_repo is None (not configured)
-        line_item = make_line_item(category_code="001")
-        cart = make_cart(line_items=[line_item])
-
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=None)
 
         assert len(result.line_items[0].discounts) == 0
 
     @pytest.mark.asyncio
     async def test_non_category_discount_promotion_is_ignored(self, plugin):
         """Promotions with other promotion_type are ignored."""
-        promo = make_promotion(promotion_type="flat_discount", target_category_codes=["001"])
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [promo]
+        promotions = [make_promotion(promotion_type="flat_discount", target_category_codes=["001"])]
         line_item = make_line_item(category_code="001")
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 0
 
     @pytest.mark.asyncio
     async def test_multiple_line_items_each_get_discount(self, plugin):
         """Multiple items with matching categories all get discounts."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["001", "002"], discount_rate=15.0)
-        ]
+        promotions = [make_promotion(target_category_codes=["001", "002"], discount_rate=15.0)]
         items = [
             make_line_item(line_no=1, category_code="001", unit_price=100.0, quantity=1),
             make_line_item(line_no=2, category_code="002", unit_price=200.0, quantity=1),
@@ -232,7 +202,7 @@ class TestCategoryPromoPluginApply:
         ]
         cart = make_cart(line_items=items)
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         assert len(result.line_items[0].discounts) == 1  # 001 matched
         assert len(result.line_items[1].discounts) == 1  # 002 matched
@@ -241,13 +211,11 @@ class TestCategoryPromoPluginApply:
     @pytest.mark.asyncio
     async def test_discount_amount_calculation(self, plugin):
         """Discount amount is correctly calculated as unit_price * quantity * rate / 100."""
-        plugin.promotion_master_repo.get_active_promotions_by_store_async.return_value = [
-            make_promotion(target_category_codes=["001"], discount_rate=10.0)
-        ]
+        promotions = [make_promotion(target_category_codes=["001"], discount_rate=10.0)]
         line_item = make_line_item(category_code="001", unit_price=150.0, quantity=3)
         cart = make_cart(line_items=[line_item])
 
-        result = await plugin.apply(cart)
+        result = await plugin.apply(cart, promotions=promotions)
 
         # discount_amount is calculated by calc_line_item_logic, not by plugin
         assert result.line_items[0].discounts[0].discount_amount == 0.0
@@ -298,3 +266,61 @@ class TestCategoryPromoDetailParsing:
             detail=None,
         )
         assert plugin._parse_detail(promo) is None
+
+
+class TestReferenceMastersPromotions:
+    """Tests for ReferenceMasters.promotions field (FR-1, FR-4)."""
+
+    def test_promotions_field_exists_with_default_empty_list(self):
+        """ReferenceMasters.promotions defaults to empty list."""
+        masters = CartDocument.ReferenceMasters()
+        assert masters.promotions == []
+
+    def test_promotions_stored_in_reference_masters(self):
+        """Promotion documents can be stored in ReferenceMasters."""
+        promo = PromotionMasterDocument(
+            promotion_code="PROMO-01",
+            promotion_type="category_discount",
+            name="Test",
+        )
+        masters = CartDocument.ReferenceMasters(promotions=[promo])
+        assert len(masters.promotions) == 1
+        assert masters.promotions[0].promotion_code == "PROMO-01"
+
+    def test_existing_cart_json_without_promotions_deserializes(self):
+        """Cart JSON without promotions field deserializes correctly (backward compat)."""
+        cart_data = {
+            "tenant_id": "T001",
+            "store_code": "S001",
+            "terminal_no": 1,
+            "transaction_no": 1,
+            "transaction_type": 101,
+            "business_date": "20240101",
+            "open_counter": 1,
+            "business_counter": 1,
+            "masters": {
+                "items": [],
+                "taxes": [],
+                "settings": [],
+            },
+            "line_items": [],
+        }
+        cart = CartDocument(**cart_data)
+        assert cart.masters.promotions == []
+
+
+class TestCategoryPromoPluginNoApiCall:
+    """Tests verifying plugin uses passed promotions without API calls (FR-2)."""
+
+    @pytest.mark.asyncio
+    async def test_apply_uses_passed_promotions_not_repo(self):
+        """Plugin uses promotions passed as parameter, not from any repository."""
+        plugin = CategoryPromoPlugin()
+        promotions = [make_promotion(target_category_codes=["001"], discount_rate=10.0)]
+        line_item = make_line_item(category_code="001")
+        cart = make_cart(line_items=[line_item])
+
+        result = await plugin.apply(cart, promotions=promotions)
+
+        assert len(result.line_items[0].discounts) == 1
+        assert result.line_items[0].discounts[0].discount_value == 10.0

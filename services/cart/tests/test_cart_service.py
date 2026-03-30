@@ -116,11 +116,15 @@ def _build_service(terminal_info=None, cart_doc=None):
     mock_subtotal_logic = patcher.start()
     mock_subtotal_logic.calc_subtotal_async = AsyncMock(side_effect=lambda cart, repo: cart)
 
-    # Patch CartStrategyManager to avoid file I/O
-    with patch("app.services.cart_service.CartStrategyManager") as MockStrategyMgr:
+    # Patch CartStrategyManager and PromotionMasterWebRepository to avoid file I/O
+    with patch("app.services.cart_service.CartStrategyManager") as MockStrategyMgr, \
+         patch("app.services.cart_service.PromotionMasterWebRepository") as MockPromoRepo:
         mock_strategy_instance = MagicMock()
         mock_strategy_instance.load_strategies.return_value = []
         MockStrategyMgr.return_value = mock_strategy_instance
+        mock_promo_repo = MagicMock()
+        mock_promo_repo.get_active_promotions_by_store_async = AsyncMock(return_value=[])
+        MockPromoRepo.return_value = mock_promo_repo
 
         svc = CartService(
             terminal_info=terminal_info,
@@ -495,6 +499,7 @@ class TestCartServiceApplySalesPromotions:
     async def test_apply_promotions_matching_phase(self):
         """Should apply promotions matching the phase."""
         cart = _make_cart_doc()
+        cart.masters.promotions = []
         svc = _build_service(cart_doc=cart)
 
         mock_promo = MagicMock()
@@ -503,13 +508,14 @@ class TestCartServiceApplySalesPromotions:
         svc.sales_promo_strategies = [mock_promo]
 
         result = await svc._apply_sales_promotions_async(cart, phase="line_item")
-        mock_promo.apply.assert_awaited_once_with(cart)
+        mock_promo.apply.assert_awaited_once_with(cart, promotions=[])
         assert result is cart
 
     @pytest.mark.asyncio
     async def test_apply_promotions_skips_non_matching_phase(self):
         """Should skip promotions not matching the phase."""
         cart = _make_cart_doc()
+        cart.masters.promotions = []
         svc = _build_service(cart_doc=cart)
 
         mock_promo = MagicMock()
@@ -524,6 +530,7 @@ class TestCartServiceApplySalesPromotions:
     async def test_apply_promotions_continues_on_error(self):
         """Should continue processing even if a promotion raises an exception."""
         cart = _make_cart_doc()
+        cart.masters.promotions = []
         svc = _build_service(cart_doc=cart)
 
         bad_promo = MagicMock()
@@ -539,3 +546,30 @@ class TestCartServiceApplySalesPromotions:
         result = await svc._apply_sales_promotions_async(cart, phase="line_item")
         good_promo.apply.assert_awaited_once()
         assert result is cart
+
+
+class TestCartServicePromotionFetch:
+    """Tests for promotion master fetch during cart creation (FR-3, FR-4)."""
+
+    @pytest.mark.asyncio
+    async def test_create_cart_fails_when_promotion_fetch_fails(self):
+        """Should raise CartCannotCreateException when promotion fetch fails (FR-3)."""
+        svc = _build_service()
+        svc.promotion_master_repo.get_active_promotions_by_store_async = AsyncMock(
+            side_effect=Exception("master-data unavailable")
+        )
+
+        with pytest.raises(CartCannotCreateException):
+            await svc.create_cart_async("t1", 1, "u1", "User")
+
+    @pytest.mark.asyncio
+    async def test_create_cart_succeeds_with_zero_promotions(self):
+        """Cart creation succeeds when no active promotions exist (FR-4)."""
+        svc = _build_service()
+        svc.promotion_master_repo.get_active_promotions_by_store_async = AsyncMock(return_value=[])
+        new_cart = _make_cart_doc(status="Initial", cart_id="new-cart-456")
+        svc.cart_repo.create_cart_async = AsyncMock(return_value=new_cart)
+
+        result = await svc.create_cart_async("t1", 1, "u1", "User")
+        assert result == "new-cart-456"
+        svc.cart_repo.create_cart_async.assert_awaited_once()

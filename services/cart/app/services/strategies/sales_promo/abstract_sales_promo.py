@@ -31,12 +31,13 @@ class AbstractSalesPromo(ABC):
         return "line_item"
 
     @abstractmethod
-    async def apply(self, cart_doc):
+    async def apply(self, cart_doc, promotions: list = None):
         """
         Apply the sales promotion to a cart.
 
         Args:
             cart_doc: The cart document to apply the promotion to
+            promotions: List of active promotion master documents (from ReferenceMasters)
 
         Returns:
             Updated cart document with the promotion applied

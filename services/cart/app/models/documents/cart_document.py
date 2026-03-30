@@ -6,6 +6,7 @@ from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.models.documents.item_master_document import ItemMasterDocument
 from app.models.documents.tax_master_document import TaxMasterDocument
 from app.models.documents.settings_master_document import SettingsMasterDocument
+from app.models.documents.promotion_master_document import PromotionMasterDocument
 
 
 class CartDocument(BaseTransaction):
@@ -37,6 +38,7 @@ class CartDocument(BaseTransaction):
         items: Optional[list[ItemMasterDocument]] = []  # Item master data
         taxes: Optional[list[TaxMasterDocument]] = []  # Tax configuration
         settings: Optional[list[SettingsMasterDocument]] = []  # System settings
+        promotions: Optional[list[PromotionMasterDocument]] = []  # Promotion master data
 
     cart_id: Optional[str] = None  # Unique identifier for the cart
     status: Optional[str] = None  # Current status of the cart (e.g., active, completed, abandoned)

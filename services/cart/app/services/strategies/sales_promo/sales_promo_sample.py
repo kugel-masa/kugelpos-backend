@@ -11,7 +11,7 @@ class SalesPromoSample(AbstractSalesPromo):
     such as percentage discounts, fixed amount discounts, buy-one-get-one offers, etc.
     """
 
-    async def apply(self, cart_doc):
+    async def apply(self, cart_doc, promotions: list = None):
         """
         Apply the sample sales promotion to a cart.
 
