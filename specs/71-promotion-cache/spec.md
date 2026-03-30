@@ -100,14 +100,14 @@
 | ID | 要件 | 受入条件 |
 |----|------|----------|
 | FR-2.1 | `AbstractSalesPromo.apply()` のシグネチャに `promotions` パラメータを追加する | 既存プラグインが `promotions` を受け取れる |
-| FR-2.2 | `_apply_sales_promotions_async()` がカートドキュメント内のプロモーション情報を `apply()` に渡す | プラグインが独自にAPI呼び出しを行わない |
+| FR-2.2 | `_apply_sales_promotions_async()` が `cart_doc.masters.promotions` を取り出し、`apply(cart_doc, promotions)` の引数として渡す | プラグインが独自にAPI呼び出しを行わない |
 | FR-2.3 | `CategoryPromoPlugin` が渡されたプロモーション一覧を使用する | プラグイン内でのHTTP通信が発生しない |
 
 ### FR-3: エラーハンドリング
 
 | ID | 要件 | 受入条件 |
 |----|------|----------|
-| FR-3.1 | プロモーションマスタの取得に失敗した場合、カート作成を失敗させる | `ServiceException`（または同等の例外）が送出される |
+| FR-3.1 | プロモーションマスタの取得に失敗した場合、カート作成を失敗させる | `CartCannotCreateException` が送出される |
 | FR-3.2 | プロモーション取得失敗時、空リストでの取引続行を**行わない** | 割引が適用されないまま取引が進行することがない |
 | FR-3.3 | クライアント（レジ）はエラーを受けてリトライできる | カート作成の再実行で復旧可能 |
 
@@ -256,7 +256,13 @@ class ReferenceMasters(BaseDocumentModel):
 | カートドキュメントのサイズ増加 | 低 | プロモーション情報は軽量（数KB）。ストレージ・通信への影響は軽微 |
 | `apply()` シグネチャ変更による既存プラグインへの影響 | 中 | `promotions` パラメータをOptional（デフォルト: None）とし、後方互換性を維持 |
 
-## 11. テスト方針
+## 11. Clarifications
+
+### Session 2026-03-30
+
+- Q: master-dataサービスの応答遅延時、プロモーション取得に個別タイムアウト設定は必要か → A: 不要。既存のHTTPクライアント共通タイムアウト（`get_pooled_client`）に従う
+
+## 12. テスト方針
 
 | テスト区分 | 内容 |
 |-----------|------|
