@@ -391,6 +391,7 @@ class TestTerminalOpen:
         app = make_app()
         mock_service = AsyncMock()
         mock_service.open_terminal_async.return_value = _make_open_close_log(operation="open")
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(status="Opened")
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -409,6 +410,7 @@ class TestTerminalOpen:
         app = make_app()
         mock_service = AsyncMock()
         mock_service.open_terminal_async.return_value = _make_open_close_log(operation="open")
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(status="Opened")
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -441,6 +443,7 @@ class TestTerminalClose:
         app = make_app()
         mock_service = AsyncMock()
         mock_service.close_terminal_async.return_value = _make_open_close_log(operation="close")
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(status="Closed")
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -456,6 +459,7 @@ class TestTerminalClose:
         app = make_app()
         mock_service = AsyncMock()
         mock_service.close_terminal_async.return_value = _make_open_close_log(operation="close")
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(status="Closed")
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
