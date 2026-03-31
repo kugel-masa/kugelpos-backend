@@ -39,6 +39,9 @@ from app.models.repositories.payment_master_web_repository import (
 from app.models.repositories.settings_master_web_repository import (
     SettingsMasterWebRepository,
 )
+from app.models.repositories.promotion_master_web_repository import (
+    PromotionMasterWebRepository,
+)
 from app.models.documents.cart_document import CartDocument
 from app.enums.terminal_status import TerminalStatus
 from app.services.cart_service_interface import ICartService
@@ -117,6 +120,12 @@ class CartService(ICartService):
 
         self.state_manager = CartStateManager()
         self.strategy_manager = CartStrategyManager()
+
+        # Promotion master repository for fetching promotions at cart creation
+        self.promotion_master_repo = PromotionMasterWebRepository(
+            tenant_id=self.terminal_info.tenant_id,
+            terminal_info=self.terminal_info,
+        )
 
         try:
             # Load sales promotion strategy plugins
@@ -212,6 +221,13 @@ class CartService(ICartService):
         # Create list to hold item master information
         item_master = []
 
+        # Get active promotions for this store
+        try:
+            promotion_master = await self.promotion_master_repo.get_active_promotions_by_store_async()
+        except Exception as e:
+            message = f"Failed to get promotion master data: {e}"
+            raise CartCannotCreateException(message, logger, e) from e
+
         # Create new cart
         try:
             cart = await self.cart_repo.create_cart_async(
@@ -224,6 +240,7 @@ class CartService(ICartService):
                 settings_master=settings_master,
                 tax_master=tax_master,
                 item_master=item_master,
+                promotion_master=promotion_master,
             )
             if cart is None:
                 raise Exception("failed to create cart, cart is None")
@@ -367,11 +384,12 @@ class CartService(ICartService):
         Returns:
             CartDocument: The cart document with promotions applied
         """
+        promotions = cart_doc.masters.promotions if cart_doc.masters else []
         for sales_promo_strategy in self.sales_promo_strategies:
             if sales_promo_strategy.execution_phase != phase:
                 continue
             try:
-                cart_doc = await sales_promo_strategy.apply(cart_doc)
+                cart_doc = await sales_promo_strategy.apply(cart_doc, promotions=promotions)
             except Exception as e:
                 logger.warning(f"Failed to apply sales promotion strategy: {e}")
                 continue
