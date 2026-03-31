@@ -21,6 +21,8 @@ The API is RESTful and uses JSON for data exchange. All endpoints return a stand
 ApiResponse object which includes success status, data, and error information when applicable.
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -61,7 +63,15 @@ from app.grpc.server import start_grpc_server, stop_grpc_server
 grpc_server = None
 
 # Create a FastAPI instance with API documentation URLs enabled
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await startup_event()
+    yield
+    await close_event()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="KugelPOS Master-Data Service",
     description="Service for managing master data in the KugelPOS system",
     version="1.0.0",
@@ -231,6 +241,3 @@ async def close_event():
     logger.info("Application closed")
 
 
-# Register the event handlers with the FastAPI application
-app.add_event_handler("startup", startup_event)
-app.add_event_handler("shutdown", close_event)

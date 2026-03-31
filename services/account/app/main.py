@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from logging import getLogger, config
@@ -34,7 +36,14 @@ from app.config.settings import settings
 from app.api.v1.account import router as v1_account_router
 
 # Create a FastAPI instance with API documentation URLs enabled
-app = FastAPI(docs_url="/docs", redoc_url="/redoc")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await startup_event()
+    yield
+    await close_event()
+
+
+app = FastAPI(lifespan=lifespan, docs_url="/docs", redoc_url="/redoc")
 
 # Enable remote debugging if debug mode is enabled in settings
 IS_DEBUG = settings.DEBUG.lower() == "true"
@@ -151,6 +160,3 @@ async def close_event():
     logger.info("Application closed")
 
 
-# Register the event handlers with the FastAPI application
-app.add_event_handler("startup", startup_event)
-app.add_event_handler("shutdown", close_event)
