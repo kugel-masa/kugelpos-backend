@@ -74,8 +74,8 @@ rebuild_service_pipenv() {
             # Step 3: Install dependencies
             echo ""
             echo "Step 3: Installing dependencies..."
-            echo "Running: pipenv install"
-            pipenv install
+            echo "Running: pipenv install --dev"
+            pipenv install --dev
             
             if [ $? -eq 0 ]; then
                 echo "✓ Successfully installed dependencies"

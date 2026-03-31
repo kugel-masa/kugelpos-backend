@@ -13,7 +13,8 @@
 # limitations under the License.
 from fastapi import HTTPException, status, Depends, Security, Path, Query
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from logging import getLogger, Logger
 from typing import Optional
 import json

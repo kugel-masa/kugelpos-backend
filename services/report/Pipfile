@@ -11,9 +11,7 @@ pydantic = "*"
 pydantic-settings = "*"
 motor = "*"
 pytz = "*"
-pytest = "*"
-pytest-asyncio = "*"
-python-jose = {extras = ["cryptography"], version = "*"}
+pyjwt = "*"
 httpx = "*"
 aiohttp = "*"
 pydantic-xml = {extras = ["lxml"], version = "*"}
@@ -24,6 +22,8 @@ debugpy = "*"
 requests = "*"
 
 [dev-packages]
+pytest = "*"
+pytest-asyncio = "*"
 flake8 = "*"
 black = "*"
 mypy = "*"

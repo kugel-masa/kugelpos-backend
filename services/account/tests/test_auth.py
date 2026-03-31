@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
-from jose import jwt
+import jwt
 
 from app.dependencies.auth import (
     verify_password,

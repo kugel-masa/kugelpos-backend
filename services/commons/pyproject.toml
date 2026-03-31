@@ -27,7 +27,8 @@ classifiers = [
 dependencies = [
   "motor",
   "grpcio>=1.60.0",
-  "grpcio-tools>=1.60.0"
+  "grpcio-tools>=1.60.0",
+  "PyJWT>=2.0.0"
 ]
 
 [project.urls]

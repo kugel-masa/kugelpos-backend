@@ -13,7 +13,8 @@
 # limitations under the License.
 from fastapi import status, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from passlib.context import CryptContext
 from logging import getLogger
 from datetime import datetime, timedelta, timezone

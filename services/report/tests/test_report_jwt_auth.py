@@ -11,7 +11,7 @@ import pytest
 import os
 from fastapi import status
 from httpx import AsyncClient
-from jose import jwt as jose_jwt
+import jwt as jose_jwt
 
 
 async def get_terminal_jwt(api_key: str) -> str:
@@ -77,7 +77,7 @@ async def test_report_endpoint_with_jwt(http_client):
     jwt_header = {"Authorization": f"Bearer {jwt_token}"}
 
     # Verify JWT contains expected claims
-    claims = jose_jwt.get_unverified_claims(jwt_token)
+    claims = jose_jwt.decode(jwt_token, options={"verify_signature": False}, algorithms=["HS256"])
     print(f"JWT claims: tenant_id={claims.get('tenant_id')}, staff_id={claims.get('staff_id', 'NONE')}, status={claims.get('status')}")
 
     # Call report endpoint with JWT
@@ -126,7 +126,7 @@ async def test_report_staff_id_from_jwt(http_client):
         pytest.skip("No terminals found")
 
     jwt_token = await get_terminal_jwt(api_key)
-    claims = jose_jwt.get_unverified_claims(jwt_token)
+    claims = jose_jwt.decode(jwt_token, options={"verify_signature": False}, algorithms=["HS256"])
 
     # Check if JWT has staff_id
     staff_id = claims.get("staff_id")
