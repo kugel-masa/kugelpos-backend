@@ -42,9 +42,7 @@ class PromotionMasterService:
         end_datetime: datetime,
         description: Optional[str] = None,
         is_active: bool = True,
-        detail: Optional[
-            PromotionMasterDocument.CategoryPromoDetail
-        ] = None,
+        detail: Optional[dict] = None,
     ) -> PromotionMasterDocument:
         """
         Create a new promotion in the database.
@@ -76,16 +74,12 @@ class PromotionMasterService:
             if detail is None:
                 message = "detail is required for category_discount type"
                 raise InvalidRequestDataException(message, logger)
-            if (
-                not detail.target_category_codes
-                or len(detail.target_category_codes) == 0
-            ):
+            target_cats = detail.get("target_category_codes", [])
+            if not target_cats or len(target_cats) == 0:
                 message = "target_category_codes must contain at least one category code"
                 raise InvalidRequestDataException(message, logger)
-            if (
-                detail.discount_rate <= 0
-                or detail.discount_rate > 100
-            ):
+            rate = detail.get("discount_rate", 0)
+            if rate <= 0 or rate > 100:
                 message = "discount_rate must be between 0 and 100"
                 raise InvalidRequestDataException(message, logger)
 
@@ -224,7 +218,7 @@ class PromotionMasterService:
                 if (
                     promo.detail
                     and category_code
-                    in promo.detail.target_category_codes
+                    in promo.detail.get("target_category_codes", [])
                 ):
                     if promotion_type is None or promo.promotion_type == promotion_type:
                         result.append(promo)

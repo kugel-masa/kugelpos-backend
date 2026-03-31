@@ -19,11 +19,11 @@ def make_category_detail(
     target_store_codes=None,
     discount_rate=10.0,
 ):
-    return PromotionMasterDocument.CategoryPromoDetail(
-        target_category_codes=target_category_codes or ["001"],
-        target_store_codes=target_store_codes or [],
-        discount_rate=discount_rate,
-    )
+    return {
+        "target_category_codes": target_category_codes or ["001"],
+        "target_store_codes": target_store_codes or [],
+        "discount_rate": discount_rate,
+    }
 
 
 def make_promotion_doc(
@@ -134,10 +134,7 @@ class TestPromotionMasterServiceCreate:
         so this test verifies the service-level check via a manually constructed detail."""
         mock_repo.get_promotion_by_code_async.return_value = None
 
-        # Bypass Pydantic model validation by patching the detail object
-        detail = MagicMock(spec=PromotionMasterDocument.CategoryPromoDetail)
-        detail.target_category_codes = []
-        detail.discount_rate = 10.0
+        detail = {"target_category_codes": [], "discount_rate": 10.0}
 
         with pytest.raises(InvalidRequestDataException):
             await service.create_promotion_async(
@@ -156,9 +153,7 @@ class TestPromotionMasterServiceCreate:
         construction and test the service-level validation directly."""
         mock_repo.get_promotion_by_code_async.return_value = None
 
-        detail = MagicMock(spec=PromotionMasterDocument.CategoryPromoDetail)
-        detail.target_category_codes = ["001"]
-        detail.discount_rate = 150.0
+        detail = {"target_category_codes": ["001"], "discount_rate": 150.0}
 
         with pytest.raises(InvalidRequestDataException):
             await service.create_promotion_async(
@@ -422,3 +417,60 @@ class TestPromotionMasterServiceDelete:
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_promotion_async("NONEXISTENT")
+
+
+class TestTransformPromotion:
+    """Tests for SchemasTransformer.transform_promotion with dict-based detail."""
+
+    def _make_doc(self, detail=None):
+        return PromotionMasterDocument(
+            promotion_code="PROMO-01",
+            promotion_type="category_discount",
+            name="Test Promo",
+            start_datetime=START,
+            end_datetime=END,
+            is_active=True,
+            detail=detail,
+            created_at=START,
+            updated_at=END,
+        )
+
+    def test_transform_with_detail(self):
+        """Dict detail is correctly transformed to BaseCategoryPromoDetail."""
+        from app.api.common.schemas_transformer import SchemasTransformer
+
+        doc = self._make_doc(detail={
+            "target_store_codes": ["S001", "S002"],
+            "target_category_codes": ["001", "002"],
+            "discount_rate": 15.0,
+        })
+        result = SchemasTransformer().transform_promotion(doc)
+
+        assert result.promotion_code == "PROMO-01"
+        assert result.detail is not None
+        assert result.detail.target_store_codes == ["S001", "S002"]
+        assert result.detail.target_category_codes == ["001", "002"]
+        assert result.detail.discount_rate == 15.0
+
+    def test_transform_with_none_detail(self):
+        """None detail produces None in response."""
+        from app.api.common.schemas_transformer import SchemasTransformer
+
+        doc = self._make_doc(detail=None)
+        result = SchemasTransformer().transform_promotion(doc)
+
+        assert result.detail is None
+
+    def test_transform_with_empty_store_codes(self):
+        """Detail with no target_store_codes defaults to empty list."""
+        from app.api.common.schemas_transformer import SchemasTransformer
+
+        doc = self._make_doc(detail={
+            "target_category_codes": ["001"],
+            "discount_rate": 10.0,
+        })
+        result = SchemasTransformer().transform_promotion(doc)
+
+        assert result.detail.target_store_codes == []
+        assert result.detail.target_category_codes == ["001"]
+        assert result.detail.discount_rate == 10.0

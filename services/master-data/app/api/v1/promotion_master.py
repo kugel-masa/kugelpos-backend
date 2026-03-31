@@ -18,7 +18,6 @@ from app.api.v1.schemas import (
 from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.dependencies.get_master_services import get_promotion_master_service_async
 from app.dependencies.common import parse_sort
-from app.models.documents.promotion_master_document import PromotionMasterDocument
 
 router = APIRouter()
 logger = getLogger(__name__)
@@ -61,11 +60,11 @@ async def create_promotion(
         # Build detail if provided
         detail = None
         if promotion.detail:
-            detail = PromotionMasterDocument.CategoryPromoDetail(
-                target_store_codes=promotion.detail.target_store_codes or [],
-                target_category_codes=promotion.detail.target_category_codes,
-                discount_rate=promotion.detail.discount_rate,
-            )
+            detail = {
+                "target_store_codes": promotion.detail.target_store_codes or [],
+                "target_category_codes": promotion.detail.target_category_codes,
+                "discount_rate": promotion.detail.discount_rate,
+            }
 
         new_promotion = await service.create_promotion_async(
             promotion_code=promotion.promotion_code,
@@ -300,12 +299,11 @@ async def update_promotion(
         if promotion.is_active is not None:
             update_data["is_active"] = promotion.is_active
         if promotion.detail is not None:
-            detail = PromotionMasterDocument.CategoryPromoDetail(
-                target_store_codes=promotion.detail.target_store_codes or [],
-                target_category_codes=promotion.detail.target_category_codes,
-                discount_rate=promotion.detail.discount_rate,
-            )
-            update_data["detail"] = detail.model_dump()
+            update_data["detail"] = {
+                "target_store_codes": promotion.detail.target_store_codes or [],
+                "target_category_codes": promotion.detail.target_category_codes,
+                "discount_rate": promotion.detail.discount_rate,
+            }
 
         updated_promotion = await service.update_promotion_async(
             promotion_code=promotion_code, update_data=update_data
