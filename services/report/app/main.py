@@ -1,4 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,7 +28,14 @@ from app.api.v1.tenant import router as v1_tenant_router
 from app.config.settings import settings
 
 # Create a FastAPI instance with API documentation URLs enabled
-app = FastAPI(docs_url="/docs", redoc_url="/redoc")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await startup_event()
+    yield
+    await close_event()
+
+
+app = FastAPI(lifespan=lifespan, docs_url="/docs", redoc_url="/redoc")
 
 # Enable remote debugging if DEBUG flag is set to "true"  # This allows attaching a debugger to the running service
 IS_DEBUG = settings.DEBUG.lower() == "true"
@@ -171,6 +180,3 @@ async def close_event():
     logger.info("Application closed")
 
 
-# Register the event handlers with the FastAPI application
-app.add_event_handler("startup", startup_event)
-app.add_event_handler("shutdown", close_event)
