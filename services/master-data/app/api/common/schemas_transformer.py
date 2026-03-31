@@ -212,9 +212,9 @@ class SchemasTransformer:
         detail = None
         if promotion_doc.detail:
             detail = BaseCategoryPromoDetail(
-                target_store_codes=promotion_doc.detail.target_store_codes or [],
-                target_category_codes=promotion_doc.detail.target_category_codes,
-                discount_rate=promotion_doc.detail.discount_rate,
+                target_store_codes=promotion_doc.detail.get("target_store_codes", []),
+                target_category_codes=promotion_doc.detail.get("target_category_codes", []),
+                discount_rate=promotion_doc.detail.get("discount_rate", 0.0),
             )
 
         return BasePromotionResponse(
