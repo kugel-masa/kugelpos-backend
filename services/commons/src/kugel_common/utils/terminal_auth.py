@@ -6,7 +6,7 @@ Terminal tokens contain terminal state claims and are validated locally
 by all services without inter-service HTTP calls.
 """
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from logging import getLogger
 
 from kugel_common.config.settings import settings

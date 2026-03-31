@@ -12,12 +12,12 @@ import pytest
 import os
 from fastapi import status
 from httpx import AsyncClient
-from jose import jwt
+import jwt
 
 
 def decode_jwt_claims(token: str) -> dict:
     """Decode JWT claims without verification (for test assertions)."""
-    return jwt.get_unverified_claims(token)
+    return jwt.decode(token, options={"verify_signature": False}, algorithms=["HS256"])
 
 
 @pytest.mark.asyncio()

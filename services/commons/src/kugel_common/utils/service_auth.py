@@ -19,7 +19,7 @@ All services share the same SECRET_KEY, allowing them to generate and validate
 tokens for inter-service API calls.
 """
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from logging import getLogger
 
 from kugel_common.config.settings import settings

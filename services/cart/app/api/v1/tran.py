@@ -79,7 +79,7 @@ async def get_tran_service_for_pubsub_notification(
         from kugel_common.utils.http_client_helper import get_pooled_client
         from kugel_common.utils.service_auth import create_service_token
         from datetime import datetime, timedelta, timezone
-        from jose import jwt
+        import jwt
 
         logger.debug("DEBUG: Terminal not in cache, calling terminal service")
 

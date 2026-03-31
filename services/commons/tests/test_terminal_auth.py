@@ -3,7 +3,7 @@ Unit tests for terminal JWT token generation and verification.
 """
 import pytest
 from datetime import timedelta
-from jose import jwt
+import jwt
 
 from kugel_common.config.settings import settings
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument

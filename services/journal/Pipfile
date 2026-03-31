@@ -11,9 +11,7 @@ pydantic = "*"
 pydantic-settings = "*"
 motor = "*"
 pytz = "*"
-pytest = "*"
-pytest-asyncio = "*"
-python-jose = {extras = ["cryptography"], version = "*"}
+pyjwt = "*"
 kugel_common = {file = "commons/dist/kugel_common-0.1.44-py3-none-any.whl"}
 
 httpx = "*"
@@ -24,6 +22,8 @@ wcwidth = "*"
 debugpy = "*"
 
 [dev-packages]
+pytest = "*"
+pytest-asyncio = "*"
 flake8 = "*"
 black = "*"
 mypy = "*"
