@@ -20,8 +20,12 @@
 # - Pattern 1: 20 concurrent users for 5 minutes
 # - Pattern 2: 40 concurrent users for 5 minutes
 #
+# Authentication mode:
+#   - Default: JWT (locustfile_jwt.py)
+#   - --api-key: Legacy API Key (locustfile.py)
+#
 # Usage:
-#   ./run_perf_test.sh [pattern1|pattern2|all]
+#   ./run_perf_test.sh [pattern1|pattern2|all] [--api-key]
 #
 # Requirements:
 #   - .env.test file in project root with TENANT_ID, API_KEY, etc.
@@ -43,6 +47,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PERF_TEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CART_DIR="$(cd "${PERF_TEST_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${CART_DIR}/../.." && pwd)"
+
+# Parse --api-key flag from arguments
+AUTH_MODE="jwt"
+LOCUSTFILE="locustfile_jwt.py"
+AUTH_SUFFIX=""
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" = "--api-key" ]; then
+        AUTH_MODE="apikey"
+        LOCUSTFILE="locustfile.py"
+        AUTH_SUFFIX="_apikey"
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
 
 # Output directory for test results
 OUTPUT_DIR="${PERF_TEST_DIR}/results"
@@ -153,6 +173,7 @@ load_env() {
     print_message "${GREEN}" "  ✓ API_KEY: ${API_KEY:0:10}..."
     print_message "${GREEN}" "  ✓ TENANT_ID: ${TENANT_ID}"
     print_message "${GREEN}" "  ✓ BASE_URL_CART: ${BASE_URL_CART}"
+    print_message "${GREEN}" "  ✓ Auth Mode: ${AUTH_MODE} (${LOCUSTFILE})"
 }
 
 ###############################################################################
@@ -176,11 +197,14 @@ run_test_pattern() {
     export PERF_TEST_SPAWN_RATE="${spawn_rate}"
     export PERF_TEST_RUN_TIME="${run_time}"
 
+    # Add auth mode suffix to pattern name for file distinction
+    local file_prefix="${pattern_name}${AUTH_SUFFIX}"
+
     # Output files
-    local html_report="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}.html"
-    local csv_stats="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_stats.csv"
-    local csv_history="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_history.csv"
-    local csv_failures="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_failures.csv"
+    local html_report="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}.html"
+    local csv_stats="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_stats.csv"
+    local csv_history="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_history.csv"
+    local csv_failures="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_failures.csv"
 
     # Check if terminals_config.json exists (multi-terminal mode)
     if [ -f "${PERF_TEST_DIR}/terminals_config.json" ]; then
@@ -195,14 +219,14 @@ run_test_pattern() {
     cd "${PERF_TEST_DIR}"
 
     pipenv run locust \
-        -f "locustfile.py" \
+        -f "${LOCUSTFILE}" \
         --host="${BASE_URL_CART}" \
         --users="${num_users}" \
         --spawn-rate="${spawn_rate}" \
         --run-time="${run_time}" \
         --headless \
         --html="${html_report}" \
-        --csv="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}" \
+        --csv="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}" \
         --loglevel=INFO
 
     local exit_code=$?
@@ -213,7 +237,7 @@ run_test_pattern() {
         print_message "${GREEN}" "  CSV Stats: ${csv_stats}"
 
         # Generate Add Item specific chart
-        local add_item_chart="${OUTPUT_DIR}/${pattern_name}_${TIMESTAMP}_add_item.html"
+        local add_item_chart="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_add_item.html"
         print_message "${BLUE}" "\n  Generating Add Item chart..."
         cd "${PERF_TEST_DIR}"
         pipenv run python generate_item_chart.py "${csv_stats}" "${add_item_chart}"
@@ -305,7 +329,7 @@ run_all() {
 ###############################################################################
 show_usage() {
     cat << EOF
-Usage: $0 [OPTION]
+Usage: $0 [OPTION] [--api-key]
 
 Run performance tests for Cart Service (Multi-Terminal Mode)
 
@@ -318,13 +342,17 @@ OPTIONS:
     cleanup             Cleanup test data only
     help                Show this help message
 
+AUTH MODE:
+    (default)           Use JWT authentication (locustfile_jwt.py)
+    --api-key           Use legacy API Key authentication (locustfile.py)
+
 EXAMPLES:
-    $0                      # Run all patterns (with auto setup/cleanup)
-    $0 all                  # Run all patterns (with auto setup/cleanup)
-    $0 pattern1             # Run only 20 users pattern (requires existing data)
-    $0 pattern2             # Run only 40 users pattern (requires existing data)
-    $0 custom 50 10m        # Run 50 concurrent users for 10 minutes
-    $0 custom 100 30s       # Run 100 concurrent users for 30 seconds
+    $0                      # Run all patterns with JWT (default)
+    $0 all                  # Run all patterns with JWT (default)
+    $0 pattern1             # Run only 20 users pattern with JWT
+    $0 pattern1 --api-key   # Run only 20 users pattern with API Key
+    $0 custom 50 10m        # Run 50 concurrent users for 10 minutes (JWT)
+    $0 custom 100 30s --api-key  # Run 100 users for 30 seconds (API Key)
     $0 setup                # Setup test data with 50 terminals (default)
     $0 setup 100            # Setup test data with 100 terminals
     $0 cleanup              # Cleanup test data only
