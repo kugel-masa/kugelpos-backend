@@ -63,6 +63,18 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PERF_TEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Parse --api-key flag from arguments
+AUTH_MODE="jwt"
+AUTH_FLAG=""
+AUTH_SUFFIX=""
+for arg in "$@"; do
+    if [ "$arg" = "--api-key" ]; then
+        AUTH_MODE="apikey"
+        AUTH_FLAG="--api-key"
+        AUTH_SUFFIX="_apikey"
+    fi
+done
+
 # Output directory for test results
 OUTPUT_DIR="${PERF_TEST_DIR}/results"
 BACKUP_BASE_DIR="${PERF_TEST_DIR}/results_backup"
@@ -76,18 +88,6 @@ BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}${AUTH_SUFFIX}"
 #TEST_DURATION="10m"
 TEST_PATTERNS=(50 100)
 TEST_DURATION="10m"
-
-# Parse --api-key flag from arguments
-AUTH_MODE="jwt"
-AUTH_FLAG=""
-AUTH_SUFFIX=""
-for arg in "$@"; do
-    if [ "$arg" = "--api-key" ]; then
-        AUTH_MODE="apikey"
-        AUTH_FLAG="--api-key"
-        AUTH_SUFFIX="_apikey"
-    fi
-done
 
 # Error tracking
 declare -a FAILED_TESTS=()
