@@ -34,8 +34,12 @@
 #   - Prevents lock contention on transaction_no generation
 #   - More realistic performance testing
 #
+# Authentication mode:
+#   - Default: JWT (locustfile_jwt.py)
+#   - --api-key: Legacy API Key (locustfile.py)
+#
 # Usage:
-#   ./run_multiple_tests.sh
+#   ./run_multiple_tests.sh [--api-key]
 #
 # Requirements:
 #   - .env.test file in project root with TENANT_ID, API_KEY, etc.
@@ -59,13 +63,25 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PERF_TEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Parse --api-key flag from arguments
+AUTH_MODE="jwt"
+AUTH_FLAG=""
+AUTH_SUFFIX=""
+for arg in "$@"; do
+    if [ "$arg" = "--api-key" ]; then
+        AUTH_MODE="apikey"
+        AUTH_FLAG="--api-key"
+        AUTH_SUFFIX="_apikey"
+    fi
+done
+
 # Output directory for test results
 OUTPUT_DIR="${PERF_TEST_DIR}/results"
 BACKUP_BASE_DIR="${PERF_TEST_DIR}/results_backup"
 
 # Timestamp for this test run
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}"
+BACKUP_DIR="${BACKUP_BASE_DIR}/${TIMESTAMP}${AUTH_SUFFIX}"
 
 # Test patterns: users and duration
 #TEST_PATTERNS=(20 30 40 50)
@@ -121,13 +137,13 @@ backup_results() {
 
     # Move result files to backup directory
     local files_found=false
-    if ls "${OUTPUT_DIR}"/Custom_${pattern}users_*.html >/dev/null 2>&1; then
-        mv "${OUTPUT_DIR}"/Custom_${pattern}users_*.html "${backup_subdir}/" 2>/dev/null || true
+    if ls "${OUTPUT_DIR}"/Custom_${pattern}users${AUTH_SUFFIX}_*.html >/dev/null 2>&1; then
+        mv "${OUTPUT_DIR}"/Custom_${pattern}users${AUTH_SUFFIX}_*.html "${backup_subdir}/" 2>/dev/null || true
         files_found=true
     fi
 
-    if ls "${OUTPUT_DIR}"/Custom_${pattern}users_*.csv >/dev/null 2>&1; then
-        mv "${OUTPUT_DIR}"/Custom_${pattern}users_*.csv "${backup_subdir}/" 2>/dev/null || true
+    if ls "${OUTPUT_DIR}"/Custom_${pattern}users${AUTH_SUFFIX}_*.csv >/dev/null 2>&1; then
+        mv "${OUTPUT_DIR}"/Custom_${pattern}users${AUTH_SUFFIX}_*.csv "${backup_subdir}/" 2>/dev/null || true
         files_found=true
     fi
 
@@ -180,7 +196,7 @@ run_test_pattern() {
 
     # Step 2: Cleanup previous test data
     print_info "Step 2/6: Cleaning up previous test data..."
-    if bash "${SCRIPT_DIR}/run_perf_test.sh" cleanup; then
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" cleanup ${AUTH_FLAG}; then
         print_success "Test data cleanup completed"
     else
         print_error "Test data cleanup failed (continuing anyway)"
@@ -192,7 +208,7 @@ run_test_pattern() {
     print_info "Step 3/6: Setting up new test data (multi-terminal mode)..."
     # Use users + 10 terminals to ensure enough capacity
     local num_terminals=$((users + 10))
-    if bash "${SCRIPT_DIR}/run_perf_test.sh" setup "${num_terminals}"; then
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" setup "${num_terminals}" ${AUTH_FLAG}; then
         print_success "Test data setup completed (${num_terminals} terminals created)"
     else
         print_error "Test data setup failed (continuing anyway)"
@@ -203,7 +219,7 @@ run_test_pattern() {
 
     # Step 4: Run performance test
     print_info "Step 4/6: Running performance test (${users} users, ${TEST_DURATION})..."
-    if bash "${SCRIPT_DIR}/run_perf_test.sh" custom "${users}" "${TEST_DURATION}"; then
+    if bash "${SCRIPT_DIR}/run_perf_test.sh" custom "${users}" "${TEST_DURATION}" ${AUTH_FLAG}; then
         print_success "Performance test completed"
     else
         print_error "Performance test failed or incomplete"
@@ -247,6 +263,7 @@ main() {
     print_info "Test Configuration:"
     echo "  - Test Patterns: ${TEST_PATTERNS[*]} users"
     echo "  - Test Duration: ${TEST_DURATION}"
+    echo "  - Auth Mode: ${AUTH_MODE} ($([ "${AUTH_MODE}" = "jwt" ] && echo "locustfile_jwt.py" || echo "locustfile.py"))"
     echo "  - Mode: Multi-Terminal (each user gets unique terminal_id)"
     echo "  - Terminals per pattern: N+10 (e.g., 30 terminals for 20 users)"
     echo "  - Backup Directory: ${BACKUP_DIR}"
