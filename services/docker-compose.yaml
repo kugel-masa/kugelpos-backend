@@ -5,6 +5,11 @@ services:
       context: ./account
       dockerfile: Dockerfile
     image: masakugel/kugelpos.account:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./account/.env
         required: false
@@ -25,6 +30,11 @@ services:
       context: ./terminal
       dockerfile: Dockerfile
     image: masakugel/kugelpos.terminal:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./terminal/.env
         required: false
@@ -54,6 +64,11 @@ services:
       context: ./master-data
       dockerfile: Dockerfile
     image: masakugel/kugelpos.master-data:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./master-data/.env
         required: false
@@ -78,6 +93,11 @@ services:
       context: ./cart
       dockerfile: Dockerfile
     image: masakugel/kugelpos.cart:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./cart/.env
         required: false
@@ -103,6 +123,11 @@ services:
       context: ./report
       dockerfile: Dockerfile
     image: masakugel/kugelpos.report:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./report/.env
         required: false
@@ -129,6 +154,11 @@ services:
       context: ./journal
       dockerfile: Dockerfile
     image: masakugel/kugelpos.journal:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./journal/.env
         required: false
@@ -154,6 +184,11 @@ services:
       context: ./stock
       dockerfile: Dockerfile
     image: masakugel/kugelpos.stock:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - path: ./stock/.env
         required: false
@@ -177,6 +212,11 @@ services:
 
   dapr_account:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "account", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - account
@@ -188,6 +228,11 @@ services:
 
   dapr_terminal:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "terminal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - terminal
@@ -199,6 +244,11 @@ services:
 
   dapr_master_data:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "master-data", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - master-data
@@ -210,6 +260,11 @@ services:
 
   dapr_cart:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "cart", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - cart
@@ -223,6 +278,11 @@ services:
 
   dapr_report:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "report", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - report
@@ -234,6 +294,11 @@ services:
 
   dapr_journal:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "journal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - journal
@@ -245,6 +310,11 @@ services:
 
   dapr_stock:
     image: daprio/daprd:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     command: ["./daprd", "-app-id", "stock", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - stock
