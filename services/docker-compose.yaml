@@ -1,3 +1,8 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "3"
 
 services:
   account:
@@ -5,6 +10,7 @@ services:
       context: ./account
       dockerfile: Dockerfile
     image: masakugel/kugelpos.account:latest
+    logging: *default-logging
     env_file:
       - path: ./account/.env
         required: false
@@ -14,7 +20,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -25,6 +31,7 @@ services:
       context: ./terminal
       dockerfile: Dockerfile
     image: masakugel/kugelpos.terminal:latest
+    logging: *default-logging
     env_file:
       - path: ./terminal/.env
         required: false
@@ -43,7 +50,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -54,6 +61,7 @@ services:
       context: ./master-data
       dockerfile: Dockerfile
     image: masakugel/kugelpos.master-data:latest
+    logging: *default-logging
     env_file:
       - path: ./master-data/.env
         required: false
@@ -67,7 +75,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -78,6 +86,7 @@ services:
       context: ./cart
       dockerfile: Dockerfile
     image: masakugel/kugelpos.cart:latest
+    logging: *default-logging
     env_file:
       - path: ./cart/.env
         required: false
@@ -92,7 +101,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -103,6 +112,7 @@ services:
       context: ./report
       dockerfile: Dockerfile
     image: masakugel/kugelpos.report:latest
+    logging: *default-logging
     env_file:
       - path: ./report/.env
         required: false
@@ -118,7 +128,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -129,6 +139,7 @@ services:
       context: ./journal
       dockerfile: Dockerfile
     image: masakugel/kugelpos.journal:latest
+    logging: *default-logging
     env_file:
       - path: ./journal/.env
         required: false
@@ -143,7 +154,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -154,6 +165,7 @@ services:
       context: ./stock
       dockerfile: Dockerfile
     image: masakugel/kugelpos.stock:latest
+    logging: *default-logging
     env_file:
       - path: ./stock/.env
         required: false
@@ -169,7 +181,7 @@ services:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -177,6 +189,7 @@ services:
 
   dapr_account:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "account", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - account
@@ -188,6 +201,7 @@ services:
 
   dapr_terminal:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "terminal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - terminal
@@ -199,6 +213,7 @@ services:
 
   dapr_master_data:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "master-data", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - master-data
@@ -210,6 +225,7 @@ services:
 
   dapr_cart:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "cart", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - cart
@@ -223,6 +239,7 @@ services:
 
   dapr_report:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "report", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - report
@@ -234,6 +251,7 @@ services:
 
   dapr_journal:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "journal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - journal
@@ -245,6 +263,7 @@ services:
 
   dapr_stock:
     image: daprio/daprd:latest
+    logging: *default-logging
     command: ["./daprd", "-app-id", "stock", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
       - stock
@@ -257,6 +276,7 @@ services:
   redis:
     image: redis:latest
     container_name: redis
+    logging: *default-logging
     ports:
       - "6380:6379"
     networks:
@@ -266,6 +286,7 @@ services:
     image: mongo:7.0
     container_name: mongodb
     hostname: mongodb
+    logging: *default-logging
     ports:
       - "27017:27017"
     command: mongod --replSet rs0 --bind_ip_all
@@ -281,7 +302,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-  
+
 networks:
   kugelpos_net:
     driver: bridge

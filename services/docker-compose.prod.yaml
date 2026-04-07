@@ -1,9 +1,16 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   # Infrastructure services
   mongodb:
     image: mongo:7.0
     container_name: mongodb
     restart: always
+    logging: *default-logging
     environment:
       MONGO_INITDB_DATABASE: admin
     ports:
@@ -25,6 +32,7 @@ services:
     image: redis:latest
     container_name: redis
     restart: always
+    logging: *default-logging
     ports:
       - "6379:6379"
     volumes:
@@ -42,6 +50,7 @@ services:
     image: kugelpos-account:prod
     container_name: kugelpos-account-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8000:8000"
     environment:
@@ -57,7 +66,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -69,6 +78,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-account-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:account"
     depends_on:
       - account
@@ -89,6 +99,7 @@ services:
     image: kugelpos-terminal:prod
     container_name: kugelpos-terminal-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8001:8000"
     environment:
@@ -110,7 +121,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -122,6 +133,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-terminal-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:terminal"
     depends_on:
       - terminal
@@ -142,6 +154,7 @@ services:
     image: kugelpos-master-data:prod
     container_name: kugelpos-master-data-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8002:8000"
       - "50051:50051"
@@ -161,7 +174,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -173,6 +186,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-master-data-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:master-data"
     depends_on:
       - master-data
@@ -193,6 +207,7 @@ services:
     image: kugelpos-cart:prod
     container_name: kugelpos-cart-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8003:8000"
     environment:
@@ -215,7 +230,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -227,6 +242,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-cart-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:cart"
     depends_on:
       - cart
@@ -247,6 +263,7 @@ services:
     image: kugelpos-report:prod
     container_name: kugelpos-report-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8004:8000"
     environment:
@@ -265,7 +282,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -277,6 +294,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-report-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:report"
     depends_on:
       - report
@@ -297,6 +315,7 @@ services:
     image: kugelpos-journal:prod
     container_name: kugelpos-journal-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8005:8000"
     environment:
@@ -314,7 +333,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -326,6 +345,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-journal-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:journal"
     depends_on:
       - journal
@@ -346,6 +366,7 @@ services:
     image: kugelpos-stock:prod
     container_name: kugelpos-stock-prod
     restart: always
+    logging: *default-logging
     ports:
       - "8006:8000"
     environment:
@@ -364,7 +385,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -376,6 +397,7 @@ services:
     image: daprio/daprd:latest
     container_name: kugelpos-stock-dapr-prod
     restart: always
+    logging: *default-logging
     network_mode: "service:stock"
     depends_on:
       - stock
