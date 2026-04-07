@@ -302,8 +302,11 @@ class CartService(ICartService):
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)
         logger.debug(f"CancelTransaction-> tranlog: {tranlog}")
 
-        # Save to cache
-        await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.Cancelled)
+        # Remove cart from cache (transaction data is already saved in MongoDB)
+        await self.__remove_cached_cart_async(self.cart_id)
+
+        # Update cart status in memory for response
+        cart_doc.status = CartStatus.Cancelled.value
 
         return cart_doc
 
@@ -720,8 +723,11 @@ class CartService(ICartService):
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)
         logger.debug(f"Bill-> tranlog: {tranlog}")
 
-        # Save to cache
-        await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.Completed)
+        # Remove cart from cache (transaction data is already saved in MongoDB)
+        await self.__remove_cached_cart_async(self.cart_id)
+
+        # Update cart status in memory for response
+        cart_doc.status = CartStatus.Completed.value
 
         return cart_doc
 
