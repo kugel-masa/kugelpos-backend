@@ -43,6 +43,12 @@
 | 6 | Create Cart asyncio.gather() (4 master data fetches in parallel) | **No effect** | Create Cart Avg -2 to +2%, req/s +0.2%. Individual HTTP calls are lightweight; parallelization benefit is negligible |
 | 7 | Cancel Cart setting value asyncio.gather() (5 settings in parallel) | **No effect to slight improvement** | Cancel Cart Avg -15 to -5%, Add Item Avg -9 to -24%, req/s +0.6%. Within variance but consistent improvement across all metrics |
 | 8 | Worker count tuning (master-data 4w→8w) | **No effect to slight degradation** | Create Cart Avg +1 to +16%, Cancel Cart Avg +8 to +20%, req/s -0.4%. Increased CPU contention; excessive for 6-core environment |
+| 9–22 | (See Japanese report for full details) | — | Ordering effect investigation, batch writes, stability tests, 8GB optimization, WiredTiger cache, worker rebalancing |
+| 23 | Buffer size tuning (sync insert_many) | **No effect** | buffer 50/500/1000 compared. Avg 34–38ms, req/s 105.1–105.2, no significant difference. Large buffers (500/1000) cause Max spikes 610–1,119ms. 100 is optimal |
+| 24 | Async insert_many (create_task fire-and-forget) | **No effect** | buffer 100/1000 compared. Avg/req/s identical to sync. buffer=1000 Max spike 1,130ms not resolved. No benefit from async; keep sync await + buffer=100 |
+| 25 | Env var support 180min stability test | **Stable, no leak** | 1,162,021 requests/180min, 0 errors. Avg 33ms, 107.6 req/s stable throughout. Cart memory plateau at 810MB, no leak. Redis linear growth (~4.7MB/min) requires attention for long runs |
+| 26 | Redis maxmemory 1GB + 4GB swap long test | **Failed at 345min** | 2,324,979 requests, 228 errors (0.01%). Avg 34ms stable until failure. Redis hit 1GB at ~211min, eviction started. At 345min, active carts (item 2-3) evicted → 404 errors in 16-second burst. Root cause: Redis data on swap degrades LRU accuracy — newly created carts incorrectly evicted. Redis must not use swap. Swap extended runtime 3.3x (104→345min) but Redis eviction behavior becomes unpredictable |
+| 27 | maxLenApprox 50000 + Redis container memory limit 360min | **6h complete, 0 errors** | 1,650,915 requests/360min, 0 errors, 0 evictions. Redis memory stabilized at ~813MB after ~170min (Stream capped at 50,000 entries). Stream accounts for ~95% of Redis memory (~750MB); cart cache is only ~3MB. `deleteAfterDeliver` does not exist in Dapr Redis pub/sub. Redis on swap (~80MB) remains structural risk. Recommends pub/sub migration to RabbitMQ (#99) |
 
 ---
 
