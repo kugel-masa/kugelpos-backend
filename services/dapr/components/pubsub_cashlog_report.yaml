@@ -3,17 +3,22 @@ kind: Component
 metadata:
   name: pubsub-cashlog-report
 spec:
-  type: pubsub.redis
+  type: pubsub.rabbitmq
   version: v1
   metadata:
-    - name: redisHost
-      #value: "localhost:6378"  # ローカル環境用
-      value: "redis:6379"    # Docker Compose 用
-    - name: redisPassword
-      value: ""               # パスワードなしの場合
-    - name: streamName
-      value: "topic-cashlog"
-    - name: processingTimeout
-      value: "180s"
-    - name: maxLenApprox
-      value: "1000"
+    - name: connectionString
+      value: "amqp://rabbitmq:5672"
+    - name: durable
+      value: "true"
+    - name: deletedWhenUnused
+      value: "false"
+    - name: deliveryMode
+      value: "2"
+    - name: requeueInFailure
+      value: "true"
+    - name: prefetchCount
+      value: "10"
+    - name: publisherConfirm
+      value: "true"
+    - name: enableDeadLetter
+      value: "true"

@@ -45,6 +45,22 @@ services:
     networks:
       - kugelpos-network
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    restart: always
+    logging: *default-logging
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kugelpos-network
+
   # Application services using production images
   account:
     image: kugelpos-account:prod

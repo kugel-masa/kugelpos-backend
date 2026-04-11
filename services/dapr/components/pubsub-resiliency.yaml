@@ -1,0 +1,22 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: pubsub-resiliency
+spec:
+  policies:
+    retries:
+      pubsubRetry:
+        policy: constant
+        duration: 5s
+        maxRetries: 3
+  targets:
+    components:
+      pubsub-tranlog-report:
+        inbound:
+          retry: pubsubRetry
+      pubsub-cashlog-report:
+        inbound:
+          retry: pubsubRetry
+      pubsub-opencloselog-report:
+        inbound:
+          retry: pubsubRetry
