@@ -224,6 +224,8 @@ services:
       GRPC_TIMEOUT: ${GRPC_TIMEOUT:-5.0}
       MASTER_DATA_GRPC_URL: master-data:50051
       UVICORN_WORKERS: 8
+      REQUEST_LOG_BUFFER_SIZE: ${REQUEST_LOG_BUFFER_SIZE:-100}
+      REQUEST_LOG_FLUSH_INTERVAL: ${REQUEST_LOG_FLUSH_INTERVAL:-5.0}
     depends_on:
       mongodb:
         condition: service_healthy

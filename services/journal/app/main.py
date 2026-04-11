@@ -174,6 +174,10 @@ async def close_event():
     """
     logger.info("closing the application")
 
+    logger.info("Flushing request log buffer")
+    from kugel_common.middleware.request_log_buffer import get_request_log_buffer
+    await get_request_log_buffer().shutdown()
+
     # Close the database connection
     logger.info("close database connection for all tenants...")
     await db_helper.close_client_async()
