@@ -98,6 +98,8 @@ services:
     network_mode: "service:account"
     depends_on:
       - account
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
@@ -153,6 +155,8 @@ services:
     network_mode: "service:terminal"
     depends_on:
       - terminal
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
@@ -206,6 +210,8 @@ services:
     network_mode: "service:master-data"
     depends_on:
       - master-data
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
@@ -264,6 +270,8 @@ services:
     network_mode: "service:cart"
     depends_on:
       - cart
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
@@ -316,6 +324,8 @@ services:
     network_mode: "service:report"
     depends_on:
       - report
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
@@ -367,6 +377,8 @@ services:
     network_mode: "service:journal"
     depends_on:
       - journal
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
@@ -419,6 +431,8 @@ services:
     network_mode: "service:stock"
     depends_on:
       - stock
+      - rabbitmq
+      - redis
     command:
       [
         "./daprd",
