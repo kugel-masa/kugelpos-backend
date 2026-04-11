@@ -62,6 +62,8 @@
 | 25 | Env var support 180min stability test | **Stable, no leak** | 1,162,021 requests/180min, 0 errors. Avg 33ms, 107.6 req/s stable throughout. Cart memory plateau at 810MB, no leak. Redis linear growth (~4.7MB/min) requires attention for long runs |
 | 26 | Redis maxmemory 1GB + 4GB swap long test | **Failed at 345min** | 2,324,979 requests, 228 errors (0.01%). Avg 34ms stable until failure. Redis hit 1GB at ~211min, eviction started. At 345min, active carts (item 2-3) evicted → 404 errors in 16-second burst. Root cause: Redis data on swap degrades LRU accuracy — newly created carts incorrectly evicted. Redis must not use swap. Swap extended runtime 3.3x (104→345min) but Redis eviction behavior becomes unpredictable |
 | 27 | maxLenApprox 50000 + Redis container memory limit 360min | **6h complete, 0 errors** | 1,650,915 requests/360min, 0 errors, 0 evictions. Redis memory stabilized at ~813MB after ~170min (Stream capped at 50,000 entries). Stream accounts for ~95% of Redis memory (~750MB); cart cache is only ~3MB. `deleteAfterDeliver` does not exist in Dapr Redis pub/sub. Redis on swap (~80MB) remains structural risk. Recommends pub/sub migration to RabbitMQ (#99) |
+| 28 | pub/sub RabbitMQ migration | **Throughput equivalent, Redis memory 99.8% reduced** | Redis pub/sub → RabbitMQ. Redis memory ~800MB → ~5MB. Avg 42ms (+5ms), req/s 102 (-6%). Swap usage 0. Stable on 8GB with optimized workers (23→13) |
+| 29 | Dapr state store Redis → MongoDB | **Avg +6ms, throughput equivalent** | cartstore/statestore/terminalstore changed to state.mongodb. Avg 48ms (+6ms), req/s 102.1 (±0%). 3 runs stable. Redis memory ~8MB (nearly empty). Zero code changes. Path to full Redis removal confirmed (#102) |
 
 ---
 
@@ -1467,6 +1469,109 @@ Some Redis data was swapped out to disk. Since no eviction occurred, there was n
 5. **End-state goal**: pub/sub -> RabbitMQ, state store -> MongoDB, eliminate Redis
 
 **Note: The final applied value is `maxLenApprox: 1000`.** Test #27 was conducted with 50,000, but the value was reduced to 1,000 (~5 minutes of buffer) to minimize duplicate risk with Cart's background republish job (5-minute interval), aligned with `processingTimeout: 180s`. Expected Redis memory reduction: ~750MB -> ~15MB.
+
+---
+
+## Test 28: pub/sub RabbitMQ Migration
+
+**Date**: 2026-04-11
+**Purpose**: Migrate Dapr pub/sub from Redis Streams to RabbitMQ and evaluate performance impact
+**Changes**:
+- `pubsub_*.yaml` (3 files): `pubsub.redis` → `pubsub.rabbitmq`
+- `docker-compose.prod.yaml`: Add RabbitMQ container
+- `pubsub-resiliency.yaml`: Add Resiliency policy (maxRetries: 3 → DLQ)
+**Configuration**: cart:6w, md:2, t:1 (8GB) / RabbitMQ: durable, deliveryMode 2, publisherConfirm, enableDeadLetter
+**Conditions**: 300 users / 5min
+
+### Results
+
+| Endpoint | P50 | P95 | P99 | Max | req/s |
+|----------|-----|-----|-----|------|-------|
+| Create Cart | 98 | 180 | 260 | 440 | 5.00 |
+| Add Item | 21 | 77 | 120 | 270 | 94.50 |
+| Cancel Cart | 250 | 370 | 450 | 540 | — |
+| **Aggregated** | **23** | **140** | **290** | **540** | **102.3** |
+
+- Errors: 0
+- Swap usage: 0
+
+### Redis Memory Change
+
+| Metric | Redis pub/sub | RabbitMQ |
+|--------|:------------:|:--------:|
+| Redis used_memory | ~800MB | **~5MB** |
+| Reduction | — | **99.8%** |
+
+### Comparison with Test #27 (Redis pub/sub + maxLenApprox)
+
+| Metric | Redis pub/sub | RabbitMQ | Diff |
+|--------|:------------:|:--------:|:----:|
+| Avg | 37ms | 42ms | +14% |
+| P50 | 18ms | 23ms | +28% |
+| P95 | 160ms | 140ms | **-13% (improved)** |
+| Max | 1,700ms | 540ms | **-68% (improved)** |
+| req/s | 108 | 102 | -6% |
+
+### Analysis
+
+1. **P95/Max significantly improved** — Elimination of Redis Stream trim processing and fragmentation stabilized tail latency
+2. **Avg +5ms** — RabbitMQ AMQP protocol overhead, only affects Cancel Cart (pub/sub publish)
+3. **req/s -6%** — Includes impact of worker optimization (8→6)
+4. **Zero swap usage** — Removal of Redis ~800MB freed sufficient physical memory
+
+### Notes
+
+- Initial test triggered RabbitMQ `system_memory_high_watermark` alarm causing severe degradation. Root cause was insufficient host memory (swap residue from prior test). Resolved by Lima environment reboot
+- Worker optimization (23→13) is essential for memory headroom
+
+---
+
+## Test 29: Dapr State Store Redis → MongoDB
+
+**Date**: 2026-04-11
+**Purpose**: Migrate Dapr state stores (cartstore, statestore, terminalstore) from `state.redis` to `state.mongodb` and evaluate performance impact. Confirm path to full Redis removal
+**Changes**: 3 state store YAMLs changed to `state.mongodb` (zero code changes)
+**Configuration**: cart:6w, md:2, t:1 (8GB) / RabbitMQ pub/sub / MongoDB state store
+**Conditions**: 300 users / 5min × 3 runs
+
+### Results (3-run average)
+
+| Metric | Run 1 | Run 2 | Run 3 | Average |
+|--------|:-----:|:-----:|:-----:|:-------:|
+| Avg | 54ms | 46ms | 44ms | 48ms |
+| P50 | 29ms | 26ms | 26ms | 27ms |
+| P95 | 220ms | 160ms | 140ms | 173ms |
+| P99 | 370ms | 300ms | 280ms | 317ms |
+| Max | 1,600ms | 720ms | 550ms | 957ms |
+| req/s | 101.9 | 102.2 | 102.2 | 102.1 |
+
+- Errors: 0 (all runs)
+- Swap usage: 0
+- Redis memory: ~8MB (nearly empty)
+
+### Comparison with Test #28 (Redis state + RabbitMQ)
+
+| Metric | Redis state | MongoDB state | Diff |
+|--------|:----------:|:------------:|:----:|
+| Avg | 42ms | 48ms | +14% |
+| P50 | 23ms | 27ms | +17% |
+| P95 | 140ms | 173ms | +24% |
+| P99 | 290ms | 317ms | +9% |
+| req/s | 102.3 | 102.1 | ±0% |
+
+### Analysis
+
+1. **req/s is equivalent** — No throughput impact
+2. **Avg +6ms** — MongoDB state store latency increase (Redis ~1ms → MongoDB ~3-5ms)
+3. **Run 1→3 improvement** — WiredTiger cache warmup effect. Run 3 is nearly equivalent to Redis state version
+4. **Redis memory ~8MB** — State store migrated to MongoDB, Redis is nearly unused
+5. **Full Redis removal is possible** — No direct Redis references in application code. Only `depends_on` and `REDIS_URL` removal needed in docker-compose (#102)
+
+### Conclusion
+
+- +6ms is imperceptible for POS use cases
+- Redis removal simplifies infrastructure and frees memory
+- For Azure: same `state.mongodb` connects to MongoDB Atlas (config change only)
 
 ---
 

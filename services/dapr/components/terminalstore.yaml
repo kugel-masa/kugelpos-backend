@@ -3,17 +3,16 @@ kind: Component
 metadata:
   name: terminalstore
 spec:
-  type: state.redis
+  type: state.mongodb
   version: v1
   metadata:
-  - name: redisHost
-    #value: localhost:6378 # ローカル環境用
-    value: redis:6379  # Docker Compose 用
-  - name: redisPassword
-    value: ""
+  - name: host
+    value: "mongodb:27017"
+  - name: databaseName
+    value: "dapr_terminalstore"
+  - name: collectionName
+    value: "terminal_state"
   - name: actorStateStore
     value: "false"
-  - name: ttlInSeconds
-    value: "3600" # 1h
-  - name: databaseIndex
-    value: "3"
+  - name: operationTimeout
+    value: "5s"

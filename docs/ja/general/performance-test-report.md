@@ -62,6 +62,8 @@
 | 25 | 環境変数対応版 180分安定性テスト | **安定・リークなし** | 1,162,021リクエスト/180分、エラー0件。Avg 33ms、107.6 req/s で全時間帯安定。cart メモリ 810MB でプラトー、メモリリークなし。Redis は線形増加（~4.7MB/分）で長時間運用時は要注意 |
 | 26 | Redis maxmemory 1GB + スワップ4GB 長時間テスト | **345分で破綻** | 2,324,979リクエスト、エラー228件(0.01%)。Avg 34ms、107.6 req/s で345分間安定。~211分で Redis が1GBに到達し eviction 開始。345分で処理中カートが evict され 404 エラー。スワップにより OOM は回避（スワップなしの104分→345分に延命）。allkeys-lru はアクティブカートも削除するため不適切 |
 | 27 | maxLenApprox 50000 + Redis コンテナメモリ制限 360分テスト | **6時間完走・エラー0件** | 1,650,915リクエスト/360分、エラー0件、eviction 0件。~170分で Redis メモリ ~813MB で安定（Stream 件数が50,000で固定）。ただし Redis の~80MBがスワップ上に退避しており、スワップ+Redis の構造的リスクは残存。pub/sub の RabbitMQ 移行を推奨 |
+| 28 | pub/sub RabbitMQ 移行 | **スループット同等、Redis メモリ 99.8% 削減** | Redis pub/sub → RabbitMQ に移行。Redis メモリ ~800MB → ~5MB。Avg 42ms（+5ms）、req/s 102（-6%）。スワップ使用 0。ワーカー最適化（23→13）と組み合わせることで 8GB 環境で安定稼働 |
+| 29 | Dapr state store Redis → MongoDB | **Avg +6ms、スループット同等** | cartstore/statestore/terminalstore を state.mongodb に変更。Avg 48ms（+6ms）、req/s 102.1（±0%）。3回実施で安定。Redis メモリ ~8MB（ほぼ空）。コード変更ゼロ。Redis 完全撤去への道筋を確認（#102） |
 
 ---
 
@@ -1470,6 +1472,116 @@ Redis のデータの一部がスワップに退避している。現在は evic
 5. **最終目標**: pub/sub → RabbitMQ、state store → MongoDB、Redis 撤去
 
 **注: 最終的な適用値は `maxLenApprox: 1000` に変更。** テスト#27 は 50,000 で実施したが、Cart のバックグラウンド再配信ジョブ（5分間隔）との重複リスクを考慮し、`processingTimeout: 180s` と整合する ~5分分のバッファ（1,000件）を採用。Redis メモリは ~750MB → ~15MB に削減される見込み。
+
+---
+
+## テスト 28: pub/sub RabbitMQ 移行
+
+**日付**: 2026-04-11
+**目的**: Dapr pub/sub を Redis Streams から RabbitMQ に移行し、パフォーマンスへの影響を検証
+**変更**:
+- `pubsub_*.yaml` (3ファイル): `pubsub.redis` → `pubsub.rabbitmq`
+- `docker-compose.prod.yaml`: RabbitMQ コンテナ追加
+- `pubsub-resiliency.yaml`: Resiliency ポリシー追加（maxRetries: 3 → DLQ）
+**構成**: cart:6w, md:2, t:1（8GB環境）/ RabbitMQ: durable, deliveryMode 2, publisherConfirm, enableDeadLetter
+**条件**: 300 users / 5分
+
+### 結果
+
+| Endpoint | P50 | P95 | P99 | Max | req/s |
+|----------|-----|-----|-----|------|-------|
+| Create Cart | 98 | 180 | 260 | 440 | 5.00 |
+| Add Item | 21 | 77 | 120 | 270 | 94.50 |
+| Cancel Cart | 250 | 370 | 450 | 540 | — |
+| **Aggregated** | **23** | **140** | **290** | **540** | **102.3** |
+
+- エラー: 0件
+- スワップ使用: 0
+
+### Redis メモリの変化
+
+| 指標 | Redis pub/sub | RabbitMQ |
+|------|:------------:|:--------:|
+| Redis used_memory | ~800MB | **~5MB** |
+| 削減率 | — | **99.8%** |
+
+### テスト#27（Redis pub/sub + maxLenApprox）との比較
+
+| 指標 | Redis pub/sub | RabbitMQ | 差 |
+|------|:------------:|:--------:|:---:|
+| Avg | 37ms | 42ms | +14% |
+| P50 | 18ms | 23ms | +28% |
+| P95 | 160ms | 140ms | **-13%（改善）** |
+| Max | 1,700ms | 540ms | **-68%（改善）** |
+| req/s | 108 | 102 | -6% |
+
+### 分析
+
+1. **P95/Max が大幅改善** — Redis Stream の trim 処理やフラグメンテーションがなくなったため、テールレイテンシが安定
+2. **Avg +5ms** — RabbitMQ の AMQP プロトコルオーバーヘッド。Cancel Cart（pub/sub publish 時）のみ影響
+3. **req/s -6%** — ワーカー最適化（8→6）の影響も含む
+4. **スワップ使用ゼロ** — Redis の ~800MB がなくなり、物理メモリに十分な余裕
+
+### 注意事項
+
+- 初回テストで RabbitMQ の `system_memory_high_watermark` アラームが発生し大幅悪化。原因はホストメモリ不足（前回テストのスワップ残り）。Lima 環境再起動で解消
+- ワーカー数を最適化（23→13）してメモリ確保が必須
+
+---
+
+## テスト 29: Dapr state store Redis → MongoDB
+
+**日付**: 2026-04-11
+**目的**: Dapr state store（cartstore, statestore, terminalstore）を `state.redis` → `state.mongodb` に変更し、パフォーマンスへの影響を検証。Redis 完全撤去の可能性を確認
+**変更**: 3つの state store YAML を `state.mongodb` に変更（コード変更ゼロ）
+**構成**: cart:6w, md:2, t:1（8GB環境）/ RabbitMQ pub/sub / MongoDB state store
+**条件**: 300 users / 5分 × 3回
+
+### 結果（3回平均）
+
+| Endpoint | P50 | P95 | P99 | Max |
+|----------|-----|-----|-----|------|
+| Create Cart | 98 | 200 | 413 | 787 |
+| Add Item | 25 | 86 | 167 | 347 |
+| Cancel Cart | 260 | 427 | 780 | 957 |
+| **Aggregated** | **27** | **173** | **317** | **957** |
+
+| 指標 | Run 1 | Run 2 | Run 3 | 平均 |
+|------|:-----:|:-----:|:-----:|:----:|
+| Avg | 54ms | 46ms | 44ms | 48ms |
+| P50 | 29ms | 26ms | 26ms | 27ms |
+| P95 | 220ms | 160ms | 140ms | 173ms |
+| P99 | 370ms | 300ms | 280ms | 317ms |
+| Max | 1,600ms | 720ms | 550ms | 957ms |
+| req/s | 101.9 | 102.2 | 102.2 | 102.1 |
+
+- エラー: 全 Run 0件
+- スワップ使用: 0
+- Redis メモリ: ~8MB（ほぼ空）
+
+### テスト#28（Redis state + RabbitMQ）との比較
+
+| 指標 | Redis state | MongoDB state | 差 |
+|------|:----------:|:------------:|:---:|
+| Avg | 42ms | 48ms | +14% |
+| P50 | 23ms | 27ms | +17% |
+| P95 | 140ms | 173ms | +24% |
+| P99 | 290ms | 317ms | +9% |
+| req/s | 102.3 | 102.1 | ±0% |
+
+### 分析
+
+1. **req/s は同等** — スループットへの影響なし
+2. **Avg +6ms** — MongoDB state store のレイテンシ増加分（Redis ~1ms → MongoDB ~3-5ms）
+3. **Run 1→3 で改善** — WiredTiger キャッシュのウォームアップ効果。Run 3 は Redis state 版とほぼ同等
+4. **Redis メモリ ~8MB** — state store が MongoDB に移ったため Redis はほぼ不要
+5. **Redis 完全撤去が可能** — アプリコードに Redis 直接参照なし。docker-compose の `depends_on` と `REDIS_URL` 削除のみ（#102）
+
+### 結論
+
+- POS ユースケースで +6ms は体感不可能なレベル
+- Redis 撤去でインフラ簡素化とメモリ確保が可能
+- Azure 環境では同じ `state.mongodb` で MongoDB Atlas に接続可能（設定変更のみ）
 
 ---
 
