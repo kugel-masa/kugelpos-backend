@@ -1466,6 +1466,8 @@ Some Redis data was swapped out to disk. Since no eviction occurred, there was n
 4. **Idempotency gaps should be addressed** -- Report/Journal infinite retry (#97), Stock double-deduction (#98)
 5. **End-state goal**: pub/sub -> RabbitMQ, state store -> MongoDB, eliminate Redis
 
+**Note: The final applied value is `maxLenApprox: 1000`.** Test #27 was conducted with 50,000, but the value was reduced to 1,000 (~5 minutes of buffer) to minimize duplicate risk with Cart's background republish job (5-minute interval), aligned with `processingTimeout: 180s`. Expected Redis memory reduction: ~750MB -> ~15MB.
+
 ---
 
 ## Test Procedure Notes
