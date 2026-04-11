@@ -62,6 +62,8 @@
 | 25 | Env var support 180min stability test | **Stable, no leak** | 1,162,021 requests/180min, 0 errors. Avg 33ms, 107.6 req/s stable throughout. Cart memory plateau at 810MB, no leak. Redis linear growth (~4.7MB/min) requires attention for long runs |
 | 26 | Redis maxmemory 1GB + 4GB swap long test | **Failed at 345min** | 2,324,979 requests, 228 errors (0.01%). Avg 34ms stable until failure. Redis hit 1GB at ~211min, eviction started. At 345min, active carts (item 2-3) evicted → 404 errors in 16-second burst. Root cause: Redis data on swap degrades LRU accuracy — newly created carts incorrectly evicted. Redis must not use swap. Swap extended runtime 3.3x (104→345min) but Redis eviction behavior becomes unpredictable |
 | 27 | maxLenApprox 50000 + Redis container memory limit 360min | **6h complete, 0 errors** | 1,650,915 requests/360min, 0 errors, 0 evictions. Redis memory stabilized at ~813MB after ~170min (Stream capped at 50,000 entries). Stream accounts for ~95% of Redis memory (~750MB); cart cache is only ~3MB. `deleteAfterDeliver` does not exist in Dapr Redis pub/sub. Redis on swap (~80MB) remains structural risk. Recommends pub/sub migration to RabbitMQ (#99) |
+| 28 | pub/sub RabbitMQ migration (cart:6w) | **Throughput equivalent, Redis memory 99.8% reduced** | Redis pub/sub → RabbitMQ. Redis memory ~800MB → ~5MB. 300users/3min×3: Avg 40ms, P95 127ms, req/s 98.9. Swap 0. Max 629ms (improved from 1,700ms with Redis) |
+| 29 | RabbitMQ + cart:4w user count verification | **200 users optimal** | cart:4w with 150/200/300 users. 150u: Avg 35ms/Max 375ms (stable). 200u: Avg 36ms/Max 410ms (stable). 300u: Avg 92ms/Max 3,850ms (swap degradation). 200 users is optimal for 8GB/cart:4w |
 
 ---
 
@@ -1467,6 +1469,101 @@ Some Redis data was swapped out to disk. Since no eviction occurred, there was n
 5. **End-state goal**: pub/sub -> RabbitMQ, state store -> MongoDB, eliminate Redis
 
 **Note: The final applied value is `maxLenApprox: 1000`.** Test #27 was conducted with 50,000, but the value was reduced to 1,000 (~5 minutes of buffer) to minimize duplicate risk with Cart's background republish job (5-minute interval), aligned with `processingTimeout: 180s`. Expected Redis memory reduction: ~750MB -> ~15MB.
+
+---
+
+## Test 28: pub/sub RabbitMQ Migration (cart:6w)
+
+**Date**: 2026-04-11
+**Purpose**: Migrate Dapr pub/sub from Redis Streams to RabbitMQ and evaluate performance impact
+**Changes**: 3 pubsub YAMLs changed to `pubsub.rabbitmq`, RabbitMQ container added, Resiliency policy added
+**Configuration**: cart:6w, md:2, t:1 (8GB) / RabbitMQ / Redis state store
+**Conditions**: 300 users / 3min × 3 runs
+
+### Results (3-run average)
+
+| Metric | Run 1 | Run 2 | Run 3 | Average |
+|--------|:-----:|:-----:|:-----:|:-------:|
+| Avg | 41ms | 38ms | 41ms | 40ms |
+| P50 | 22ms | 23ms | 24ms | 23ms |
+| P95 | 140ms | 110ms | 130ms | 127ms |
+| P99 | 270ms | 260ms | 270ms | 267ms |
+| Max | 682ms | 518ms | 687ms | 629ms |
+| req/s | 98.8 | 99.0 | 98.8 | 98.9 |
+
+- Errors: 0 (all runs), Swap: 0
+
+### Comparison with Test #25 (Redis pub/sub, same configuration)
+
+| Metric | Redis pub/sub | RabbitMQ | Diff |
+|--------|:------------:|:--------:|:----:|
+| Avg | 33ms | 40ms | +21% |
+| P50 | 16ms | 23ms | +44% |
+| P95 | 130ms | 127ms | **-2% (improved)** |
+| Max | 1,219ms | 629ms | **-48% (improved)** |
+| req/s | 107.6 | 98.9 | -8% |
+| Redis memory | ~800MB | ~5MB | **-99.8%** |
+
+### Analysis
+
+1. **Avg +7ms** — RabbitMQ AMQP protocol overhead (affects Cancel Cart only)
+2. **P95/Max improved** — No Redis Stream trim/fragmentation, stabilized tail latency
+3. **Redis memory 99.8% reduced** — Streams eliminated, only ~5MB remaining
+
+---
+
+## Test 29: RabbitMQ + cart:4w User Count Verification
+
+**Date**: 2026-04-11
+**Purpose**: Evaluate performance at different user counts with cart:4w on RabbitMQ. Identify optimal user count for 8GB environment
+**Configuration**: cart:4w, md:2, t:1 (8GB) / RabbitMQ / Redis state store / WiredTiger 1.5GB
+**Conditions**: Each user count 5min × 2 runs
+
+### User Count Comparison Summary (Add Item)
+
+| Metric | 150 users | 200 users | 300 users |
+|--------|:---------:|:---------:|:---------:|
+| Avg | 24ms | 24ms | 79ms |
+| P50 | 16ms | 17ms | 37ms |
+| P95 | 62ms | 60ms | 280ms |
+| P99 | 86ms | 83ms | 695ms |
+| Max | 150ms | 155ms | 2,450ms |
+| req/s (total) | 52.5 | 69.5 | 100.5 |
+| Swap | ~130MB | 641MB | ~1GB |
+| Rating | Excess capacity | **Optimal** | Swap-degraded |
+
+### 150 users (average of 2 runs)
+
+| Endpoint | Avg (ms) | P50 | P95 | P99 | Max |
+|----------|---------|-----|-----|-----|------|
+| Create Cart | 86 | 73 | 140 | 170 | 190 |
+| Add Item | 24 | 16 | 62 | 86 | 150 |
+| Cancel Cart | 235 | 230 | 295 | 345 | 375 |
+| **Aggregated** | **35** | **17** | **110** | **250** | **375** |
+
+### 200 users (average of 2 runs)
+
+| Endpoint | Avg (ms) | P50 | P95 | P99 | Max |
+|----------|---------|-----|-----|-----|------|
+| Create Cart | 90 | 80 | 150 | 195 | 205 |
+| Add Item | 24 | 17 | 60 | 83 | 155 |
+| Cancel Cart | 241 | 235 | 305 | 350 | 410 |
+| **Aggregated** | **36** | **18** | **115** | **260** | **410** |
+
+### 300 users (average of 2 runs)
+
+| Endpoint | Avg (ms) | P50 | P95 | P99 | Max |
+|----------|---------|-----|-----|-----|------|
+| Create Cart | 204 | 120 | 660 | 1,550 | 3,350 |
+| Add Item | 79 | 37 | 280 | 695 | 2,450 |
+| Cancel Cart | 456 | 310 | 1,200 | 2,150 | 4,250 |
+| **Aggregated** | **101** | **40** | **315** | **1,055** | **3,850** |
+
+### Conclusion
+
+1. **200 users is optimal for 8GB/cart:4w** — Avg 36ms, Max 410ms, stable. Swap 641MB is acceptable
+2. **300 users causes 2.5x Avg degradation** — Swap I/O becomes the bottleneck. cart:6w can handle 300 users but lacks memory headroom
+3. **150 users has excess capacity** — Near-zero swap but throughput (52.5 req/s) underutilizes the hardware
 
 ---
 
