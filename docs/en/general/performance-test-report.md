@@ -64,6 +64,7 @@
 | 27 | maxLenApprox 50000 + Redis container memory limit 360min | **6h complete, 0 errors** | 1,650,915 requests/360min, 0 errors, 0 evictions. Redis memory stabilized at ~813MB after ~170min (Stream capped at 50,000 entries). Stream accounts for ~95% of Redis memory (~750MB); cart cache is only ~3MB. `deleteAfterDeliver` does not exist in Dapr Redis pub/sub. Redis on swap (~80MB) remains structural risk. Recommends pub/sub migration to RabbitMQ (#99) |
 | 28 | pub/sub RabbitMQ migration (cart:6w) | **Throughput equivalent, Redis memory 99.8% reduced** | Redis pub/sub → RabbitMQ. Redis memory ~800MB → ~5MB. 300users/3min×3: Avg 40ms, P95 127ms, req/s 98.9. Swap 0. Max 629ms (improved from 1,700ms with Redis) |
 | 29 | RabbitMQ + cart:4w user count verification | **200 users optimal** | cart:4w with 150/200/300 users. 150u: Avg 35ms/Max 375ms (stable). 200u: Avg 36ms/Max 410ms (stable). 300u: Avg 92ms/Max 3,850ms (swap degradation). 200 users is optimal for 8GB/cart:4w |
+| 30 | RabbitMQ + cart:4w 180min stability test | **3h complete, 0 errors** | 775,665 requests/180min. Avg 32ms, P50 15ms, P95 120ms, Max 1,228ms. Add Item Avg 19ms/P50 14ms. Redis memory ~15MB. Achieved equivalent or better latency than Test #25 (Redis, 300u, 6w) with 200u/4w |
 
 ---
 
@@ -1564,6 +1565,47 @@ Some Redis data was swapped out to disk. Since no eviction occurred, there was n
 1. **200 users is optimal for 8GB/cart:4w** — Avg 36ms, Max 410ms, stable. Swap 641MB is acceptable
 2. **300 users causes 2.5x Avg degradation** — Swap I/O becomes the bottleneck. cart:6w can handle 300 users but lacks memory headroom
 3. **150 users has excess capacity** — Near-zero swap but throughput (52.5 req/s) underutilizes the hardware
+
+---
+
+## Test 30: RabbitMQ + cart:4w 180min Stability Test
+
+**Date**: 2026-04-11
+**Purpose**: Verify 3-hour stable operation with RabbitMQ pub/sub + cart:4w at 200 users
+**Configuration**: cart:4w, md:2, t:1 (8GB) / RabbitMQ / Redis state store / WiredTiger 1.5GB
+**Conditions**: 200 users / 180min / DB clean (`down -v`) / Swap 4GB (starting from 0)
+
+### Performance Results
+
+| Endpoint | Avg (ms) | P50 | P95 | P99 | Max | req/s |
+|----------|---------|-----|-----|-----|------|-------|
+| Create Cart | 89 | 83 | 140 | 170 | 321 | 3.28 |
+| Add Item | 19 | 14 | 51 | 66 | 278 | 65.29 |
+| Cancel Cart | 229 | 220 | 280 | 320 | 1,228 | 3.26 |
+| **Aggregated** | **32** | **15** | **120** | **250** | **1,228** | **71.8** |
+
+- **Total requests**: 775,665
+- **Errors**: 0
+- **Swap**: 0 → 1,231MB (final)
+
+### Comparison with Test #25 (Redis pub/sub, cart:6w, 300users, 180min)
+
+| Metric | Test #25 (Redis, 300u, 6w) | Test #30 (RabbitMQ, 200u, 4w) | Diff |
+|--------|:-------------------------:|:----------------------------:|:----:|
+| Avg | 33ms | 32ms | **-3%** |
+| P50 | 16ms | 15ms | **-6%** |
+| P95 | 140ms | 120ms | **-14% (improved)** |
+| P99 | 250ms | 250ms | ±0% |
+| Max | 1,219ms | 1,228ms | ±0% |
+| req/s | 107.6 | 71.8 | -33% (user count ratio) |
+| Redis memory | ~868MB | ~15MB | **-98%** |
+
+### Conclusion
+
+1. **8GB/cart:4w/RabbitMQ/200 users achieves 3-hour stable operation**
+2. **Latency equivalent or better than Redis pub/sub** (P95: 120ms vs 140ms)
+3. **Redis memory problem fully resolved** by RabbitMQ migration
+4. Fewer workers (6→4) with right-sized users (300→200) efficiently utilizes 8GB resources
 
 ---
 
