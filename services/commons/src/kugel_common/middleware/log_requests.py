@@ -24,7 +24,6 @@ from logging import getLogger
 from pydantic import ValidationError
 import json
 import time
-import asyncio
 
 from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse

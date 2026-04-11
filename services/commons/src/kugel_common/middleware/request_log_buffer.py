@@ -118,8 +118,17 @@ _buffer: RequestLogBuffer | None = None
 
 
 def get_request_log_buffer() -> RequestLogBuffer:
-    """Get or create the singleton RequestLogBuffer instance."""
+    """Get or create the singleton RequestLogBuffer instance.
+
+    Configuration via environment variables:
+        REQUEST_LOG_BUFFER_SIZE: Max buffer size before flush (default: 100)
+        REQUEST_LOG_FLUSH_INTERVAL: Idle flush interval in seconds (default: 5.0)
+    """
     global _buffer
     if _buffer is None:
-        _buffer = RequestLogBuffer()
+        import os
+        max_size = int(os.environ.get("REQUEST_LOG_BUFFER_SIZE", "100"))
+        flush_interval = float(os.environ.get("REQUEST_LOG_FLUSH_INTERVAL", "5.0"))
+        _buffer = RequestLogBuffer(max_size=max_size, flush_interval=flush_interval)
+        logger.info(f"RequestLogBuffer initialized: max_size={max_size}, flush_interval={flush_interval}s")
     return _buffer
