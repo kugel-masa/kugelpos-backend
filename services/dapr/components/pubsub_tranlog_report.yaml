@@ -15,3 +15,5 @@ spec:
       value: "topic-tranlog"
     - name: processingTimeout
       value: "180s"
+    - name: maxLenApprox
+      value: "1000"
