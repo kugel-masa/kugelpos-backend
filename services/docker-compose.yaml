@@ -192,8 +192,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "account", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - account
-      - redis
+      account:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -204,8 +208,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "terminal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - terminal
-      - redis
+      terminal:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -216,8 +224,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "master-data", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - master-data
-      - redis
+      master-data:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -228,8 +240,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "cart", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - cart
-      - redis
+      cart:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -242,8 +258,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "report", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - report
-      - redis
+      report:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -254,8 +274,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "journal", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - journal
-      - redis
+      journal:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -266,8 +290,12 @@ services:
     logging: *default-logging
     command: ["./daprd", "-app-id", "stock", "-app-port", "8000", "-dapr-http-port", "3500", "-config", "/dapr/config.yaml", "-components-path", "./dapr/components"]
     depends_on:
-      - stock
-      - redis
+      stock:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
@@ -279,6 +307,21 @@ services:
     logging: *default-logging
     ports:
       - "6380:6379"
+    networks:
+      - kugelpos_net
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    logging: *default-logging
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - kugelpos_net
 

@@ -28,6 +28,7 @@ Kugelposは小売業向けの包括的なPOS（Point of Sale）バックエン�
 - hatch（commonsパッケージのビルド用）
 - MongoDB 7.0+（Dockerで自動的に提供）
 - Redis（Dockerで自動的に提供）
+- RabbitMQ（Dockerで自動的に提供）
 
 ## クイックスタート
 
@@ -142,7 +143,7 @@ chmod +x ./scripts/make_scripts_executable.sh
 cd services
 
 # インフラストラクチャサービスのみを起動
-docker-compose up -d mongodb redis
+docker-compose up -d mongodb redis rabbitmq
 
 # 特定のサービスをローカルで実行（例：cartサービス）
 cd cart

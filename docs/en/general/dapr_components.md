@@ -5,7 +5,7 @@
 The Kugelpos system uses Dapr (Distributed Application Runtime) for the following purposes:
 
 - **State Store**: Redis-based caching and idempotency management
-- **Pub/Sub Messaging**: Event-driven communication between services
+- **Pub/Sub Messaging**: Event-driven communication between services (via RabbitMQ)
 - **Circuit Breaker**: Appropriate failover during failures
 
 ## Dapr Component Configuration
@@ -78,14 +78,12 @@ kind: Component
 metadata:
   name: pubsub-tranlog-report
 spec:
-  type: pubsub.redis
+  type: pubsub.rabbitmq
   metadata:
-  - name: redisHost
-    value: redis:6379
+  - name: connectionString
+    value: amqp://guest:guest@rabbitmq:5672
   - name: consumerID
     value: kugelpos-tranlog-consumer
-  - name: processingTimeout
-    value: "180s"
 ```
 
 **Event Flow:**
@@ -278,7 +276,7 @@ limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
 ### Failure Behavior
 
 - **Redis Failure**: State store fallback, tolerate duplicate processing
-- **Pub/Sub Failure**: Skip event delivery, log records
+- **Pub/Sub (RabbitMQ) Failure**: Skip event delivery, log records
 - **Network Failure**: Automatic retry, exponential backoff
 
 ### Impact of Configuration Changes

@@ -28,6 +28,7 @@ Required tools:
 - hatch (for building the commons package)
 - MongoDB 7.0+ (automatically provided via Docker)
 - Redis (automatically provided via Docker)
+- RabbitMQ (automatically provided via Docker)
 
 ## Quick Start
 
@@ -141,7 +142,7 @@ Each service can be run locally for development:
 cd services
 
 # Start only infrastructure services
-docker-compose up -d mongodb redis
+docker-compose up -d mongodb redis rabbitmq
 
 # Run a specific service locally (example: cart service)
 cd cart
