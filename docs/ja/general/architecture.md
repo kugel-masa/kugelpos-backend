@@ -2,7 +2,7 @@
 
 ## 概要
 
-Kugelposは、マイクロサービスアーキテクチャに基づいて構築されたPOSバックエンドシステムです。FastAPI、MongoDB、Dapr、Redisを中核技術として、高い可用性とスケーラビリティを実現しています。
+Kugelposは、マイクロサービスアーキテクチャに基づいて構築されたPOSバックエンドシステムです。FastAPI、MongoDB、Dapr、Redis、RabbitMQを中核技術として、高い可用性とスケーラビリティを実現しています。
 
 ## システム構成
 
@@ -23,8 +23,9 @@ Kugelposは、マイクロサービスアーキテクチャに基づいて構築
 **フレームワーク・ライブラリ:**
 - Python 3.12+ with FastAPI
 - MongoDB (Motor非同期ドライバー)
-- Redis (キャッシュ・pub/sub)
-- Dapr (サービスメッシュ・ステート管理)
+- Redis (キャッシュ・ステート管理)
+- RabbitMQ (pub/subメッセージング、Dapr経由)
+- Dapr (サービスメッシュ・ステート管理・pub/sub)
 - Docker & Docker Compose
 
 **共通ライブラリ:**
@@ -290,6 +291,8 @@ services:
     command: ["--replSet", "rs0"]
   redis:
     image: redis:7-alpine
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
   # 各サービス定義
 ```
 

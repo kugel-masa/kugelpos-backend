@@ -2,7 +2,7 @@
 
 ## Overview
 
-Kugelpos is a POS backend system built on microservices architecture, utilizing FastAPI, MongoDB, Dapr, and Redis as core technologies to achieve high availability and scalability.
+Kugelpos is a POS backend system built on microservices architecture, utilizing FastAPI, MongoDB, Dapr, Redis, and RabbitMQ as core technologies to achieve high availability and scalability.
 
 ## System Configuration
 
@@ -23,8 +23,9 @@ Kugelpos is a POS backend system built on microservices architecture, utilizing 
 **Frameworks & Libraries:**
 - Python 3.12+ with FastAPI
 - MongoDB (Motor async driver)
-- Redis (caching & pub/sub)
-- Dapr (service mesh & state management)
+- Redis (caching & state management)
+- RabbitMQ (pub/sub messaging, via Dapr)
+- Dapr (service mesh, state management & pub/sub)
 - Docker & Docker Compose
 
 **Common Libraries:**
@@ -299,6 +300,8 @@ services:
     command: ["--replSet", "rs0"]
   redis:
     image: redis:7-alpine
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
   # Service definitions
 ```
 

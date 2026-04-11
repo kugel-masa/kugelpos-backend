@@ -5,7 +5,7 @@
 KugelposシステムではDapr（Distributed Application Runtime）を以下の目的で使用しています：
 
 - **ステートストア**: Redisベースのキャッシングと冪等性管理
-- **Pub/Subメッセージング**: サービス間のイベント駆動通信
+- **Pub/Subメッセージング**: RabbitMQによるサービス間のイベント駆動通信
 - **サーキットブレーカー**: 障害時の適切なフェイルオーバー
 
 ## Daprコンポーネント設定
@@ -78,14 +78,12 @@ kind: Component
 metadata:
   name: pubsub-tranlog-report
 spec:
-  type: pubsub.redis
+  type: pubsub.rabbitmq
   metadata:
-  - name: redisHost
-    value: redis:6379
+  - name: connectionString
+    value: amqp://guest:guest@rabbitmq:5672
   - name: consumerID
     value: kugelpos-tranlog-consumer
-  - name: processingTimeout
-    value: "180s"
 ```
 
 **イベントフロー:**
@@ -278,7 +276,7 @@ limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
 ### 障害時の動作
 
 - **Redis障害**: ステートストアフォールバック、重複処理許容
-- **Pub/Sub障害**: イベント配信スキップ、ログ記録
+- **Pub/Sub（RabbitMQ）障害**: イベント配信スキップ、ログ記録
 - **ネットワーク障害**: 自動リトライ、指数バックオフ
 
 ### 設定変更時の影響

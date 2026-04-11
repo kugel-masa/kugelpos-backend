@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Kugelpos is a microservices-based Point of Sale (POS) backend system built with FastAPI, MongoDB, and Dapr. The system consists of 7 core services that communicate via Dapr service mesh and Redis pub/sub.
+Kugelpos is a microservices-based Point of Sale (POS) backend system built with FastAPI, MongoDB, and Dapr. The system consists of 7 core services that communicate via Dapr service mesh and RabbitMQ pub/sub.
 
 ## Architecture
 
@@ -22,7 +22,8 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system built with 
 ### Key Technologies
 - **Python 3.12+** with FastAPI for REST APIs
 - **MongoDB** (Motor async driver) for persistence
-- **Redis** for caching and pub/sub messaging
+- **Redis** for caching and state management
+- **RabbitMQ** for pub/sub messaging (via Dapr)
 - **Dapr** for service mesh, state management, and pub/sub
 - **Docker & Docker Compose** for containerization
 - **Pipenv** for dependency management
@@ -72,7 +73,7 @@ States: initial → idle → entering_item → paying → completed/cancelled
 - Terminal authentication uses API keys
 
 ### 4. Event-Driven Communication
-Dapr pub/sub topics:
+Dapr pub/sub topics (backed by RabbitMQ):
 - `tranlog_report`: Transaction data for reports
 - `tranlog_status`: Transaction status updates
 - `cashlog_report`: Cash in/out events

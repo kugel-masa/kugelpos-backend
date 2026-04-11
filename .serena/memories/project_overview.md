@@ -7,7 +7,8 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system designed fo
 - **Language**: Python 3.12+
 - **Web Framework**: FastAPI
 - **Database**: MongoDB (Motor async driver)
-- **Cache/Pub-Sub**: Redis
+- **Cache/State Store**: Redis
+- **Pub/Sub Messaging**: RabbitMQ (via Dapr)
 - **Service Mesh**: Dapr
 - **Containerization**: Docker & Docker Compose
 - **Dependency Management**: Pipenv
