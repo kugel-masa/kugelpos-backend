@@ -51,3 +51,4 @@ claude-*
 # ignore git worktree directories
 worktree/
 worktrees/
+.claude/rules/
