@@ -282,6 +282,16 @@ services:
     networks:
       - kugelpos_net
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    logging: *default-logging
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - kugelpos_net
+
   mongodb:
     image: mongo:7.0
     container_name: mongodb
