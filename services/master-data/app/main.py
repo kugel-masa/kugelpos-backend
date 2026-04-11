@@ -235,6 +235,10 @@ async def close_event():
         await stop_grpc_server(grpc_server)
 
     logger.info("Closing the database connection")
+
+    logger.info("Flushing request log buffer")
+    from kugel_common.middleware.request_log_buffer import get_request_log_buffer
+    await get_request_log_buffer().shutdown()
     await db_helper.close_client_async()
 
     # add shutdown tasks here

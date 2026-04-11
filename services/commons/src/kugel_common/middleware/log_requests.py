@@ -34,6 +34,7 @@ from kugel_common.models.repositories.request_log_repository import RequestLogRe
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.config.settings import settings
 from kugel_common.utils.misc import get_app_time_str
+from kugel_common.middleware.request_log_buffer import get_request_log_buffer
 
 logger = getLogger(__name__)
 logger_request = getLogger("requestLogger")
@@ -87,9 +88,9 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
             # Log to file synchronously (fast operation)
             await _output_request_log_to_file(request_log)
 
-            # Log to database asynchronously (fire-and-forget)
-            # This prevents database write latency from blocking API responses
-            asyncio.create_task(_output_request_log_to_db_async(request_log))
+            # Buffer for batched database write (insert_many)
+            buffer = get_request_log_buffer()
+            await buffer.add(request_log)
         return response
     return middleware
 
