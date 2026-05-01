@@ -425,10 +425,13 @@ class SalesReportMaker(IReportPlugin):
         }
 
         # Create final group dict for business criteria aggregation
+        # Issue #115: business_date must NOT be in final_group_id, otherwise period
+        # reports split into multiple rows per transaction_type — and downstream
+        # _get_result_by_transaction_type only takes the first row, dropping all
+        # other days non-deterministically.
         final_group_id = {
             "tenant_id": "$_id.tenant_id",
             "store_code": "$_id.store_code",
-            "business_date": "$_id.business_date",
             "transaction_type": "$_id.transaction_type",
         }
         # Include terminal_no in final grouping only if filtering by specific terminal
