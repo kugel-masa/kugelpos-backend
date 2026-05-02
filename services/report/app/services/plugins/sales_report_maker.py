@@ -331,7 +331,7 @@ class SalesReportMaker(IReportPlugin):
             "sales.total_quantity": 1,
             "sales.change_amount": 1,
             "sales.total_discount_amount": 1,
-            # Issue #115 follow-up: Exclude cancelled line items from discount aggregations.
+            # Exclude cancelled line items from discount aggregations.
             # Cart sets line_items.is_cancelled=True on items removed before payment but does
             # NOT clear line_items.discounts / discounts_allocated. Cart's calc_subtotal_logic
             # excludes cancelled items from sales.total_discount_amount, so without this filter
@@ -496,7 +496,7 @@ class SalesReportMaker(IReportPlugin):
         }
 
         # Create final group dict for business criteria aggregation
-        # Issue #115: business_date must NOT be in final_group_id, otherwise period
+        # business_date must NOT be in final_group_id, otherwise period
         # reports split into multiple rows per transaction_type — and downstream
         # _get_result_by_transaction_type only takes the first row, dropping all
         # other days non-deterministically.

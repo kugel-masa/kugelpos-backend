@@ -256,7 +256,7 @@ class ItemReportMaker(IReportPlugin):
             {"$match": match_dict},
             # Unwind line items to process each item separately
             {"$unwind": "$line_items"},
-            # Issue #115: Exclude cancelled line items.
+            # Exclude cancelled line items.
             # Cart sets line_items.is_cancelled=True on items removed before payment
             # (calc_subtotal_logic.py / calc_tax_logic.py exclude these from sales totals),
             # but they remain in the persisted line_items array. Without this filter,

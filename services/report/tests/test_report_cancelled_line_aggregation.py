@@ -1,7 +1,8 @@
 # Copyright 2025 masa@kugel
-# Regression tests for Issue #115:
+# Regression tests for sales/item/category report aggregation:
 #   1. Period sales report only returns 1 day of data (final_group_id had business_date)
 #   2. Item/Category reports include cancelled line_items (no is_cancelled filter)
+#   3. Sales report discount aggregation leaks discounts from cancelled lines
 
 import os
 import pytest
@@ -76,7 +77,7 @@ def _make_normal_sale(
 @pytest.mark.asyncio
 async def test_period_sales_report_aggregates_all_days(set_env_vars):
     """
-    Issue #115 symptom ②: period sales report only included 1 day's data because
+    Period sales report previously only included 1 day's data because
     final_group_id contained business_date, splitting transaction_type into multiple rows;
     _get_result_by_transaction_type then took only the first row (non-deterministic).
 
@@ -168,7 +169,7 @@ async def test_period_sales_report_aggregates_all_days(set_env_vars):
     assert observed_amounts == {3000.0}, (
         f"Period sales report must aggregate all 3 days deterministically. "
         f"Observed gross amounts across repeated calls: {observed_amounts}. "
-        f"If the set has multiple values, results are non-deterministic (Issue #115 symptom ②)."
+        f"If the set has multiple values, results are non-deterministic."
     )
 
     # gross count is NormalSales count; we have 3 NormalSales
@@ -179,7 +180,7 @@ async def test_period_sales_report_aggregates_all_days(set_env_vars):
 @pytest.mark.asyncio
 async def test_item_report_excludes_cancelled_line_items(set_env_vars):
     """
-    Issue #115 symptom ①: item/category report previously included line_items with
+    Item/category report previously included line_items with
     is_cancelled=True, causing item totals to exceed sales totals.
 
     Scenario: 1 transaction with 2 line_items — one active (500 yen), one cancelled (500 yen).
@@ -328,7 +329,7 @@ async def test_item_report_excludes_cancelled_line_items(set_env_vars):
 @pytest.mark.asyncio
 async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars):
     """
-    Issue #115 follow-up: sales_report_maker's $project iterated $line_items without filtering
+    sales_report_maker's $project iterated $line_items without filtering
     is_cancelled, so a cancelled line item that still carries discounts (Cart sets
     is_cancelled=True without clearing line_item.discounts) inflated the report's
     discount_for_lineitems totals and depressed sales_net.amount via _make_sales_net.
@@ -486,7 +487,7 @@ async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars)
 @pytest.mark.asyncio
 async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quantity(set_env_vars):
     """
-    Issue #115 follow-up: the same $line_items-without-filter bug affects sub_total_discount_quantity.
+    The same $line_items-without-filter bug affects sub_total_discount_quantity.
     sub_total_discount_quantity sums the quantity of every line item whose discounts_allocated is
     non-empty. When a subtotal discount is applied (which populates discounts_allocated for all
     eligible lines) and a line is then cancelled, Cart's __subtotal_async re-runs but does NOT
