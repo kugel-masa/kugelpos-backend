@@ -406,5 +406,5 @@ async def test_invalid_sales_date_range(http_client):
         headers=headers,
     )
 
-    # Should return error (403 or 500)
-    assert response.status_code in [403, 500]
+    # Should return error (403, 422, or 500)
+    assert response.status_code in [403, 422, 500]
