@@ -95,11 +95,11 @@ async def test_period_sales_report_aggregates_all_days(set_env_vars):
     cash_repo = CashInOutLogRepository(db, tenant_id)
     open_close_repo = OpenCloseLogRepository(db, tenant_id)
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
-    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE115A")
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE_CLA1")
 
     collection = db[tran_repo.collection_name]
 
-    test_store = "STORE115A"
+    test_store = "STORE_CLA1"
     test_terminal = 70
     business_dates = ["20260414", "20260415", "20260416"]
 
@@ -122,7 +122,7 @@ async def test_period_sales_report_aggregates_all_days(set_env_vars):
             line_items=[
                 {
                     "line_no": 1,
-                    "item_code": "G115A",
+                    "item_code": "CLA1A",
                     "category_code": "C1",
                     "quantity": 1,
                     "unit_price": 1000,
@@ -197,11 +197,11 @@ async def test_item_report_excludes_cancelled_line_items(set_env_vars):
     cash_repo = CashInOutLogRepository(db, tenant_id)
     open_close_repo = OpenCloseLogRepository(db, tenant_id)
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
-    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE115B")
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE_CLA2")
 
     collection = db[tran_repo.collection_name]
 
-    test_store = "STORE115B"
+    test_store = "STORE_CLA2"
     test_terminal = 71
     test_date = "20260420"
 
@@ -359,11 +359,11 @@ async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars)
     cash_repo = CashInOutLogRepository(db, tenant_id)
     open_close_repo = OpenCloseLogRepository(db, tenant_id)
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
-    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE115C")
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE_CLA3")
 
     collection = db[tran_repo.collection_name]
 
-    test_store = "STORE115C"
+    test_store = "STORE_CLA3"
     test_terminal = 72
     test_date = "20260421"
 
@@ -384,7 +384,7 @@ async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars)
         line_items=[
             {
                 "line_no": 1,
-                "item_code": "G115C-A",
+                "item_code": "CLA3A",
                 "category_code": "CAT1",
                 "quantity": 1,
                 "unit_price": 1000,
@@ -404,7 +404,7 @@ async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars)
             },
             {
                 "line_no": 2,
-                "item_code": "G115C-B",
+                "item_code": "CLA3B",
                 "category_code": "CAT1",
                 "quantity": 1,
                 "unit_price": 500,
@@ -513,11 +513,11 @@ async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quant
     cash_repo = CashInOutLogRepository(db, tenant_id)
     open_close_repo = OpenCloseLogRepository(db, tenant_id)
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
-    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE115D")
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE_CLA4")
 
     collection = db[tran_repo.collection_name]
 
-    test_store = "STORE115D"
+    test_store = "STORE_CLA4"
     test_terminal = 73
     test_date = "20260422"
 
@@ -547,7 +547,7 @@ async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quant
         line_items=[
             {
                 "line_no": 1,
-                "item_code": "G115D-A",
+                "item_code": "CLA4A",
                 "category_code": "CAT1",
                 "quantity": 1,
                 "unit_price": 1000,
@@ -567,7 +567,7 @@ async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quant
             },
             {
                 "line_no": 2,
-                "item_code": "G115D-B",
+                "item_code": "CLA4B",
                 "category_code": "CAT1",
                 "quantity": 1,
                 "unit_price": 500,

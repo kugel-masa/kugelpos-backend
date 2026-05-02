@@ -39,7 +39,6 @@ echo ""
 # Each service uses its own configuration from docker-compose.yaml
 # Setting these variables globally would break JWT authentication between services
 
-
 # Check and create .env.test file if needed
 echo -e "${YELLOW}Checking .env.test file...${NC}"
 if [ ! -f ".env.test" ]; then

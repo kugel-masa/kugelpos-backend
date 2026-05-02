@@ -1,6 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Any, Dict, List
 from abc import ABC, abstractmethod
+from types import SimpleNamespace
 import logging
 
 from kugel_common.utils.misc import get_app_time_str
@@ -79,10 +80,18 @@ class SalesReportMaker(IReportPlugin):
             Sales report document
         """
         
-        # Validate date range if both dates are provided
+        # Validate date range parameters: must be both-or-neither, and from <= to.
+        # Reject half-specified ranges to prevent unbounded queries when only one bound is given.
+        if bool(business_date_from) != bool(business_date_to):
+            raise ValueError(
+                "business_date_from and business_date_to must be provided together"
+            )
         if business_date_from and business_date_to:
             if business_date_from > business_date_to:
-                raise ValueError(f"Invalid date range: business_date_from ({business_date_from}) is after business_date_to ({business_date_to})")
+                raise ValueError(
+                    f"Invalid date range: business_date_from ({business_date_from}) "
+                    f"is after business_date_to ({business_date_to})"
+                )
 
         # Create pipeline for retrieving sales report data
         pipeline = self._create_pipeline_for_sales_report(
@@ -110,7 +119,7 @@ class SalesReportMaker(IReportPlugin):
         # For date range reports, skip cash logs as they are session-specific
         if business_date_from and business_date_to:
             # Date range mode - no cash logs (similar to open/close logs)
-            cash_results = type('obj', (object,), {'data': []})()
+            cash_results = SimpleNamespace(data=[])
         else:
             # Single date mode - retrieve cash logs normally
             filter = {
@@ -143,7 +152,7 @@ class SalesReportMaker(IReportPlugin):
         # For date range reports, skip open/close logs as they are session-specific
         if business_date_from and business_date_to:
             # Date range mode - no open/close logs
-            open_close_results = type('obj', (object,), {'data': []})()
+            open_close_results = SimpleNamespace(data=[])
         else:
             # Single date mode
             open_close_results = await self.open_close_log_repository.get_open_close_logs(
