@@ -26,8 +26,15 @@ def _make_normal_sale(
     business_date: str,
     base_amount: int,
     line_items: list,
+    total_discount_amount: float = 0,
+    subtotal_discounts: list = None,
 ) -> BaseTransaction:
-    """Build a NormalSales transaction. Caller supplies pre-computed line_items."""
+    """Build a NormalSales transaction. Caller supplies pre-computed line_items.
+
+    Optional:
+      total_discount_amount: cart-side sum of subtotal_discounts + non-cancelled line discounts.
+      subtotal_discounts: cart-level subtotal discount entries (mirror of cart_doc.subtotal_discounts).
+    """
     tax_amount = int(round(base_amount * 0.1 / 1.1))  # internal 10% tax
     return BaseTransaction(
         tenant_id=tenant_id,
@@ -44,7 +51,7 @@ def _make_normal_sale(
             "tax_amount": 0,
             "total_quantity": sum(li.get("quantity", 0) for li in line_items if not li.get("is_cancelled", False)),
             "change_amount": 0,
-            "total_discount_amount": 0,
+            "total_discount_amount": total_discount_amount,
             "is_cancelled": False,
         },
         payments=[
@@ -61,6 +68,7 @@ def _make_normal_sale(
             }
         ],
         line_items=line_items,
+        subtotal_discounts=subtotal_discounts or [],
         transaction_time=datetime.now().isoformat(),
     )
 
@@ -315,3 +323,309 @@ async def test_item_report_excludes_cancelled_line_items(set_env_vars):
         f"G5011 quantity should be 1 (cancelled excluded), got {g5011_items[0].quantity}"
     assert g5011_items[0].gross_amount == 500.0, \
         f"G5011 gross_amount should be 500 (cancelled excluded), got {g5011_items[0].gross_amount}"
+
+
+@pytest.mark.asyncio
+async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars):
+    """
+    Issue #115 follow-up: sales_report_maker's $project iterated $line_items without filtering
+    is_cancelled, so a cancelled line item that still carries discounts (Cart sets
+    is_cancelled=True without clearing line_item.discounts) inflated the report's
+    discount_for_lineitems totals and depressed sales_net.amount via _make_sales_net.
+
+    Scenario: 1 NormalSales transaction with 2 line items.
+      - Item 1: active, post-discount 900 yen (1000 - 100 line discount). Must be counted.
+      - Item 2: cancelled, originally 500 yen, with a 200 yen line discount dangling. Must NOT be counted.
+
+    Both items have line discounts; the active discount must be retained in the report and
+    the cancelled discount must be filtered out. This shape distinguishes "filter is doing
+    its job" from "everything is zero anyway".
+
+    Cart-side calc_subtotal_logic computes:
+      total_amount = 900 (only active line)
+      total_discount_amount = 100 (only active line discount counted)
+    The report must agree:
+      discount_for_lineitems = (amount=100, count=1, quantity=1)
+      sales_net = sales_gross(1000) - returns(0) - discount_lineitem(100) - discount_subtotal(0) - net_tax
+    """
+    from kugel_common.database import database as local_db_helper
+
+    tenant_id = os.environ.get("TENANT_ID")
+    db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"
+    db = await local_db_helper.get_db_async(db_name)
+
+    tran_repo = TranlogRepository(db, tenant_id)
+    cash_repo = CashInOutLogRepository(db, tenant_id)
+    open_close_repo = OpenCloseLogRepository(db, tenant_id)
+    daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE115C")
+
+    collection = db[tran_repo.collection_name]
+
+    test_store = "STORE115C"
+    test_terminal = 72
+    test_date = "20260421"
+
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": test_store,
+        "terminal_no": test_terminal,
+    })
+
+    tran = _make_normal_sale(
+        tenant_id=tenant_id,
+        store_code=test_store,
+        terminal_no=test_terminal,
+        transaction_no=1,
+        business_date=test_date,
+        base_amount=900,  # cart-side total_amount = sum of non-cancelled line.amount = 900
+        total_discount_amount=100,  # cart-side counts only active line's discount
+        line_items=[
+            {
+                "line_no": 1,
+                "item_code": "G115C-A",
+                "category_code": "CAT1",
+                "quantity": 1,
+                "unit_price": 1000,
+                "amount": 900,  # post-discount line amount = unit_price - line discount
+                "tax_code": "01",
+                "is_cancelled": False,
+                "discounts": [
+                    {
+                        "seq_no": 1,
+                        "discount_type": "DiscountAmount",
+                        "discount_value": 100,
+                        "discount_amount": 100,
+                        "detail": "active-must-count",
+                    }
+                ],
+                "discounts_allocated": [],
+            },
+            {
+                "line_no": 2,
+                "item_code": "G115C-B",
+                "category_code": "CAT1",
+                "quantity": 1,
+                "unit_price": 500,
+                "amount": 300,
+                "tax_code": "01",
+                "is_cancelled": True,  # cancelled but still has a dangling discount
+                "discounts": [
+                    {
+                        "seq_no": 1,
+                        "discount_type": "DiscountAmount",
+                        "discount_value": 200,
+                        "discount_amount": 200,
+                        "detail": "cancelled-must-not-leak",
+                    }
+                ],
+                "discounts_allocated": [],
+            },
+        ],
+    )
+    await collection.insert_one(tran.model_dump())
+
+    service = ReportService(
+        tran_repository=tran_repo,
+        cash_in_out_log_repository=cash_repo,
+        open_close_log_repository=open_close_repo,
+        daily_info_repository=daily_info_repo,
+        terminal_info_repository=terminal_info_repo,
+    )
+
+    sales_report = await service.get_report_for_terminal_async(
+        store_code=test_store,
+        terminal_no=test_terminal,
+        report_scope="flash",
+        report_type="sales",
+        business_date=test_date,
+        open_counter=1,
+        limit=100,
+        page=1,
+    )
+
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": test_store,
+        "terminal_no": test_terminal,
+    })
+
+    # Active line's 100 yen discount must be counted; cancelled line's 200 yen must NOT leak.
+    assert sales_report.discount_for_lineitems.amount == 100.0, (
+        f"discount_for_lineitems.amount must equal the active line's discount (100). "
+        f"Got {sales_report.discount_for_lineitems.amount}. "
+        f"If 300, both active+cancelled discounts are aggregated (filter not effective). "
+        f"If 0, the active discount was also dropped (filter too aggressive)."
+    )
+    assert sales_report.discount_for_lineitems.count == 1, (
+        f"discount_for_lineitems.count must equal 1 (only the active line). "
+        f"Got {sales_report.discount_for_lineitems.count}. "
+        f"If 2, the cancelled line is leaking; if 0, the active line was also dropped."
+    )
+    assert sales_report.discount_for_lineitems.quantity == 1, (
+        f"discount_for_lineitems.quantity must equal 1 (only the active line). "
+        f"Got {sales_report.discount_for_lineitems.quantity}. "
+        f"If 2, cancelled is leaking; if 0, active was dropped."
+    )
+
+    # sales_net must reflect the active discount (100) only, not the leaked 200.
+    # gross = total_amount_with_tax(=900) + total_discount_amount(=100) = 1000.
+    # net = gross - returns(0) - discount_lineitem(100) - discount_subtotal(0) - net_tax.
+    expected_net = (
+        sales_report.sales_gross.amount
+        - sales_report.discount_for_lineitems.amount
+        - sum(t.tax_amount for t in sales_report.taxes)
+    )
+    assert sales_report.sales_net.amount == expected_net, (
+        f"sales_net.amount must equal sales_gross - discount_lineitem - net_tax. "
+        f"Expected {expected_net}, got {sales_report.sales_net.amount}. "
+        f"A 200 yen extra subtraction here would mean _make_sales_net is using the leaked discount."
+    )
+
+
+@pytest.mark.asyncio
+async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quantity(set_env_vars):
+    """
+    Issue #115 follow-up: the same $line_items-without-filter bug affects sub_total_discount_quantity.
+    sub_total_discount_quantity sums the quantity of every line item whose discounts_allocated is
+    non-empty. When a subtotal discount is applied (which populates discounts_allocated for all
+    eligible lines) and a line is then cancelled, Cart's __subtotal_async re-runs but does NOT
+    re-run add_discount_to_cart_logic, so the cancelled line keeps its discounts_allocated.
+
+    Without the filter, that cancelled line's quantity gets counted in discount_for_subtotal.quantity.
+    Note: amount and count come from $subtotal_discounts directly and are not affected; only quantity
+    is buggy. Still worth covering — this is the only path that exercises the discounts_allocated
+    branch of the fix.
+
+    Scenario: subtotal discount of 300 yen, then Item B cancelled.
+      - Item A (active): amount=1000, discounts_allocated=[200]
+      - Item B (cancelled): amount=500, discounts_allocated=[100] (dangling)
+    Expected: discount_for_subtotal.quantity == 1 (only A counted), not 2.
+    """
+    from kugel_common.database import database as local_db_helper
+
+    tenant_id = os.environ.get("TENANT_ID")
+    db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"
+    db = await local_db_helper.get_db_async(db_name)
+
+    tran_repo = TranlogRepository(db, tenant_id)
+    cash_repo = CashInOutLogRepository(db, tenant_id)
+    open_close_repo = OpenCloseLogRepository(db, tenant_id)
+    daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE115D")
+
+    collection = db[tran_repo.collection_name]
+
+    test_store = "STORE115D"
+    test_terminal = 73
+    test_date = "20260422"
+
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": test_store,
+        "terminal_no": test_terminal,
+    })
+
+    tran = _make_normal_sale(
+        tenant_id=tenant_id,
+        store_code=test_store,
+        terminal_no=test_terminal,
+        transaction_no=1,
+        business_date=test_date,
+        base_amount=700,  # subtotal_amount(1000, only active) - subtotal_discount(300) = 700
+        total_discount_amount=300,  # subtotal_discounts sum + non-cancelled line discounts (0) = 300
+        subtotal_discounts=[
+            {
+                "seq_no": 1,
+                "discount_type": "DiscountAmount",
+                "discount_value": 300,
+                "discount_amount": 300,
+                "detail": "subtotal-discount",
+            }
+        ],
+        line_items=[
+            {
+                "line_no": 1,
+                "item_code": "G115D-A",
+                "category_code": "CAT1",
+                "quantity": 1,
+                "unit_price": 1000,
+                "amount": 1000,
+                "tax_code": "01",
+                "is_cancelled": False,
+                "discounts": [],
+                "discounts_allocated": [
+                    {
+                        "seq_no": 1,
+                        "discount_type": "DiscountAmount",
+                        "discount_value": 300,
+                        "discount_amount": 200,
+                        "detail": "active-allocation",
+                    }
+                ],
+            },
+            {
+                "line_no": 2,
+                "item_code": "G115D-B",
+                "category_code": "CAT1",
+                "quantity": 1,
+                "unit_price": 500,
+                "amount": 500,
+                "tax_code": "01",
+                "is_cancelled": True,  # cancelled, but discounts_allocated was not cleared
+                "discounts": [],
+                "discounts_allocated": [
+                    {
+                        "seq_no": 1,
+                        "discount_type": "DiscountAmount",
+                        "discount_value": 300,
+                        "discount_amount": 100,
+                        "detail": "cancelled-allocation-dangling",
+                    }
+                ],
+            },
+        ],
+    )
+    await collection.insert_one(tran.model_dump())
+
+    service = ReportService(
+        tran_repository=tran_repo,
+        cash_in_out_log_repository=cash_repo,
+        open_close_log_repository=open_close_repo,
+        daily_info_repository=daily_info_repo,
+        terminal_info_repository=terminal_info_repo,
+    )
+
+    sales_report = await service.get_report_for_terminal_async(
+        store_code=test_store,
+        terminal_no=test_terminal,
+        report_scope="flash",
+        report_type="sales",
+        business_date=test_date,
+        open_counter=1,
+        limit=100,
+        page=1,
+    )
+
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": test_store,
+        "terminal_no": test_terminal,
+    })
+
+    # amount and count come from $subtotal_discounts directly — sanity-check they are right.
+    assert sales_report.discount_for_subtotal.amount == 300.0, (
+        f"discount_for_subtotal.amount should equal the subtotal discount (300). "
+        f"Got {sales_report.discount_for_subtotal.amount}."
+    )
+    assert sales_report.discount_for_subtotal.count == 1, (
+        f"discount_for_subtotal.count should equal 1 (one subtotal_discounts entry). "
+        f"Got {sales_report.discount_for_subtotal.count}."
+    )
+
+    # The buggy field: quantity must count only the active line whose discounts_allocated is non-empty.
+    assert sales_report.discount_for_subtotal.quantity == 1, (
+        f"discount_for_subtotal.quantity must exclude cancelled line items with dangling "
+        f"discounts_allocated. Expected 1 (only active line A), got {sales_report.discount_for_subtotal.quantity}. "
+        f"If 2, the cancelled line's allocation is leaking into the report."
+    )

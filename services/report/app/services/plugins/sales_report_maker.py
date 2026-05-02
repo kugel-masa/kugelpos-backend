@@ -290,10 +290,22 @@ class SalesReportMaker(IReportPlugin):
             "sales.total_quantity": 1,
             "sales.change_amount": 1,
             "sales.total_discount_amount": 1,
+            # Issue #115 follow-up: Exclude cancelled line items from discount aggregations.
+            # Cart sets line_items.is_cancelled=True on items removed before payment but does
+            # NOT clear line_items.discounts / discounts_allocated. Cart's calc_subtotal_logic
+            # excludes cancelled items from sales.total_discount_amount, so without this filter
+            # the report-side line-item discount totals would over-count vs the cart-side total
+            # and inflate _make_sales_net's subtraction (lowering salesNet incorrectly).
             "line_items_discount_amount": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {
                             "$sum": {
@@ -310,7 +322,13 @@ class SalesReportMaker(IReportPlugin):
             "line_items_discount_count": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {"$size": {"$ifNull": ["$$item.discounts", []]}},
                     }
@@ -319,7 +337,13 @@ class SalesReportMaker(IReportPlugin):
             "line_items_discount_quantity": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {
                             "$cond": {
@@ -338,7 +362,13 @@ class SalesReportMaker(IReportPlugin):
             "sub_total_discount_quantity": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {
                             "$cond": {
