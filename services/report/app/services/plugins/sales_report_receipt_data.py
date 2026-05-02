@@ -72,8 +72,22 @@ class SalesReportReceiptData(AbstractReceiptData[SalesReportDocument]):
         # 営業日付 2021年01月01日(木)
         # 開設回数 999回
         # 精算通番 999,999
-        business_date_str = "営業日付 " + self.format_business_date(report.business_date)
-        page.lines.append(self.line_left(business_date_str))
+        # Handle date range or single date
+        if report.business_date_from and report.business_date_to:
+            # Date range format
+            date_from_str = self.format_business_date(report.business_date_from)
+            date_to_str = self.format_business_date(report.business_date_to)
+            business_date_str = f"期間 {date_from_str}"
+            page.lines.append(self.line_left(business_date_str))
+            business_date_str2 = f"     ～ {date_to_str}"
+            page.lines.append(self.line_left(business_date_str2))
+        elif report.business_date:
+            # Single date format
+            business_date_str = "営業日付 " + self.format_business_date(report.business_date)
+            page.lines.append(self.line_left(business_date_str))
+        else:
+            # No date information available
+            page.lines.append(self.line_left("営業日付 指定なし"))
         if report.open_counter is not None:
             open_counter_str = "開設回数 " + self.fixed_left(self.comma(report.open_counter) + "回", 10)
             page.lines.append(self.line_left(open_counter_str))

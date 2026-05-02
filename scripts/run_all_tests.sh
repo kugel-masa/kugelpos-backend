@@ -24,6 +24,7 @@ echo "Setting required environment variables for testing..."
 export SECRET_KEY="test-secret-key-for-development-only"
 export PUBSUB_NOTIFY_API_KEY="test-api-key-123456789"
 
+
 # Check and create .env.test file if needed
 echo "Checking .env.test file..."
 if [ ! -f ".env.test" ]; then
@@ -60,8 +61,8 @@ MICROSERVICES=("account" "master-data" "journal" "report" "stock" "terminal" "ca
 for service in "${MICROSERVICES[@]}"; do
     echo "Running tests for $service..."
     cd "$PROJECT_ROOT/services/$service"
-    # Export environment variables to ensure they are available in pipenv
-    SECRET_KEY="$SECRET_KEY" PUBSUB_NOTIFY_API_KEY="$PUBSUB_NOTIFY_API_KEY" ./run_all_tests.sh
+    # Run tests - environment variables are loaded from .env.test
+    ./run_all_tests.sh
     cd "$PROJECT_ROOT"
 done
 

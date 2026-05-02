@@ -210,14 +210,14 @@ class PaymentReportMaker(IReportPlugin):
                     "X-Tenant-ID": tenant_id,
                     "X-Store-Code": store_code
                 }
-                    
+
                 # HttpClientHelper.get() returns the JSON data directly, not a response object
                 data = await client.get(
                     f"{base_url}/tenants/{tenant_id}/payments",
                     params={"limit": 100, "page": 1},
                     headers=headers
                 )
-                
+
                 if data.get("success") and data.get("data"):
                     for payment in data["data"]:
                         payment_code = payment.get("paymentCode")  # Changed from payment_code to paymentCode
@@ -229,7 +229,7 @@ class PaymentReportMaker(IReportPlugin):
                     logger.warning(f"Failed to fetch payment master data: {data.get('message', 'No data available')}")
                     payment_map = {
                         "01": "Cash",
-                        "11": "Cashless", 
+                        "11": "Cashless",
                         "12": "Others",
                     }
                     
