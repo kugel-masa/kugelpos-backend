@@ -1,6 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Any, Dict, List
 from abc import ABC, abstractmethod
+from types import SimpleNamespace
 import logging
 
 from kugel_common.utils.misc import get_app_time_str
@@ -55,18 +56,22 @@ class SalesReportMaker(IReportPlugin):
         limit: int,
         page: int,
         sort: list[tuple[str, int]],
+        business_date_from: str = None,
+        business_date_to: str = None,
     ) -> dict[str, Any]:
         """
         Generate a sales report
 
         Args:
             store_code: Store code
-            business_date: Business date
+            business_date: Business date (used when date range not specified)
             open_counter: Open counter
             terminal_no: Terminal number
             business_counter: Business counter
             report_scope: Report scope ("flash"=preliminary, "daily"=settlement)
             report_type: Report type
+            business_date_from: Start date for date range (optional)
+            business_date_to: End date for date range (optional)
             limit: Data retrieval limit
             page: Page number
             sort: Sort conditions
@@ -74,6 +79,19 @@ class SalesReportMaker(IReportPlugin):
         Returns:
             Sales report document
         """
+        
+        # Validate date range parameters: must be both-or-neither, and from <= to.
+        # Reject half-specified ranges to prevent unbounded queries when only one bound is given.
+        if bool(business_date_from) != bool(business_date_to):
+            raise ValueError(
+                "business_date_from and business_date_to must be provided together"
+            )
+        if business_date_from and business_date_to:
+            if business_date_from > business_date_to:
+                raise ValueError(
+                    f"Invalid date range: business_date_from ({business_date_from}) "
+                    f"is after business_date_to ({business_date_to})"
+                )
 
         # Create pipeline for retrieving sales report data
         pipeline = self._create_pipeline_for_sales_report(
@@ -84,6 +102,8 @@ class SalesReportMaker(IReportPlugin):
             limit=limit,
             page=page,
             sort=sort,
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
         )
         logger.info(f"Sales report pipeline: {pipeline}")
 
@@ -96,40 +116,54 @@ class SalesReportMaker(IReportPlugin):
         logger.info(f"Summarized sales report: {summarized_tran_result}")
 
         # Create filter for retrieving data from cash in/out log collection
-        filter = {
-            "tenant_id": self.cash_in_out_log_repository.tenant_id,
-            "store_code": store_code,
-            "business_date": business_date,
-        }
-        if terminal_no is not None:
-            filter["terminal_no"] = terminal_no
-        if open_counter is not None:
-            filter["open_counter"] = open_counter
+        # For date range reports, skip cash logs as they are session-specific
+        if business_date_from and business_date_to:
+            # Date range mode - no cash logs (similar to open/close logs)
+            cash_results = SimpleNamespace(data=[])
+        else:
+            # Single date mode - retrieve cash logs normally
+            filter = {
+                "tenant_id": self.cash_in_out_log_repository.tenant_id,
+                "store_code": store_code,
+                "business_date": business_date,
+            }
+            if terminal_no is not None:
+                filter["terminal_no"] = terminal_no
+            if open_counter is not None:
+                filter["open_counter"] = open_counter
 
-        # Retrieve cash in/out logs
-        cash_results = await self.cash_in_out_log_repository.get_cash_in_out_logs(
-            filter=filter, limit=limit, page=page, sort=sort
-        )
-        logger.info(f"Cash in/out log filter: {filter}")
-        logger.info(f"Cash in/out log repository tenant_id: {self.cash_in_out_log_repository.tenant_id}")
-        logger.info(f"Cash in/out log repository db name: {self.cash_in_out_log_repository.db.name}")
+            # Retrieve cash in/out logs
+            cash_results = await self.cash_in_out_log_repository.get_cash_in_out_logs(
+                filter=filter, limit=limit, page=page, sort=sort
+            )
+            logger.info(f"Cash in/out log filter: {filter}")
+            logger.info(f"Cash in/out log repository tenant_id: {self.cash_in_out_log_repository.tenant_id}")
+            logger.info(f"Cash in/out log repository db name: {self.cash_in_out_log_repository.db.name}")
+        
         logger.info(f"Cash in/out log results count: {len(cash_results.data)}")
-        logger.info(
-            f"Cash in/out log results: {[{'amount': c.amount, 'description': c.description, 'tenant_id': c.tenant_id} for c in cash_results.data]}"
-        )
+        if cash_results.data:
+            logger.info(
+                f"Cash in/out log results: {[{'amount': c.amount, 'description': c.description, 'tenant_id': c.tenant_id} for c in cash_results.data]}"
+            )
         cash_summary = self._summarize_cash_in_out_logs(cash_results.data)
         logger.info(f"Cash in/out log summary: {cash_summary}")
 
         # Retrieve open/close logs
-        open_close_results = await self.open_close_log_repository.get_open_close_logs(
-            store_code=store_code,
-            business_date=business_date,
-            terminal_no=terminal_no,
-            open_counter=open_counter,
-            limit=limit,
-            page=page,
-            sort=sort,
-        )
+        # For date range reports, skip open/close logs as they are session-specific
+        if business_date_from and business_date_to:
+            # Date range mode - no open/close logs
+            open_close_results = SimpleNamespace(data=[])
+        else:
+            # Single date mode
+            open_close_results = await self.open_close_log_repository.get_open_close_logs(
+                store_code=store_code,
+                business_date=business_date,
+                terminal_no=terminal_no,
+                open_counter=open_counter,
+                limit=limit,
+                page=page,
+                sort=sort,
+            )
         logger.debug(f"Open close log results: {open_close_results}")
         open_close_summary = self._summarize_open_close_logs(open_close_results.data)
         logger.info(f"Open close log summary: {open_close_summary}")
@@ -151,7 +185,9 @@ class SalesReportMaker(IReportPlugin):
             store_code=store_code,
             store_name=store_code,  # HACK: Store name is not included in data model
             terminal_no=terminal_no,
-            business_date=business_date,
+            business_date=business_date if not business_date_from else None,
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
             open_counter=open_counter,
             business_counter=business_counter,
             report_scope=report_scope,
@@ -252,6 +288,8 @@ class SalesReportMaker(IReportPlugin):
         limit: int,
         page: int,
         sort: list[tuple[str, int]],
+        business_date_from: str = None,
+        business_date_to: str = None,
     ) -> List[Dict[str, Any]]:
         """
         Create MongoDB pipeline for retrieving sales report data
@@ -259,11 +297,13 @@ class SalesReportMaker(IReportPlugin):
         Args:
             store_code: Store code
             terminal_no: Terminal number
-            business_date: Business date
+            business_date: Business date (single date or None for date range)
             open_counter: Open counter
             limit: Data retrieval limit
             page: Page number
             sort: Sort conditions
+            business_date_from: Start date for date range reports
+            business_date_to: End date for date range reports
 
         Returns:
             MongoDB pipeline
@@ -272,9 +312,19 @@ class SalesReportMaker(IReportPlugin):
         match_dict = {
             "tenant_id": self.tran_repository.tenant_id,
             "store_code": store_code,
-            "business_date": business_date,
             "sales.is_cancelled": False,
         }
+        
+        # Add date filter
+        if business_date_from and business_date_to:
+            # Date range filter
+            match_dict["business_date"] = {
+                "$gte": business_date_from,
+                "$lte": business_date_to
+            }
+        elif business_date:
+            # Single date filter
+            match_dict["business_date"] = business_date
 
         # Create project stage conditions
         project_dict = {
@@ -290,10 +340,22 @@ class SalesReportMaker(IReportPlugin):
             "sales.total_quantity": 1,
             "sales.change_amount": 1,
             "sales.total_discount_amount": 1,
+            # Exclude cancelled line items from discount aggregations.
+            # Cart sets line_items.is_cancelled=True on items removed before payment but does
+            # NOT clear line_items.discounts / discounts_allocated. Cart's calc_subtotal_logic
+            # excludes cancelled items from sales.total_discount_amount, so without this filter
+            # the report-side line-item discount totals would over-count vs the cart-side total
+            # and inflate _make_sales_net's subtraction (lowering salesNet incorrectly).
             "line_items_discount_amount": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {
                             "$sum": {
@@ -310,7 +372,13 @@ class SalesReportMaker(IReportPlugin):
             "line_items_discount_count": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {"$size": {"$ifNull": ["$$item.discounts", []]}},
                     }
@@ -319,7 +387,13 @@ class SalesReportMaker(IReportPlugin):
             "line_items_discount_quantity": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {
                             "$cond": {
@@ -338,7 +412,13 @@ class SalesReportMaker(IReportPlugin):
             "sub_total_discount_quantity": {
                 "$sum": {
                     "$map": {
-                        "input": "$line_items",
+                        "input": {
+                            "$filter": {
+                                "input": "$line_items",
+                                "as": "li",
+                                "cond": {"$ne": ["$$li.is_cancelled", True]},
+                            }
+                        },
                         "as": "item",
                         "in": {
                             "$cond": {
@@ -425,10 +505,13 @@ class SalesReportMaker(IReportPlugin):
         }
 
         # Create final group dict for business criteria aggregation
+        # business_date must NOT be in final_group_id, otherwise period
+        # reports split into multiple rows per transaction_type — and downstream
+        # _get_result_by_transaction_type only takes the first row, dropping all
+        # other days non-deterministically.
         final_group_id = {
             "tenant_id": "$_id.tenant_id",
             "store_code": "$_id.store_code",
-            "business_date": "$_id.business_date",
             "transaction_type": "$_id.transaction_type",
         }
         # Include terminal_no in final grouping only if filtering by specific terminal
