@@ -19,10 +19,17 @@ no single service owns.
 
 ## Status
 
-**Empty as of issue #109.** Existing cross-service coverage is currently
-spread across the per-service `tests/e2e/` directories. As the codebase
-evolves, scenarios that prove difficult to attribute to one service should
-land here instead of being duplicated across them.
+**Empty as of issue #109.** The cross-service flows that fit this
+directory's purpose (e.g. cart → tranlog publish → journal subscribe → report
+aggregate) are currently exercised end-to-end by the per-service `tests/e2e/`
+suites — `cart/tests/e2e/test_cart.py` runs the cart flow which then
+populates journal and report through Dapr pub/sub, and report's e2e suite
+asserts on the resulting aggregates.
+
+Promoting those scenarios into authoritative top-level tests is **deferred
+to a follow-up PR**: it requires both (a) a separate Pipfile-managed venv
+under `/e2e/` and (b) careful identification of which assertions belong to
+the cross-service contract vs. each service's own contract.
 
 ## How to run
 
@@ -32,7 +39,8 @@ Once tests land here:
 ./scripts/run_e2e_tests.sh
 ```
 
-The script runs each service's `tests/e2e/` and then this directory.
+The script auto-detects this directory and runs it after every per-service
+e2e suite, but only when both a `Pipfile` and `test_*.py` files are present.
 
 ## Conventions
 
