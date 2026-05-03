@@ -11,19 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# setup logging
-import logging, logging.config
+"""
+Top-level conftest for account service tests.
+
+Provides only environment-variable plumbing shared by integration and e2e
+tiers. The HTTP client and DB cleanup fixtures now live in the per-tier
+subdirectory conftests (tests/integration/, tests/unit/).
+
+Unit tests override `set_env_vars` to a no-op in tests/unit/conftest.py.
+"""
+import logging
+import logging.config
+import os
+
+import pytest
+from dotenv import load_dotenv
 
 logging.config.fileConfig("app/logging.conf")
-
-import os, pytest
-import pytest_asyncio
-from dotenv import load_dotenv
-from kugel_common.database import database as db_helper
 
 
 @pytest.fixture(scope="session")
 def set_env_vars():
+    """Load .env.test and configure environment for integration/e2e tests."""
+    from kugel_common.database import database as db_helper
 
     ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     dotenv_path = os.path.join(ROOT_DIR, ".env.test")
@@ -47,25 +57,12 @@ def set_env_vars():
     else:
         os.environ["BASE_URL_ACCOUNT"] = f"https://account.{remote_server}"
 
-    url = os.environ.get("BASE_URL_ACCOUNT")
-    print(f"BASE_URL_ACCOUNT: {url}")
+    print(f"BASE_URL_ACCOUNT: {os.environ.get('BASE_URL_ACCOUNT')}")
 
     os.environ["DB_NAME_PREFIX"] = "db_account"
-
     db_helper.MONGODB_URI = os.environ.get("MONGODB_URI")
 
     yield
 
     del os.environ["BASE_URL_ACCOUNT"]
     del os.environ["DB_NAME_PREFIX"]
-
-
-@pytest_asyncio.fixture(scope="function")
-async def http_client(set_env_vars):
-    from httpx import AsyncClient
-
-    print("Setting up http client")
-    base_url = os.environ.get("BASE_URL_ACCOUNT")
-    async with AsyncClient(base_url=base_url) as client:
-        yield client
-    print("Closing http client")
