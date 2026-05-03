@@ -272,26 +272,27 @@ class TranService:
         ]
 
         # Save tranlog to database
-        async with await self.tranlog_repository.start_transaction() as session:
-            try:
-                self.tranlog_delivery_status_repo.set_session(session)
-                await self.tranlog_delivery_status_repo.create_status_async(
-                    event_id=event_id,
-                    transaction_no=tranlog.transaction_no,
-                    payload=event_message,
-                    services=event_distinations,
-                )
-                tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
-                await self.tranlog_repository.commit_transaction()
+        # Manual session mgmt (no `async with`): context manager re-aborts after commit ended session — issue #96.
+        session = await self.tranlog_repository.start_transaction()
+        try:
+            self.tranlog_delivery_status_repo.set_session(session)
+            await self.tranlog_delivery_status_repo.create_status_async(
+                event_id=event_id,
+                transaction_no=tranlog.transaction_no,
+                payload=event_message,
+                services=event_distinations,
+            )
+            tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
+            await self.tranlog_repository.commit_transaction()
 
-            except Exception as e:
-                await self.tranlog_repository.abort_transaction()
-                message = f"Error creating tranlog: {e}"
-                raise InternalErrorException(message, logger) from e
-            finally:
-                # clear session
-                self.tranlog_repository.set_session(session=None)
-                self.tranlog_delivery_status_repo.set_session(session=None)
+        except Exception as e:
+            await self.tranlog_repository.abort_transaction()
+            message = f"Error creating tranlog: {e}"
+            raise InternalErrorException(message, logger) from e
+        finally:
+            # clear session
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
 
         # Publish tranlog
         await self._publish_tranlog_async(event_message)
@@ -517,25 +518,26 @@ class TranService:
         ]
 
         # Save tranlog to database
-        async with await self.tranlog_repository.start_transaction() as session:
-            try:
-                self.tranlog_delivery_status_repo.set_session(session)
-                await self.tranlog_delivery_status_repo.create_status_async(
-                    event_id=event_id,
-                    transaction_no=tran.transaction_no,
-                    payload=event_message,
-                    services=event_distinations,
-                )
-                tran = await self.tranlog_repository.create_tranlog_async(tran)
-                await self.tranlog_repository.commit_transaction()
-            except Exception as e:
-                await self.tranlog_repository.abort_transaction()
-                message = f"Error creating tranlog: {e}"
-                raise InternalErrorException(message, logger) from e
-            finally:
-                # clear session
-                self.tranlog_repository.set_session(session=None)
-                self.tranlog_delivery_status_repo.set_session(session=None)
+        # Manual session mgmt (no `async with`): context manager re-aborts after commit ended session — issue #96.
+        session = await self.tranlog_repository.start_transaction()
+        try:
+            self.tranlog_delivery_status_repo.set_session(session)
+            await self.tranlog_delivery_status_repo.create_status_async(
+                event_id=event_id,
+                transaction_no=tran.transaction_no,
+                payload=event_message,
+                services=event_distinations,
+            )
+            tran = await self.tranlog_repository.create_tranlog_async(tran)
+            await self.tranlog_repository.commit_transaction()
+        except Exception as e:
+            await self.tranlog_repository.abort_transaction()
+            message = f"Error creating tranlog: {e}"
+            raise InternalErrorException(message, logger) from e
+        finally:
+            # clear session
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
 
         # Publish tranlog
         await self._publish_tranlog_async(event_message)
@@ -682,25 +684,26 @@ class TranService:
         ]
 
         # Save tranlog to database
-        async with await self.tranlog_repository.start_transaction() as session:
-            try:
-                self.tranlog_delivery_status_repo.set_session(session)
-                await self.tranlog_delivery_status_repo.create_status_async(
-                    event_id=event_id,
-                    transaction_no=tran.transaction_no,
-                    payload=event_message,
-                    services=event_distinations,
-                )
-                tran = await self.tranlog_repository.create_tranlog_async(tran)
-                await self.tranlog_repository.commit_transaction()
-            except Exception as e:
-                await self.tranlog_repository.abort_transaction()
-                message = f"Error creating tranlog: {e}"
-                raise InternalErrorException(message, logger) from e
-            finally:
-                # clear session
-                self.tranlog_repository.set_session(session=None)
-                self.tranlog_delivery_status_repo.set_session(session=None)
+        # Manual session mgmt (no `async with`): context manager re-aborts after commit ended session — issue #96.
+        session = await self.tranlog_repository.start_transaction()
+        try:
+            self.tranlog_delivery_status_repo.set_session(session)
+            await self.tranlog_delivery_status_repo.create_status_async(
+                event_id=event_id,
+                transaction_no=tran.transaction_no,
+                payload=event_message,
+                services=event_distinations,
+            )
+            tran = await self.tranlog_repository.create_tranlog_async(tran)
+            await self.tranlog_repository.commit_transaction()
+        except Exception as e:
+            await self.tranlog_repository.abort_transaction()
+            message = f"Error creating tranlog: {e}"
+            raise InternalErrorException(message, logger) from e
+        finally:
+            # clear session
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
 
         # Publish tranlog
         await self._publish_tranlog_async(event_message)
