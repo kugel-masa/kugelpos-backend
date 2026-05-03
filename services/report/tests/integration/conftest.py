@@ -11,10 +11,13 @@ autouse fixtures `cleanup_database_connection` and `mock_locale` continue
 to apply.
 """
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
+import jwt
 import pytest
+import pytest_asyncio
 from dotenv import load_dotenv
+from httpx import AsyncClient, ASGITransport
 
 
 @pytest.fixture(scope="session")
@@ -36,6 +39,34 @@ def set_env_vars():
     db_helper.MONGODB_URI = mongodb_uri
 
     yield
+
+
+@pytest_asyncio.fixture
+async def http_client(set_env_vars):
+    """In-process AsyncClient bound to the report FastAPI app."""
+    from app.main import app
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+@pytest.fixture
+def admin_token():
+    from kugel_common.config.settings import settings
+    tenant_id = os.environ.get("TENANT_ID")
+    payload = {
+        "sub": "admin",
+        "tenant_id": tenant_id,
+        "is_superuser": True,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+@pytest.fixture
+def admin_header(admin_token):
+    return {"Authorization": f"Bearer {admin_token}"}
 
 
 def pytest_collection_modifyitems(config, items):
