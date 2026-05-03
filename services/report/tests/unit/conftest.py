@@ -24,3 +24,9 @@ def mock_locale():
     """Mock locale.setlocale to avoid locale errors in test environment."""
     with patch("locale.setlocale"):
         yield
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark every test collected under tests/unit/ with `unit`."""
+    for item in items:
+        item.add_marker(pytest.mark.unit)
