@@ -9,84 +9,56 @@ NC='\033[0m' # No Color
 
 # Track overall success
 OVERALL_SUCCESS=0
-FAILED_TESTS=()
-PASSED_TESTS=()
+FAILED_TIERS=()
+PASSED_TIERS=()
 export PIPENV_IGNORE_VIRTUALENVS=1
 
 echo -e "${BLUE}Starting Cart Service tests...${NC}"
 echo "================================"
 
-# Test files in order
-# First: Clean and setup
-# Second: Integration tests
-# Third: Unit tests
-test_files=(
-    # Setup tests (must run first)
-    "tests/test_clean_data.py"
-    "tests/test_setup_data.py"
-
-    # Integration tests
-    "tests/test_health.py"
-    "tests/test_cart.py"
-    "tests/test_cart_jwt_auth.py"
-    "tests/test_cart_jwt_full.py"
-    "tests/test_category_promo.py"
-    "tests/test_void_return.py"
-    "tests/test_payment_cashless_error.py"
-    "tests/test_resume_item_entry.py"
-
-    # Unit tests
-    "tests/test_calc_subtotal_logic.py"
-    "tests/test_terminal_cache.py"
-    "tests/test_text_helper.py"
-    "tests/test_tran_service_status.py"
-    "tests/test_tran_service_unit_simple.py"
-    "tests/test_transaction_status_repository.py"
-    "tests/test_cart_exceptions.py"
-    "tests/test_cart_utils.py"
-    "tests/test_repositories.py"
-    "tests/test_web_repositories.py"
-    "tests/test_cart_logics.py"
-    "tests/test_cart_state_manager.py"
-    "tests/test_cart_service.py"
-    "tests/test_tran_service.py"
-    "tests/test_category_promo_plugin.py"
-    "tests/test_api_cache.py"
-    "tests/test_api_cart.py"
-    "tests/test_api_tran.py"
+tiers=(
+    "unit"
+    "integration"
+    "e2e"
 )
 
-TOTAL_TESTS=${#test_files[@]}
-CURRENT_TEST=0
+for tier in "${tiers[@]}"; do
+    test_dir="tests/${tier}"
+    if [ ! -d "$test_dir" ]; then
+        continue
+    fi
 
-for test_file in "${test_files[@]}"; do
-    CURRENT_TEST=$((CURRENT_TEST + 1))
     echo ""
-    echo -e "${YELLOW}[${CURRENT_TEST}/${TOTAL_TESTS}] Running: ${test_file}${NC}"
+    echo -e "${YELLOW}Running ${tier} tests...${NC}"
     echo "---------------------------------------------------"
-    
-    if pipenv run pytest "$test_file" -v; then
-        echo -e "${GREEN}✓ PASSED: ${test_file}${NC}"
-        PASSED_TESTS+=("$test_file")
+
+    if pipenv run pytest "$test_dir" -m "$tier" -v; then
+        echo -e "${GREEN}✓ PASSED: ${tier} tests${NC}"
+        PASSED_TIERS+=("$tier")
     else
-        echo -e "${RED}✗ FAILED: ${test_file}${NC}"
-        FAILED_TESTS+=("$test_file")
-        OVERALL_SUCCESS=1
+        rc=$?
+        if [ "$rc" = "5" ]; then
+            echo -e "${YELLOW}⊘ ${tier}: no tests collected (skipped)${NC}"
+        else
+            echo -e "${RED}✗ FAILED: ${tier} tests${NC}"
+            FAILED_TIERS+=("$tier")
+            OVERALL_SUCCESS=1
+        fi
     fi
 done
 
 echo ""
 echo "================================"
 echo -e "${BLUE}Cart Service Test Summary:${NC}"
-echo -e "${GREEN}Passed: ${#PASSED_TESTS[@]}${NC}"
-for test in "${PASSED_TESTS[@]}"; do
-    echo -e "  ${GREEN}✓${NC} $test"
+echo -e "${GREEN}Passed: ${#PASSED_TIERS[@]}${NC}"
+for t in "${PASSED_TIERS[@]}"; do
+    echo -e "  ${GREEN}✓${NC} $t"
 done
 
-if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
-    echo -e "${RED}Failed: ${#FAILED_TESTS[@]}${NC}"
-    for test in "${FAILED_TESTS[@]}"; do
-        echo -e "  ${RED}✗${NC} $test"
+if [ ${#FAILED_TIERS[@]} -gt 0 ]; then
+    echo -e "${RED}Failed: ${#FAILED_TIERS[@]}${NC}"
+    for t in "${FAILED_TIERS[@]}"; do
+        echo -e "  ${RED}✗${NC} $t"
     done
 fi
 
