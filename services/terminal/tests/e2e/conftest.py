@@ -23,32 +23,39 @@ from httpx import AsyncClient, Timeout
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _setup_terminal_db(set_env_vars):
-    """Drop and re-initialize the terminal test database once per session.
-
-    Replaces the previous test_clean_data.py + test_setup_data.py pattern,
-    which relied on test-file ordering to bootstrap the database.
+    """Drop the test database once at session start, then close the
+    session-loop MongoDB client so each test creates its own in its
+    own event loop (motor clients are loop-bound — see
+    _reset_db_client_per_test below).
     """
     from kugel_common.database import database as db_helper
-    from app.database import database_setup
 
     db_client = await db_helper.get_client_async()
     target_db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}"
     print(f"[e2e setup] Dropping database: {target_db_name}")
     await db_client.drop_database(target_db_name)
-
-    # Recreate collections / indexes
     await db_helper.close_client_async()
-    tenant_id = os.environ.get("TENANT_ID")
-    await database_setup.execute(tenant_id)
 
     yield
 
-    print("[e2e teardown] Closing database connection")
-    await db_helper.close_client_async()
+
+@pytest_asyncio.fixture(autouse=True)
+async def _reset_db_client_per_test(_setup_terminal_db):
+    """Reset the singleton MongoDB client between tests so each runs
+    with a client bound to its own event loop. Mirrors the pattern used
+    in services/account/tests/integration/conftest.py and
+    services/report/tests/conftest.py.
+    """
+    yield
+    from kugel_common.database import database as db_helper
+    try:
+        await db_helper.reset_client_async()
+    except Exception:
+        pass
 
 
 @pytest_asyncio.fixture(scope="function")
-async def http_client(_setup_terminal_db):
+async def http_client(_reset_db_client_per_test):
     """AsyncClient pointed at the running terminal service (BASE_URL_TERMINAL)."""
     base_url = os.environ.get("BASE_URL_TERMINAL")
     timeout = Timeout(timeout=None)

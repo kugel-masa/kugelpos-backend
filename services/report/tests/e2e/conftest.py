@@ -1,13 +1,40 @@
 # Copyright 2026 masa@kugel
 """E2E test conftest for report service.
 
-Auto-marks tests with `e2e` and ensures test_setup_data runs first.
-Inherits set_env_vars, http_client, clean_test_data, etc. from the
-parent conftest (which does the full cross-service setup needed for
-e2e tests).
+Auto-marks tests with `e2e`, ensures test_setup_data runs first, and
+drops the report test database once at session start (replacing the
+legacy test_clean_data.py boot file). Otherwise inherits set_env_vars,
+http_client, clean_test_data, and the autouse cleanup_database_connection
+from the parent conftest.
 """
 import os
+
 import pytest
+import pytest_asyncio
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def _setup_report_db(set_env_vars):
+    """Drop the report test database once before any e2e test runs.
+
+    Without this, residual data from earlier perf-test or feature-test
+    runs accumulates across sessions and report aggregations no longer
+    match expected fixture totals (cash_in, payment, etc.).
+
+    The parent conftest's autouse `cleanup_database_connection` already
+    resets the singleton client between tests, so we only need to close
+    the session-loop client after the drop here — no per-test reset
+    fixture is needed in this directory.
+    """
+    from kugel_common.database import database as db_helper
+
+    db_client = await db_helper.get_client_async()
+    target_db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}"
+    print(f"[e2e setup] Dropping database: {target_db_name}")
+    await db_client.drop_database(target_db_name)
+    await db_helper.close_client_async()
+
+    yield
 
 
 def pytest_collection_modifyitems(config, items):

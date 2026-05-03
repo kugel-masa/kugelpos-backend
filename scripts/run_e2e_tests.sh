@@ -90,8 +90,12 @@ for service in "${SERVICES[@]}"; do
     cd "$PROJECT_ROOT"
 done
 
-# Run top-level /e2e/ if it exists
-if [ -d "$PROJECT_ROOT/e2e" ]; then
+# Run top-level /e2e/ if it has both a Pipfile (managed venv) and any test_*.py
+# files. The directory is shipped as a placeholder with only a README — no
+# Pipfile — so the typical case is to skip silently.
+if [ -d "$PROJECT_ROOT/e2e" ] && \
+   [ -f "$PROJECT_ROOT/e2e/Pipfile" ] && \
+   compgen -G "$PROJECT_ROOT/e2e/test_*.py" > /dev/null 2>&1; then
     echo ""
     echo -e "${YELLOW}┌─ top-level /e2e/ (cross-service scenarios) ───────────${NC}"
     cd "$PROJECT_ROOT/e2e"
