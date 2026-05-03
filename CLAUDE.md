@@ -40,12 +40,20 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system built with 
 **Detailed guides:** `/build`, `/service` commands
 
 ### Testing
+Tests are split into three tiers per service: `tests/unit/` (no external
+deps), `tests/integration/` (real MongoDB only, other services mocked),
+and `tests/e2e/` (full docker-compose stack).
+
 ```bash
-./scripts/run_all_tests_with_progress.sh      # All services
-cd services/cart && pipenv run pytest tests/ -v   # Single service
+./scripts/run_unit_tests.sh                       # All services, no MongoDB needed
+./scripts/run_integration_tests.sh                # All services, MongoDB only
+./scripts/run_e2e_tests.sh                        # All services, full stack
+./scripts/run_all_tests_with_progress.sh          # Legacy: per-service runner
+
+cd services/cart && pipenv run pytest -m unit     # Single service, single tier
 ```
 
-**Detailed guide:** `/test-guide` command
+**Detailed guides:** `/test-guide` command, `docs/ja/testing-tiers.md`
 
 ### Code Quality
 ```bash
@@ -111,8 +119,10 @@ Format: XXYYZZ
 - Transformer classes for model conversion
 
 ### Testing
-- Files: `test_*.py`
-- Order: `test_clean_data.py` → `test_setup_data.py` → feature tests
+- Files: `test_*.py`, organized into `tests/unit/`, `tests/integration/`, `tests/e2e/`
+- Per-tier conftests auto-mark tests; new tests just need to land in the right directory
+- Test ordering for e2e is enforced via `pytest_collection_modifyitems` (e.g.
+  `test_setup_data` runs first), no shell-level ordering required
 - Async tests use `pytest-asyncio`
 
 ### Code Style
