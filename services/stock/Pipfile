@@ -26,6 +26,8 @@ websockets = "*"
 [dev-packages]
 pytest = "*"
 pytest-asyncio = "*"
+pytest-mock = "*"
+respx = "*"
 flake8 = "*"
 black = "*"
 mypy = "*"
