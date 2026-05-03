@@ -58,7 +58,14 @@ def clear_channel_cache():
 @pytest.mark.asyncio
 async def test_get_item_by_code_uses_module_level_stub(repository):
     """Test that get_item_by_code_async uses module-level channel helper"""
-    with patch('app.utils.grpc_channel_helper.get_master_data_grpc_stub', new_callable=AsyncMock) as mock_get_stub:
+    # NB: patch where the name is *used* — the repository imports the helper
+    # via `from app.utils.grpc_channel_helper import get_master_data_grpc_stub`,
+    # so the bound name lives on the repository module. Patching the original
+    # location leaks through to a real gRPC channel.
+    with patch(
+        "app.models.repositories.item_master_grpc_repository.get_master_data_grpc_stub",
+        new_callable=AsyncMock,
+    ) as mock_get_stub:
         mock_stub = MagicMock()
         mock_response = MagicMock()
         mock_response.item_code = "ITEM001"
@@ -90,7 +97,14 @@ async def test_get_item_by_code_multiple_calls_reuse_stub(repository):
 
     This verifies that the module-level channel pooling is working correctly.
     """
-    with patch('app.utils.grpc_channel_helper.get_master_data_grpc_stub', new_callable=AsyncMock) as mock_get_stub:
+    # NB: patch where the name is *used* — the repository imports the helper
+    # via `from app.utils.grpc_channel_helper import get_master_data_grpc_stub`,
+    # so the bound name lives on the repository module. Patching the original
+    # location leaks through to a real gRPC channel.
+    with patch(
+        "app.models.repositories.item_master_grpc_repository.get_master_data_grpc_stub",
+        new_callable=AsyncMock,
+    ) as mock_get_stub:
         mock_stub = MagicMock()
         mock_response1 = MagicMock()
         mock_response1.item_code = "ITEM001"
@@ -140,7 +154,14 @@ async def test_get_item_by_code_from_cache(repository):
     )
     repository.item_master_documents = [cached_item]
 
-    with patch('app.utils.grpc_channel_helper.get_master_data_grpc_stub', new_callable=AsyncMock) as mock_get_stub:
+    # NB: patch where the name is *used* — the repository imports the helper
+    # via `from app.utils.grpc_channel_helper import get_master_data_grpc_stub`,
+    # so the bound name lives on the repository module. Patching the original
+    # location leaks through to a real gRPC channel.
+    with patch(
+        "app.models.repositories.item_master_grpc_repository.get_master_data_grpc_stub",
+        new_callable=AsyncMock,
+    ) as mock_get_stub:
         # Get item from cache
         item = await repository.get_item_by_code_async("CACHED_ITEM")
 
@@ -155,7 +176,14 @@ async def test_get_item_by_code_from_cache(repository):
 @pytest.mark.asyncio
 async def test_get_item_by_code_adds_to_cache(repository):
     """Test that get_item_by_code_async adds fetched item to cache"""
-    with patch('app.utils.grpc_channel_helper.get_master_data_grpc_stub', new_callable=AsyncMock) as mock_get_stub:
+    # NB: patch where the name is *used* — the repository imports the helper
+    # via `from app.utils.grpc_channel_helper import get_master_data_grpc_stub`,
+    # so the bound name lives on the repository module. Patching the original
+    # location leaks through to a real gRPC channel.
+    with patch(
+        "app.models.repositories.item_master_grpc_repository.get_master_data_grpc_stub",
+        new_callable=AsyncMock,
+    ) as mock_get_stub:
         mock_stub = MagicMock()
         mock_response = MagicMock()
         mock_response.item_code = "NEW_ITEM"
