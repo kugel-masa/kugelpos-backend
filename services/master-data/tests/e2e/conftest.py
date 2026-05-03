@@ -1,0 +1,54 @@
+# Copyright 2026 masa@kugel
+"""E2E test conftest for master-data service.
+
+E2E tests require the full docker-compose stack to be running, including
+account (for the admin token).
+
+Provides:
+  - http_client: AsyncClient pointed at BASE_URL_MASTER_DATA
+  - _setup_master_data_db: session-scoped autouse fixture that drops the
+    test database, replacing the legacy test_clean_data.py boot file.
+  - test_setup_data.py runs first (it seeds staff/category/item masters
+    consumed by downstream tests).
+
+Tests under this directory are auto-marked with `e2e`.
+"""
+import os
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient, Timeout
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _setup_master_data_db(set_env_vars):
+    """Drop the master-data test database once per session."""
+    from kugel_common.database import database as db_helper
+
+    db_client = await db_helper.get_client_async()
+    target_db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}"
+    print(f"[e2e setup] Dropping database: {target_db_name}")
+    await db_client.drop_database(target_db_name)
+
+    yield
+
+    print("[e2e teardown] Closing database connection")
+    await db_helper.close_client_async()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def http_client(_setup_master_data_db):
+    """AsyncClient pointed at the running master-data service."""
+    base_url = os.environ.get("BASE_URL_MASTER_DATA")
+    timeout = Timeout(timeout=None)
+    async with AsyncClient(base_url=base_url, timeout=timeout) as client:
+        yield client
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark e2e and ensure test_setup_data runs first."""
+    setup_items = [i for i in items if "test_setup_data" in i.nodeid]
+    other_items = [i for i in items if "test_setup_data" not in i.nodeid]
+    items[:] = setup_items + other_items
+    for item in items:
+        item.add_marker(pytest.mark.e2e)
