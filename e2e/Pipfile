@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+httpx = "*"
+python-dotenv = "*"
+pyjwt = ">=2.0.0"
+
+[dev-packages]
+pytest = "*"
+pytest-asyncio = "*"
+
+[requires]
+python_version = "3.12"
