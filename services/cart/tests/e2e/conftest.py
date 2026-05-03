@@ -21,7 +21,7 @@ import pytest_asyncio
 from httpx import AsyncClient, Timeout
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _setup_cart_db(set_env_vars):
     """Drop the cart test database once per session.
 

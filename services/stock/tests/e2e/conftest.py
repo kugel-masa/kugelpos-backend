@@ -13,7 +13,7 @@ import pytest_asyncio
 from httpx import AsyncClient, Timeout
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _setup_stock_db(set_env_vars):
     from kugel_common.database import database as db_helper
 

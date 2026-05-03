@@ -20,7 +20,7 @@ import pytest_asyncio
 from httpx import AsyncClient, Timeout
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _setup_master_data_db(set_env_vars):
     """Drop the master-data test database once per session."""
     from kugel_common.database import database as db_helper

@@ -21,7 +21,7 @@ import pytest_asyncio
 from httpx import AsyncClient, Timeout
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _setup_terminal_db(set_env_vars):
     """Drop and re-initialize the terminal test database once per session.
 
