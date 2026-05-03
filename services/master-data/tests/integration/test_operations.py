@@ -7,25 +7,12 @@ email_address = "someone@kugel.cloud"
 
 
 @pytest.mark.asyncio()
-async def test_operations(http_client):
-
-    # set tenant_id & store_code
+async def test_operations(http_client, admin_header):
+    """Master-data CRUD walk-through using a locally-generated admin JWT
+    instead of a token fetched from the account service."""
     tenant_id = os.environ.get("TENANT_ID")
     store_code = os.environ.get("STORE_CODE")
-
-    # get token from auth service
-    login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
-    async with AsyncClient() as http_auth_client:
-        url_token = os.environ.get("TOKEN_URL")
-        response = await http_auth_client.post(url=url_token, data=login_data)
-
-    assert response.status_code == status.HTTP_200_OK
-
-    res = response.json()
-    print(f"Response: {res}")
-    token = res.get("access_token")
-    print(f"Token: {token}")
-    header = {"Authorization": f"Bearer {token}"}
+    header = admin_header
 
     # create a new tenant with invalid tenant_id
     tenant_data = {"tenantId": "ZZZZ"}

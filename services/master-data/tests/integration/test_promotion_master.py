@@ -27,33 +27,11 @@ async def cleanup_test_promotions(tenant_id: str, promotion_codes: list[str]):
 
 
 @pytest.mark.asyncio()
-async def test_promotion_master(http_client):
-    """
-    Test promotion master CRUD operations.
-
-    Tests include:
-    - Create promotion
-    - Get all promotions
-    - Get promotion by code
-    - Get active promotions
-    - Update promotion
-    - Delete promotion
-    - Validation errors
-    """
-    # Set tenant_id & store_code
+async def test_promotion_master(http_client, admin_header):
+    """Promotion master CRUD using a locally-generated admin JWT."""
     tenant_id = os.environ.get("TENANT_ID")
     store_code = os.environ.get("STORE_CODE")
-
-    # Get token from auth service
-    login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
-    async with AsyncClient() as http_auth_client:
-        url_token = os.environ.get("TOKEN_URL")
-        response = await http_auth_client.post(url=url_token, data=login_data)
-
-    assert response.status_code == status.HTTP_200_OK
-    res = response.json()
-    token = res.get("access_token")
-    header = {"Authorization": f"Bearer {token}"}
+    header = admin_header
 
     # Define test data
     promotion_code = "TEST_PROMO_001"
@@ -299,28 +277,10 @@ async def test_promotion_master(http_client):
 
 
 @pytest.mark.asyncio()
-async def test_promotion_validation(http_client):
-    """
-    Test promotion validation rules.
-
-    Tests include:
-    - Invalid date range (end before start)
-    - Invalid discount rate
-    - Missing required fields
-    """
-    # Set tenant_id
+async def test_promotion_validation(http_client, admin_header):
+    """Promotion validation tests using a locally-generated admin JWT."""
     tenant_id = os.environ.get("TENANT_ID")
-
-    # Get token from auth service
-    login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
-    async with AsyncClient() as http_auth_client:
-        url_token = os.environ.get("TOKEN_URL")
-        response = await http_auth_client.post(url=url_token, data=login_data)
-
-    assert response.status_code == status.HTTP_200_OK
-    res = response.json()
-    token = res.get("access_token")
-    header = {"Authorization": f"Bearer {token}"}
+    header = admin_header
 
     now = datetime.now()
 
