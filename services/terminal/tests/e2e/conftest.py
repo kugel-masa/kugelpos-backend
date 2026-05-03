@@ -57,6 +57,22 @@ async def http_client(_setup_terminal_db):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-mark every test collected under tests/e2e/ with `e2e`."""
+    """Mark only items located under THIS conftest's directory and ensure
+    test_setup_data runs first within this tier.
+
+    pytest invokes the hook with the full `items` list collected from the
+    whole session — without the path filter, the marker would apply to
+    every test in the project, not just this tier.
+    """
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    own = []
+    other = []
     for item in items:
-        item.add_marker(pytest.mark.e2e)
+        if str(item.fspath).startswith(this_dir):
+            item.add_marker(pytest.mark.e2e)
+            own.append(item)
+        else:
+            other.append(item)
+    setups = [i for i in own if "test_setup_data" in i.nodeid]
+    rest = [i for i in own if "test_setup_data" not in i.nodeid]
+    items[:] = other + setups + rest

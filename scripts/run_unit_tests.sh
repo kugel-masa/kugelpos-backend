@@ -30,7 +30,9 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Service list (default: all)
-ALL_SERVICES=("account" "commons" "terminal" "master-data" "cart" "journal" "report" "stock")
+# Note: services/commons has no Pipfile-managed pytest install; its tests
+# are run from each service's venv that depends on it. Skipped here.
+ALL_SERVICES=("account" "terminal" "master-data" "cart" "journal" "report" "stock")
 if [ $# -gt 0 ]; then
     SERVICES=("$@")
 else

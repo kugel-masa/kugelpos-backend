@@ -34,6 +34,13 @@ def set_env_vars():
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-mark every test collected under tests/integration/ with `integration`."""
+    """Mark only items located under THIS conftest's directory.
+
+    pytest invokes the hook with the full `items` list collected from the
+    whole session — without the path filter, the marker would apply to
+    every test in the project, not just this tier.
+    """
+    this_dir = os.path.dirname(os.path.abspath(__file__))
     for item in items:
-        item.add_marker(pytest.mark.integration)
+        if str(item.fspath).startswith(this_dir):
+            item.add_marker(pytest.mark.integration)
