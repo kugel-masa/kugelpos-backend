@@ -1,18 +1,12 @@
 # Copyright 2026 masa@kugel
 """E2E test conftest for cart service.
 
-E2E tests require the full docker-compose stack — account, terminal,
-master-data, cart, plus MongoDB / Redis / RabbitMQ / Dapr sidecars.
+Holds the cart flows that exercise full cross-service contracts
+(promotion CRUD on master-data, tranlog publish round-trips, payment
+state machines, etc.) and therefore need the full docker-compose stack.
 
-Provides:
-  - http_client: AsyncClient pointed at BASE_URL_CART (the running service)
-  - _setup_cart_db: session-scoped autouse fixture that drops and
-    re-initializes the cart test database, replacing the legacy
-    test_clean_data.py + test_setup_data.py boot files. The setup also
-    re-runs cart's master-data registration via a tiny inline call so
-    e2e flows continue to work end-to-end.
-
-Tests under this directory are auto-marked with `e2e`.
+Auto-marks tests with `e2e`. Inherits set_env_vars from the parent
+conftest (which fetches admin token + API key from running services).
 """
 import os
 
@@ -22,12 +16,8 @@ from httpx import AsyncClient, Timeout
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def _setup_cart_db(set_env_vars):
-    """Drop the test database once at session start, then close the
-    session-loop MongoDB client so each test creates its own in its
-    own event loop (motor clients are loop-bound — see
-    _reset_db_client_per_test below).
-    """
+async def _setup_cart_db_e2e(set_env_vars):
+    """Drop db_cart_<tenant> once per session for e2e isolation."""
     from kugel_common.database import database as db_helper
 
     db_client = await db_helper.get_client_async()
@@ -35,17 +25,11 @@ async def _setup_cart_db(set_env_vars):
     print(f"[e2e setup] Dropping database: {target_db_name}")
     await db_client.drop_database(target_db_name)
     await db_helper.close_client_async()
-
     yield
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _reset_db_client_per_test(_setup_cart_db):
-    """Reset the singleton MongoDB client between tests so each runs
-    with a client bound to its own event loop. Mirrors the pattern used
-    in services/account/tests/integration/conftest.py and
-    services/report/tests/conftest.py.
-    """
+async def _reset_db_client_per_test_e2e(_setup_cart_db_e2e):
     yield
     from kugel_common.database import database as db_helper
     try:
@@ -55,8 +39,8 @@ async def _reset_db_client_per_test(_setup_cart_db):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def http_client(_reset_db_client_per_test):
-    """AsyncClient pointed at the running cart service (BASE_URL_CART)."""
+async def http_client(_reset_db_client_per_test_e2e):
+    """AsyncClient pointed at the running cart service."""
     base_url = os.environ.get("BASE_URL_CART")
     timeout = Timeout(timeout=None)
     async with AsyncClient(base_url=base_url, timeout=timeout) as client:
@@ -64,13 +48,7 @@ async def http_client(_reset_db_client_per_test):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Mark only items located under THIS conftest's directory and ensure
-    test_setup_data runs first within this tier.
-
-    pytest invokes the hook with the full `items` list collected from the
-    whole session — without the path filter, the marker would apply to
-    every test in the project, not just this tier.
-    """
+    """Auto-mark e2e and ensure test_setup_data runs first if present."""
     this_dir = os.path.dirname(os.path.abspath(__file__))
     own = []
     other = []
