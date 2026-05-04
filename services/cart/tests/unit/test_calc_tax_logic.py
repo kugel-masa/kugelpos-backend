@@ -230,3 +230,152 @@ async def test_allocated_discounts_reduce_target_amount():
     result = await calc_tax_async(cart, repo)
     assert result.taxes[0].target_amount == 800.0
     assert result.taxes[0].tax_amount == 80.0
+
+
+# ---------------------------------------------------------------------------
+# Real-POS scenarios that the basic tests above don't cover
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_japanese_reduced_rate_external_plus_internal_in_one_cart():
+    """軽減税率 (Japan reduced-rate VAT) — same cart with food at internal
+    8% and other goods at external 10%. Both must appear as independent
+    tax entries with the right calculation method.
+
+    This is the daily reality of every Japanese supermarket POS — bug
+    here = the consumption-tax declaration is wrong."""
+    cart = _cart(
+        _line(amount=1080.0, tax_code="02"),  # food, internal 8% (1080 incl tax)
+        _line(amount=1000.0, tax_code="01"),  # other, external 10%
+    )
+    repo = _mock_repo(
+        _tax_master("01", "External", rate=10.0),
+        _tax_master("02", "Internal", rate=8.0),
+    )
+
+    result = await calc_tax_async(cart, repo)
+    by_code = {t.tax_code: t for t in result.taxes}
+    # External 10% on 1000 → 100 yen tax
+    assert by_code["01"].tax_amount == 100.0
+    assert by_code["01"].tax_type == "External"
+    # Internal 8% extracted from 1080 → 1080/1.08 * 0.08 = 80 yen tax
+    assert by_code["02"].tax_amount == 80.0
+    assert by_code["02"].tax_type == "Internal"
+
+
+@pytest.mark.asyncio
+async def test_internal_tax_with_discount_allocation():
+    """Internal tax over a line with allocated discount: the discount is
+    taken off BEFORE extracting tax. 1100 yen incl-tax line, 100 yen
+    allocated discount → target 1000 → tax = 1000/1.1*0.1 = 90.9 → Floor 90."""
+    cart = _cart(_line(
+        amount=1100.0, tax_code="02",
+        discounts_allocated=[_allocated(100.0)],
+    ))
+    repo = _mock_repo(_tax_master("02", "Internal", rate=10.0,
+                                  round_method="Floor", round_digit=-1))
+
+    result = await calc_tax_async(cart, repo)
+    assert result.taxes[0].target_amount == 1000.0
+    assert result.taxes[0].tax_amount == 90.0
+
+
+@pytest.mark.asyncio
+async def test_negative_amount_floor_rounds_toward_minus_infinity():
+    """Document Decimal's ROUND_FLOOR behaviour on negative amounts:
+    Floor(-15.8) = -16 (toward -∞), NOT -15 (toward zero).
+
+    NOTE: this means a 158-yen item charged 15 yen tax (Floor(15.8))
+    cannot be returned with a matching -15 tax adjustment using the
+    same Floor rule — a -158 line yields tax=-16. If the report
+    aggregation applies a sign flip at summary time, this off-by-one
+    is hidden, but if the cart for a refund transaction carries
+    negative amounts directly the asymmetry leaks."""
+    cart = _cart(_line(amount=-158.0, tax_code="01"))
+    repo = _mock_repo(_tax_master("01", "External", rate=10.0,
+                                  round_method="Floor", round_digit=-1))
+
+    result = await calc_tax_async(cart, repo)
+    # -158 × 10% = -15.8 → Floor toward -∞ → -16
+    assert result.taxes[0].tax_amount == -16.0
+
+
+@pytest.mark.asyncio
+async def test_negative_amount_round_half_up_is_away_from_zero():
+    """ROUND_HALF_UP on negatives goes away from zero too: -15.5 → -16."""
+    cart = _cart(_line(amount=-155.0, tax_code="01"))
+    repo = _mock_repo(_tax_master("01", "External", rate=10.0,
+                                  round_method="Round", round_digit=-1))
+
+    result = await calc_tax_async(cart, repo)
+    # -155 × 10% = -15.5 → Round → -16 (half-up = away from zero)
+    assert result.taxes[0].tax_amount == -16.0
+
+
+@pytest.mark.asyncio
+async def test_sub_yen_tax_floor_truncates_to_zero():
+    """1 yen × 10% = 0.1 yen → Floor → 0 yen tax. Real edge case for
+    discount-stuffed lines or token-priced items."""
+    cart = _cart(_line(amount=1.0, tax_code="01"))
+    repo = _mock_repo(_tax_master("01", "External", rate=10.0,
+                                  round_method="Floor", round_digit=-1))
+
+    result = await calc_tax_async(cart, repo)
+    assert result.taxes[0].tax_amount == 0.0
+
+
+@pytest.mark.asyncio
+async def test_sub_yen_tax_ceil_rounds_up_to_one_yen():
+    """Sub-yen tax + Ceil rounding → 1 yen. Same data as the Floor case
+    above but the rounding direction matters."""
+    cart = _cart(_line(amount=1.0, tax_code="01"))
+    repo = _mock_repo(_tax_master("01", "External", rate=10.0,
+                                  round_method="Ceil", round_digit=-1))
+
+    result = await calc_tax_async(cart, repo)
+    assert result.taxes[0].tax_amount == 1.0
+
+
+@pytest.mark.asyncio
+async def test_three_lines_same_code_aggregate_then_floor_once():
+    """99 × 3 lines, same tax_code 10%: target aggregates to 297, tax =
+    29.7 → Floor → 29. Not 9.9 floored per-line × 3 = 27.
+
+    The contract is "single rounding after aggregation". Bug here
+    would silently shift revenue by 1-2 yen per multi-line cart."""
+    cart = _cart(
+        _line(amount=99.0, tax_code="01"),
+        _line(amount=99.0, tax_code="01"),
+        _line(amount=99.0, tax_code="01"),
+    )
+    repo = _mock_repo(_tax_master("01", "External", rate=10.0,
+                                  round_method="Floor", round_digit=-1))
+
+    result = await calc_tax_async(cart, repo)
+    assert result.taxes[0].target_amount == 297.0
+    # Single rounding at the aggregate: Floor(29.7) = 29 (not 27)
+    assert result.taxes[0].tax_amount == 29.0
+
+
+@pytest.mark.asyncio
+async def test_mixed_external_internal_exempt_three_codes():
+    """A cart with one line of each tax type: external, internal, exempt.
+    Each must produce its own tax entry with the right rule."""
+    cart = _cart(
+        _line(amount=1000.0, tax_code="01"),  # external 10%
+        _line(amount=1080.0, tax_code="02"),  # internal 8%
+        _line(amount=500.0, tax_code="00"),   # exempt
+    )
+    repo = _mock_repo(
+        _tax_master("01", "External", rate=10.0),
+        _tax_master("02", "Internal", rate=8.0),
+        _tax_master("00", "Exempt", rate=0.0),
+    )
+
+    result = await calc_tax_async(cart, repo)
+    assert len(result.taxes) == 3
+    by_code = {t.tax_code: t for t in result.taxes}
+    assert by_code["01"].tax_amount == 100.0  # external
+    assert by_code["02"].tax_amount == 80.0   # internal extracted
+    assert by_code["00"].tax_amount == 0.0    # exempt
