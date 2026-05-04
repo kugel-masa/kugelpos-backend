@@ -1,9 +1,26 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.  # setup logging
-import logging, logging.config
+# Copyright 2025 masa@kugel
+import logging
+import logging.config
+import os
+
+# Module-level env bootstrap: must run BEFORE any test file imports the
+# master-data app. Otherwise app.config.settings caches the default
+# DB_NAME_PREFIX ("db_master_data") on first import, and the running
+# in-process app writes to db_master_data_<tenant> while the test
+# fixtures drop db_master_<tenant> — causing duplicate-key collisions
+# on test re-runs once unit tests are also in pytest's discovery scope.
+from dotenv import load_dotenv as _load_dotenv
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_load_dotenv(os.path.join(_ROOT_DIR, ".env.test"), override=True)
+os.environ.setdefault("DB_NAME_PREFIX", "db_master")
+os.environ.setdefault("STORE_CODE", "5678")
+os.environ.setdefault(
+    "TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9"
+)
 
 logging.config.fileConfig("app/logging.conf")
 
-import os
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv

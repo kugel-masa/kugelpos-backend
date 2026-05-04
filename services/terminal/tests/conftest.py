@@ -1,33 +1,54 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+# Copyright 2025 masa@kugel
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
 """
-Terminal Service Test Configuration Module
+Top-level conftest for terminal service tests.
 
-This module contains pytest fixtures and configuration for testing the Terminal service.
-It sets up the test environment, configures logging, and provides HTTP client fixtures
-for making API requests during tests.
+Provides only environment-variable plumbing shared by integration and e2e
+tiers. The HTTP client lives in tests/e2e/conftest.py. Unit tests override
+`set_env_vars` to a no-op (see tests/unit/conftest.py) so they can run
+with no external services or environment file.
 """
+import logging
+import logging.config
+import os
 
-# setup logging
-import logging, logging.config
+# Module-level env bootstrap: must run BEFORE any test file imports the
+# terminal app so app.config.settings sees the correct DB_NAME_PREFIX
+# / SECRET_KEY etc. on first load. Otherwise pytest's auto-discovery
+# of tests/unit/ caches the defaults before set_env_vars fixture fires,
+# leading to integration-tier flakes (in-process app reads from a
+# different DB / wrong secret than the test fixtures expect).
+from dotenv import load_dotenv as _load_dotenv
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_load_dotenv(os.path.join(_ROOT_DIR, ".env.test"), override=True)
+os.environ.setdefault("DB_NAME_PREFIX", "db_terminal")
+os.environ.setdefault("STORE_CODE", "5678")
+os.environ.setdefault(
+    "TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9"
+)
 
 logging.config.fileConfig("app/logging.conf")
 
-import os
 import pytest
-import pytest_asyncio
 from dotenv import load_dotenv
 from fastapi import status
 
 
 def ensure_admin_user_exists(tenant_id: str, account_base_url: str):
-    """
-    Ensure admin user exists for the specified tenant.
-    This function makes tests reproducible by registering the admin user if not exists.
+    """Register the test admin user with the account service if missing.
+
+    Required for e2e tests that fetch a JWT from the account service.
+    Safe to call repeatedly: returns early if the user already exists.
     """
     from httpx import Client
 
     with Client() as client:
-        # First try to get a token to check if admin user exists
         token_url = f"{account_base_url}/api/v1/accounts/token"
         login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
         response = client.post(url=token_url, data=login_data)
@@ -36,7 +57,6 @@ def ensure_admin_user_exists(tenant_id: str, account_base_url: str):
             print(f"Admin user already exists for tenant: {tenant_id}")
             return
 
-        # If token fails, register the admin user
         print(f"Registering admin user for tenant: {tenant_id}")
         register_url = f"{account_base_url}/api/v1/accounts/register"
         register_data = {"username": "admin", "password": "admin", "tenant_id": tenant_id}
@@ -45,23 +65,14 @@ def ensure_admin_user_exists(tenant_id: str, account_base_url: str):
         if response.status_code == status.HTTP_201_CREATED:
             print(f"Admin user registered successfully for tenant: {tenant_id}")
         else:
-            response_data = response.json()
-            print(f"Admin user registration response: {response_data}")
+            print(f"Admin user registration response: {response.json()}")
 
 
 @pytest.fixture(scope="session")
 def set_env_vars():
-    """
-    Session-scoped fixture to set up environment variables for testing
+    """Load .env.test, set service URLs, ensure admin user exists, configure DB.
 
-    This fixture:
-    1. Loads environment variables from .env.test file
-    2. Sets service URLs based on whether tests are running locally or against remote servers
-    3. Configures the database connection
-    4. Cleans up environment variables after tests complete
-
-    Yields:
-        None: The fixture yields control back to the test after setup
+    Used by integration and e2e tests. Unit tests override this to a no-op.
     """
     ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     dotenv_path = os.path.join(ROOT_DIR, ".env.test")
@@ -70,7 +81,6 @@ def set_env_vars():
         load_dotenv(dotenv_path=dotenv_path, override=True)
     else:
         print(f"WARNING: .env.test file not found at: {dotenv_path}")
-        # Try loading from terminal service .env file
         terminal_env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
         if os.path.exists(terminal_env_path):
             print(f"Loading from terminal service .env file: {terminal_env_path}")
@@ -90,7 +100,6 @@ def set_env_vars():
     print("---------------------------")
 
     if is_local:
-        # Configure URLs for local test environment
         os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001"
         os.environ["BASE_URL_MASTER_DATA"] = "http://localhost:8002/api/v1"
         os.environ["BASE_URL_CART"] = "http://localhost:8003/api/v1"
@@ -99,7 +108,6 @@ def set_env_vars():
         os.environ["BASE_URL_ACCOUNT"] = "http://localhost:8000"
         os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
     else:
-        # Configure URLs for remote test environment
         os.environ["BASE_URL_TERMINAL"] = f"https://terminal.{remote_server}"
         os.environ["BASE_URL_MASTER_DATA"] = f"https://master-data.{remote_server}/api/v1"
         os.environ["BASE_URL_CART"] = f"https://cart.{remote_server}/api/v1"
@@ -108,29 +116,23 @@ def set_env_vars():
         os.environ["BASE_URL_ACCOUNT"] = f"https://account.{remote_server}"
         os.environ["TOKEN_URL"] = f"https://account.{remote_server}/api/v1/accounts/token"
 
-    # Ensure admin user exists before running tests
+    # Required for e2e tests; integration tests using respx + ASGITransport
+    # would skip this in their own integration/conftest.py.
     account_base_url = os.environ.get("BASE_URL_ACCOUNT")
     ensure_admin_user_exists(tenant_id, account_base_url)
 
-    # Set database name prefix for test database
     os.environ["DB_NAME_PREFIX"] = "db_terminal"
 
-    # Configure MongoDB connection
     from kugel_common.database import database as db_helper
 
-    # Check if running in Docker container
     is_docker = os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER", False)
-
     mongodb_uri = os.environ.get("MONGODB_URI")
     if not mongodb_uri:
         if is_docker:
-            # Default for Docker environment
             mongodb_uri = "mongodb://mongodb:27017/"
-            print(f"Running in Docker. Using Docker MongoDB URI: {mongodb_uri}")
         else:
-            # Default for local environment
             mongodb_uri = "mongodb://localhost:27017/"
-            print(f"Running locally. Using local MongoDB URI: {mongodb_uri}")
+        print(f"Using default MongoDB URI: {mongodb_uri}")
     else:
         print(f"Using MONGODB_URI from environment: {mongodb_uri}")
 
@@ -138,7 +140,6 @@ def set_env_vars():
 
     yield
 
-    # Clean up environment variables after tests
     del os.environ["DB_NAME_PREFIX"]
     del os.environ["TOKEN_URL"]
     del os.environ["BASE_URL_TERMINAL"]
@@ -147,28 +148,3 @@ def set_env_vars():
     del os.environ["BASE_URL_REPORT"]
     del os.environ["BASE_URL_JOURNAL"]
     del os.environ["BASE_URL_ACCOUNT"]
-
-
-@pytest_asyncio.fixture(scope="function")
-async def http_client(set_env_vars):
-    """
-    Function-scoped fixture that provides an HTTP client for API testing
-
-    This fixture creates an asynchronous HTTP client configured with the appropriate
-    base URL for the Terminal service and an infinite timeout. The client is automatically
-    closed after each test function completes.
-
-    Args:
-        set_env_vars: Session-scoped fixture that ensures environment variables are set
-
-    Yields:
-        AsyncClient: Configured HTTP client for making API requests
-    """
-    from httpx import AsyncClient, Timeout
-
-    print("Setting up http client")
-    base_url = os.environ.get("BASE_URL_TERMINAL")
-    timeout = Timeout(timeout=None)  # Use infinite timeout for tests
-    async with AsyncClient(base_url=base_url, timeout=timeout) as client:
-        yield client
-    print("Closing http client")

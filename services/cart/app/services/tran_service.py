@@ -1,4 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+import sys
 from typing import Any
 from logging import getLogger
 import aiohttp
@@ -163,10 +164,16 @@ class TranService:
         tranlog.open_counter = self.terminal_info.open_counter
         tranlog.business_counter = self.terminal_info.business_counter
         tranlog.generate_date_time = get_app_time_str()
+        # Settings come back as strings (master-data /settings/{name}/value
+        # returns the value as-is). The counter increment uses MongoDB's
+        # $add aggregation which fails with TypeMismatch on non-numeric
+        # operands, so cast here.
+        receipt_start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
+        receipt_end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
         tranlog.receipt_no = await self.terminal_counter_repository.numbering_count(
             countType=CounterType.Receipt.value,
-            start_value=await self._get_setting_value_async("RECEIPT_NO_START_VALUE"),
-            end_value=await self._get_setting_value_async("RECEIPT_NO_END_VALUE"),
+            start_value=int(receipt_start_raw) if receipt_start_raw is not None else 1,
+            end_value=int(receipt_end_raw) if receipt_end_raw is not None else sys.maxsize,
         )
         tranlog.user = cart.user
         tranlog.sales = cart.sales

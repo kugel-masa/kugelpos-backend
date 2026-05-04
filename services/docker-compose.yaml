@@ -330,6 +330,16 @@ services:
     container_name: mongodb
     hostname: mongodb
     logging: *default-logging
+    # WiredTiger holds many file descriptors (one per collection / index).
+    # The default container ulimit of 1024 nofile is exhausted quickly
+    # during e2e test runs that create per-tenant DBs (each new tenant ≈
+    # ~30 file descriptors), causing WT panics ("Too many open files")
+    # and crash loops. Raise to 65536 — well within host limits and
+    # standard for a real mongod deployment.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
       - "27017:27017"
     command: mongod --replSet rs0 --bind_ip_all

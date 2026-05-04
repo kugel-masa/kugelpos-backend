@@ -241,24 +241,25 @@ async def drop_db_async(db_name: str) -> bool:
         message = f"Failed to drop database: {db_name}"
         raise DatabaseException(message, logger, e) from e
 
+@with_connection_retry
 async def create_collection_with_indexes_async(
         db_name: str,
-        collection_name: str, 
-        index_keys_list: list, 
-        index_name: str, 
+        collection_name: str,
+        index_keys_list: list,
+        index_name: str,
 ):
     """
     Create a collection with specified indexes asynchronously
-    
-    Creates a new collection in the specified database and adds the specified 
+
+    Creates a new collection in the specified database and adds the specified
     indexes to optimize query performance.
-    
+
     Args:
         db_name: Name of the database
         collection_name: Name of the collection to create
         index_keys_list: List of index specifications
         index_name: Base name for the indexes
-        
+
     Raises:
         DatabaseException: If creating the collection or indexes fails
     """
@@ -275,12 +276,16 @@ async def create_collection_with_indexes_async(
                 index_name = index_name_org + "_" + "_".join([str(key) for key in keys_dict.keys()])
                 logger.info(f"Creating index: {index_name} for collection: {collection_name}")
                 command_json = create_indexes_command(
-                    collection_name=collection_name, 
-                    index_keys=keys_dict, 
-                    index_name=index_name, 
+                    collection_name=collection_name,
+                    index_keys=keys_dict,
+                    index_name=index_name,
                     unique=unique
                 )
                 await execute_command_async(command=command_json, db=db)
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        # Re-raise so the @with_connection_retry decorator can retry the
+        # whole operation (including re-acquiring the db handle).
+        raise
     except Exception as e:
         message = f"Failed to create collection with indexes: {collection_name} in {db_name}. Error: {str(e)}"
         logger.error(f"Collection with indexes creation error: {type(e).__name__}: {str(e)}")
@@ -289,18 +294,25 @@ async def create_collection_with_indexes_async(
 async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
     """
     Create a collection asynchronously
-    
+
     Creates a new collection in the specified database if it doesn't already exist.
-    
+
+    Note: This function takes a `db` handle as input. On a connection error
+    (AutoReconnect / ConnectionFailure), retrying here is unsafe because the
+    caller's `db` handle becomes stale once the client is reset. We therefore
+    re-raise ConnectionFailure so a caller decorated with
+    @with_connection_retry can retry by re-acquiring the db handle.
+
     Args:
         collection_name: Name of the collection to create
         db: Database instance
-        
+
     Returns:
         bool: True if collection was created, False if it already existed
-        
+
     Raises:
-        DatabaseException: If creating the collection fails
+        ConnectionFailure / ServerSelectionTimeoutError: propagated for retry by callers
+        DatabaseException: If creating the collection fails for any other reason
     """
     try:
         if collection_name in await db.list_collection_names():
@@ -308,6 +320,8 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
             return False # return false if collection already exists
         await db.create_collection(collection_name)
         logger.info(f"Collection {collection_name} created")
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        raise
     except Exception as e:
         message = f"Failed to create collection: {collection_name}. Error: {str(e)}"
         logger.error(f"Collection creation error details: {type(e).__name__}: {str(e)}")
@@ -317,18 +331,22 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
 async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
     """
     Drop a collection asynchronously
-    
+
     Removes a collection from the database if it exists.
-    
+
+    Note: see `create_collection_async` — connection-error retry must happen
+    in a caller that owns the db handle.
+
     Args:
         collection_name: Name of the collection to drop
         db: Database instance
-        
+
     Returns:
         bool: True if the operation was successful
-        
+
     Raises:
-        DatabaseException: If dropping the collection fails
+        ConnectionFailure / ServerSelectionTimeoutError: propagated for retry by callers
+        DatabaseException: If dropping the collection fails for any other reason
     """
     try:
         if collection_name not in await db.list_collection_names():
@@ -336,6 +354,8 @@ async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
             return True
         await db.drop_collection(collection_name)
         logger.info(f"Collection {collection_name} dropped")
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        raise
     except Exception as e:
         message = f"Failed to drop collection: {collection_name}"
         raise DatabaseException(message, logger, e) from e
@@ -344,23 +364,29 @@ async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
 async def execute_command_async(command: dict, db: AsyncIOMotorDatabase):
     """
     Execute a MongoDB command asynchronously
-    
+
     Executes an arbitrary MongoDB command against the specified database.
-    
+
+    Note: see `create_collection_async` — connection-error retry must happen
+    in a caller that owns the db handle.
+
     Args:
         command: MongoDB command as a dictionary
         db: Database instance
-        
+
     Returns:
         bool: True if the command was executed successfully
-        
+
     Raises:
-        DatabaseException: If executing the command fails
+        ConnectionFailure / ServerSelectionTimeoutError: propagated for retry by callers
+        DatabaseException: If executing the command fails for any other reason
     """
     logger.debug(f"Executing command: {command}")
     try:
         await db.command(command)
         logger.info(f"Command executed: {command}")
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        raise
     except Exception as e:
         message = f"Failed to execute command: {command}"
         raise DatabaseException(message, logger, e) from e

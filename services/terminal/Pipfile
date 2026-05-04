@@ -12,7 +12,7 @@ pydantic-settings = "*"
 motor = "*"
 pytz = "*"
 pyjwt = "*"
-kugel_common = {file = "commons/dist/kugel_common-0.1.44-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.47-py3-none-any.whl"}
 httpx = "*"
 aiohttp = "*"
 pydantic-xml = {extras = ["lxml"], version = "*"}
@@ -24,6 +24,8 @@ apscheduler = "*"
 [dev-packages]
 pytest = "*"
 pytest-asyncio = "*"
+pytest-mock = "*"
+respx = "*"
 flake8 = "*"
 black = "*"
 mypy = "*"

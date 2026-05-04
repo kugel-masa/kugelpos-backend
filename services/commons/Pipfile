@@ -4,8 +4,33 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+# Runtime dependencies of kugel_common (declared here because they are
+# needed to import the package during tests; kugel_common's pyproject.toml
+# only declares a minimal subset because consuming services pin their own).
+motor = "*"
+grpcio = ">=1.60.0"
+grpcio-tools = ">=1.60.0"
+pyjwt = ">=2.0.0"
+fastapi = "*"
+httpx = "*"
+aiohttp = "*"
+pydantic = "*"
+pydantic-settings = "*"
+pydantic-xml = {extras = ["lxml"], version = "*"}
+lxml = "*"
+python-dotenv = "*"
+pytz = "*"
+passlib = {extras = ["bcrypt"], version = "*"}
+bcrypt = "==3.2.0"
+slack-sdk = "*"
+wcwidth = "*"
+apscheduler = "*"
 
 [dev-packages]
+pytest = "*"
+pytest-asyncio = "*"
+pytest-mock = "*"
+respx = "*"
 
 [requires]
 python_version = "3.12"

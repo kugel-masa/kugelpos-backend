@@ -437,6 +437,17 @@ async def receive_transactions(
     )
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
     tran_data_obj = BaseTransaction(**tran_data)
+    # All BaseTransaction fields are Optional (so the model can be reused for
+    # partial updates / pub-sub envelopes), but this endpoint requires the
+    # nested sales / staff / user blocks to build a JournalDocument
+    # downstream. Raise 400 here instead of letting AttributeError bubble
+    # up as a 500.
+    for field in ("sales", "staff", "user"):
+        if getattr(tran_data_obj, field) is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"missing required field: {field}",
+            )
     await tran_service.receive_tranlog_async(tran_data_obj)
     tran_res = SchemasTransformerV1().transform_tran_response(tran_data_obj)
 

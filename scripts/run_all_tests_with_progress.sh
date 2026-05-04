@@ -101,9 +101,10 @@ for service in "${MICROSERVICES[@]}"; do
         echo -e "${GREEN}✓ ${service} - All tests PASSED${NC}"
         PASSED_SERVICES+=("$service")
         
-        # Show test summary if available
+        # Show per-tier test summary if available
         if grep -q "passed" test_output.log; then
-            echo -e "  └─ $(grep -E "[0-9]+ passed" test_output.log | tail -1)"
+            awk '/Running [a-z0-9]+ tests\.\.\./{tier=$2}
+                 /[0-9]+ passed/{gsub(/=/,""); gsub(/^ +| +$/,""); print "  └─ " tier ": " $0}' test_output.log
         fi
     else
         echo -e "${RED}✗ ${service} - Tests FAILED${NC}"

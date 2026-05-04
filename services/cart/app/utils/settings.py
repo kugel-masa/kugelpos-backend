@@ -27,18 +27,22 @@ def get_setting_value(name: str, store_code: str, terminal_no: int, setting: Set
     )
 
     if setting is not None:
+        # `values` is Optional[list] — a missing-overrides setting comes
+        # back with None, so guard against iterating None.
+        values = setting.values or []
+
         # Try to find setting specific to this store and terminal
-        value = next((v for v in setting.values if v.store_code == store_code and v.terminal_no == terminal_no), None)
+        value = next((v for v in values if v.store_code == store_code and v.terminal_no == terminal_no), None)
         if value is not None:
             return value.value
 
         # Try to find setting specific to this store (any terminal)
-        value = next((v for v in setting.values if v.store_code == store_code and v.terminal_no is None), None)
+        value = next((v for v in values if v.store_code == store_code and v.terminal_no is None), None)
         if value is not None:
             return value.value
 
         # Try to find global setting (any store, any terminal)
-        value = next((v for v in setting.values if v.store_code is None and v.terminal_no is None), None)
+        value = next((v for v in values if v.store_code is None and v.terminal_no is None), None)
         if value is not None:
             return value.value
 

@@ -38,6 +38,17 @@ class StockSnapshotRepository(AbstractRepository[StockSnapshotDocument]):
         documents = await cursor.to_list(length=None)
         return [StockSnapshotDocument(**doc) for doc in documents]
 
+    async def get_by_id_async(self, snapshot_id: str) -> Optional[StockSnapshotDocument]:
+        """Look up a snapshot by its `snapshot_id` field. Returns None if not found.
+
+        Used by the GET /tenants/.../stock/snapshot/{snapshot_id} endpoint;
+        without this method the route raises an AttributeError at runtime.
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        doc = await self.dbcollection.find_one({"snapshot_id": snapshot_id})
+        return StockSnapshotDocument(**doc) if doc else None
+
     async def get_latest_snapshot_async(self, tenant_id: str, store_code: str) -> Optional[StockSnapshotDocument]:
         """Get the latest snapshot for a store"""
         # Use the parent class method with sorting

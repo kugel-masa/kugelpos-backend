@@ -870,13 +870,15 @@ class CartService(ICartService):
             message = f"Failed to remove cached cart, cart_id: {cart_id}"
             logger.error(message)
 
-            # Send Slack notification
+            # Send Slack notification — send_warning_notification has no `error`
+            # kwarg, so include the exception in the context dict instead.
             context = (
                 {"cart_id": cart_id, "terminal_id": self.terminal_info.terminal_id}
                 if self.terminal_info
                 else {"cart_id": cart_id}
             )
-            await send_warning_notification(message=message, error=e, service="cart", context=context)
+            context["error"] = str(e)
+            await send_warning_notification(message=message, service="cart", context=context)
             return None  # Return None if failed to remove cached cart
 
     async def _get_setting_value_async(self, name: str) -> Any:

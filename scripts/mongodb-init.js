@@ -1,5 +1,13 @@
-// MongoDB initialization script for single-node replica set
-// This script runs inside the MongoDB container
+// MongoDB initialization script for single-node replica set.
+//
+// Runs inside the MongoDB container during the docker-entrypoint init phase,
+// when mongod is bound to 127.0.0.1 only. We must therefore initiate the
+// replica set with `host: "localhost:27017"` — using `mongodb:27017` here
+// fails with NodeNotFound because the bound listener cannot reach its own
+// container hostname during init. After init completes mongod restarts with
+// --bind_ip_all, and the in-network `mongodb-init` sidecar (see
+// docker-compose.mongodb-init.yaml) reconfigures the host to `mongodb:27017`
+// so other containers can join the replica set.
 
 // Wait for MongoDB to be ready
 sleep(2000);
@@ -15,7 +23,7 @@ try {
     members: [
       {
         _id: 0,
-        host: "mongodb:27017"
+        host: "localhost:27017"
       }
     ]
   });
