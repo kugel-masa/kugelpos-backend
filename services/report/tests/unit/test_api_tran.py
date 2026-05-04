@@ -114,6 +114,62 @@ class TestHandleTranlog:
             )
         assert resp.status_code == 500
 
+    @pytest.mark.asyncio
+    async def test_duplicate_at_db_layer_returns_success_not_retry(self):
+        """If DuplicateKeyException leaks past the state-store check (state
+        evicted / TTL expired), the handler must return 200 SUCCESS rather
+        than 500 RETRY — otherwise Dapr loops forever on a row that already
+        exists. See issue #97."""
+        from kugel_common.exceptions import DuplicateKeyException
+
+        mock_service = AsyncMock()
+        mock_service.receive_tranlog_async.side_effect = DuplicateKeyException(
+            message="duplicate", collection_name="log_tran", key={"event_id": "evt-dup-001"}
+        )
+        app = make_app(mock_log_service=mock_service)
+
+        # state-store says "not seen" so handler proceeds to DB write,
+        # which raises DuplicateKeyException.
+        with patch(
+            "app.api.v1.tran.state_store_manager.get_state",
+            new_callable=AsyncMock,
+            return_value=(None, None),
+        ), patch(
+            "app.api.v1.tran.state_store_manager.save_state",
+            new_callable=AsyncMock,
+            return_value=(True, None),
+        ) as save_mock, patch(
+            "app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock
+        ):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/tranlog",
+                    json={
+                        "data": {
+                            "event_id": "evt-dup-001",
+                            "tenant_id": "test-tenant",
+                            "store_code": "STORE01",
+                            "terminal_no": 1,
+                            "transaction_no": 100,
+                            "transaction_type": 101,
+                            "business_date": "20260101",
+                            "open_counter": 1,
+                            "business_counter": 1,
+                            "generate_date_time": "20260101T120000",
+                            "receipt_no": 1,
+                        }
+                    },
+                )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # Tuple-encoded response: [body_dict, status_code]
+        assert body[0]["status"] == "SUCCESS"
+        assert body[1] == 200
+        # Best-effort state save to short-circuit future redeliveries
+        save_mock.assert_awaited()
+
 
 # ---------------------------------------------------------------------------
 # handle_cashlog (pub/sub endpoint)

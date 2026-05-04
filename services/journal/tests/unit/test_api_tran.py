@@ -140,6 +140,55 @@ class TestHandleTranlog:
         assert body[0]["status"] == "SUCCESS"
         mock_svc.receive_tranlog_async.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_tranlog_duplicate_at_db_layer_returns_success_not_retry(self):
+        """If DuplicateKeyException leaks past the state-store check (state
+        evicted / TTL expired), the handler must return 200 SUCCESS rather
+        than 500 RETRY — otherwise Dapr loops forever on a row that already
+        exists. See issue #97."""
+        from kugel_common.exceptions import DuplicateKeyException
+
+        mock_svc = _mock_log_service()
+        mock_svc.receive_tranlog_async.side_effect = DuplicateKeyException(
+            message="duplicate", collection_name="log_tran", key={"event_id": "evt-dup-001"}
+        )
+        app = make_app()
+        app.dependency_overrides[get_log_service_from_request] = lambda: mock_svc
+
+        with patch("app.api.v1.tran.get_state", new_callable=AsyncMock, return_value=None), \
+             patch("app.api.v1.tran.save_state", new_callable=AsyncMock, return_value=True) as save_mock, \
+             patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/tranlog",
+                    json={
+                        "data": {
+                            "event_id": "evt-dup-001",
+                            "tenant_id": "T001",
+                            "store_code": "S001",
+                            "terminal_no": 1,
+                            "transaction_no": 100,
+                            "transaction_type": 101,
+                            "business_date": "20260101",
+                            "open_counter": 1,
+                            "business_counter": 1,
+                            "generate_date_time": "20260101T120000",
+                            "receipt_no": 1,
+                            "items": [],
+                            "payments": [],
+                            "tax_details": [],
+                        }
+                    },
+                )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        # Tuple-encoded response: [body_dict, status_code]
+        assert body[0]["status"] == "SUCCESS"
+        assert body[1] == 200
+        # Best-effort state save to short-circuit future redeliveries
+        save_mock.assert_awaited()
+
 
 # ---------------------------------------------------------------------------
 # POST /cashlog  (Dapr pub/sub)
