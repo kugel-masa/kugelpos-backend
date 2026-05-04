@@ -45,6 +45,27 @@ async def create_stock_update_collection(tenant_id: str):
         {"keys": {"update_type": 1}},
         {"keys": {"timestamp": -1}},
         {"keys": {"reference_id": 1}},
+        # Unique on the upstream transaction identity (issue #98). When
+        # Dapr redelivers the same tranlog and the state-store
+        # idempotency check happens to miss, this index stops the
+        # second StockUpdateDocument insert at the DB layer. Partial
+        # filter scopes it to transaction-driven updates only — manual
+        # adjustments / migrations leave transaction_no NULL and are
+        # excluded from the unique constraint. ($type: "number" is the
+        # MongoDB-supported way to say "field present and not null" in
+        # a partialFilterExpression; $ne is not supported there.)
+        {
+            "keys": {
+                "tenant_id": 1,
+                "store_code": 1,
+                "terminal_no": 1,
+                "transaction_no": 1,
+                "item_code": 1,
+                "update_type": 1,
+            },
+            "unique": True,
+            "partialFilterExpression": {"transaction_no": {"$type": "number"}},
+        },
     ]
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"

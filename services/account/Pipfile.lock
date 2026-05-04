@@ -672,7 +672,7 @@
             "version": "==3.13"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.47-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.48-py3-none-any.whl",
             "hashes": [
                 "sha256:32540c75b05d4c01140762e5169c49358eb44d9b3e92547d85862a753284da4d"
             ]
