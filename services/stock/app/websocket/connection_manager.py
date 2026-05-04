@@ -1,4 +1,26 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+# Copyright 2025 masa@kugel
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+"""WebSocket connection registry for stock alerts.
+
+IMPORTANT — single-worker constraint (issue #105):
+
+    Connections are stored in process-local memory (`self._connections`).
+    Under multi-worker uvicorn (UVICORN_WORKERS > 1), each worker owns
+    its own ConnectionManager instance, and a stock-update HTTP request
+    handled on worker A only reaches WebSocket connections also on
+    worker A — clients on workers B/C/D get nothing. In a 4-worker
+    deployment, ~75% of broadcasts are silently lost.
+
+    Stock service therefore runs with **--workers 1** (see
+    services/stock/Dockerfile and Dockerfile.prod). Don't raise the
+    worker count without first introducing a cross-worker broadcast
+    channel (Redis pub/sub, NATS, or a dedicated WebSocket process).
+"""
 from typing import Dict, Set
 from fastapi import WebSocket
 from logging import getLogger
@@ -8,7 +30,10 @@ logger = getLogger(__name__)
 
 
 class ConnectionManager:
-    """Manage WebSocket connections for stock alerts"""
+    """Manage WebSocket connections for stock alerts.
+
+    Process-local — see module docstring on the single-worker constraint.
+    """
 
     def __init__(self):
         # Store connections by tenant_id and store_code
