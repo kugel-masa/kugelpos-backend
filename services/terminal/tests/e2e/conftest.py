@@ -49,7 +49,16 @@ async def http_client(_reset_db_client_per_test):
 
 
 def pytest_collection_modifyitems(config, items):
+    """Auto-mark e2e and ensure test_setup_data runs first if present."""
     this_dir = os.path.dirname(os.path.abspath(__file__))
+    own = []
+    other = []
     for item in items:
         if str(item.fspath).startswith(this_dir):
             item.add_marker(pytest.mark.e2e)
+            own.append(item)
+        else:
+            other.append(item)
+    setups = [i for i in own if "test_setup_data" in i.nodeid]
+    rest = [i for i in own if "test_setup_data" not in i.nodeid]
+    items[:] = other + setups + rest

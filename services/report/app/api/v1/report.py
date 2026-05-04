@@ -18,6 +18,7 @@ from app.models.documents.sales_report_document import SalesReportDocument
 from app.models.documents.category_report_document import CategoryReportDocument
 from app.models.documents.item_report_document import ItemReportDocument
 from app.models.documents.payment_report_document import PaymentReportDocument
+from app.models.documents.promotion_report_document import PromotionReportDocument
 from app.exceptions.report_exceptions import TerminalNotClosedException
 
 # Create a router instance for report-related endpoints
@@ -171,6 +172,8 @@ async def get_report_for_store(
             return_report = transformer.transform_category_report_response(report_doc)
         elif isinstance(report_doc, PaymentReportDocument):
             # Payment report document - use model_dump to convert to dict
+            return_report = report_doc.model_dump(by_alias=False)
+        elif isinstance(report_doc, PromotionReportDocument):
             return_report = report_doc.model_dump(by_alias=False)
         elif isinstance(report_doc, dict):
             # Legacy: Payment report returns a dict directly
@@ -361,6 +364,8 @@ async def get_report_for_terminal(
             return_report = transformer.transform_category_report_response(report_doc)
         elif isinstance(report_doc, PaymentReportDocument):
             # Payment report document - use model_dump to convert to dict
+            return_report = report_doc.model_dump(by_alias=False)
+        elif isinstance(report_doc, PromotionReportDocument):
             return_report = report_doc.model_dump(by_alias=False)
         elif isinstance(report_doc, dict):
             # Legacy: Payment report returns a dict directly

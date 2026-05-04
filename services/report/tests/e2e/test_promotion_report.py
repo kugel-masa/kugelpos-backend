@@ -19,65 +19,63 @@ from datetime import datetime
 
 
 def check_promotion_report_data(report_data: dict):
-    """Check promotion report data structure and calculations"""
+    """Check promotion report data structure and calculations.
 
-    # Check required fields exist
+    PromotionReportDocument has no Pydantic aliases (see BaseDocumentModel),
+    so model_dump emits snake_case field names — matching how
+    PaymentReportDocument's test (test_payment_report_all.py) reads its
+    response.
+    """
     assert "promotions" in report_data
-    assert "totalGrossAmount" in report_data
-    assert "totalDiscountAmount" in report_data
-    assert "totalNetAmount" in report_data
-    assert "totalQuantity" in report_data
-    assert "totalTransactionCount" in report_data
+    assert "total_gross_amount" in report_data
+    assert "total_discount_amount" in report_data
+    assert "total_net_amount" in report_data
+    assert "total_quantity" in report_data
+    assert "total_transaction_count" in report_data
 
-    # Print summary
-    print(f"*** Total Gross Amount: {report_data.get('totalGrossAmount')}")
-    print(f"*** Total Discount Amount: {report_data.get('totalDiscountAmount')}")
-    print(f"*** Total Net Amount: {report_data.get('totalNetAmount')}")
-    print(f"*** Total Quantity: {report_data.get('totalQuantity')}")
-    print(f"*** Total Transaction Count: {report_data.get('totalTransactionCount')}")
+    print(f"*** Total Gross Amount: {report_data.get('total_gross_amount')}")
+    print(f"*** Total Discount Amount: {report_data.get('total_discount_amount')}")
+    print(f"*** Total Net Amount: {report_data.get('total_net_amount')}")
+    print(f"*** Total Quantity: {report_data.get('total_quantity')}")
+    print(f"*** Total Transaction Count: {report_data.get('total_transaction_count')}")
 
-    # Check promotions
     promotions = report_data.get("promotions", [])
     print(f"*** Number of Promotions: {len(promotions)}")
 
-    # Verify totals match sum of promotions
     if len(promotions) > 0:
-        total_gross = sum(promo.get("grossAmount", 0) for promo in promotions)
-        total_discount = sum(promo.get("discountAmount", 0) for promo in promotions)
-        total_net = sum(promo.get("netAmount", 0) for promo in promotions)
+        total_gross = sum(promo.get("gross_amount", 0) for promo in promotions)
+        total_discount = sum(promo.get("discount_amount", 0) for promo in promotions)
+        total_net = sum(promo.get("net_amount", 0) for promo in promotions)
         total_qty = sum(promo.get("quantity", 0) for promo in promotions)
 
-        # Print individual promotions
         for promo in promotions:
-            print(f"*** Promotion: {promo.get('promotionCode', 'Unknown')}")
-            print(f"    - Promotion Code: {promo.get('promotionCode')}")
-            print(f"    - Promotion Type: {promo.get('promotionType')}")
-            print(f"    - Gross Amount: {promo.get('grossAmount')}")
-            print(f"    - Discount Amount: {promo.get('discountAmount')}")
-            print(f"    - Net Amount: {promo.get('netAmount')}")
+            print(f"*** Promotion: {promo.get('promotion_code', 'Unknown')}")
+            print(f"    - Promotion Code: {promo.get('promotion_code')}")
+            print(f"    - Promotion Type: {promo.get('promotion_type')}")
+            print(f"    - Gross Amount: {promo.get('gross_amount')}")
+            print(f"    - Discount Amount: {promo.get('discount_amount')}")
+            print(f"    - Net Amount: {promo.get('net_amount')}")
             print(f"    - Quantity: {promo.get('quantity')}")
-            print(f"    - Transaction Count: {promo.get('transactionCount')}")
+            print(f"    - Transaction Count: {promo.get('transaction_count')}")
 
-        # Verify calculations
         assert (
-            abs(report_data.get("totalGrossAmount", 0) - total_gross) < 0.01
-        ), f"Total gross mismatch: {report_data.get('totalGrossAmount')} != {total_gross}"
+            abs(report_data.get("total_gross_amount", 0) - total_gross) < 0.01
+        ), f"Total gross mismatch: {report_data.get('total_gross_amount')} != {total_gross}"
         assert (
-            abs(report_data.get("totalDiscountAmount", 0) - total_discount) < 0.01
-        ), f"Total discount mismatch: {report_data.get('totalDiscountAmount')} != {total_discount}"
+            abs(report_data.get("total_discount_amount", 0) - total_discount) < 0.01
+        ), f"Total discount mismatch: {report_data.get('total_discount_amount')} != {total_discount}"
         assert (
-            abs(report_data.get("totalNetAmount", 0) - total_net) < 0.01
-        ), f"Total net mismatch: {report_data.get('totalNetAmount')} != {total_net}"
+            abs(report_data.get("total_net_amount", 0) - total_net) < 0.01
+        ), f"Total net mismatch: {report_data.get('total_net_amount')} != {total_net}"
         assert (
-            report_data.get("totalQuantity", 0) == total_qty
-        ), f"Total quantity mismatch: {report_data.get('totalQuantity')} != {total_qty}"
+            report_data.get("total_quantity", 0) == total_qty
+        ), f"Total quantity mismatch: {report_data.get('total_quantity')} != {total_qty}"
 
-        # Verify net = gross - discount for each promotion
         for promo in promotions:
-            expected_net = promo.get("grossAmount", 0) - promo.get("discountAmount", 0)
+            expected_net = promo.get("gross_amount", 0) - promo.get("discount_amount", 0)
             assert (
-                abs(promo.get("netAmount", 0) - expected_net) < 0.01
-            ), f"Promotion {promo.get('promotionCode')} net amount calculation error"
+                abs(promo.get("net_amount", 0) - expected_net) < 0.01
+            ), f"Promotion {promo.get('promotion_code')} net amount calculation error"
 
 
 @pytest.mark.asyncio()
@@ -106,8 +104,8 @@ async def test_promotion_report_operations(http_client):
 
     # Request promotion report
     response = await http_client.get(
-        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports/flash?"
-        f"business_date={business_date}&report_type=promotion",
+        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports",
+        params={"report_scope": "flash", "report_type": "promotion", "business_date": business_date},
         headers=header,
     )
 
@@ -157,8 +155,13 @@ async def test_promotion_report_date_range(http_client):
 
     # Request promotion report with date range
     response = await http_client.get(
-        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports/flash?"
-        f"business_date_from={business_date_from}&business_date_to={business_date_to}&report_type=promotion",
+        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports",
+        params={
+            "report_scope": "flash",
+            "report_type": "promotion",
+            "business_date_from": business_date_from,
+            "business_date_to": business_date_to,
+        },
         headers=header,
     )
 
@@ -170,8 +173,8 @@ async def test_promotion_report_date_range(http_client):
         report_data = res.get("data")
 
         # Check date range is set correctly
-        assert report_data.get("businessDateFrom") == business_date_from
-        assert report_data.get("businessDateTo") == business_date_to
+        assert report_data.get("business_date_from") == business_date_from
+        assert report_data.get("business_date_to") == business_date_to
 
         check_promotion_report_data(report_data)
 
@@ -202,8 +205,8 @@ async def test_promotion_report_empty_result(http_client):
     business_date = "20200101"
 
     response = await http_client.get(
-        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports/flash?"
-        f"business_date={business_date}&report_type=promotion",
+        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/reports",
+        params={"report_scope": "flash", "report_type": "promotion", "business_date": business_date},
         headers=header,
     )
 
