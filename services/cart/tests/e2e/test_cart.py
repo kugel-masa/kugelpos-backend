@@ -1,157 +1,131 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-import pytest, os, asyncio
+# Copyright 2025 masa@kugel
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+import os
+import pytest
 from fastapi import status
 from app.enums.cart_status import CartStatus
 from httpx import AsyncClient
 
 
-# ヘルパー関数 - 認証トークンの取得
+# Helper - obtain admin auth token
 async def get_authentication_token():
     tenant_id = os.environ.get("TENANT_ID")
     token_url = os.environ.get("TOKEN_URL")
     login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
 
-    try:
-        async with AsyncClient() as http_auth_client:
-            response = await http_auth_client.post(url=token_url, data=login_data)
+    async with AsyncClient() as http_auth_client:
+        response = await http_auth_client.post(url=token_url, data=login_data)
 
-        assert response.status_code == status.HTTP_200_OK
-        res = response.json()
-        print(f"Auth Response: {res}")
-        token = res.get("access_token")
-        print(f"Token: {token}")
-        return token
-    except Exception as e:
-        print(f"Authentication error: {str(e)}")
-        raise e
+    assert response.status_code == status.HTTP_200_OK, response.text
+    return response.json().get("access_token")
 
 
-# ヘルパー関数 - テナント作成
+# Helper - create tenant (idempotent: 409 means it already exists in this session)
 async def create_tenant(http_client, token):
     tenant_id = os.environ.get("TENANT_ID")
-    req_data = {"tenant_id": tenant_id}
     header = {"Authorization": f"Bearer {token}"}
 
-    try:
-        response = await http_client.post("/api/v1/tenants", json=req_data, headers=header)
-
-        if response.status_code == status.HTTP_201_CREATED:
-            res = response.json()
-            assert res.get("success") is True
-            assert res.get("code") == status.HTTP_201_CREATED
-            assert res.get("data").get("tenantId") == tenant_id
-            return tenant_id
-        elif response.status_code == status.HTTP_409_CONFLICT:
-            # テナントが既に存在する場合も成功とみなす
-            print(f"Tenant {tenant_id} already exists")
-            return tenant_id
-        else:
-            print(f"Failed to create tenant: {response.status_code} {response.text}")
-            raise Exception(f"Failed to create tenant: {response.status_code} {response.text}")
-    except Exception as e:
-        print(f"Tenant creation error: {str(e)}")
-        raise e
+    response = await http_client.post(
+        "/api/v1/tenants", json={"tenant_id": tenant_id}, headers=header,
+    )
+    if response.status_code == status.HTTP_201_CREATED:
+        res = response.json()
+        assert res.get("success") is True
+        assert res.get("data").get("tenantId") == tenant_id
+        return tenant_id
+    if response.status_code == status.HTTP_409_CONFLICT:
+        # Tenant already created in an earlier test in this session.
+        return tenant_id
+    raise AssertionError(
+        f"Failed to create tenant: {response.status_code} {response.text}"
+    )
 
 
-# ヘルパー関数 - ターミナル情報取得
+# Helper - fetch terminal info via X-API-KEY
 async def get_terminal_info(tenant_id=None):
     if tenant_id is None:
         tenant_id = os.environ.get("TENANT_ID")
-
     terminal_id = os.environ.get("TERMINAL_ID")
     api_key = os.environ.get("API_KEY")
-    header = {"X-API-KEY": api_key}
     base_url = os.environ.get("BASE_URL_TERMINAL")
 
-    try:
-        async with AsyncClient(base_url=base_url) as http_terminal_client:
-            response = await http_terminal_client.get(f"/terminals/{terminal_id}", headers=header)
+    async with AsyncClient(base_url=base_url) as http_terminal_client:
+        response = await http_terminal_client.get(
+            f"/terminals/{terminal_id}", headers={"X-API-KEY": api_key},
+        )
 
-        assert response.status_code == status.HTTP_200_OK
-        res = response.json()
-        print(f"Terminal Info Response: {res}")
-        assert res.get("success") is True
-        assert res.get("code") == status.HTTP_200_OK
-        assert res.get("data").get("terminalId") == terminal_id
-
-        return res.get("data")
-    except Exception as e:
-        print(f"Terminal info error: {str(e)}")
-        raise e
+    assert response.status_code == status.HTTP_200_OK, response.text
+    res = response.json()
+    assert res.get("success") is True
+    assert res.get("data").get("terminalId") == terminal_id
+    return res.get("data")
 
 
-# ヘルパー関数 - ターミナルのオープン処理
+# Helper - open the terminal (function_mode -> sign-in -> open -> Sales mode)
 async def open_terminal(tenant_id=None):
     if tenant_id is None:
         tenant_id = os.environ.get("TENANT_ID")
-
     terminal_id = os.environ.get("TERMINAL_ID")
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
     base_url = os.environ.get("BASE_URL_TERMINAL")
 
-    # 機能モードをOpenTerminalに変更
-    req_data = {"function_mode": "OpenTerminal"}
     async with AsyncClient(base_url=base_url) as http_terminal_client:
-        response = await http_terminal_client.patch(
-            f"/terminals/{terminal_id}/function_mode", json=req_data, headers=header
+        # function_mode -> OpenTerminal
+        r = await http_terminal_client.patch(
+            f"/terminals/{terminal_id}/function_mode",
+            json={"function_mode": "OpenTerminal"}, headers=header,
         )
+        assert r.status_code == status.HTTP_200_OK, r.text
 
-    if response.status_code != status.HTTP_200_OK:
-        print(f"Failed to set function mode: {response.status_code} {response.text}")
-
-    # サインイン
-    req_data = {"staff_id": "S001"}
-    async with AsyncClient(base_url=base_url) as http_terminal_client:
-        response = await http_terminal_client.post(f"/terminals/{terminal_id}/sign-in", json=req_data, headers=header)
-
-    if response.status_code != status.HTTP_200_OK:
-        print(f"Failed to sign in: {response.status_code} {response.text}")
-
-    # ターミナルオープン
-    req_data = {"initial_amount": 500000}
-    async with AsyncClient(base_url=base_url) as http_terminal_client:
-        response = await http_terminal_client.post(f"/terminals/{terminal_id}/open", json=req_data, headers=header)
-
-    if response.status_code != status.HTTP_200_OK:
-        print(f"Failed to open terminal: {response.status_code} {response.text}")
-
-    # 機能モードをSalesに変更
-    req_data = {"function_mode": "Sales"}
-    async with AsyncClient(base_url=base_url) as http_terminal_client:
-        response = await http_terminal_client.patch(
-            f"/terminals/{terminal_id}/function_mode", json=req_data, headers=header
+        # sign in
+        r = await http_terminal_client.post(
+            f"/terminals/{terminal_id}/sign-in",
+            json={"staff_id": "S001"}, headers=header,
         )
+        assert r.status_code == status.HTTP_200_OK, r.text
 
-    if response.status_code != status.HTTP_200_OK:
-        print(f"Failed to set function mode to Sales: {response.status_code} {response.text}")
+        # open
+        r = await http_terminal_client.post(
+            f"/terminals/{terminal_id}/open",
+            json={"initial_amount": 500000}, headers=header,
+        )
+        assert r.status_code == status.HTTP_200_OK, r.text
+
+        # function_mode -> Sales
+        r = await http_terminal_client.patch(
+            f"/terminals/{terminal_id}/function_mode",
+            json={"function_mode": "Sales"}, headers=header,
+        )
+        assert r.status_code == status.HTTP_200_OK, r.text
 
     return terminal_id
 
 
-# ヘルパー関数 - ターミナルのクローズ処理
+# Helper - close + sign-out
 async def close_terminal(tenant_id=None):
     if tenant_id is None:
         tenant_id = os.environ.get("TENANT_ID")
-
     terminal_id = os.environ.get("TERMINAL_ID")
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
     base_url = os.environ.get("BASE_URL_TERMINAL")
 
-    # ターミナルクローズ
     async with AsyncClient(base_url=base_url) as http_terminal_client:
-        response = await http_terminal_client.post(f"/terminals/{terminal_id}/close", headers=header)
+        r = await http_terminal_client.post(
+            f"/terminals/{terminal_id}/close", headers=header,
+        )
+        assert r.status_code == status.HTTP_200_OK, r.text
 
-    if response.status_code != status.HTTP_200_OK:
-        print(f"Failed to close terminal: {response.status_code} {response.text}")
-
-    # サインアウト
-    async with AsyncClient(base_url=base_url) as http_terminal_client:
-        response = await http_terminal_client.post(f"/terminals/{terminal_id}/sign-out", headers=header)
-
-    if response.status_code != status.HTTP_200_OK:
-        print(f"Failed to sign out: {response.status_code} {response.text}")
+        r = await http_terminal_client.post(
+            f"/terminals/{terminal_id}/sign-out", headers=header,
+        )
+        assert r.status_code == status.HTTP_200_OK, r.text
 
     return terminal_id
 
@@ -160,7 +134,6 @@ async def close_terminal(tenant_id=None):
 @pytest.mark.asyncio
 async def test_cart_operations(http_client):
     """カートの基本的な操作テスト"""
-    print("Testing cart operations started")
 
     # 認証トークンの取得
     token = await get_authentication_token()
@@ -220,7 +193,6 @@ async def test_cart_operations(http_client):
     assert res.get("data").get("cartId") == cartId
     assert res.get("data").get("cartStatus") == CartStatus.Cancelled.value
 
-    print("Basic cart operations test completed")
 
 
 # 商品操作のテスト
@@ -311,7 +283,6 @@ async def test_line_item_operations(http_client):
     # カートをキャンセルして終了
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
-    print("Line item operations test completed")
 
 
 # 割引処理のテスト
@@ -418,7 +389,6 @@ async def test_discount_operations(http_client):
     # カートをキャンセルして終了
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
-    print("Discount operations test completed")
 
 
 # 支払いと請求処理のテスト
@@ -501,7 +471,6 @@ async def test_payment_process(http_client):
     assert res.get("data").get("totalAmountWithTax") < res.get("data").get("depositAmount")
     assert res.get("data").get("changeAmount") > 0
 
-    print("Payment process test completed")
 
 
 # 残高不足時の請求処理テスト
@@ -557,7 +526,6 @@ async def test_bill_with_insufficient_balance(http_client):
     # カートをキャンセルして終了
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
-    print("Insufficient balance test completed")
 
 
 # 印紙税のテスト stamp duty
@@ -614,7 +582,6 @@ async def test_stamp_duty(http_client):
 
     # 印紙税が適用されていることを確認
     assert res.get("data").get("stampDutyAmount") == 200
-    print(f"journal data stamp duty: {res.get('data').get('journalText')}")
 
 
 # トランザクション操作のテスト
@@ -678,7 +645,6 @@ async def test_transaction_operations(http_client):
     journal_data = res.get("data").get("journalText")
     assert journal_data is not None
     assert len(journal_data) > 0
-    print(f"Journal data NornalSales: {journal_data}")
 
     # トランザクション一覧取得
     response = await http_client.get(
@@ -693,7 +659,6 @@ async def test_transaction_operations(http_client):
         journal_data = tran.get("journalText")
         assert journal_data is not None
         assert len(journal_data) > 0
-        print(f"Journal data: {journal_data}")
 
     # パラメータ付きでトランザクション一覧取得
     response = await http_client.get(
@@ -723,7 +688,6 @@ async def test_transaction_operations(http_client):
     journal_data = res.get("data").get("journalText")
     assert journal_data is not None
     assert len(journal_data) > 0
-    print(f"Journal data: {journal_data}")
 
     # 取引返品処理
     response = await http_client.post(
@@ -732,7 +696,6 @@ async def test_transaction_operations(http_client):
         json=[{"paymentCode": "01", "amount": 330, "detail": "Cash payment"}],
     )
 
-    print(f"Response json: {response.json()}")
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     assert res.get("success") is True
@@ -749,7 +712,6 @@ async def test_transaction_operations(http_client):
     journal_data = res.get("data").get("journalText")
     assert journal_data is not None
     assert len(journal_data) > 0
-    print(f"Journal data Return: {journal_data}")
 
     # 返品取引取消処理
     response = await http_client.post(
@@ -776,16 +738,13 @@ async def test_transaction_operations(http_client):
     journal_data = res.get("data").get("journalText")
     assert journal_data is not None
     assert len(journal_data) > 0
-    print(f"Journal data VoidReturn: {journal_data}")
 
-    print("Transaction operations test completed")
 
 
 # その他支払いのテスト
 @pytest.mark.asyncio
 async def test_payment_by_others(http_client):
     """「その他」支払い方法のテスト"""
-    print("Testing payment by others started")
 
     # 認証トークンとテナント/ターミナル設定
     token = await get_authentication_token()
@@ -872,14 +831,12 @@ async def test_payment_by_others(http_client):
     assert others_payment.get("paymentAmount") == total_amount
     assert others_payment.get("paymentDetail") == others_detail
 
-    print("Testing payment by others completed")
 
 
 # 複数支払い方法のテスト
 @pytest.mark.asyncio
 async def test_multiple_payment_methods(http_client):
     """複数の支払い方法（現金、キャッシュレス、その他）を組み合わせたテスト"""
-    print("Testing multiple payment methods started")
 
     # 認証トークンとテナント/ターミナル設定
     token = await get_authentication_token()
@@ -920,7 +877,6 @@ async def test_multiple_payment_methods(http_client):
     res = response.json()
     total_amount = res.get("data").get("totalAmountWithTax")
     assert total_amount > 0
-    print(f"合計金額（税込）: {total_amount}円")
 
     # 1. その他支払い（商品券）で一部支払い
     others_detail = "{ paymentMethod: '商品券', voucherNumber: 'ABC123' }"
@@ -973,7 +929,6 @@ async def test_multiple_payment_methods(http_client):
     assert "Cashless" in journal_text
     assert "Cash" in journal_text
     assert f"お釣り                  \\{int(expected_change):,}" in journal_text
-    print(f"journal_text: {journal_text}")
 
     # トランザクションの詳細を確認
     transaction_no = res.get("data").get("transactionNo")
@@ -1004,14 +959,12 @@ async def test_multiple_payment_methods(http_client):
     # 現金支払いの場合、支払金額はお釣りを引いた金額になっているはず
     assert cash_payment.get("paymentAmount") == total_amount - others_amount - cashless_amount
 
-    print("Multiple payment methods test completed")
 
 
 # 未登録商品エラーのテスト
 @pytest.mark.asyncio
 async def test_unregistered_item_error(http_client):
     """未登録商品コードを使用した場合のエラー処理をテスト"""
-    print("Testing unregistered item error started")
 
     # 認証トークンとテナント/ターミナル設定
     token = await get_authentication_token()
@@ -1046,9 +999,7 @@ async def test_unregistered_item_error(http_client):
     # 未登録商品の場合、404 Not Foundまたは422 Unprocessable Entityが返されることを確認
     assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]
     res = response.json()
-    print(f"Response non exist item: {res}")
 
     # カートをキャンセルして終了
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
-    print("Unregistered item error test completed")
