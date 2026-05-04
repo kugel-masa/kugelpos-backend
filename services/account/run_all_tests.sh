@@ -16,11 +16,10 @@ export PIPENV_IGNORE_VIRTUALENVS=1
 echo -e "${BLUE}Starting Account Service tests...${NC}"
 echo "================================"
 
-# Tiered test execution: unit → integration. e2e excluded by default
-# (run via ./scripts/run_e2e_tests.sh against the full docker-compose stack).
 tiers=(
     "unit"
     "integration"
+    "e2e"
 )
 
 for tier in "${tiers[@]}"; do
