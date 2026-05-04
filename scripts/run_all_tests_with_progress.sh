@@ -25,7 +25,18 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Progress tracking
-TOTAL_SERVICES=7
+# 7 per-service suites + 1 repo-root cross-service e2e suite when present.
+HAS_CROSS_SERVICE_E2E=false
+if [ -d "$PROJECT_ROOT/tests/e2e" ] && \
+   [ -f "$PROJECT_ROOT/tests/e2e/Pipfile" ] && \
+   compgen -G "$PROJECT_ROOT/tests/e2e/test_*.py" > /dev/null 2>&1; then
+    HAS_CROSS_SERVICE_E2E=true
+fi
+if [ "$HAS_CROSS_SERVICE_E2E" = "true" ]; then
+    TOTAL_SERVICES=8
+else
+    TOTAL_SERVICES=7
+fi
 CURRENT_SERVICE=0
 FAILED_SERVICES=()
 PASSED_SERVICES=()
@@ -125,6 +136,42 @@ for service in "${MICROSERVICES[@]}"; do
     display_progress $CURRENT_SERVICE $TOTAL_SERVICES
     echo ""
 done
+
+# Cross-service e2e (repo-root tests/e2e/) — runs after every per-service
+# suite has finished, against the same live stack. Skipped if the
+# directory is absent or has no tests.
+if [ "$HAS_CROSS_SERVICE_E2E" = "true" ]; then
+    CURRENT_SERVICE=$((CURRENT_SERVICE + 1))
+
+    echo ""
+    echo -e "${YELLOW}┌───────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${YELLOW}│ [${CURRENT_SERVICE}/${TOTAL_SERVICES}] Testing: tests/e2e (cross-service)${NC}"
+    echo -e "${YELLOW}└───────────────────────────────────────────────────────────────┘${NC}"
+
+    cd "$PROJECT_ROOT/tests/e2e"
+
+    if pipenv run pytest -m e2e --no-header -q > test_output.log 2>&1; then
+        echo -e "${GREEN}✓ tests/e2e - All tests PASSED${NC}"
+        PASSED_SERVICES+=("tests/e2e")
+
+        if grep -q "passed" test_output.log; then
+            grep -oE "[0-9]+ passed[^,]*" test_output.log | tail -1 | sed 's/^/  └─ e2e: /'
+        fi
+    else
+        echo -e "${RED}✗ tests/e2e - Tests FAILED${NC}"
+        FAILED_SERVICES+=("tests/e2e")
+
+        if grep -q "FAILED" test_output.log; then
+            echo -e "${RED}  └─ $(grep -E "FAILED|failed" test_output.log | tail -3 | head -1)${NC}"
+        fi
+    fi
+
+    rm -f test_output.log
+    cd "$PROJECT_ROOT"
+
+    display_progress $CURRENT_SERVICE $TOTAL_SERVICES
+    echo ""
+fi
 
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
