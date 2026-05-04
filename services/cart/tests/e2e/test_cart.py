@@ -130,39 +130,39 @@ async def close_terminal(tenant_id=None):
     return terminal_id
 
 
-# メインのテスト - カート操作の基本テスト
+# Main test - basic cart operations
 @pytest.mark.asyncio
 async def test_cart_operations(http_client):
-    """カートの基本的な操作テスト"""
+    """Basic cart operations test"""
 
-    # 認証トークンの取得
+    # Get auth token
     token = await get_authentication_token()
 
-    # テナント作成
+    # Create tenant
     tenant_id = await create_tenant(http_client, token)
 
-    # キャッシュクリア
+    # Clear terminal cache
     header = {"Authorization": f"Bearer {token}"}
     await http_client.delete("/api/v1/cache/terminal", headers=header)
 
-    # ターミナル情報の取得
+    # Fetch terminal info
     terminal_info = await get_terminal_info(tenant_id)
     store_code = terminal_info["storeCode"]
     terminal_no = terminal_info["terminalNo"]
     terminal_id = terminal_info["terminalId"]
 
-    # ターミナルが既にOpenedでない場合のみ、オープンプロセスを実行する
+    # Only run the open process if the terminal is not already Opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
     else:
         print(f"Terminal is already opened with status: {current_status}")
 
-    # API キーをヘッダーに設定
+    # Set API key on the request header
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -174,7 +174,7 @@ async def test_cart_operations(http_client):
     cartId = res.get("data").get("cartId")
     assert cartId is not None
 
-    # カートの取得
+    # Get cart
     response = await http_client.get(f"/api/v1/carts/{cartId}?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
@@ -185,7 +185,7 @@ async def test_cart_operations(http_client):
     assert cart.get("storeCode") == store_code
     assert cart.get("terminalNo") == terminal_no
 
-    # カートのキャンセル
+    # Cancel cart
     response = await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
@@ -195,11 +195,11 @@ async def test_cart_operations(http_client):
 
 
 
-# 商品操作のテスト
+# Test - line item operations
 @pytest.mark.asyncio
 async def test_line_item_operations(http_client):
-    """商品操作（追加、数量変更、キャンセル）のテスト"""
-    # 認証トークンとテナント/ターミナル設定
+    """Line item operations test (add, change quantity, cancel)"""
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -207,12 +207,12 @@ async def test_line_item_operations(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # 新しいカートの作成
+    # Create a fresh cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -222,7 +222,7 @@ async def test_line_item_operations(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加
+    # Add items
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 2}],
@@ -234,7 +234,7 @@ async def test_line_item_operations(http_client):
     assert res.get("data").get("cartStatus") == CartStatus.EnteringItem.value
     assert res.get("data").get("lineItems")[0].get("isCancelled") is False
 
-    # 商品の数量変更
+    # Change item quantity
     lineNo = 1
     response = await http_client.patch(
         f"/api/v1/carts/{cartId}/lineItems/{lineNo}/quantity?terminal_id={terminal_id}",
@@ -246,7 +246,7 @@ async def test_line_item_operations(http_client):
     assert res.get("success") is True
     assert res.get("data").get("lineItems")[0].get("quantity") == 3
 
-    # 特定単価での商品追加
+    # Add item with override unit price
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 1, "unitPrice": 88}],
@@ -257,7 +257,7 @@ async def test_line_item_operations(http_client):
     assert res.get("success") is True
     assert res.get("data").get("lineItems")[1].get("unitPrice") == 88
 
-    # 商品の単価変更
+    # Change item unit price
     lineNo = 2
     response = await http_client.patch(
         f"/api/v1/carts/{cartId}/lineItems/{lineNo}/unitPrice?terminal_id={terminal_id}",
@@ -270,7 +270,7 @@ async def test_line_item_operations(http_client):
     assert res.get("data").get("lineItems")[1].get("unitPrice") == 95
     assert res.get("data").get("lineItems")[1].get("isUnitPriceChanged") is True
 
-    # 商品のキャンセル
+    # Cancel item
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems/{lineNo}/cancel?terminal_id={terminal_id}",
         headers=header,
@@ -280,16 +280,16 @@ async def test_line_item_operations(http_client):
     assert res.get("success") is True
     assert res.get("data").get("lineItems")[1].get("isCancelled") is True
 
-    # カートをキャンセルして終了
+    # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
 
 
-# 割引処理のテスト
+# Test - discount operations
 @pytest.mark.asyncio
 async def test_discount_operations(http_client):
-    """割引処理（商品割引、小計割引）のテスト"""
-    # 認証トークンとテナント/ターミナル設定
+    """Discount operations test (line discount, subtotal discount)"""
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -297,12 +297,12 @@ async def test_discount_operations(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -311,7 +311,7 @@ async def test_discount_operations(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加
+    # Add items
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 2}],
@@ -319,7 +319,7 @@ async def test_discount_operations(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 商品に金額割引を追加（detailフィールドに割引理由を追加）
+    # Add a flat-amount discount on the line item (detail carries the reason)
     lineNo = 1
     line_discount_detail = "{ discountReason : 'ポイント値引き' }"
     response = await http_client.post(
@@ -333,10 +333,10 @@ async def test_discount_operations(http_client):
     assert res.get("data").get("lineItems")[0].get("discounts")[0].get("discountType") == "DiscountAmount"
     assert res.get("data").get("lineItems")[0].get("discounts")[0].get("discountValue") == 10
     assert res.get("data").get("lineItems")[0].get("discounts")[0].get("discountAmount") == 10
-    # detailフィールドの値を確認
+    # Verify the detail field
     assert res.get("data").get("lineItems")[0].get("discounts")[0].get("discountDetail") == line_discount_detail
 
-    # 別の商品を追加
+    # Add another item
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-02", "quantity": 3}],
@@ -344,7 +344,7 @@ async def test_discount_operations(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 商品にパーセント割引を追加
+    # Add a percentage discount on the line item
     lineNo = 2
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems/{lineNo}/discounts?terminal_id={terminal_id}",
@@ -356,11 +356,11 @@ async def test_discount_operations(http_client):
     assert res.get("success") is True
     assert res.get("data").get("lineItems")[1].get("discounts")[0].get("discountType") == "DiscountPercentage"
 
-    # 小計処理を実行
+    # Run subtotal
     response = await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
 
-    # 小計に金額割引を追加（detailフィールドにポイント値引き情報を追加）
+    # Add a flat-amount discount on the subtotal (detail carries point-redemption info)
     discount_detail = "{ discountReason : 'ポイント値引き' }"
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/discounts?terminal_id={terminal_id}",
@@ -374,7 +374,7 @@ async def test_discount_operations(http_client):
     assert res.get("data").get("subtotalDiscounts")[0].get("discountValue") == 50
     assert res.get("data").get("subtotalDiscounts")[0].get("discountDetail") == discount_detail
 
-    # 小計割引を上書き
+    # Overwrite the subtotal discount
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/discounts?terminal_id={terminal_id}",
         json=[{"discountType": "DiscountAmount", "discountValue": 100, "discountDetail": discount_detail}],
@@ -386,16 +386,16 @@ async def test_discount_operations(http_client):
     assert res.get("data").get("subtotalDiscounts")[0].get("discountValue") == 100
     assert res.get("data").get("subtotalDiscounts")[0].get("discountDetail") == discount_detail
 
-    # カートをキャンセルして終了
+    # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
 
 
-# 支払いと請求処理のテスト
+# Test - payment + bill flow
 @pytest.mark.asyncio
 async def test_payment_process(http_client):
-    """支払いと請求処理のテスト"""
-    # 認証トークンとテナント/ターミナル設定
+    """Payment and bill test"""
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -403,12 +403,12 @@ async def test_payment_process(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -417,7 +417,7 @@ async def test_payment_process(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加
+    # Add items
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 2}],
@@ -425,13 +425,13 @@ async def test_payment_process(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 小計処理
+    # Subtotal
     response = await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     total_amount = res.get("data").get("totalAmountWithTax")
 
-    # 一部支払い（残高不足）
+    # Partial payment (balance still owed)
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "01", "amount": 100, "detail": "Cash payment"}],
@@ -439,11 +439,11 @@ async def test_payment_process(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 残高不足での請求処理
+    # Bill while balance is still owed (must reject)
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_406_NOT_ACCEPTABLE
 
-    # 追加支払い（キャッシュレス）
+    # Additional payment (cashless)
     detail_data = str({"card_no": "1234567890"})
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
@@ -452,7 +452,7 @@ async def test_payment_process(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # さらに支払いを追加（残高を超える）
+    # Add yet another payment (exceeds remaining balance)
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "01", "amount": 1000, "detail": "Cash payment"}],
@@ -460,24 +460,24 @@ async def test_payment_process(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 請求処理（成功）
+    # Bill (success)
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     assert res.get("success") is True
     assert res.get("data").get("cartStatus") == CartStatus.Completed.value
 
-    # お釣りの確認
+    # Verify change amount
     assert res.get("data").get("totalAmountWithTax") < res.get("data").get("depositAmount")
     assert res.get("data").get("changeAmount") > 0
 
 
 
-# 残高不足時の請求処理テスト
+# Test - bill rejected when balance is unpaid
 @pytest.mark.asyncio
 async def test_bill_with_insufficient_balance(http_client):
-    """残高不足での請求処理をテスト"""
-    # 認証トークンとテナント/ターミナル設定
+    """Bill must be rejected if there is still an unpaid balance"""
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -485,12 +485,12 @@ async def test_bill_with_insufficient_balance(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -499,7 +499,7 @@ async def test_bill_with_insufficient_balance(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加
+    # Add items
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 3}],
@@ -507,11 +507,11 @@ async def test_bill_with_insufficient_balance(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 小計処理
+    # Subtotal
     response = await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
 
-    # 一部支払い（残高不足）
+    # Partial payment (balance still owed)
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "01", "amount": 50, "detail": "Cash payment"}],
@@ -519,21 +519,21 @@ async def test_bill_with_insufficient_balance(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 残高不足での請求処理
+    # Bill while balance is still owed (must reject)
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_406_NOT_ACCEPTABLE
 
-    # カートをキャンセルして終了
+    # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
 
 
-# 印紙税のテスト stamp duty
+# Test - stamp duty
 @pytest.mark.asyncio
 async def test_stamp_duty(http_client):
-    # 5万円以上の取引を行い、印紙税が適用されることを確認するテスト
+    # Verify stamp duty applies when a transaction is >= 50,000 yen
 
-    # 認証トークンとテナント/ターミナル設定
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -543,12 +543,12 @@ async def test_stamp_duty(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成と取引完了
+    # Create cart and complete the transaction
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -557,38 +557,38 @@ async def test_stamp_duty(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品を追加
+    # Add items
     await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 500}],
         headers=header,
     )
 
-    # 小計処理
+    # Subtotal
     await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
 
-    # 支払い
+    # Payment
     await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "01", "amount": 60000, "detail": "Cash payment"}],
         headers=header,
     )
 
-    # 請求処理
+    # Bill
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     assert res.get("success") is True
 
-    # 印紙税が適用されていることを確認
+    # Verify stamp duty is applied
     assert res.get("data").get("stampDutyAmount") == 200
 
 
-# トランザクション操作のテスト
+# Test - transaction operations (return, void, etc.)
 @pytest.mark.asyncio
 async def test_transaction_operations(http_client):
-    """トランザクション操作（返品、取消など）のテスト"""
-    # 認証トークンとテナント/ターミナル設定
+    """Transaction operations test (return, void, etc.)"""
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -598,12 +598,12 @@ async def test_transaction_operations(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成と取引完了
+    # Create cart and complete the transaction
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -612,31 +612,31 @@ async def test_transaction_operations(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加
+    # Add items
     await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 2}],
         headers=header,
     )
 
-    # 商品の追加
+    # Add items
     await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 1}],
         headers=header,
     )
 
-    # 小計処理
+    # Subtotal
     await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
 
-    # 支払い
+    # Payment
     await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "01", "amount": 1000, "detail": "Cash payment"}],
         headers=header,
     )
 
-    # 請求処理
+    # Bill
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     transaction_no = response.json().get("data").get("transactionNo")
@@ -646,7 +646,7 @@ async def test_transaction_operations(http_client):
     assert journal_data is not None
     assert len(journal_data) > 0
 
-    # トランザクション一覧取得
+    # Get transactions list
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions?terminal_id={terminal_id}",
         headers=header,
@@ -660,7 +660,7 @@ async def test_transaction_operations(http_client):
         assert journal_data is not None
         assert len(journal_data) > 0
 
-    # パラメータ付きでトランザクション一覧取得
+    # Get transactions list with query params
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions",
         params={
@@ -676,7 +676,7 @@ async def test_transaction_operations(http_client):
     res = response.json()
     assert res.get("success") is True
 
-    # トランザクション詳細取得
+    # Get transaction detail
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}?terminal_id={terminal_id}",
         headers=header,
@@ -689,7 +689,7 @@ async def test_transaction_operations(http_client):
     assert journal_data is not None
     assert len(journal_data) > 0
 
-    # 取引返品処理
+    # Return the transaction
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return?terminal_id={terminal_id}",
         headers=header,
@@ -701,7 +701,7 @@ async def test_transaction_operations(http_client):
     assert res.get("success") is True
     return_transaction_no = res.get("data").get("transactionNo")
 
-    # 返品したトランザクション詳細取得
+    # Get the returned transaction's detail
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{return_transaction_no}?terminal_id={terminal_id}",
         headers=header,
@@ -713,7 +713,7 @@ async def test_transaction_operations(http_client):
     assert journal_data is not None
     assert len(journal_data) > 0
 
-    # 返品取引取消処理
+    # Void the return transaction
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{return_transaction_no}/void?terminal_id={terminal_id}",
         headers=header,
@@ -727,7 +727,7 @@ async def test_transaction_operations(http_client):
     assert res.get("success") is True
     void_transaction_no = res.get("data").get("transactionNo")
 
-    # 取消したトランザクション詳細取得
+    # Get the voided transaction's detail
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{void_transaction_no}?terminal_id={terminal_id}",
         headers=header,
@@ -741,12 +741,12 @@ async def test_transaction_operations(http_client):
 
 
 
-# その他支払いのテスト
+# Test - "Others" payment method
 @pytest.mark.asyncio
 async def test_payment_by_others(http_client):
-    """「その他」支払い方法のテスト"""
+    """Test for the 'Others' payment method"""
 
-    # 認証トークンとテナント/ターミナル設定
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -754,12 +754,12 @@ async def test_payment_by_others(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -769,7 +769,7 @@ async def test_payment_by_others(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加
+    # Add items
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "49-01", "quantity": 2}],
@@ -777,13 +777,13 @@ async def test_payment_by_others(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 小計処理
+    # Subtotal
     response = await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     total_amount = res.get("data").get("totalAmountWithTax")
 
-    # その他支払い（コード12）
+    # "Others" payment (code 12)
     others_detail = "{ paymentMethod: '商品券', voucherNumber: 'ABC123' }"
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
@@ -793,25 +793,25 @@ async def test_payment_by_others(http_client):
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
 
-    # 支払いが正しく追加されていることを確認
+    # Verify the payment was added correctly
     assert res.get("success") is True
     payments = res.get("data").get("payments")
     assert len(payments) > 0
 
-    # 「その他」支払いの検証
+    # Verify the "Others" payment
     others_payment = next((p for p in payments if p.get("paymentCode") == "12"), None)
     assert others_payment is not None
     assert others_payment.get("paymentAmount") == total_amount
     assert others_payment.get("paymentDetail") == others_detail
 
-    # 請求処理
+    # Bill
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     assert res.get("success") is True
     assert res.get("data").get("cartStatus") == CartStatus.Completed.value
 
-    # 取引の詳細を取得して確認
+    # Fetch transaction detail and verify
     transaction_no = res.get("data").get("transactionNo")
     store_code = terminal_info["storeCode"]
     terminal_no = terminal_info["terminalNo"]
@@ -824,7 +824,7 @@ async def test_payment_by_others(http_client):
     res = response.json()
     assert res.get("success") is True
 
-    # 「その他」支払いが取引に記録されているか確認
+    # Verify the "Others" payment is recorded on the transaction
     payments = res.get("data").get("payments")
     others_payment = next((p for p in payments if p.get("paymentCode") == "12"), None)
     assert others_payment is not None
@@ -833,12 +833,12 @@ async def test_payment_by_others(http_client):
 
 
 
-# 複数支払い方法のテスト
+# Test - multiple payment methods combined
 @pytest.mark.asyncio
 async def test_multiple_payment_methods(http_client):
-    """複数の支払い方法（現金、キャッシュレス、その他）を組み合わせたテスト"""
+    """Test combining multiple payment methods (cash, cashless, others)"""
 
-    # 認証トークンとテナント/ターミナル設定
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -848,12 +848,12 @@ async def test_multiple_payment_methods(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -863,24 +863,24 @@ async def test_multiple_payment_methods(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 商品の追加（価格が高めの商品を複数追加）
+    # Add items (multiple of a higher-priced item)
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 10}],  # 100円 x 10個 = 1,000円
+        json=[{"itemCode": "49-01", "quantity": 10}],  # 100 yen x 10 = 1,000 yen
         headers=header,
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 小計処理
+    # Subtotal
     response = await http_client.post(f"/api/v1/carts/{cartId}/subtotal?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     total_amount = res.get("data").get("totalAmountWithTax")
     assert total_amount > 0
 
-    # 1. その他支払い（商品券）で一部支払い
+    # 1. Partial payment with "Others" (gift voucher)
     others_detail = "{ paymentMethod: '商品券', voucherNumber: 'ABC123' }"
-    others_amount = 300  # 300円分の商品券
+    others_amount = 300  # 300 yen worth of gift voucher
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "12", "amount": others_amount, "detail": others_detail}],
@@ -888,9 +888,9 @@ async def test_multiple_payment_methods(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 2. キャッシュレスで一部支払い
+    # 2. Partial payment with cashless
     cashless_detail = str({"card_no": "9876543210", "auth_code": "XYZ789"})
-    cashless_amount = 400  # 400円分のキャッシュレス決済
+    cashless_amount = 400  # 400 yen via cashless payment
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "11", "amount": cashless_amount, "detail": cashless_detail}],
@@ -898,8 +898,8 @@ async def test_multiple_payment_methods(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 3. 現金で残りを支払い（お釣りが発生するように多めに）
-    cash_amount = 2000  # 2000円の現金（お釣りが発生する）
+    # 3. Pay the remainder in cash (over-deposit so change is given)
+    cash_amount = 2000  # 2000 yen cash (triggers change)
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/payments?terminal_id={terminal_id}",
         json=[{"paymentCode": "01", "amount": cash_amount, "detail": "Cash payment"}],
@@ -907,30 +907,30 @@ async def test_multiple_payment_methods(http_client):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 支払い状況の確認
+    # Verify payment state
     res = response.json()
     payments = res.get("data").get("payments")
-    assert len(payments) == 3  # 3種類の支払い方法
+    assert len(payments) == 3  # three distinct payment methods
 
-    # 請求処理
+    # Bill
     response = await http_client.post(f"/api/v1/carts/{cartId}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
     assert res.get("success") is True
     assert res.get("data").get("cartStatus") == CartStatus.Completed.value
 
-    # お釣りの確認
+    # Verify change amount
     expected_change = cash_amount - (total_amount - others_amount - cashless_amount)
     assert res.get("data").get("changeAmount") == expected_change
 
-    # レシートにすべての支払い方法が記載されていることを確認
+    # Verify the receipt mentions all payment methods
     journal_text = res.get("data").get("journalText")
     assert "商品券" in journal_text or "Others" in journal_text
     assert "Cashless" in journal_text
     assert "Cash" in journal_text
     assert f"お釣り                  \\{int(expected_change):,}" in journal_text
 
-    # トランザクションの詳細を確認
+    # Check the transaction detail
     transaction_no = res.get("data").get("transactionNo")
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}?terminal_id={terminal_id}",
@@ -939,34 +939,34 @@ async def test_multiple_payment_methods(http_client):
     assert response.status_code == status.HTTP_200_OK
     res = response.json()
 
-    # すべての支払いが記録されているか確認
+    # Verify all payments are recorded
     payments = res.get("data").get("payments")
     assert len(payments) == 3
 
-    # その他支払いの確認
+    # Verify "Others" payment
     others_payment = next((p for p in payments if p.get("paymentCode") == "12"), None)
     assert others_payment is not None
     assert others_payment.get("paymentAmount") == others_amount
 
-    # キャッシュレス支払いの確認
+    # Verify cashless payment
     cashless_payment = next((p for p in payments if p.get("paymentCode") == "11"), None)
     assert cashless_payment is not None
     assert cashless_payment.get("paymentAmount") == cashless_amount
 
-    # 現金支払いの確認
+    # Verify cash payment
     cash_payment = next((p for p in payments if p.get("paymentCode") == "01"), None)
     assert cash_payment is not None
-    # 現金支払いの場合、支払金額はお釣りを引いた金額になっているはず
+    # For cash payments, the recorded amount should equal deposit minus change
     assert cash_payment.get("paymentAmount") == total_amount - others_amount - cashless_amount
 
 
 
-# 未登録商品エラーのテスト
+# Test - unregistered item error
 @pytest.mark.asyncio
 async def test_unregistered_item_error(http_client):
-    """未登録商品コードを使用した場合のエラー処理をテスト"""
+    """Test error handling when using an unregistered item code"""
 
-    # 認証トークンとテナント/ターミナル設定
+    # Auth + tenant + terminal setup
     token = await get_authentication_token()
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
@@ -974,12 +974,12 @@ async def test_unregistered_item_error(http_client):
     api_key = terminal_info.get("apiKey")
     header = {"X-API-KEY": api_key}
 
-    # ターミナルがオープン状態になっていることを確認
+    # Make sure the terminal is opened
     current_status = terminal_info.get("status", "")
     if current_status != "Opened":
         await open_terminal(tenant_id)
 
-    # カートの作成
+    # Create cart
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
@@ -989,17 +989,17 @@ async def test_unregistered_item_error(http_client):
     res = response.json()
     cartId = res.get("data").get("cartId")
 
-    # 未登録の商品コードを使用して商品を追加
+    # Try adding an item using an unregistered item code
     response = await http_client.post(
         f"/api/v1/carts/{cartId}/lineItems?terminal_id={terminal_id}",
         json=[{"itemCode": "NONEXISTENT", "quantity": 1}],
         headers=header,
     )
 
-    # 未登録商品の場合、404 Not Foundまたは422 Unprocessable Entityが返されることを確認
+    # Unregistered items must return 404 Not Found or 422 Unprocessable Entity
     assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]
     res = response.json()
 
-    # カートをキャンセルして終了
+    # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 

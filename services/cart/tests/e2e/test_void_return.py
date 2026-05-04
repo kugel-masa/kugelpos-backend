@@ -1,11 +1,17 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+# Copyright 2025 masa@kugel
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
 import pytest
 import os
 from fastapi import status
 from httpx import AsyncClient
 
 
-# ヘルパー関数 - 認証トークンの取得
+# Helper - obtain admin auth token
 async def get_authentication_token():
     tenant_id = os.environ.get("TENANT_ID")
     token_url = os.environ.get("TOKEN_URL")
@@ -17,7 +23,7 @@ async def get_authentication_token():
         return response.json().get("access_token")
 
 
-# ヘルパー関数 - ターミナル情報の取得
+# Helper - parse TERMINAL_ID env into its components
 def get_terminal_info():
     terminal_id = os.environ.get("TERMINAL_ID")
     tenant_id = os.environ.get("TENANT_ID")
@@ -28,7 +34,7 @@ def get_terminal_info():
     return terminal_id, tenant_id, store_code, terminal_no
 
 
-# ヘルパー関数 - APIキーの取得
+# Helper - fetch the terminal's API key by reading its terminal record
 async def get_api_key(http_client, token):
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
@@ -45,19 +51,19 @@ async def get_api_key(http_client, token):
     return None
 
 
-# ヘルパー関数 - カートの作成と商品追加
+# Helper - create a cart with items and bill it (returns billed transaction)
 async def create_cart_with_items(http_client, api_key):
     terminal_id = os.environ.get("TERMINAL_ID")
     header = {"X-API-KEY": api_key}
 
-    # カート作成
+    # Create cart
     cart_data = {"transaction_type": 101, "user_id": "99", "user_name": "John Doe"}
 
     response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_data, headers=header)
     assert response.status_code == status.HTTP_201_CREATED
     cart_id = response.json().get("data", {}).get("cartId")
 
-    # 商品追加
+    # Add items
     items_data = [{"itemCode": "49-01", "quantity": 2}]
 
     response = await http_client.post(
@@ -65,11 +71,11 @@ async def create_cart_with_items(http_client, api_key):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 小計
+    # Subtotal
     response = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
 
-    # 支払い追加
+    # Add payment
     payment_data = [{"paymentCode": "01", "amount": 1000, "detail": "Cash payment"}]
 
     response = await http_client.post(
@@ -77,14 +83,14 @@ async def create_cart_with_items(http_client, api_key):
     )
     assert response.status_code == status.HTTP_200_OK
 
-    # 精算
+    # Bill
     response = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK
 
     return response.json().get("data", {})
 
 
-# Test: 重複取消の防止
+# Test: prevent duplicate void
 @pytest.mark.asyncio
 async def test_duplicate_void_prevention(http_client: AsyncClient):
     """
@@ -143,7 +149,7 @@ async def test_duplicate_void_prevention(http_client: AsyncClient):
     )
 
 
-# Test: 重複返品の防止
+# Test: prevent duplicate return
 @pytest.mark.asyncio
 async def test_duplicate_return_prevention(http_client: AsyncClient):
     """
@@ -197,7 +203,7 @@ async def test_duplicate_return_prevention(http_client: AsyncClient):
     )
 
 
-# Test: 取消済み取引の返品防止
+# Test: prevent return on already-voided transaction
 @pytest.mark.asyncio
 async def test_return_voided_transaction_prevention(http_client: AsyncClient):
     """
@@ -248,7 +254,7 @@ async def test_return_voided_transaction_prevention(http_client: AsyncClient):
     )
 
 
-# Test: 返品済み取引の取消防止
+# Test: prevent void on already-returned transaction
 @pytest.mark.asyncio
 async def test_void_returned_transaction_prevention(http_client: AsyncClient):
     """
@@ -299,7 +305,7 @@ async def test_void_returned_transaction_prevention(http_client: AsyncClient):
     )
 
 
-# Test: 取引一覧でのステータス反映確認
+# Test: void/return status reflected in transaction list
 @pytest.mark.asyncio
 async def test_transaction_status_in_list(http_client: AsyncClient):
     """
@@ -379,7 +385,7 @@ async def test_transaction_status_in_list(http_client: AsyncClient):
     assert our_transactions[transaction_nos[2]].get("status", {}).get("isRefunded") is False
 
 
-# Test: 単一取引取得でのステータス反映確認
+# Test: void/return status reflected when fetching a single transaction
 @pytest.mark.asyncio
 async def test_transaction_status_in_single_get(http_client: AsyncClient):
     """
@@ -432,7 +438,7 @@ async def test_transaction_status_in_single_get(http_client: AsyncClient):
     assert res.get("data", {}).get("status", {}).get("isRefunded") is False
 
 
-# Test: 返品取引の取消で元売上の返品ステータスがリセットされることを確認
+# Test: voiding a return resets the original sale's return status
 @pytest.mark.asyncio
 async def test_void_return_resets_original_refund_status(http_client: AsyncClient):
     """
