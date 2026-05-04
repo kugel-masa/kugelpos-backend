@@ -68,6 +68,20 @@ pytestmark = pytest.mark.integration
 - 1 サービス内で完結する e2e は `services/<svc>/tests/e2e/`
 - 複数サービスをまたぐ横断シナリオは top-level `/e2e/`
 
+top-level `/e2e/` には現状、以下のクロスサービステストを配置:
+
+| ファイル | 検証内容 |
+|---|---|
+| `test_health_all_services.py` | 全サービス `/health` の疎通 |
+| `test_pos_full_journey.py` | tenant 準備 → 開局 → カート → 決済 → tranlog 発行 → journal/report 集計 |
+| `test_void_return_journey.py` | Void/Return 系の符号反転を cart → journal → report で確認 |
+| `test_pubsub_idempotency.py` | 同一 `event_id` の再配信で二重集計が起きないこと |
+| `test_data_consistency.py` | cart/journal/report 間の合計値整合性 |
+| `test_auth_boundary.py` | 越境テナント拒否、期限切れ/署名不正/不正形 JWT |
+| `test_concurrency.py` | 並列カート操作と pub/sub の順序 |
+
+`/e2e/` は専用の `Pipfile` (独立 venv) を持ち、`scripts/run_e2e_tests.sh` がサービス毎の e2e の後で自動実行する。
+
 **Marker**:
 ```python
 pytestmark = pytest.mark.e2e
@@ -112,9 +126,9 @@ pipenv run pytest -m integration
 ./scripts/run_e2e_tests.sh
 ```
 
-### 旧 `run_all_tests.sh` の互換性
+### `run_all_tests.sh` (legacy 互換 wrapper)
 
-移行期間中は `./scripts/run_all_tests.sh` および各サービスの `run_all_tests.sh` も引き続き使用可能(integration + e2e を順次実行)。最終フェーズで再編予定。
+`./scripts/run_all_tests.sh` および `./scripts/run_all_tests_with_progress.sh` は、unit → integration → e2e を順次叩く薄いラッパとして残してある。サービスごとの `run_all_tests.sh` も同様。tier ごとに走らせたい場合は上の3スクリプトを直接使うこと。
 
 ## 書き分けの判断フロー
 
@@ -187,5 +201,5 @@ def mock_dapr_client():
 
 ## 関連
 
-- 移行プラン: GitHub Issue #109
-- 旧テスト構造調査: 同上 issue 内コメント
+- 3層化リファクタの議論・移行ログ: GitHub Issue/PR #109, #110
+- スラッシュコマンド: `/test-guide` (`.claude/commands/test-guide.md`)

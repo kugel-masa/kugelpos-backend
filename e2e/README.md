@@ -17,30 +17,34 @@ Tests here, by contrast, are written against the *system as a whole*: they
 make claims about cross-service contracts, ordering, and data flow that
 no single service owns.
 
-## Status
+## What's here
 
-**Empty as of issue #109.** The cross-service flows that fit this
-directory's purpose (e.g. cart → tranlog publish → journal subscribe → report
-aggregate) are currently exercised end-to-end by the per-service `tests/e2e/`
-suites — `cart/tests/e2e/test_cart.py` runs the cart flow which then
-populates journal and report through Dapr pub/sub, and report's e2e suite
-asserts on the resulting aggregates.
+| File | Purpose |
+|---|---|
+| `test_health_all_services.py` | Smoke check that every service's `/health` endpoint responds 200 once the stack is up |
+| `test_pos_full_journey.py` | End-to-end POS flow: tenant setup → terminal open → cart → payment → tranlog publish → journal & report aggregation |
+| `test_void_return_journey.py` | Void / return scenarios across cart → journal → report (sign-flip semantics) |
+| `test_pubsub_idempotency.py` | Re-delivery of the same `event_id` on `tranlog_report` must NOT double-aggregate (state-store idempotency check) |
+| `test_data_consistency.py` | Cross-service data invariants — totals in cart match journal entries match report aggregates |
+| `test_auth_boundary.py` | Security perimeter: cross-tenant denial, expired / wrong-signature / malformed JWT all yield 401/403 |
+| `test_concurrency.py` | Concurrent cart operations and pub/sub ordering under load |
 
-Promoting those scenarios into authoritative top-level tests is **deferred
-to a follow-up PR**: it requires both (a) a separate Pipfile-managed venv
-under `/e2e/` and (b) careful identification of which assertions belong to
-the cross-service contract vs. each service's own contract.
+These are managed via this directory's own `Pipfile` (separate venv) and run
+after the per-service e2e suites by `scripts/run_e2e_tests.sh`.
 
 ## How to run
 
-Once tests land here:
-
 ```bash
+# All e2e (per-service + cross-service)
 ./scripts/run_e2e_tests.sh
+
+# Just the cross-service tests
+cd e2e
+pipenv run pytest -m e2e
 ```
 
-The script auto-detects this directory and runs it after every per-service
-e2e suite, but only when both a `Pipfile` and `test_*.py` files are present.
+The runner auto-detects this directory: it executes the cross-service suite
+when both a `Pipfile` and `test_*.py` files are present.
 
 ## Conventions
 

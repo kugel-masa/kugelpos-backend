@@ -15,6 +15,25 @@ Each service splits tests into three tiers:
 Per-tier conftests automatically mark every test in the directory, so new
 tests just need to land in the right folder. See `docs/ja/testing-tiers.md`.
 
+### Top-level `/e2e/` (cross-service)
+
+`/e2e/` at the repo root holds **cross-service** scenarios in its own
+Pipfile-managed venv. `scripts/run_e2e_tests.sh` runs it automatically
+after every per-service e2e suite. Currently houses:
+
+- `test_health_all_services.py` — all services' `/health` reachable
+- `test_pos_full_journey.py` — tenant → terminal → cart → payment → tranlog → journal/report
+- `test_void_return_journey.py` — void/return sign-flip across cart→journal→report
+- `test_pubsub_idempotency.py` — duplicate `event_id` must not double-aggregate
+- `test_data_consistency.py` — cart/journal/report totals stay consistent
+- `test_auth_boundary.py` — cross-tenant denial + expired/wrong-sig/malformed JWT
+- `test_concurrency.py` — concurrent cart ops and pub/sub ordering
+
+To run only the cross-service suite:
+```bash
+cd e2e && pipenv run pytest -m e2e
+```
+
 ## Quick Commands
 
 ```bash

@@ -42,7 +42,9 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system built with 
 ### Testing
 Tests are split into three tiers per service: `tests/unit/` (no external
 deps), `tests/integration/` (real MongoDB only, other services mocked),
-and `tests/e2e/` (full docker-compose stack).
+and `tests/e2e/` (full docker-compose stack). Cross-service e2e scenarios
+live in the top-level `/e2e/` directory (own Pipfile-managed venv) and
+run automatically after the per-service e2e suites.
 
 ```bash
 ./scripts/run_unit_tests.sh                       # All services, no MongoDB needed
