@@ -5,6 +5,19 @@ import logging, logging.config
 logging.config.fileConfig("app/logging.conf")
 
 import os
+
+# Module-level env bootstrap: must run BEFORE any test file imports the
+# service app so app.config.settings sees the correct DB_NAME_PREFIX /
+# SECRET_KEY etc. on first load. pytest auto-discovery of tests/unit/
+# would otherwise cache settings defaults before set_env_vars fires,
+# leading to integration-tier flakes.
+from dotenv import load_dotenv as _load_dotenv
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+_load_dotenv(os.path.join(_ROOT_DIR, '.env.test'), override=True)
+os.environ.setdefault("DB_NAME_PREFIX", "db_journal")
+os.environ.setdefault("STORE_CODE", "5678")
+os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient

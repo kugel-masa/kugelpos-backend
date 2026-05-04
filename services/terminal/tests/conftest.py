@@ -13,13 +13,27 @@ tiers. The HTTP client lives in tests/e2e/conftest.py. Unit tests override
 `set_env_vars` to a no-op (see tests/unit/conftest.py) so they can run
 with no external services or environment file.
 """
-# setup logging
 import logging
 import logging.config
+import os
+
+# Module-level env bootstrap: must run BEFORE any test file imports the
+# terminal app so app.config.settings sees the correct DB_NAME_PREFIX
+# / SECRET_KEY etc. on first load. Otherwise pytest's auto-discovery
+# of tests/unit/ caches the defaults before set_env_vars fixture fires,
+# leading to integration-tier flakes (in-process app reads from a
+# different DB / wrong secret than the test fixtures expect).
+from dotenv import load_dotenv as _load_dotenv
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_load_dotenv(os.path.join(_ROOT_DIR, ".env.test"), override=True)
+os.environ.setdefault("DB_NAME_PREFIX", "db_terminal")
+os.environ.setdefault("STORE_CODE", "5678")
+os.environ.setdefault(
+    "TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9"
+)
 
 logging.config.fileConfig("app/logging.conf")
-
-import os
 
 import pytest
 from dotenv import load_dotenv
