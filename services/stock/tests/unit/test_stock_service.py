@@ -63,6 +63,9 @@ def make_service():
          patch("app.services.stock_service.StockUpdateRepository") as MockUpdateRepo:
         stock_repo = AsyncMock()
         update_repo = AsyncMock()
+        # Default the idempotency pre-check to "not yet processed" so
+        # existing tests don't have to set this up explicitly.
+        update_repo.find_by_transaction_async = AsyncMock(return_value=[])
         MockStockRepo.return_value = stock_repo
         MockUpdateRepo.return_value = update_repo
         service = StockService(database=mock_db)
@@ -436,6 +439,69 @@ class TestProcessTransaction:
 
         with pytest.raises(RuntimeError, match="db failure"):
             await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
+
+    @pytest.mark.asyncio
+    async def test_already_processed_transaction_is_skipped(self):
+        """Issue #98: if find_by_transaction_async returns existing records,
+        the entire transaction is skipped — re-applying $inc would
+        double-decrement stock."""
+        svc, _, update_repo = make_service()
+        svc.update_stock_async = AsyncMock()
+        # Simulate: a previous delivery of this same transaction already
+        # produced a stock_update record.
+        existing_record = MagicMock()
+        update_repo.find_by_transaction_async = AsyncMock(return_value=[existing_record])
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
+
+        update_repo.find_by_transaction_async.assert_awaited_once_with(
+            tenant_id="T001", store_code="S001", terminal_no=1, transaction_no=100
+        )
+        svc.update_stock_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_duplicate_at_db_layer_rolls_back_inc(self):
+        """Issue #98: if the unique partial index catches a duplicate at
+        the StockUpdateDocument insert (Dapr redelivered past the
+        state-store check AND past the pre-check window), the prior $inc
+        must be rolled back so stock stays balanced."""
+        from kugel_common.exceptions import DuplicateKeyException
+        from app.enums.update_type import UpdateType
+        from app.models.documents import StockDocument
+
+        svc, stock_repo, update_repo = make_service()
+        # First $inc returns the new total
+        post_inc_doc = MagicMock(spec=StockDocument)
+        post_inc_doc.current_quantity = 8.0
+        stock_repo.update_quantity_atomic_async = AsyncMock(
+            side_effect=[post_inc_doc, post_inc_doc]  # initial $inc, then rollback $inc
+        )
+        # The StockUpdateDocument insert hits the unique index
+        update_repo.create_async = AsyncMock(
+            side_effect=DuplicateKeyException(
+                message="duplicate", collection_name="stock_updates", key={"transaction_no": 100}
+            )
+        )
+        existing_record = MagicMock()
+        update_repo.get_one_async = AsyncMock(return_value=existing_record)
+
+        result = await svc.update_stock_async(
+            tenant_id="T001",
+            store_code="S001",
+            item_code="ITEM-01",
+            quantity_change=-2.0,
+            update_type=UpdateType.SALE,
+            terminal_no=1,
+            transaction_no=100,
+        )
+
+        # $inc must have been called twice: once forward, once to roll back
+        assert stock_repo.update_quantity_atomic_async.await_count == 2
+        # Second call uses the OPPOSITE quantity_change to compensate
+        rollback_call = stock_repo.update_quantity_atomic_async.await_args_list[1]
+        assert rollback_call[0][3] == 2.0  # +quantity_change (compensating -2.0)
+        # The existing record (from the first delivery) is returned
+        assert result is existing_record
 
 
 # ---------------------------------------------------------------------------

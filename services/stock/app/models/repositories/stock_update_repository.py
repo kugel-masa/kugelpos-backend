@@ -33,6 +33,34 @@ class StockUpdateRepository(AbstractRepository[StockUpdateDocument]):
         """Find stock update by reference ID"""
         return await self.get_one_async({"reference_id": reference_id})
 
+    async def find_by_transaction_async(
+        self,
+        tenant_id: str,
+        store_code: str,
+        terminal_no: int,
+        transaction_no: int,
+    ) -> List[StockUpdateDocument]:
+        """Find ALL stock updates that came from a specific POS transaction
+        (across line items / update types).
+
+        Used for transaction-level idempotency in process_transaction_async:
+        if any record exists for this transaction, the entire batch was
+        already processed and we skip the redelivery.
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+
+        cursor = self.dbcollection.find(
+            {
+                "tenant_id": tenant_id,
+                "store_code": store_code,
+                "terminal_no": terminal_no,
+                "transaction_no": transaction_no,
+            }
+        )
+        documents = await cursor.to_list(length=None)
+        return [StockUpdateDocument(**doc) for doc in documents]
+
     async def find_by_date_range_async(
         self,
         tenant_id: str,

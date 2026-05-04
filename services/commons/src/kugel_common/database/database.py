@@ -272,6 +272,7 @@ async def create_collection_with_indexes_async(
             for index_info in index_keys_list:
                 keys_dict = index_info.get("keys", {})
                 unique = index_info.get("unique", False)
+                partial_filter = index_info.get("partialFilterExpression")
                 logger.info(f"keys_dict: {keys_dict}")
                 index_name = index_name_org + "_" + "_".join([str(key) for key in keys_dict.keys()])
                 logger.info(f"Creating index: {index_name} for collection: {collection_name}")
@@ -279,7 +280,8 @@ async def create_collection_with_indexes_async(
                     collection_name=collection_name,
                     index_keys=keys_dict,
                     index_name=index_name,
-                    unique=unique
+                    unique=unique,
+                    partial_filter_expression=partial_filter,
                 )
                 await execute_command_async(command=command_json, db=db)
     except (ConnectionFailure, ServerSelectionTimeoutError):
@@ -392,18 +394,29 @@ async def execute_command_async(command: dict, db: AsyncIOMotorDatabase):
         raise DatabaseException(message, logger, e) from e
     return True
 
-def create_indexes_command(collection_name: str, index_keys: dict, index_name: str, unique: Optional[bool] = None):
+def create_indexes_command(
+    collection_name: str,
+    index_keys: dict,
+    index_name: str,
+    unique: Optional[bool] = None,
+    partial_filter_expression: Optional[dict] = None,
+):
     """
     Create a MongoDB command for creating indexes
-    
+
     Generates a MongoDB command dictionary for creating indexes on a collection.
-    
+
     Args:
         collection_name: Name of the collection
         index_keys: Dictionary of field names and index directions
         index_name: Name for the index
         unique: Whether the index should enforce uniqueness
-        
+        partial_filter_expression: Optional MongoDB partial-filter expression.
+            When set together with `unique=True`, the uniqueness constraint
+            applies only to documents matching the filter (e.g., only when
+            an optional field is present). Useful when a unique key would
+            otherwise collide on documents whose key fields are missing/null.
+
     Returns:
         dict: MongoDB command for creating the specified indexes
     """
@@ -416,6 +429,9 @@ def create_indexes_command(collection_name: str, index_keys: dict, index_name: s
 
     if unique is not None:
         index["unique"] = unique
+
+    if partial_filter_expression is not None:
+        index["partialFilterExpression"] = partial_filter_expression
 
     indexes.append(index)
 

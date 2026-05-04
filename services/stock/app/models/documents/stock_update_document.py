@@ -18,6 +18,12 @@ class StockUpdateDocument(AbstractDocument):
     timestamp: datetime = Field(..., description="Update timestamp")
     operator_id: Optional[str] = Field(None, description="User who performed the update")
     note: Optional[str] = Field(None, description="Additional notes")
+    # When the update is driven by a POS transaction (issue #98), these
+    # carry the upstream transaction's full identity so a unique index can
+    # detect duplicate processing at the DB layer. They are optional
+    # because manual adjustments / migrations may have no transaction.
+    terminal_no: Optional[int] = Field(None, description="Terminal number (only when driven by a POS transaction)")
+    transaction_no: Optional[int] = Field(None, description="Transaction number (only when driven by a POS transaction)")
 
     class Settings:
         name = "stock_updates"
@@ -26,4 +32,21 @@ class StockUpdateDocument(AbstractDocument):
             {"keys": [("update_type", 1)]},
             {"keys": [("timestamp", -1)]},
             {"keys": [("reference_id", 1)]},
+            # Unique on (tenant, store, terminal, transaction, item, type) to
+            # block duplicate writes when Dapr redelivers the same tranlog
+            # past the state-store check. Partial filter limits the
+            # constraint to transaction-driven updates so manual
+            # adjustments (transaction_no IS NULL) are unaffected.
+            {
+                "keys": [
+                    ("tenant_id", 1),
+                    ("store_code", 1),
+                    ("terminal_no", 1),
+                    ("transaction_no", 1),
+                    ("item_code", 1),
+                    ("update_type", 1),
+                ],
+                "unique": True,
+                "partialFilterExpression": {"transaction_no": {"$type": "number"}},
+            },
         ]
