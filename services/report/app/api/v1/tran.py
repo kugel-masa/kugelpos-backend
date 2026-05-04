@@ -7,6 +7,7 @@ import inspect
 from typing import Dict, Any
 
 from kugel_common.database import database as db_helper
+from kugel_common.exceptions import DuplicateKeyException
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
 from kugel_common.status_codes import StatusCodes
@@ -192,6 +193,27 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         logger.debug(f"Processed {log_type} successfully. event_id: {event_id}, {log_type}: {log_info}")
         return {"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"}, status.HTTP_200_OK
 
+    except DuplicateKeyException as e:
+        # The state-store idempotency check missed (state evicted, TTL
+        # expired, or store unreachable) and the duplicate slipped through
+        # to the DB layer, where the unique index rejected it. Treat this
+        # as success — the data already exists, no further action needed.
+        # Returning RETRY here would cause Dapr to redeliver indefinitely.
+        logger.warning(
+            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). "
+            f"event_id: {event_id}, error: {e}"
+        )
+        # Best-effort: persist the state so subsequent retries short-circuit
+        # at the state-store check.
+        try:
+            await state_store_manager.save_state(event_id, {"event_id": event_id})
+        except Exception as save_exc:
+            logger.warning(f"Failed to save state after duplicate detection: {save_exc}")
+        return {
+            "status": "SUCCESS",
+            "message": "duplicate detected at DB layer; treated as already-processed",
+            "operation": f"{inspect.currentframe().f_code.co_name}",
+        }, status.HTTP_200_OK
     except Exception as e:
         err_message = f"Error processing {log_type}. message: {message}, Error: {e}"
         logger.error(err_message)
