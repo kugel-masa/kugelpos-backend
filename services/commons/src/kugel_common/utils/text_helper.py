@@ -60,19 +60,20 @@ class TextHelper:
     def yen(value: float, mark: str = '\\') -> str:
         """
         Format a currency value with the specified currency mark.
-        
-        Handles negative values by replacing the currency mark with a minus sign.
-        
+
+        For negative values, the currency mark is replaced with a minus
+        sign and the absolute value is formatted, so the result is
+        `-1,000` (not `\\-1,000` and not the previously-buggy `--1,000`).
+
         Args:
             value: Currency value to format
             mark: Currency symbol to use (defaults to '\' for Japanese Yen)
-            
+
         Returns:
             Formatted currency string with the appropriate symbol and comma separators
         """
-        if value < 0:
-            mark = "-"
-        return mark + TextHelper.comma(value)
+        sign = "-" if value < 0 else mark
+        return sign + TextHelper.comma(abs(value))
 
     @staticmethod
     def zero_fill(value: int, width: int) -> str:

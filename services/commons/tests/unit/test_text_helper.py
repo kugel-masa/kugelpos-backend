@@ -36,22 +36,14 @@ class TestYen:
     def test_positive_uses_default_mark(self):
         assert TextHelper.yen(1000) == "\\1,000"
 
-    @pytest.mark.xfail(
-        reason=(
-            "Bug: yen() sets mark='-' for negatives but comma() already emits a "
-            "leading '-', so the result is '--1,000'. Captured here as xfail to "
-            "document the issue without blocking CI; fix in source separately."
-        ),
-        strict=False,
-    )
-    def test_negative_uses_minus(self):
-        # Intended behavior: a single leading minus sign for negatives.
+    def test_negative_uses_single_minus(self):
+        # A single leading minus sign for negatives — no double-sign.
         assert TextHelper.yen(-1000) == "-1,000"
 
-    def test_negative_observed_behavior(self):
-        # Pinning current (buggy) behavior so a future fix is detected as a
-        # change. When yen() is fixed, update the xfail above and remove this.
-        assert TextHelper.yen(-1000) == "--1,000"
+    def test_negative_with_custom_mark_still_uses_minus(self):
+        # Negatives override the currency mark with a single minus sign,
+        # regardless of what mark was passed in.
+        assert TextHelper.yen(-500, mark="$") == "-500"
 
     def test_custom_mark(self):
         assert TextHelper.yen(500, mark="$") == "$500"
