@@ -123,25 +123,6 @@ def test_cross_tenant_admin_cannot_read_other_tenant():
 # ---------------------------------------------------------------------------
 
 
-def _is_auth_rejection(resp) -> bool:
-    """A response counts as an auth rejection when:
-      * status is in the 4xx auth range (401/403), OR
-      * status is 5xx but the body wraps a 401 (current behaviour:
-        kugel_common's generic exception_handler catches HTTPException
-        and wraps it as 500 with `data: "401: ..."` — wrong, but not a
-        security hole; the request is still rejected).
-
-    A 200 response with valid data would be the real security bug.
-    """
-    if resp.status_code in (401, 403):
-        return True
-    if resp.status_code >= 500:
-        text = resp.text.lower()
-        if "401" in text or "could not validate" in text or "credentials" in text:
-            return True
-    return False
-
-
 @pytest.mark.parametrize(
     "url_env, path",
     [
@@ -151,12 +132,12 @@ def _is_auth_rejection(resp) -> bool:
     ],
 )
 def test_expired_jwt_rejected(url_env, path):
-    """A JWT with exp in the past is rejected (auth-error response)."""
+    """A JWT with exp in the past is rejected with HTTP 401."""
     expired = _forge_jwt(tenant_id="T6216", expired=True)
     with _client(url_env) as c:
         resp = c.get(path, headers={"Authorization": f"Bearer {expired}"})
-    assert _is_auth_rejection(resp), (
-        f"Expired JWT should be rejected; got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 401, (
+        f"Expired JWT should yield 401; got {resp.status_code}: {resp.text}"
     )
 
 
@@ -166,27 +147,25 @@ def test_expired_jwt_rejected(url_env, path):
 
 
 def test_wrong_signature_jwt_rejected():
-    """A JWT signed with a DIFFERENT secret is rejected."""
+    """A JWT signed with a DIFFERENT secret is rejected with 401."""
     bad = _forge_jwt(tenant_id="T6216", secret="not-the-real-secret")
     with _client("URL_TERMINAL") as c:
         resp = c.get("/api/v1/terminals", headers={"Authorization": f"Bearer {bad}"})
-    assert _is_auth_rejection(resp), resp.text
+    assert resp.status_code == 401, resp.text
 
 
 def test_malformed_token_rejected():
-    """Garbage-shaped Authorization header is rejected."""
+    """Garbage-shaped Authorization header → 401."""
     with _client("URL_TERMINAL") as c:
         resp = c.get(
             "/api/v1/terminals",
             headers={"Authorization": "Bearer this.is.not.a.jwt"},
         )
-    assert _is_auth_rejection(resp), resp.text
+    assert resp.status_code == 401, resp.text
 
 
 def test_missing_authorization_rejected():
-    """No Authorization header is rejected."""
+    """No Authorization header → 401."""
     with _client("URL_TERMINAL") as c:
         resp = c.get("/api/v1/terminals")
-    # OAuth2PasswordBearer returns 401 directly here (not via the generic
-    # handler) because the dependency never reaches user code.
-    assert resp.status_code in (401, 403), resp.text
+    assert resp.status_code == 401, resp.text

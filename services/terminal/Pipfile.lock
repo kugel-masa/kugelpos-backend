@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "aaf61cf02258a7e990e16065dc2f09ad49f3b3797aceff97b956da26aae573ed"
+            "sha256": "84db003219cedfa2dbd0c914e8062d0c49a804d9c0a1e4e17386a9033037a780"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -574,9 +574,9 @@
             "version": "==3.13"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.44-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.47-py3-none-any.whl",
             "hashes": [
-                "sha256:f8a2e4190a913d755285a6119a869075581fa4c57bde33c4bb20f52006c0eab8"
+                "sha256:32540c75b05d4c01140762e5169c49358eb44d9b3e92547d85862a753284da4d"
             ]
         },
         "lxml": {
@@ -1277,11 +1277,11 @@
         },
         "pytz": {
             "hashes": [
-                "sha256:3378dde6a0c3d26719182142c56e60c7f9af7e968076f31aae569d72a0358ee1",
-                "sha256:f2fd16142fda348286a75e1a524be810bb05d444e5a081f37f7affc635035f7a"
+                "sha256:04156e608bee23d3792fd45c94ae47fae1036688e75032eea2e3bf0323d1f126",
+                "sha256:0e60b47b29f21574376f218fe21abc009894a2321ea16c6754f3cad6eb7cdd6a"
             ],
             "index": "pypi",
-            "version": "==2026.1.post1"
+            "version": "==2026.2"
         },
         "setuptools": {
             "hashes": [

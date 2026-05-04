@@ -231,19 +231,31 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
 async def _get_current_user(request: Request) -> dict:
     """
     Extract user information from the request
-    
+
     Attempts to retrieve user information based on JWT token in the request headers.
-    
+    This helper is used from the request-logging middleware's `finally` block —
+    if `get_current_user` raises (invalid / expired / forged JWT) we MUST NOT
+    let that escape, otherwise it suppresses the original auth failure being
+    propagated by the route handler and FastAPI ends up returning 500
+    instead of the proper 401 to the client.
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
         Dictionary containing user information or None if not authenticated
     """
     user_dict = None
     token = request.headers.get("Authorization")
     if token:
-        user_dict = await get_current_user(token.replace("Bearer ", ""))
+        try:
+            user_dict = await get_current_user(token.replace("Bearer ", ""))
+        except Exception:
+            # Bad / expired / missing-claim token — log it and leave user_dict=None.
+            # The actual auth rejection is handled by the route's dependency;
+            # this helper is only for enriching the request log.
+            logger.debug("Could not extract user from request header (bad/expired token)")
+            user_dict = None
     logger.debug(f"user_dict: {user_dict}")
     return user_dict
 
