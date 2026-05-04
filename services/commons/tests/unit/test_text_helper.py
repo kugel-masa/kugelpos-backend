@@ -1,6 +1,5 @@
 # Copyright 2026 masa@kugel
 """Unit tests for kugel_common.utils.text_helper.TextHelper."""
-import pytest
 
 from kugel_common.utils.text_helper import TextHelper
 
