@@ -76,9 +76,9 @@ async def test_opencloselog_health_check(http_client):
 
 @pytest.mark.asyncio
 async def test_post_transactions_invalid_body(http_client, admin_header):
-    """POST .../transactions with an empty body returns 422 (route reachable
-    and validating). Minimal coverage that the endpoint is wired and
-    behind auth."""
+    """POST .../transactions must reject an empty body with a *validation*
+    error (400 or 422), not crash with a 500. A 500 here would mean the
+    handler is missing input validation."""
     tenant_id = os.environ.get("TENANT_ID")
 
     response = await http_client.post(
@@ -89,7 +89,6 @@ async def test_post_transactions_invalid_body(http_client, admin_header):
     assert response.status_code in (
         status.HTTP_400_BAD_REQUEST,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
-        status.HTTP_500_INTERNAL_SERVER_ERROR,
     ), response.text
 
 

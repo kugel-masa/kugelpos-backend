@@ -70,8 +70,10 @@ async def test_opencloselog_health_check(http_client):
 
 @pytest.mark.asyncio
 async def test_post_journals_invalid_body(http_client, admin_token):
-    """POST .../journals rejects an empty body — proves the route is wired
-    and behind auth."""
+    """POST .../journals must reject an empty body with a *validation*
+    error (400 or 422), not crash with a 500. A 500 here would mean the
+    handler is missing input validation and an attacker could trigger
+    server errors with malformed input."""
     tenant_id = os.environ.get("TENANT_ID")
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/5678/terminals/9/journals",
@@ -81,13 +83,13 @@ async def test_post_journals_invalid_body(http_client, admin_token):
     assert response.status_code in (
         status.HTTP_400_BAD_REQUEST,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
-        status.HTTP_500_INTERNAL_SERVER_ERROR,
     ), response.text
 
 
 @pytest.mark.asyncio
 async def test_post_transactions_invalid_body(http_client, admin_token):
-    """POST .../transactions rejects an empty body."""
+    """POST .../transactions must reject an empty body with a *validation*
+    error (400 or 422), not crash with a 500."""
     tenant_id = os.environ.get("TENANT_ID")
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/5678/terminals/9/transactions",
@@ -97,5 +99,4 @@ async def test_post_transactions_invalid_body(http_client, admin_token):
     assert response.status_code in (
         status.HTTP_400_BAD_REQUEST,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
-        status.HTTP_500_INTERNAL_SERVER_ERROR,
     ), response.text
