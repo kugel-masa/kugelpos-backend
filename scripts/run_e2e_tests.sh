@@ -19,7 +19,7 @@
 #   - .env.test exists at project root
 #
 # This script collects e2e tests from each service's tests/e2e/ directory
-# AND from the top-level e2e/ directory if present.
+# AND from the repo-root tests/e2e/ directory if present (cross-service).
 #
 # Usage:
 #   ./scripts/run_e2e_tests.sh              # all e2e tests
@@ -90,25 +90,24 @@ for service in "${SERVICES[@]}"; do
     cd "$PROJECT_ROOT"
 done
 
-# Run top-level /e2e/ if it has both a Pipfile (managed venv) and any test_*.py
-# files. The directory is shipped as a placeholder with only a README — no
-# Pipfile — so the typical case is to skip silently.
-if [ -d "$PROJECT_ROOT/e2e" ] && \
-   [ -f "$PROJECT_ROOT/e2e/Pipfile" ] && \
-   compgen -G "$PROJECT_ROOT/e2e/test_*.py" > /dev/null 2>&1; then
+# Run repo-root tests/e2e/ if it has both a Pipfile (managed venv) and
+# any test_*.py files. Skips silently if absent.
+if [ -d "$PROJECT_ROOT/tests/e2e" ] && \
+   [ -f "$PROJECT_ROOT/tests/e2e/Pipfile" ] && \
+   compgen -G "$PROJECT_ROOT/tests/e2e/test_*.py" > /dev/null 2>&1; then
     echo ""
-    echo -e "${YELLOW}┌─ top-level /e2e/ (cross-service scenarios) ───────────${NC}"
-    cd "$PROJECT_ROOT/e2e"
+    echo -e "${YELLOW}┌─ tests/e2e/ (cross-service scenarios) ────────────────${NC}"
+    cd "$PROJECT_ROOT/tests/e2e"
     if pipenv run pytest -m e2e --no-header -q 2>&1; then
         echo -e "${GREEN}✓ Cross-service e2e tests PASSED${NC}"
-        PASSED+=("e2e")
+        PASSED+=("tests/e2e")
     else
         rc=$?
         if [ "$rc" = "5" ]; then
-            echo -e "${YELLOW}⊘ /e2e/ has no tests yet (skipped)${NC}"
+            echo -e "${YELLOW}⊘ tests/e2e/ has no tests yet (skipped)${NC}"
         else
             echo -e "${RED}✗ Cross-service e2e tests FAILED${NC}"
-            FAILED+=("e2e")
+            FAILED+=("tests/e2e")
         fi
     fi
     cd "$PROJECT_ROOT"

@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | **unit** | `services/<svc>/tests/unit/` | なし(全 mock) | サービス全体 < 10秒 | 完全並列可 |
 | **integration** | `services/<svc>/tests/integration/` | 実 MongoDB のみ | サービス全体 < 2分 | サービス間並列可 |
-| **e2e** | `services/<svc>/tests/e2e/` または top-level `/e2e/` | full docker-compose stack | 数分 | 直列 |
+| **e2e** | `services/<svc>/tests/e2e/` または repo-root `tests/e2e/` | full docker-compose stack | 数分 | 直列 |
 
 ## 各層の責務
 
@@ -54,7 +54,7 @@ pytestmark = pytest.mark.unit
 pytestmark = pytest.mark.integration
 ```
 
-### E2E tests (`tests/e2e/` または `/e2e/`)
+### E2E tests (`services/<svc>/tests/e2e/` または repo-root `tests/e2e/`)
 
 「業務シナリオを横断的に検証する」テスト。**full docker-compose stack が必要**。
 
@@ -66,9 +66,9 @@ pytestmark = pytest.mark.integration
 
 **配置**:
 - 1 サービス内で完結する e2e は `services/<svc>/tests/e2e/`
-- 複数サービスをまたぐ横断シナリオは top-level `/e2e/`
+- 複数サービスをまたぐ横断シナリオは repo-root `tests/e2e/`
 
-top-level `/e2e/` には現状、以下のクロスサービステストを配置:
+repo-root `tests/e2e/` には現状、以下のクロスサービステストを配置:
 
 | ファイル | 検証内容 |
 |---|---|
@@ -80,7 +80,7 @@ top-level `/e2e/` には現状、以下のクロスサービステストを配�
 | `test_auth_boundary.py` | 越境テナント拒否、期限切れ/署名不正/不正形 JWT |
 | `test_concurrency.py` | 並列カート操作と pub/sub の順序 |
 
-`/e2e/` は専用の `Pipfile` (独立 venv) を持ち、`scripts/run_e2e_tests.sh` がサービス毎の e2e の後で自動実行する。
+repo-root `tests/e2e/` は専用の `Pipfile` (独立 venv) を持ち、`scripts/run_e2e_tests.sh` がサービス毎の e2e の後で自動実行する。
 
 **Marker**:
 ```python
@@ -143,8 +143,8 @@ pipenv run pytest -m integration
    - NO → 3 へ
 
 3. **複数サービスの相互作用を検証しているか?**
-   - YES → top-level `/e2e/`
-   - NO(でも該当サービスのフルスタック確認が必要) → `tests/<svc>/tests/e2e/`
+   - YES → repo-root `tests/e2e/`
+   - NO(でも該当サービスのフルスタック確認が必要) → `services/<svc>/tests/e2e/`
 
 ## クロスサービス HTTP モックパターン(integration)
 

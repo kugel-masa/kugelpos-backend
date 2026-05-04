@@ -10,16 +10,16 @@ Each service splits tests into three tiers:
 |---|---|---|---|
 | `unit` | `tests/unit/` | None — all I/O mocked | Tight feedback loops, ideally < 10s/service |
 | `integration` | `tests/integration/` | Real MongoDB only | Repository / aggregation logic against real DB |
-| `e2e` | `tests/e2e/` | Full docker-compose stack | API-to-pubsub flows, inter-service contracts |
+| `e2e` | `services/<svc>/tests/e2e/` (per-service) or `tests/e2e/` (cross-service) | Full docker-compose stack | API-to-pubsub flows, inter-service contracts |
 
 Per-tier conftests automatically mark every test in the directory, so new
 tests just need to land in the right folder. See `docs/ja/testing-tiers.md`.
 
-### Top-level `/e2e/` (cross-service)
+### Repo-root `tests/e2e/` (cross-service)
 
-`/e2e/` at the repo root holds **cross-service** scenarios in its own
-Pipfile-managed venv. `scripts/run_e2e_tests.sh` runs it automatically
-after every per-service e2e suite. Currently houses:
+The repo-root `tests/e2e/` directory holds **cross-service** scenarios
+in its own Pipfile-managed venv. `scripts/run_e2e_tests.sh` runs it
+automatically after every per-service e2e suite. Currently houses:
 
 - `test_health_all_services.py` — all services' `/health` reachable
 - `test_pos_full_journey.py` — tenant → terminal → cart → payment → tranlog → journal/report
@@ -31,7 +31,7 @@ after every per-service e2e suite. Currently houses:
 
 To run only the cross-service suite:
 ```bash
-cd e2e && pipenv run pytest -m e2e
+cd tests/e2e && pipenv run pytest -m e2e
 ```
 
 ## Quick Commands

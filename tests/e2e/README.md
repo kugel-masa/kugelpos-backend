@@ -1,9 +1,10 @@
-# Top-level E2E test directory
+# Repo-root E2E test directory
 
-This directory is reserved for **cross-service** end-to-end scenarios — tests
-that exercise a business flow spanning multiple services in a single test
-file (for example: "create terminal → open business day → ring up cart →
-pay → tranlog publishes → journal records → report aggregates").
+This directory (`tests/e2e/` at the repo root) holds **cross-service**
+end-to-end scenarios — tests that exercise a business flow spanning
+multiple services in a single test file (for example: "create terminal
+→ open business day → ring up cart → pay → tranlog publishes → journal
+records → report aggregates").
 
 ## Why a separate directory
 

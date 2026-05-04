@@ -22,7 +22,8 @@ T = TypeVar("T")
 
 @pytest.fixture(scope="session", autouse=True)
 def _load_env():
-    root = Path(__file__).parent.parent
+    # tests/e2e/conftest.py -> tests/e2e -> tests -> repo root
+    root = Path(__file__).parent.parent.parent
     load_dotenv(root / ".env.test", override=True)
     # Default service URLs for local docker-compose
     os.environ.setdefault("URL_ACCOUNT", "http://localhost:8000")
