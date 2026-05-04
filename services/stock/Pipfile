@@ -15,7 +15,7 @@ pyjwt = "*"
 httpx = "*"
 aiohttp = "*"
 pydantic-xml = {extras = ["lxml"], version = "*"}
-kugel_common = {file = "commons/dist/kugel_common-0.1.44-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.46-py3-none-any.whl"}
 lxml = "*"
 wcwidth = "*"
 debugpy = "*"

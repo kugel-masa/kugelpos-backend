@@ -16,7 +16,35 @@ import jwt
 import pytest
 import pytest_asyncio
 import respx
+from dotenv import load_dotenv
 from httpx import AsyncClient, ASGITransport
+
+
+@pytest.fixture(scope="session")
+def set_env_vars():
+    """Integration env: load .env.test, configure URLs / DB, skip the
+    parent conftest's `ensure_admin_user_exists` (which requires a live
+    account service). Integration tests generate JWTs locally — see
+    `admin_token` below — so no token fetch from account is needed.
+    """
+    ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+    load_dotenv(dotenv_path=os.path.join(ROOT_DIR, ".env.test"), override=True)
+
+    os.environ.setdefault("DB_NAME_PREFIX", "db_terminal")
+    os.environ.setdefault("STORE_CODE", "5678")
+    os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
+    os.environ.setdefault("BASE_URL_TERMINAL", "http://localhost:8001")
+    os.environ.setdefault("BASE_URL_MASTER_DATA", "http://localhost:8002/api/v1")
+    os.environ.setdefault("BASE_URL_CART", "http://localhost:8003/api/v1")
+    os.environ.setdefault("BASE_URL_REPORT", "http://localhost:8004/api/v1")
+    os.environ.setdefault("BASE_URL_JOURNAL", "http://localhost:8005/api/v1")
+    os.environ.setdefault("BASE_URL_STOCK", "http://localhost:8006/api/v1")
+    os.environ.setdefault("BASE_URL_ACCOUNT", "http://localhost:8000")
+    os.environ.setdefault("TOKEN_URL", "http://localhost:8000/api/v1/accounts/token")
+
+    from kugel_common.database import database as db_helper
+    db_helper.MONGODB_URI = os.environ.get("MONGODB_URI")
+    yield
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
