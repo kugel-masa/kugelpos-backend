@@ -92,10 +92,11 @@ async def _reset_db_client_per_test(_setup_journal_db):
 
 
 @pytest_asyncio.fixture
-async def http_client(_reset_db_client_per_test):
+async def http_client(_reset_db_client_per_test, mock_outbound):
     """In-process HTTP client driving the journal FastAPI app.
 
     No uvicorn or docker-compose stack is needed — only MongoDB.
+    `mock_outbound` ensures every cross-service HTTP call is intercepted.
     """
     from app.main import app
 
@@ -151,15 +152,26 @@ def api_key():
 
 
 @pytest.fixture
-def mock_terminal_service(api_key):
-    """Mock the terminal service endpoints that the journal app calls
-    when verifying X-API-KEY (via get_terminal_info_from_terminal_service
-    in kugel_common.security)."""
+def mock_outbound(api_key):
+    """Catch-all respx mocks for every cross-service HTTP call journal
+    makes:
+    - GET terminal /terminals/{id} for X-API-KEY verification
+      (via get_terminal_info_from_terminal_service in kugel_common.security)
+    - POST cart /tenants/.../transactions/.../delivery-status (pubsub
+      completion notify)
+    - POST terminal /terminals/{id}/delivery-status (terminallog pubsub
+      completion notify)
+
+    `assert_all_called=False` because most tests don't trigger every
+    notification path; respx still INTERCEPTS unmocked calls and raises,
+    which is the contract that proves cross-service independence.
+    """
     tenant_id = os.environ.get("TENANT_ID")
     store_code = os.environ.get("STORE_CODE", "5678")
     terminal_no = int(os.environ.get("TERMINAL_NO", "9"))
     terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
     base_terminal = os.environ.get("BASE_URL_TERMINAL")  # http://localhost:8001/api/v1
+    base_cart = os.environ.get("BASE_URL_CART", "http://localhost:8003/api/v1")
 
     terminal_payload = {
         "success": True,
@@ -187,10 +199,26 @@ def mock_terminal_service(api_key):
     }
 
     with respx.mock(assert_all_called=False) as respx_mock:
+        # Terminal: GET /terminals/{id} for X-API-KEY auth
         respx_mock.get(
             re.compile(rf"{re.escape(base_terminal)}/terminals/{re.escape(terminal_id)}.*")
         ).mock(return_value=httpx.Response(200, json=terminal_payload))
+        # Terminal: POST /terminals/{id}/delivery-status (pubsub notify)
+        respx_mock.post(
+            re.compile(rf"{re.escape(base_terminal)}/terminals/.+/delivery-status.*")
+        ).mock(return_value=httpx.Response(200, json={"success": True}))
+        # Cart: POST .../transactions/.../delivery-status (pubsub notify)
+        respx_mock.post(
+            re.compile(rf"{re.escape(base_cart)}/tenants/.+/transactions/.+/delivery-status.*")
+        ).mock(return_value=httpx.Response(200, json={"success": True}))
         yield respx_mock
+
+
+@pytest.fixture
+def mock_terminal_service(mock_outbound):
+    """Backwards-compat alias — older tests request `mock_terminal_service`
+    explicitly; the broader `mock_outbound` covers it."""
+    return mock_outbound
 
 
 def pytest_collection_modifyitems(config, items):

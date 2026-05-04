@@ -13,9 +13,11 @@ to apply.
 import os
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import jwt
 import pytest
 import pytest_asyncio
+import respx
 from dotenv import load_dotenv
 from httpx import AsyncClient, ASGITransport
 
@@ -41,8 +43,67 @@ def set_env_vars():
     yield
 
 
+@pytest.fixture
+def mock_outbound():
+    """Catch-all respx mocks for every HTTP outbound report makes.
+
+    report's ReportService pulls in a TerminalInfoWebRepository (calls
+    terminal /terminals) plus item/category master-data web repos. None
+    of those services should be required for integration tests to run,
+    so register stub responses here.
+
+    `assert_all_called=False` because not every test exercises every
+    endpoint; respx still INTERCEPTS unmocked calls and raises, which is
+    the contract that proves cross-service independence.
+    """
+    base_terminal = os.environ.get("BASE_URL_TERMINAL", "http://localhost:8001/api/v1")
+    base_master = os.environ.get("BASE_URL_MASTER_DATA", "http://localhost:8002/api/v1")
+    tenant_id = os.environ.get("TENANT_ID")
+
+    with respx.mock(assert_all_called=False) as respx_mock:
+        # Terminal service — list / single
+        respx_mock.get(f"{base_terminal}/terminals").mock(
+            return_value=httpx.Response(200, json={"success": True, "code": 200, "data": []})
+        )
+        import re
+        respx_mock.get(
+            re.compile(rf"{re.escape(base_terminal)}/terminals/[^/?]+.*")
+        ).mock(return_value=httpx.Response(200, json={
+            "success": True, "code": 200,
+            "data": {
+                "terminalId": f"{tenant_id}-5678-5555",
+                "tenantId": tenant_id, "storeCode": "5678",
+                "terminalNo": 5555, "description": "Test",
+                "functionMode": "Sales", "status": "Opened",
+                "businessDate": datetime.now().strftime("%Y%m%d"),
+                "openCounter": 1, "businessCounter": 1,
+                "initialAmount": 0.0, "physicalAmount": None,
+                "staff": {"staffId": "S001", "staffName": "Staff", "staffPin": "1234"},
+                "apiKey": "test-api-key",
+            },
+        }))
+        # Master-data items / categories
+        respx_mock.get(
+            re.compile(rf"{re.escape(base_master)}/tenants/{tenant_id}/.*items.*")
+        ).mock(return_value=httpx.Response(200, json={
+            "success": True, "code": 200, "data": {
+                "itemCode": "0", "description": "Stub Item",
+                "unitPrice": 0.0, "taxCode": "01", "categoryCode": "001",
+            },
+        }))
+        respx_mock.get(
+            re.compile(rf"{re.escape(base_master)}/tenants/{tenant_id}/categories.*")
+        ).mock(return_value=httpx.Response(200, json={
+            "success": True, "code": 200, "data": {
+                "categoryCode": "001", "description": "Stub Cat",
+                "descriptionShort": "SC", "taxCode": "01",
+            },
+        }))
+        yield respx_mock
+
+
 @pytest_asyncio.fixture
-async def http_client(set_env_vars):
+async def http_client(set_env_vars, mock_outbound):
     """In-process AsyncClient bound to the report FastAPI app."""
     from app.main import app
 
