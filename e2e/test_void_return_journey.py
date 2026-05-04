@@ -6,7 +6,6 @@ on every downstream service (journal entry for the void, stock
 restored, report unchanged-net).
 """
 import os
-import time
 import uuid
 from datetime import datetime
 
@@ -141,7 +140,7 @@ def _bill_cart(api_key: str, terminal_id: str, item_code: str, quantity: int = 1
 
 
 @pytest.mark.asyncio
-async def test_bill_then_void_propagates():
+async def test_bill_then_void_propagates(wait_for):
     """Bill a transaction, void it, and verify the void surfaces on
     journal (extra entry with cancel transaction_type)."""
     tenant_id = "VOID" + uuid.uuid4().hex[:6].upper()
@@ -155,7 +154,25 @@ async def test_bill_then_void_propagates():
     transaction_no, amount = _bill_cart(api_key, terminal_id, item_code, quantity=2)
     assert amount > 0
 
-    time.sleep(3.0)  # let the original tranlog propagate
+    business_date = datetime.now().strftime("%Y%m%d")
+
+    def _journal_types() -> list[int]:
+        with _client("URL_JOURNAL") as c:
+            r = c.get(
+                f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
+                f"?business_date_from={business_date}&business_date_to={business_date}",
+                headers=headers,
+            )
+            if r.status_code != 200:
+                return []
+            return [j.get("transactionType") for j in (r.json().get("data") or [])]
+
+    # Wait for the original tranlog to surface in journal before voiding.
+    wait_for(
+        lambda: 101 in _journal_types(),
+        timeout=15.0,
+        description="original NormalSales (transactionType=101) in journal",
+    )
 
     # Void it via cart's REST API
     with _client("URL_CART") as c:
@@ -167,26 +184,14 @@ async def test_bill_then_void_propagates():
         )
         assert r.status_code == 200, r.text
 
-    time.sleep(5.0)  # let the void tranlog propagate
-
-    business_date = datetime.now().strftime("%Y%m%d")
-
-    # Verify journal has the original sale + a separate cancellation entry.
-    # Cart/journal model the cancel as transaction_type 201 (VoidSales).
-    with _client("URL_JOURNAL") as c:
-        r = c.get(
-            f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
-            f"?business_date_from={business_date}&business_date_to={business_date}",
-            headers=headers,
-        )
-        assert r.status_code == 200, r.text
-        journals = r.json().get("data") or []
-        types = [j.get("transactionType") for j in journals]
-        # Should have at least one entry of type 201 (VoidSales)
-        assert 201 in types, (
-            f"Expected a VoidSales (transactionType=201) journal entry, "
-            f"got types {types}"
-        )
+    # Wait for the void tranlog to propagate; expect transactionType 201
+    # (VoidSales) to appear alongside the original 101.
+    types = wait_for(
+        lambda: _journal_types() if 201 in _journal_types() else None,
+        timeout=15.0,
+        description="VoidSales (transactionType=201) in journal",
+    )
+    assert 201 in types, f"Expected VoidSales in journal, got {types}"
 
 
 @pytest.mark.asyncio

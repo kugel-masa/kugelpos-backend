@@ -12,7 +12,6 @@ POS journey test verifies the happy path; this one specifically watches
 every service for the same transaction in one place.
 """
 import os
-import time
 import uuid
 from datetime import datetime
 
@@ -47,7 +46,7 @@ def _post(url_env, path, headers, json, ok=(200, 201, 400)):
 
 
 @pytest.mark.asyncio
-async def test_bill_propagates_to_journal_report_stock():
+async def test_bill_propagates_to_journal_report_stock(wait_for):
     """After a cart bill, the same transaction must surface on journal,
     report, and stock within ~5 s of pub/sub propagation."""
     tenant_id = "DCY" + uuid.uuid4().hex[:8].upper()
@@ -170,23 +169,31 @@ async def test_bill_propagates_to_journal_report_stock():
         assert resp.status_code == 200, resp.text
         transaction_no = resp.json()["data"]["transactionNo"]
 
-    # Wait for fan-out
-    time.sleep(6.0)
-
     business_date = datetime.now().strftime("%Y%m%d")
 
-    # 1. journal has the entry
-    with _client("URL_JOURNAL") as c:
-        resp = c.get(
-            f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
-            f"?business_date_from={business_date}&business_date_to={business_date}",
-            headers=headers,
-        )
-        assert resp.status_code == 200, resp.text
-        assert any(
-            j.get("transactionNo") == transaction_no
-            for j in (resp.json().get("data") or [])
-        ), "journal missing transaction"
+    # Wait for fan-out: poll journal until the transaction is present.
+    # Once journal sees it, report and stock have typically caught up
+    # (same Dapr fan-out batch); each downstream check below also has
+    # a short retry to absorb residual lag.
+    def _journal_has_transaction() -> bool:
+        with _client("URL_JOURNAL") as c:
+            r = c.get(
+                f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
+                f"?business_date_from={business_date}&business_date_to={business_date}",
+                headers=headers,
+            )
+            if r.status_code != 200:
+                return False
+            return any(
+                j.get("transactionNo") == transaction_no
+                for j in (r.json().get("data") or [])
+            )
+
+    wait_for(
+        _journal_has_transaction,
+        timeout=15.0,
+        description=f"journal entry for transaction {transaction_no}",
+    )
 
     # 2. report sees non-zero sales for the store on this business date
     with _client("URL_REPORT") as c:

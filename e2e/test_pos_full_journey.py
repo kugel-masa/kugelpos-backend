@@ -18,7 +18,6 @@ Walks a single transaction from an empty stack through every service:
 Uses a fresh tenant per run so reruns don't pollute existing state.
 """
 import os
-import time
 import uuid
 from datetime import datetime
 
@@ -66,7 +65,7 @@ def _post(url_env: str, path: str, headers: dict, json: dict, ok=(200, 201, 400)
 
 
 @pytest.mark.asyncio
-async def test_pos_full_journey():
+async def test_pos_full_journey(wait_for):
     """End-to-end POS journey across all 7 services."""
     tenant_id = _new_tenant_id()
     store_code = "5001"
@@ -211,23 +210,30 @@ async def test_pos_full_journey():
         transaction_no = resp.json()["data"].get("transactionNo")
         assert transaction_no, "bill should populate transactionNo"
 
-    # 8. Wait for Dapr pub/sub fan-out (cart -> report / journal / stock)
-    time.sleep(5.0)
-
+    # 8. Wait for Dapr pub/sub fan-out (cart -> report / journal / stock).
+    # Poll journal until the transaction surfaces; cuts the steady-state
+    # wait when fan-out is fast and surfaces a real timeout if it hangs.
     business_date = datetime.now().strftime("%Y%m%d")
 
-    # Verify journal received the entry
-    with _client("URL_JOURNAL") as c:
-        resp = c.get(
-            f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
-            f"?business_date_from={business_date}&business_date_to={business_date}",
-            headers=headers,
-        )
-        assert resp.status_code == 200, resp.text
-        journals = resp.json().get("data") or []
-        assert any(
-            j.get("transactionNo") == transaction_no for j in journals
-        ), f"journal entry not found for transaction {transaction_no}: {journals}"
+    def _journal_has_transaction() -> bool:
+        with _client("URL_JOURNAL") as c:
+            r = c.get(
+                f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
+                f"?business_date_from={business_date}&business_date_to={business_date}",
+                headers=headers,
+            )
+            if r.status_code != 200:
+                return False
+            return any(
+                j.get("transactionNo") == transaction_no
+                for j in (r.json().get("data") or [])
+            )
+
+    wait_for(
+        _journal_has_transaction,
+        timeout=15.0,
+        description=f"journal entry for transaction {transaction_no}",
+    )
 
     # Verify report flash sales for the store reflects today's activity
     with _client("URL_REPORT") as c:
