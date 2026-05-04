@@ -1,25 +1,10 @@
 # Copyright 2026 masa@kugel
 """Unit tests for TestTerminallogDeliveryStatusRepository (split from
 test_repositories.py by class group)."""
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
-from datetime import datetime, timezone, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.documents.terminal_info_document import TerminalInfoDocument
-from app.models.documents.tenant_info_document import TenantInfoDocument, StoreInfo
-from app.models.documents.cash_in_out_log import CashInOutLog
-from app.models.documents.open_close_log import OpenCloseLog
-from app.models.documents.terminallog_delivery_status_document import TerminallogDeliveryStatus
-from kugel_common.exceptions import (
-    AlreadyExistException,
-    CannotCreateException,
-    NotFoundException,
-    UpdateNotWorkException,
-    CannotDeleteException,
-    DuplicateKeyException,
-)
-from kugel_common.schemas.pagination import PaginatedResult, Metadata
 
 from ._helpers import _mock_db
 
