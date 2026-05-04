@@ -55,5 +55,12 @@ USER appuser
 
 EXPOSE 8000
 
-# Use the virtual environment's uvicorn with configurable workers
+# Single uvicorn worker by design (issue #105): the WebSocket alert
+# broadcast keeps connection state in-process, so multiple workers
+# would only see their own local connections and silently drop alerts
+# for ~75% of clients in a 4-worker deployment. UVICORN_WORKERS stays
+# overridable for operators who explicitly know the consequences
+# (e.g., once a Redis-backed broadcast channel exists), but the
+# default is and should remain 1.
+# See services/stock/app/websocket/connection_manager.py.
 CMD sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"
