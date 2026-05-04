@@ -191,6 +191,29 @@ class TestHandleOpencloselog:
 
 class TestReceiveTransactions:
 
+    # Minimal payload satisfying the receive_transactions input-validation
+    # contract (sales / staff / user are required nested blocks; the
+    # contents only need to be parseable by BaseTransaction).
+    _VALID_TRAN_PAYLOAD = {
+        "event_id": "evt-001",
+        "tenant_id": "T001",
+        "store_code": "S001",
+        "terminal_no": 1,
+        "transaction_no": 100,
+        "transaction_type": 101,
+        "business_date": "20260101",
+        "open_counter": 1,
+        "business_counter": 1,
+        "generate_date_time": "20260101T120000",
+        "receipt_no": 1,
+        "items": [],
+        "payments": [],
+        "tax_details": [],
+        "sales": {"total_amount_with_tax": 100.0, "total_quantity": 1},
+        "staff": {"id": "S001", "name": "Staff One"},
+        "user": {"id": "u1"},
+    }
+
     @pytest.mark.asyncio
     async def test_receive_transactions_success(self):
         mock_svc = _mock_log_service()
@@ -201,22 +224,7 @@ class TestReceiveTransactions:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/api/v1/tenants/T001/stores/S001/terminals/1/transactions",
-                json={
-                    "event_id": "evt-001",
-                    "tenant_id": "T001",
-                    "store_code": "S001",
-                    "terminal_no": 1,
-                    "transaction_no": 100,
-                    "transaction_type": 101,
-                    "business_date": "20260101",
-                    "open_counter": 1,
-                    "business_counter": 1,
-                    "generate_date_time": "20260101T120000",
-                    "receipt_no": 1,
-                    "items": [],
-                    "payments": [],
-                    "tax_details": [],
-                },
+                json=self._VALID_TRAN_PAYLOAD,
             )
 
         assert response.status_code == 201
@@ -239,22 +247,7 @@ class TestReceiveTransactions:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 "/api/v1/tenants/T001/stores/S001/terminals/1/transactions",
-                json={
-                    "event_id": "evt-001",
-                    "tenant_id": "T001",
-                    "store_code": "S001",
-                    "terminal_no": 1,
-                    "transaction_no": 100,
-                    "transaction_type": 101,
-                    "business_date": "20260101",
-                    "open_counter": 1,
-                    "business_counter": 1,
-                    "generate_date_time": "20260101T120000",
-                    "receipt_no": 1,
-                    "items": [],
-                    "payments": [],
-                    "tax_details": [],
-                },
+                json=self._VALID_TRAN_PAYLOAD,
             )
 
         assert response.status_code == 500
