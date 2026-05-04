@@ -8,7 +8,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from kugel_common.exceptions import DocumentNotFoundException, DocumentAlreadyExistsException, InvalidRequestDataException
+from kugel_common.exceptions import DocumentNotFoundException, DocumentAlreadyExistsException
 
 from app.services.item_common_master_service import ItemCommonMasterService
 from app.models.documents.item_common_master_document import ItemCommonMasterDocument

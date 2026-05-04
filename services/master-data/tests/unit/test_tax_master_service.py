@@ -6,9 +6,9 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-from kugel_common.exceptions import DocumentNotFoundException, DocumentAlreadyExistsException, InvalidRequestDataException
+from kugel_common.exceptions import DocumentNotFoundException
 
 from app.services.tax_master_service import TaxMasterService
 from app.models.documents.tax_master_document import TaxMasterDocument
