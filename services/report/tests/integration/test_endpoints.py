@@ -108,7 +108,7 @@ async def test_get_store_reports_empty(http_client, admin_header):
         },
         headers=admin_header,
     )
-    assert response.status_code in (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND), response.text
+    assert response.status_code == status.HTTP_200_OK, response.text
 
 
 @pytest.mark.asyncio
@@ -126,4 +126,4 @@ async def test_get_terminal_reports_empty(http_client, admin_header):
         },
         headers=admin_header,
     )
-    assert response.status_code in (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND), response.text
+    assert response.status_code == status.HTTP_200_OK, response.text

@@ -52,7 +52,4 @@ async def test_get_snapshot_by_id_not_found(http_client, admin_header):
         f"/api/v1/tenants/{tenant_id}/stores/5678/stock/snapshot/nonexistent-snap-id",
         headers=admin_header,
     )
-    assert response.status_code in (
-        status.HTTP_200_OK,
-        status.HTTP_404_NOT_FOUND,
-    ), response.text
+    assert response.status_code == status.HTTP_404_NOT_FOUND, response.text

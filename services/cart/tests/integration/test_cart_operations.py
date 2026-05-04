@@ -112,14 +112,8 @@ async def test_cancel_cart(http_client):
 
 @pytest.mark.asyncio
 async def test_apply_cart_discount(http_client):
-    """POST /carts/{cart_id}/discounts is reachable and validates input.
-
-    Integration coverage focuses on the route being wired and authenticated,
-    not the full business-logic path (which depends on master-data state
-    that the conftest stubs out as empty). 200 means the discount was
-    applied; 400 from cart's domain layer (e.g., "balance < discount")
-    still proves the route accepted and dispatched the call.
-    """
+    """POST /carts/{cart_id}/discounts after subtotal applies a flat-amount
+    discount and returns 200."""
     terminal_id = f"{os.environ.get('TENANT_ID')}-5678-9"
     headers = _api_headers()
     cart_id = await _create_cart(http_client, headers, terminal_id)
@@ -136,11 +130,7 @@ async def test_apply_cart_discount(http_client):
         json=[{"discountType": "DiscountAmount", "discountValue": 50}],
         headers=headers,
     )
-    assert response.status_code in (
-        status.HTTP_200_OK,
-        status.HTTP_400_BAD_REQUEST,
-        status.HTTP_406_NOT_ACCEPTABLE,
-    ), response.text
+    assert response.status_code == status.HTTP_200_OK, response.text
 
 
 @pytest.mark.asyncio
@@ -160,8 +150,8 @@ async def test_cancel_lineitem(http_client):
 
 @pytest.mark.asyncio
 async def test_apply_lineitem_discount(http_client):
-    """POST /carts/{cart_id}/lineItems/{lineNo}/discounts — see
-    test_apply_cart_discount for the 200/400 acceptance rationale."""
+    """POST /carts/{cart_id}/lineItems/{lineNo}/discounts applies a per-line
+    discount and returns 200."""
     terminal_id = f"{os.environ.get('TENANT_ID')}-5678-9"
     headers = _api_headers()
     cart_id = await _create_cart(http_client, headers, terminal_id)
@@ -172,11 +162,7 @@ async def test_apply_lineitem_discount(http_client):
         json=[{"discountType": "DiscountAmount", "discountValue": 10}],
         headers=headers,
     )
-    assert response.status_code in (
-        status.HTTP_200_OK,
-        status.HTTP_400_BAD_REQUEST,
-        status.HTTP_406_NOT_ACCEPTABLE,
-    ), response.text
+    assert response.status_code == status.HTTP_200_OK, response.text
 
 
 @pytest.mark.asyncio
@@ -230,10 +216,8 @@ async def test_subtotal(http_client):
 
 @pytest.mark.asyncio
 async def test_bill_full_payment(http_client):
-    """POST /carts/{cart_id}/bill is reachable. The full-cycle business
-    logic depends on master-data state that integration mocks stub out as
-    empty, so we accept 200 (success) or 400 (cart-domain reject) — both
-    prove the route is wired and authenticated."""
+    """Full payment + bill happy path: subtotal -> exact-amount cash
+    payment -> bill commits the transaction."""
     terminal_id = f"{os.environ.get('TENANT_ID')}-5678-9"
     headers = _api_headers()
     cart_id = await _create_cart(http_client, headers, terminal_id)
@@ -251,21 +235,13 @@ async def test_bill_full_payment(http_client):
         json=[{"paymentCode": "01", "amount": balance}],
         headers=headers,
     )
-    assert response.status_code in (
-        status.HTTP_200_OK,
-        status.HTTP_400_BAD_REQUEST,
-        status.HTTP_406_NOT_ACCEPTABLE,
-    ), response.text
+    assert response.status_code == status.HTTP_200_OK, response.text
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
         headers=headers,
     )
-    assert response.status_code in (
-        status.HTTP_200_OK,
-        status.HTTP_400_BAD_REQUEST,
-        status.HTTP_406_NOT_ACCEPTABLE,
-    ), response.text
+    assert response.status_code == status.HTTP_200_OK, response.text
 
 
 @pytest.mark.asyncio
@@ -327,9 +303,7 @@ async def test_get_transaction_detail_404(http_client):
         f"?terminal_id={terminal_id}",
         headers=headers,
     )
-    assert response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST), (
-        response.text
-    )
+    assert response.status_code == status.HTTP_404_NOT_FOUND, response.text
 
 
 @pytest.mark.asyncio
@@ -347,9 +321,7 @@ async def test_void_transaction_404(http_client):
         json=[{"paymentCode": "01", "amount": 0}],
         headers=headers,
     )
-    assert response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST), (
-        response.text
-    )
+    assert response.status_code == status.HTTP_404_NOT_FOUND, response.text
 
 
 @pytest.mark.asyncio
@@ -367,9 +339,7 @@ async def test_return_transaction_404(http_client):
         json=[{"paymentCode": "01", "amount": 0}],
         headers=headers,
     )
-    assert response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST), (
-        response.text
-    )
+    assert response.status_code == status.HTTP_404_NOT_FOUND, response.text
 
 
 @pytest.mark.asyncio
