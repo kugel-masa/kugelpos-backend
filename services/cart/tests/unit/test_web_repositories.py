@@ -547,7 +547,10 @@ class TestSettingsMasterWebRepositoryGetByName:
             result = await repo.get_settings_value_by_name_async("tax_mode")
 
         assert result.name == "tax_mode"
-        assert result.default_value is None  # Only name and value are set from API
+        # The repo maps the API's `data.value` into the doc's
+        # `default_value` field — the old behaviour of dropping the
+        # response value left every fetched setting effectively empty.
+        assert result.default_value == "exclusive"
 
     @pytest.mark.asyncio
     async def test_cache_miss_adds_to_cache(self):

@@ -33,7 +33,9 @@ def set_env_vars():
     os.environ.setdefault("DB_NAME_PREFIX", "db_terminal")
     os.environ.setdefault("STORE_CODE", "5678")
     os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
-    os.environ.setdefault("BASE_URL_TERMINAL", "http://localhost:8001")
+    # Match the kugel_common Settings defaults (which include the /api/v1
+    # prefix). The mocks below assume these URLs.
+    os.environ.setdefault("BASE_URL_TERMINAL", "http://localhost:8001/api/v1")
     os.environ.setdefault("BASE_URL_MASTER_DATA", "http://localhost:8002/api/v1")
     os.environ.setdefault("BASE_URL_CART", "http://localhost:8003/api/v1")
     os.environ.setdefault("BASE_URL_REPORT", "http://localhost:8004/api/v1")
@@ -115,10 +117,25 @@ def admin_header(admin_token):
 def mock_outbound_services():
     """Mock POST /tenants on every downstream service that terminal's
     POST /api/v1/tenants fans out to (master-data, cart, report,
-    journal, stock), plus any Dapr sidecar publishes.
+    journal, stock), plus master-data staff lookup (used by sign-in)
+    and any Dapr sidecar publishes.
     """
     success_response = httpx.Response(
         201, json={"success": True, "code": 201, "message": "tenant created", "data": None}
+    )
+    staff_response = httpx.Response(
+        200,
+        json={
+            "success": True,
+            "code": 200,
+            "message": "ok",
+            "data": {
+                "id": "S001",
+                "name": "Test Staff",
+                "pin": "1234",
+                "roles": ["staff"],
+            },
+        },
     )
 
     with respx.mock(assert_all_called=False) as respx_mock:
@@ -131,6 +148,55 @@ def mock_outbound_services():
             r"http://localhost:8006/api/v1/tenants/?",  # stock
         ]:
             respx_mock.post(re.compile(url_pattern)).mock(return_value=success_response)
+
+        # Master-data staff lookup — fired by terminal sign-in
+        respx_mock.get(
+            re.compile(r"http://localhost:8002/api/v1/tenants/[^/]+/staff/[^/?]+")
+        ).mock(return_value=staff_response)
+
+        # Terminal self-call store lookup — fired by terminal_service.open()
+        # which uses StoreInfoWebRepository -> get_service_client("terminal")
+        # to look up the store name. The in-process app on http://test/ can't
+        # serve calls dispatched to http://localhost:8001/, so mock here.
+        store_response = httpx.Response(
+            200,
+            json={
+                "success": True,
+                "code": 200,
+                "message": "ok",
+                "data": {
+                    "tenant_id": "T6216",
+                    "store_code": "5678",
+                    "store_name": "Lifecycle Store",
+                    "tags": [],
+                    "status": "active",
+                },
+            },
+        )
+        # BASE_URL_TERMINAL is "http://localhost:8001/api/v1" (matching the
+        # kugel_common Settings default). Match outgoing /api/v1/... URLs.
+        respx_mock.get(
+            re.compile(r"http://localhost:8001/api/v1/tenants/[^/]+/stores/[^/?]+")
+        ).mock(return_value=store_response)
+
+        # Cart transactions list — fired by terminal close() to compute the
+        # last business counter / cash totals for the OpenCloseLog. Empty
+        # list is fine for integration coverage.
+        empty_tranlogs = httpx.Response(
+            200,
+            json={
+                "success": True,
+                "code": 200,
+                "message": "ok",
+                "data": [],
+                "metadata": {"total": 0, "page": 1, "limit": 1, "sort": "generate_date_time:-1"},
+            },
+        )
+        respx_mock.get(
+            re.compile(
+                r"http://localhost:8003/api/v1/tenants/[^/]+/stores/[^/]+/terminals/[^/]+/transactions"
+            )
+        ).mock(return_value=empty_tranlogs)
 
         # Dapr sidecar publish/state — broad accept-anything route
         respx_mock.post(re.compile(r"http://localhost:3500/v1\.0/.*")).mock(

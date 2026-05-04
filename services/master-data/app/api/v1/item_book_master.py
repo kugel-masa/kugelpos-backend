@@ -463,7 +463,7 @@ async def add_category_to_item_book(
 async def update_category_in_item_book(
     item_book_category: ItemBookCategory,
     item_book_id: str = Path(...),
-    category_number: str = Path(...),
+    category_number: int = Path(...),
     tenant_id: str = Path(...),
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
@@ -526,7 +526,7 @@ async def update_category_in_item_book(
 )
 async def delete_category_from_item_book(
     item_book_id: str = Path(...),
-    category_number: str = Path(...),
+    category_number: int = Path(...),
     tenant_id: str = Path(...),
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
@@ -564,7 +564,7 @@ async def delete_category_from_item_book(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Category deleted from Item Book successfully. item_book_id: {item_book_id}",
-        data=ItemBookCategoryDeleteResponse(item_book_id=item_book_id),
+        data=ItemBookCategoryDeleteResponse(item_book_id=item_book_id, category_number=category_number),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -754,7 +754,11 @@ async def delete_tab_from_category_in_item_book(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Tab deleted from Category in Item Book successfully. item_book_id: {item_book_id}",
-        data=ItemBookTabDeleteResponse(item_book_id=item_book_id),
+        data=ItemBookTabDeleteResponse(
+            item_book_id=item_book_id,
+            category_number=category_number,
+            tab_number=tab_number,
+        ),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -956,7 +960,13 @@ async def delete_button_from_tab_in_category_in_item_book(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Button deleted from Tab in Category in Item Book successfully. item_book_id: {item_book_id}",
-        data=ItemBookButtonDeleteResponse(item_book_id=item_book_id),
+        data=ItemBookButtonDeleteResponse(
+            item_book_id=item_book_id,
+            category_number=category_number,
+            tab_number=tab_number,
+            pos_x=pos_x,
+            pos_y=pos_y,
+        ),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response

@@ -160,6 +160,12 @@ class SettingsMasterWebRepository:
                 raise RepositoryException(message, logger)
 
         logger.debug(f"response: {response_data}")
-        return_doc = SettingsMasterDocument(name=name, value=response_data.get("data").get("value"))
+        # The /settings/{name}/value endpoint returns {"data": {"value": ...}}.
+        # SettingsMasterDocument has no `value` field — only `default_value` and
+        # `values`. Without mapping the response into `default_value`, the doc
+        # would always come back with default_value=None, breaking
+        # get_setting_value's fallback path.
+        api_value = (response_data.get("data") or {}).get("value")
+        return_doc = SettingsMasterDocument(name=name, default_value=api_value)
         self.settings_master_documents.append(return_doc)
         return return_doc

@@ -302,13 +302,16 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
             "success": True, "code": 200, "data": [], "metadata": None,
         }))
 
-        # Master-data settings single value — return null/empty (cart
-        # has its own defaults for INVOICE_REGISTRATION_NUMBER /
-        # RECEIPT_HEADERS / etc.)
+        # Master-data settings single value — used by cart for things like
+        # RECEIPT_NO_START_VALUE. The repo extracts `data.value` and uses it
+        # as the doc's default_value, so return a sane numeric string here.
         respx_mock.get(
             re.compile(rf"{re.escape(base_master)}/tenants/{tenant_id}/settings/[^/]+/value")
         ).mock(return_value=httpx.Response(200, json={
-            "success": True, "code": 200, "data": {"value": None},
+            "success": True,
+            "code": 200,
+            "message": "ok",
+            "data": {"value": "1"},
         }))
 
         # Master-data payment lookup

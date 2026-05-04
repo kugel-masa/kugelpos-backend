@@ -42,6 +42,9 @@ async def get_cache_status(current_user: dict = Depends(get_current_user)) -> Ap
     cached_terminal_ids = get_tenant_terminal_ids_in_cache(tenant_id)
 
     return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message="Cache status retrieved successfully",
         data={
             "cache_type": "terminal_info",
             "tenant_id": tenant_id,
@@ -49,7 +52,7 @@ async def get_cache_status(current_user: dict = Depends(get_current_user)) -> Ap
             "total_cache_size": total_cache_size,
             "cached_terminal_ids": cached_terminal_ids,
             "status": "active",
-        }
+        },
     )
 
 
@@ -78,10 +81,12 @@ async def clear_cache(current_user: dict = Depends(get_current_user)) -> ApiResp
     logger.info(f"Terminal cache cleared for tenant {tenant_id} by user: {username}")
 
     return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Terminal cache cleared successfully for tenant {tenant_id}",
         data={
-            "message": f"Terminal cache cleared successfully for tenant {tenant_id}",
             "cache_type": "terminal_info",
             "tenant_id": tenant_id,
             "items_cleared": items_before,
-        }
+        },
     )
