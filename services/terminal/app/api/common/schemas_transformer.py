@@ -15,7 +15,9 @@ class SchemasTransformer:
         pass
 
     # transform TerminalInfoDocument to Terminal
-    def transform_terminal(self, terminal_info: TerminalInfoDocument) -> BaseTerminal:
+    def transform_terminal(
+        self, terminal_info: TerminalInfoDocument, include_api_key: bool = False
+    ) -> BaseTerminal:
         logger.debug(f"TerminalInfoDocument: {terminal_info}")
 
         return_terminal = BaseTerminal(
@@ -31,7 +33,7 @@ class SchemasTransformer:
             business_counter=terminal_info.business_counter,
             initial_amount=terminal_info.initial_amount,
             physical_amount=terminal_info.physical_amount,
-            api_key=mask_api_key(terminal_info.api_key),
+            api_key=terminal_info.api_key if include_api_key else mask_api_key(terminal_info.api_key),
             entry_datetime=terminal_info.created_at.strftime("%Y-%m-%d %H:%M:%S") if terminal_info.created_at else None,
             last_update_datetime=(
                 terminal_info.updated_at.strftime("%Y-%m-%d %H:%M:%S") if terminal_info.updated_at else None

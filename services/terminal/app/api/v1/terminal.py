@@ -17,10 +17,15 @@ from app.dependencies.get_terminal_service import (
     get_tenant_id_with_security_wrapper,
     get_tenant_id_with_security_by_query_optional_wrapper,
     get_tenant_id_for_pubsub_notification,
+    get_auth_context_with_path_terminal,
 )
 
 router = APIRouter()
 logger = getLogger(__name__)
+# Dedicated logger for security-sensitive events (api_key reveal). Configured
+# in logging.conf with its own file handler and INFO-only floor so audit
+# events survive even if root level is raised in production.
+audit_logger = getLogger("audit")
 
 # API endpoints
 
@@ -63,9 +68,17 @@ async def create_terminal(terminal: TerminalCreateRequest, tenant_id: str = Depe
         terminal_info = await terminal_service.create_terminal_async(
             store_code=terminal.store_code, terminal_no=terminal.terminal_no, description=terminal.description
         )  # tenant_id is known
-        return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
+        # Return the unmasked api_key only on creation; subsequent reads default to masked.
+        return_json = SchemasTransformerV1().transform_terminal(terminal_info, include_api_key=True).model_dump()
     except Exception as e:
         raise e
+
+    audit_logger.info(
+        "api_key revealed via POST /terminals (one-time at creation) "
+        "(tenant_id=%s, terminal_id=%s)",
+        tenant_id,
+        terminal_info.terminal_id,
+    )
 
     response = ApiResponse(
         success=True,
@@ -147,26 +160,61 @@ async def get_terminals(
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
     },
 )
-async def get_terminal(terminal_id: str, tenant_id: str = Depends(get_tenant_id_with_security_wrapper)):
+async def get_terminal(
+    terminal_id: str,
+    include_api_key: bool = Query(
+        False,
+        description="When true, return the unmasked api_key. Honored only when authenticated via user JWT.",
+    ),
+    auth_ctx: dict = Depends(get_auth_context_with_path_terminal),
+):
     """
     Get terminal information
 
     This endpoint retrieves detailed information about a specific terminal.
 
+    The optional `include_api_key=true` query is honored only when the caller is
+    authenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT
+    or X-API-KEY), the api_key is always masked even if the flag is set.
+
     Args:
         terminal_id: ID of the terminal to retrieve
-        tenant_id: Tenant ID extracted from authentication
+        include_api_key: Opt-in to receive the unmasked api_key (user-JWT only)
+        auth_ctx: Auth context (tenant_id + auth_type + subject)
 
     Returns:
         ApiResponse containing terminal information
     """
+    tenant_id = auth_ctx["tenant_id"]
+    auth_type = auth_ctx["auth_type"]
+
+    # Honor include_api_key only for user JWT (tenant admin). Mask otherwise.
+    reveal_api_key = include_api_key and auth_type == "user_jwt"
+    if include_api_key and not reveal_api_key:
+        audit_logger.warning(
+            "api_key reveal requested but DENIED on GET /terminals/{id} "
+            "(auth_type=%s, subject=%s, terminal_id=%s)",
+            auth_type,
+            auth_ctx.get("subject"),
+            terminal_id,
+        )
+
     logger.debug(f"Getting terminal for terminal {terminal_id}")
     terminal_service = await get_terminal_service_async(tenant_id, terminal_id)
     try:
         terminal_info = await terminal_service.get_terminal_info_async()
-        return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
+        return_json = SchemasTransformerV1().transform_terminal(
+            terminal_info, include_api_key=reveal_api_key
+        ).model_dump()
     except Exception as e:
         raise e
+
+    if reveal_api_key:
+        audit_logger.info(
+            "api_key revealed via GET /terminals/{id} (subject=%s, terminal_id=%s)",
+            auth_ctx.get("subject"),
+            terminal_id,
+        )
 
     response = ApiResponse(
         success=True,
@@ -211,6 +259,12 @@ async def delete_terminal(terminal_id: str, tenant_id: str = Depends(get_tenant_
         await terminal_service.delete_terminal_async()
     except Exception as e:
         raise e
+
+    audit_logger.info(
+        "Terminal deleted (api_key destroyed) (tenant_id=%s, terminal_id=%s)",
+        tenant_id,
+        terminal_id,
+    )
 
     response = ApiResponse(
         success=True,
@@ -373,6 +427,13 @@ async def terminal_signin(
     # Issue new JWT with updated staff claims
     http_response.headers["X-New-Token"] = create_terminal_token(terminal_info)
 
+    audit_logger.info(
+        "Staff signed in to terminal (tenant_id=%s, terminal_id=%s, staff_id=%s)",
+        tenant_id,
+        terminal_id,
+        terminal_signin.staff_id,
+    )
+
     response = ApiResponse(
         success=True,
         code=status.HTTP_200_OK,
@@ -418,13 +479,20 @@ async def terminal_signout(
     logger.debug(f"Signing out terminal for terminal {terminal_id}")
     terminal_service = await get_terminal_service_async(tenant_id, terminal_id)
     try:
-        terminal_info = await terminal_service.sign_out_terminal_async()
+        terminal_info, previous_staff_id = await terminal_service.sign_out_terminal_async()
         return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
     except Exception as e:
         raise e
 
     # Issue new JWT with staff claims removed
     http_response.headers["X-New-Token"] = create_terminal_token(terminal_info)
+
+    audit_logger.info(
+        "Staff signed out of terminal (tenant_id=%s, terminal_id=%s, staff_id=%s)",
+        tenant_id,
+        terminal_id,
+        previous_staff_id,
+    )
 
     response = ApiResponse(
         success=True,

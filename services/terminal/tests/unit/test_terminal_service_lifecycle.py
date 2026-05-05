@@ -311,13 +311,16 @@ class TestTerminalServiceSignInOut:
     @pytest.mark.asyncio
     async def test_sign_out_success(self):
         svc, repos = make_service()
-        terminal = make_terminal(staff=MagicMock())
+        staff_mock = MagicMock()
+        staff_mock.id = "S001"
+        terminal = make_terminal(staff=staff_mock)
         signed_out = make_terminal(staff=None)
         repos["terminal_info_repo"].get_terminal_info_by_id_async.side_effect = [terminal, signed_out]
 
-        result = await svc.sign_out_terminal_async()
+        result, previous_staff_id = await svc.sign_out_terminal_async()
 
         assert result.staff is None
+        assert previous_staff_id == "S001"
 
     @pytest.mark.asyncio
     async def test_sign_out_terminal_not_found_raises(self):
@@ -329,14 +332,15 @@ class TestTerminalServiceSignInOut:
 
     @pytest.mark.asyncio
     async def test_sign_out_already_signed_out_returns_terminal(self):
-        """Signing out a terminal already signed out just returns the terminal."""
+        """Signing out a terminal already signed out returns it with previous_staff_id=None."""
         svc, repos = make_service()
         terminal = make_terminal(staff=None)
         repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = terminal
 
-        result = await svc.sign_out_terminal_async()
+        result, previous_staff_id = await svc.sign_out_terminal_async()
 
         assert result == terminal
+        assert previous_staff_id is None
         # replace_terminal_info_async should NOT be called
         repos["terminal_info_repo"].replace_terminal_info_async.assert_not_called()
 

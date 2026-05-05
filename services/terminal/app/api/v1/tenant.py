@@ -29,6 +29,7 @@ from app.dependencies.get_tenant_service import (
 
 router = APIRouter()
 logger = getLogger(__name__)
+audit_logger = getLogger("audit")
 
 
 @router.post(
@@ -103,6 +104,12 @@ async def create_tenant(
         return_json = SchemasTransformerV1().transform_tenant(tenant_doc).model_dump()
     except Exception as e:
         raise e
+
+    audit_logger.info(
+        "Tenant created (tenant_id=%s, tenant_name=%s)",
+        tenant_id,
+        tenant.tenant_name,
+    )
 
     response = ApiResponse(
         success=True,
@@ -211,6 +218,8 @@ async def update_tenant(
     except Exception as e:
         raise e
 
+    audit_logger.info("Tenant updated (tenant_id=%s)", tenant_id)
+
     response = ApiResponse(
         success=True,
         code=status.HTTP_200_OK,
@@ -258,6 +267,11 @@ async def delete_tenant(tenant_id: str = Path(...), tenant_id_by_auth: str = Dep
         await tenant_service.delete_tenant_async()
     except Exception as e:
         raise e
+
+    audit_logger.info(
+        "Tenant deleted (tenant_id=%s) — all stores/terminals/api_keys destroyed",
+        tenant_id,
+    )
 
     response = ApiResponse(
         success=True,
@@ -314,6 +328,10 @@ async def add_store(
         return_json = SchemasTransformerV1().transform_tenant(tenant_doc).model_dump()
     except Exception as e:
         raise e
+
+    audit_logger.info(
+        "Store created (tenant_id=%s, store_code=%s)", tenant_id, store.store_code
+    )
 
     response = ApiResponse(
         success=True,
@@ -499,6 +517,13 @@ async def update_store(
     except Exception as e:
         raise e
 
+    audit_logger.info(
+        "Store updated (tenant_id=%s, store_code=%s, fields=%s)",
+        tenant_id,
+        store_code,
+        sorted(update_dict.keys()),
+    )
+
     response = ApiResponse(
         success=True,
         code=status.HTTP_200_OK,
@@ -551,6 +576,10 @@ async def delete_store(
         await tenant_service.delete_store_async(store_code=store_code)
     except Exception as e:
         raise e
+
+    audit_logger.info(
+        "Store deleted (tenant_id=%s, store_code=%s)", tenant_id, store_code
+    )
 
     response = ApiResponse(
         success=True,

@@ -39,19 +39,30 @@ async def get_terminal_api_key_and_info() -> tuple:
         resp = await client.post(token_url, data={"username": "admin", "password": "admin", "client_id": tenant_id})
         admin_token = resp.json().get("access_token")
 
-        # List terminals to find one that exists
-        resp = await client.get(
+        # List terminals to find one that exists (list endpoint always returns masked api_key)
+        list_resp = await client.get(
             "http://localhost:8001/api/v1/terminals",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
+        if list_resp.status_code != status.HTTP_200_OK:
+            return None, None, None
+        terminals = list_resp.json().get("data", [])
+        if not terminals:
+            return None, None, None
+        terminal = terminals[0]
+        terminal_id = terminal.get("terminalId")
+        store_code = terminal.get("storeCode")
 
-    if resp.status_code != status.HTTP_200_OK:
-        return None, None, None
-    terminals = resp.json().get("data", [])
-    if not terminals:
-        return None, None, None
-    terminal = terminals[0]
-    return terminal.get("apiKey"), terminal.get("terminalId"), terminal.get("storeCode")
+        # Re-fetch the specific terminal with include_api_key=true (user JWT only)
+        detail_resp = await client.get(
+            f"http://localhost:8001/api/v1/terminals/{terminal_id}?include_api_key=true",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        if detail_resp.status_code != status.HTTP_200_OK:
+            return None, None, None
+        api_key = detail_resp.json().get("data", {}).get("apiKey")
+
+    return api_key, terminal_id, store_code
 
 
 @pytest.mark.asyncio

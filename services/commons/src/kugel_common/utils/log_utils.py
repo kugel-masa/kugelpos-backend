@@ -1,7 +1,6 @@
 """
 Logging utility functions for masking sensitive information.
 """
-import os
 from typing import Any, Dict, Optional
 
 
@@ -20,10 +19,6 @@ def mask_api_key(api_key: Optional[str]) -> str:
         - Short key (<=8 chars) -> "****"
         - Long key -> "sk_l...5678" (first 4...last 4)
     """
-    # Check if masking is disabled for testing
-    if os.environ.get("DISABLE_API_KEY_MASKING") == "True":
-        return api_key if api_key else "****"
-
     if not api_key:
         return "****"
 

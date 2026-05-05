@@ -107,6 +107,36 @@ class TestCreateTenant:
             )
         assert resp.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_tenant_created(self):
+        """Tenant creation must be audited (privileged op)."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.create_tenant_async.return_value = _make_tenant_doc(stores=[])
+
+        with (
+            patch("app.api.v1.tenant.database_setup") as mock_db_setup,
+            patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service),
+            patch("app.api.v1.tenant.httpx.AsyncClient") as mock_httpx,
+            patch("app.api.v1.tenant.audit_logger") as mock_audit,
+        ):
+            mock_db_setup.execute = AsyncMock()
+            mock_client_instance = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.raise_for_status = MagicMock()
+            mock_client_instance.post.return_value = mock_response
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/tenants",
+                    json={"tenant_id": TENANT_ID, "tenant_name": "Test Tenant", "tags": ["test"]},
+                )
+        assert resp.status_code == 201
+        info_calls = [c for c in mock_audit.info.call_args_list if "Tenant created" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+
 
 # ---------------------------------------------------------------------------
 # GET /tenants/{tenant_id}
@@ -210,6 +240,21 @@ class TestDeleteTenant:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.delete(f"/api/v1/tenants/{TENANT_ID}")
         assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_tenant_deleted(self):
+        """Tenant deletion is high-impact (cascades stores/terminals/api_keys) — must be audited."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.delete_tenant_async.return_value = None
+
+        with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service), \
+             patch("app.api.v1.tenant.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.delete(f"/api/v1/tenants/{TENANT_ID}")
+        assert resp.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "Tenant deleted" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ from app.dependencies.get_terminal_service import (
     get_tenant_id_with_security_wrapper,
     get_tenant_id_with_security_by_query_optional_wrapper,
     get_tenant_id_for_pubsub_notification,
+    get_auth_context_with_path_terminal,
     parse_sort,
 )
 from app.models.documents.terminal_info_document import TerminalInfoDocument
@@ -90,7 +91,12 @@ def _make_cash_log(**overrides) -> CashInOutLog:
     return CashInOutLog(**defaults)
 
 
-def make_app():
+def make_app(auth_type: str = "user_jwt"):
+    """Build a FastAPI app with auth deps overridden.
+
+    auth_type controls what get_auth_context_with_path_terminal returns,
+    which gates whether ?include_api_key=true is honored on GET /terminals/{id}.
+    """
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     # Override auth dependencies
@@ -98,6 +104,11 @@ def make_app():
     app.dependency_overrides[get_tenant_id_with_security_wrapper] = lambda: TENANT_ID
     app.dependency_overrides[get_tenant_id_with_security_by_query_optional_wrapper] = lambda: TENANT_ID
     app.dependency_overrides[get_tenant_id_for_pubsub_notification] = lambda: TENANT_ID
+    app.dependency_overrides[get_auth_context_with_path_terminal] = lambda: {
+        "tenant_id": TENANT_ID,
+        "auth_type": auth_type,
+        "subject": "test-subject",
+    }
     app.dependency_overrides[parse_sort] = lambda: [("terminal_id", 1)]
     return app
 
@@ -140,6 +151,44 @@ class TestCreateTerminal:
                     json={"store_code": "S001", "terminal_no": 1, "description": "Register 1"},
                 )
         assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_returns_unmasked_api_key(self):
+        """Create returns the unmasked api_key (one-time reveal, AWS IAM-style)."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.staff_master_repo = MagicMock(tenant_id=TENANT_ID)
+        mock_service.create_terminal_async.return_value = _make_terminal_doc(api_key="raw-secret-1234567890")
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/terminals",
+                    json={"store_code": "S001", "terminal_no": 1, "description": "Register 1"},
+                )
+        assert resp.status_code == 201
+        # api_key must be returned unmasked on creation
+        assert resp.json()["data"]["apiKey"] == "raw-secret-1234567890"
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_create_reveal(self):
+        """Create is a one-time api_key reveal → must hit the audit logger."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.staff_master_repo = MagicMock(tenant_id=TENANT_ID)
+        mock_service.create_terminal_async.return_value = _make_terminal_doc(api_key="raw-secret-1234567890")
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/terminals",
+                    json={"store_code": "S001", "terminal_no": 1, "description": "Register 1"},
+                )
+        assert resp.status_code == 201
+        # Verify audit_logger.info was called with the one-time reveal message
+        info_calls = [c for c in mock_audit.info.call_args_list if "one-time at creation" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +258,100 @@ class TestGetTerminal:
                 resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}")
         assert resp.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_default_masks_api_key(self):
+        """Without ?include_api_key=true, the api_key is masked even for user JWT."""
+        app = make_app(auth_type="user_jwt")
+        mock_service = AsyncMock()
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
+            api_key="raw-secret-1234567890"
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["apiKey"] != "raw-secret-1234567890"
+
+    @pytest.mark.asyncio
+    async def test_include_api_key_honored_for_user_jwt(self):
+        """?include_api_key=true is honored when authenticated via user JWT."""
+        app = make_app(auth_type="user_jwt")
+        mock_service = AsyncMock()
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
+            api_key="raw-secret-1234567890"
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["apiKey"] == "raw-secret-1234567890"
+
+    @pytest.mark.asyncio
+    async def test_include_api_key_ignored_for_terminal_jwt(self):
+        """?include_api_key=true is silently ignored for terminal JWT auth."""
+        app = make_app(auth_type="terminal_jwt")
+        mock_service = AsyncMock()
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
+            api_key="raw-secret-1234567890"
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["apiKey"] != "raw-secret-1234567890"
+
+    @pytest.mark.asyncio
+    async def test_include_api_key_ignored_for_api_key_auth(self):
+        """?include_api_key=true is silently ignored for X-API-KEY auth."""
+        app = make_app(auth_type="api_key")
+        mock_service = AsyncMock()
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
+            api_key="raw-secret-1234567890"
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["apiKey"] != "raw-secret-1234567890"
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_honored_reveal(self):
+        """When ?include_api_key=true is honored, audit_logger.info must be called."""
+        app = make_app(auth_type="user_jwt")
+        mock_service = AsyncMock()
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
+            api_key="raw-secret-1234567890"
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
+        assert resp.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "revealed via GET" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_denied_reveal(self):
+        """When ?include_api_key=true is denied (wrong auth_type), audit_logger.warning must be called."""
+        app = make_app(auth_type="api_key")
+        mock_service = AsyncMock()
+        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
+            api_key="raw-secret-1234567890"
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
+        assert resp.status_code == 200
+        warn_calls = [c for c in mock_audit.warning.call_args_list if "DENIED" in c.args[0]]
+        assert len(warn_calls) == 1, mock_audit.warning.call_args_list
+
 
 # ---------------------------------------------------------------------------
 # DELETE /terminals/{terminal_id}
@@ -225,6 +368,21 @@ class TestDeleteTerminal:
                 resp = await client.delete(f"/api/v1/terminals/{TERMINAL_ID}")
         assert resp.status_code == 200
         assert resp.json()["data"]["terminalId"] == TERMINAL_ID
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_terminal_deleted(self):
+        """DELETE /terminals/{id} destroys an api_key → must hit audit logger."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.delete_terminal_async.return_value = None
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.delete(f"/api/v1/terminals/{TERMINAL_ID}")
+        assert resp.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "Terminal deleted" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
 
     @pytest.mark.asyncio
     async def test_service_error(self):
@@ -351,6 +509,24 @@ class TestSignIn:
                 )
         assert resp.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_sign_in(self):
+        """sign-in binds staff identity to a terminal — must be audited."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.sign_in_terminal_async.return_value = _make_terminal_doc(status="SignedIn")
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    f"/api/v1/terminals/{TERMINAL_ID}/sign-in",
+                    json={"staff_id": "STAFF01"},
+                )
+        assert resp.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "Staff signed in" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+
 
 # ---------------------------------------------------------------------------
 # POST /terminals/{terminal_id}/sign-out
@@ -360,7 +536,11 @@ class TestSignOut:
     async def test_success(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.sign_out_terminal_async.return_value = _make_terminal_doc(status="Closed")
+        # sign_out_terminal_async returns (updated_doc, previous_staff_id)
+        mock_service.sign_out_terminal_async.return_value = (
+            _make_terminal_doc(status="Closed"),
+            "S001",
+        )
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -380,6 +560,30 @@ class TestSignOut:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.post(f"/api/v1/terminals/{TERMINAL_ID}/sign-out")
         assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_sign_out_with_previous_staff_id(self):
+        """sign-out audit must include the staff_id that was cleared (no extra DB read)."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.sign_out_terminal_async.return_value = (
+            _make_terminal_doc(status="Closed"),
+            "STAFF42",
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(f"/api/v1/terminals/{TERMINAL_ID}/sign-out")
+        assert resp.status_code == 200
+        info_calls = [
+            c for c in mock_audit.info.call_args_list
+            if "Staff signed out" in c.args[0] and "STAFF42" in c.args
+        ]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+        # Importantly, sign-out must NOT do a separate get_terminal_info_async call
+        # (race-prone + extra DB round-trip). The audit relies on the tuple return.
+        mock_service.get_terminal_info_async.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

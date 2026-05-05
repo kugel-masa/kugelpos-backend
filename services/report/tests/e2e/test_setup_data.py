@@ -82,11 +82,13 @@ async def test_setup_data(setup_db: AsyncIOMotorDatabase, http_client: AsyncClie
     res = response.json()
     print(f"create terminal response: {res}")
 
-    # If terminal already exists, get its info
+    # If terminal already exists, get its info (user JWT can opt-in to unmasked api_key)
     if response.status_code == 400 and "already exists" in res.get("message", ""):
         # Get existing terminal info
         terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
-        terminal_get_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}"
+        terminal_get_url = (
+            f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
+        )
         async with AsyncClient() as http_terminal_client:
             response = await http_terminal_client.get(url=terminal_get_url, headers=header)
         res = response.json()

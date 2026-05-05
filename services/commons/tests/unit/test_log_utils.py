@@ -1,15 +1,5 @@
 """Unit tests for kugel_common.utils.log_utils."""
-import os
-
-import pytest
-
 from kugel_common.utils.log_utils import mask_api_key, mask_dict_api_key
-
-
-@pytest.fixture(autouse=True)
-def _ensure_masking_enabled(monkeypatch):
-    """Default: masking enabled. Tests that need it disabled override locally."""
-    monkeypatch.delenv("DISABLE_API_KEY_MASKING", raising=False)
 
 
 class TestMaskApiKey:
@@ -36,31 +26,6 @@ class TestMaskApiKey:
     def test_very_long_key_truncated(self):
         key = "sk_live_" + "x" * 40 + "_end1234"
         assert mask_api_key(key) == "sk_l...1234"
-
-
-class TestMaskApiKeyDisabled:
-    """When DISABLE_API_KEY_MASKING=True, the original key passes through."""
-
-    def test_long_key_unmasked(self, monkeypatch):
-        monkeypatch.setenv("DISABLE_API_KEY_MASKING", "True")
-        assert mask_api_key("abcd1234efgh5678") == "abcd1234efgh5678"
-
-    def test_short_key_unmasked(self, monkeypatch):
-        monkeypatch.setenv("DISABLE_API_KEY_MASKING", "True")
-        assert mask_api_key("short") == "short"
-
-    def test_none_still_returns_stars(self, monkeypatch):
-        # Even when masking is disabled, None has no plaintext to surface
-        monkeypatch.setenv("DISABLE_API_KEY_MASKING", "True")
-        assert mask_api_key(None) == "****"
-
-    def test_other_truthy_env_value_does_not_disable(self, monkeypatch):
-        # Only the literal string "True" disables masking
-        monkeypatch.setenv("DISABLE_API_KEY_MASKING", "true")
-        assert mask_api_key("abcd1234efgh5678") == "abcd...5678"
-
-        monkeypatch.setenv("DISABLE_API_KEY_MASKING", "1")
-        assert mask_api_key("abcd1234efgh5678") == "abcd...5678"
 
 
 class TestMaskDictApiKey:
@@ -102,8 +67,3 @@ class TestMaskDictApiKey:
     def test_none_value_in_dict_masked_to_stars(self):
         result = mask_dict_api_key({"api_key": None})
         assert result == {"api_key": "****"}
-
-    def test_disabled_passes_through_dict(self, monkeypatch):
-        monkeypatch.setenv("DISABLE_API_KEY_MASKING", "True")
-        result = mask_dict_api_key({"api_key": "abcd1234efgh5678"})
-        assert result == {"api_key": "abcd1234efgh5678"}

@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from datetime import datetime, timedelta
+from typing import Optional
 import aiohttp
 import json
 import uuid
@@ -265,12 +266,15 @@ class TerminalService:
         result = await self.terminal_info_repo.replace_terminal_info_async(self.terminal_id, terminal)
         return await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
 
-    async def sign_out_terminal_async(self) -> TerminalInfoDocument:
+    async def sign_out_terminal_async(self) -> tuple[TerminalInfoDocument, Optional[str]]:
         """
         Sign out the current staff member from a terminal
 
         Returns:
-            Updated terminal information with staff details removed
+            (updated_terminal_info, previous_staff_id) — the second element is
+            the staff_id that was cleared, or None if the terminal was already
+            signed out. Callers (e.g., audit logging) need this without a
+            second DB round-trip.
 
         Raises:
             TerminalNotFoundException: If the terminal is not found
@@ -280,16 +284,21 @@ class TerminalService:
             message = f"Terminal not found: {self.terminal_id}"
             raise TerminalNotFoundException(message=message, logger=logger)
 
+        # Capture the staff_id before clearing it so the caller can audit-log
+        # the actor without re-reading the document.
+        previous_staff_id = terminal.staff.id if terminal.staff is not None else None
+
         # check if already signed out
         if terminal.staff is None:
             logger.debug(f"Terminal is already signed out: {self.terminal_id}")
-            return terminal
+            return terminal, previous_staff_id
 
         # remove staff info
         terminal.staff = None
 
         result = await self.terminal_info_repo.replace_terminal_info_async(self.terminal_id, terminal)
-        return await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
+        updated = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
+        return updated, previous_staff_id
 
     # Cash handling methods
 

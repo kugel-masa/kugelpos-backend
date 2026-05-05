@@ -159,7 +159,7 @@ async def test_cart_operations(http_client):
         print(f"Terminal is already opened with status: {current_status}")
 
     # Set API key on the request header
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Create cart
@@ -204,7 +204,7 @@ async def test_line_item_operations(http_client):
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
     terminal_id = terminal_info["terminalId"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -294,7 +294,7 @@ async def test_discount_operations(http_client):
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
     terminal_id = terminal_info["terminalId"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -400,7 +400,7 @@ async def test_payment_process(http_client):
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
     terminal_id = terminal_info["terminalId"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -482,7 +482,7 @@ async def test_bill_with_insufficient_balance(http_client):
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
     terminal_id = terminal_info["terminalId"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -540,7 +540,7 @@ async def test_stamp_duty(http_client):
     terminal_id = terminal_info["terminalId"]
     store_code = terminal_info["storeCode"]
     terminal_no = terminal_info["terminalNo"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -595,7 +595,7 @@ async def test_transaction_operations(http_client):
     terminal_id = terminal_info["terminalId"]
     store_code = terminal_info["storeCode"]
     terminal_no = terminal_info["terminalNo"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -751,7 +751,7 @@ async def test_payment_by_others(http_client):
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
     terminal_id = terminal_info["terminalId"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -845,7 +845,7 @@ async def test_multiple_payment_methods(http_client):
     terminal_id = terminal_info["terminalId"]
     store_code = terminal_info["storeCode"]
     terminal_no = terminal_info["terminalNo"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
@@ -971,7 +971,7 @@ async def test_unregistered_item_error(http_client):
     tenant_id = await create_tenant(http_client, token)
     terminal_info = await get_terminal_info(tenant_id)
     terminal_id = terminal_info["terminalId"]
-    api_key = terminal_info.get("apiKey")
+    api_key = os.environ.get("API_KEY")  # set in conftest from create-time response
     header = {"X-API-KEY": api_key}
 
     # Make sure the terminal is opened
