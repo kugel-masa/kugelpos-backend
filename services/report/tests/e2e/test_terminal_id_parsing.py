@@ -55,8 +55,8 @@ async def test_terminal_id_parsing_with_api_key(http_client):
     token = response.json().get("access_token")
     header = {"Authorization": f"Bearer {token}"}
 
-    # Get API key from terminal info
-    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}"
+    # Get API key from terminal info (user JWT can opt-in to unmasked api_key)
+    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
     async with AsyncClient() as http_terminal_client:
         response = await http_terminal_client.get(url=terminal_url, headers=header)
 
@@ -227,13 +227,13 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client, clean
         else:
             pytest.skip(f"Could not create terminal {terminal_id_2}: {create_response.status_code}")
 
-        # Get API keys for both terminals
+        # Get API keys for both terminals (user JWT can opt-in to unmasked api_key)
         response_1 = await http_terminal_client.get(
-            f"{terminal_url_base}/terminals/{terminal_id_1}",
+            f"{terminal_url_base}/terminals/{terminal_id_1}?include_api_key=true",
             headers=header
         )
         response_2 = await http_terminal_client.get(
-            f"{terminal_url_base}/terminals/{terminal_id_2}",
+            f"{terminal_url_base}/terminals/{terminal_id_2}?include_api_key=true",
             headers=header
         )
 

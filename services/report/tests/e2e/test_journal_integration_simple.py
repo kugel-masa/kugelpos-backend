@@ -47,7 +47,9 @@ async def test_api_key_journal_integration():
     # Step 2: Get API key for terminal
     print("\n2. Getting API key for terminal...")
     async with AsyncClient() as client:
-        response = await client.get(f"{base_url_terminal}/terminals/{terminal_id}", headers=headers_jwt)
+        response = await client.get(
+            f"{base_url_terminal}/terminals/{terminal_id}?include_api_key=true", headers=headers_jwt
+        )
 
     if response.status_code != 200:
         print(f"Failed to get terminal info: {response.status_code} - {response.text}")

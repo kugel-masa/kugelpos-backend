@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "badad7c1f3f70ae6d67899e73e8aeacb4f44d2f15f635833aac84467cd55bba4"
+            "sha256": "e828de8a505ca50cd9ece2a4c1aa11d15f76f316b3dbf7733df584edebab4213"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -700,9 +700,9 @@
             "version": "==3.13"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.49-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.52-py3-none-any.whl",
             "hashes": [
-                "sha256:e88b44ccb868a07cf475885abdec882cc8ef3a65ef98f1669bdd9b5dbab19124"
+                "sha256:27237d3ec6604bec70a9ae3d02c8970186d736687ac14d6c4ea2b13ce7465beb"
             ]
         },
         "lxml": {

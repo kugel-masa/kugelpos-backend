@@ -31,9 +31,6 @@ def set_env_vars():
     load_dotenv(dotenv_path=os.path.join(ROOT_DIR, ".env.test"), override=True)
 
     os.environ.setdefault("DB_NAME_PREFIX", "db_terminal")
-    # Tests need the unmasked API key from terminal API responses to authenticate
-    # subsequent in-process requests; docker compose sets the same flag at runtime.
-    os.environ.setdefault("DISABLE_API_KEY_MASKING", "True")
     os.environ.setdefault("STORE_CODE", "5678")
     os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
     # Match the kugel_common Settings defaults (which include the /api/v1

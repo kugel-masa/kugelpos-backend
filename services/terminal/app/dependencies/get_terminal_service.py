@@ -7,7 +7,7 @@ This module provides dependency injection helpers for creating and configuring
 terminal service instances with all necessary repositories and services.
 """
 
-from fastapi import Depends, Path, Query
+from fastapi import Depends, HTTPException, Path, Query, status
 from logging import getLogger
 from typing import Optional
 
@@ -17,6 +17,9 @@ from kugel_common.security import (
     get_tenant_id_with_security_by_query_optional,
     get_tenant_id_with_token,
     verify_pubsub_notification_auth,
+    verify_terminal_token,
+    get_current_user,
+    get_terminal_info,
     Security,
     api_key_header,
     oauth2_scheme,
@@ -148,6 +151,55 @@ async def get_tenant_id_with_security_by_query_optional_wrapper(
     but with terminal ID as an optional query parameter instead of a path parameter
     """
     return await get_tenant_id_with_security_by_query_optional(terminal_id, api_key, token, is_terminal_service=True)
+
+
+async def get_auth_context_with_path_terminal(
+    terminal_id: str = Path(...),
+    api_key: Optional[str] = Security(api_key_header),
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> dict:
+    """
+    Returns authentication context for endpoints that need to know the auth method
+    in addition to the tenant_id (e.g. to gate `?include_api_key=true` on user JWT only).
+
+    Mirrors the priority order of kugel_common.security.__get_tenant_id:
+      1. Terminal JWT (token_type="terminal")
+      2. User JWT (existing OAuth2 flow)
+      3. X-API-KEY + terminal_id
+
+    Returns:
+        Dict with keys:
+          - tenant_id: str
+          - auth_type: one of {"user_jwt", "terminal_jwt", "api_key"}
+          - subject: identifier of the authenticated principal (terminal_id or username)
+    """
+    if token:
+        try:
+            claims = verify_terminal_token(token)
+            return {
+                "tenant_id": claims.get("tenant_id"),
+                "auth_type": "terminal_jwt",
+                "subject": claims.get("terminal_id"),
+            }
+        except HTTPException:
+            pass  # Not a terminal token, fall through to user JWT
+        user = await get_current_user(token)
+        return {
+            "tenant_id": user.get("tenant_id"),
+            "auth_type": "user_jwt",
+            "subject": user.get("username") or user.get("user_id") or "unknown",
+        }
+    if terminal_id and api_key:
+        terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service=True)
+        return {
+            "tenant_id": terminal_info.tenant_id,
+            "auth_type": "api_key",
+            "subject": terminal_id,
+        }
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized access : No token or API-KEY provided",
+    )
 
 
 async def get_tenant_id_for_pubsub_notification(

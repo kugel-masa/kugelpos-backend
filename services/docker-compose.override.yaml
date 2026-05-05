@@ -1,14 +1,12 @@
 # ローカルテスト用のオーバーライド設定
 # すべてのサービスにローカルMongoDBへの接続設定を追加
 # Daprを使わない場合の直接サービス間通信設定も追加
-# テスト環境でのAPI Keyマスキング無効化設定も追加
 
 services:
   account:
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_account
-      - DISABLE_API_KEY_MASKING=True
     depends_on:
       mongodb:
         condition: service_healthy
@@ -23,7 +21,6 @@ services:
       - BASE_URL_JOURNAL=http://journal:8000/api/v1
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_STOCK=http://stock:8000/api/v1
-      - DISABLE_API_KEY_MASKING=True
     depends_on:
       mongodb:
         condition: service_healthy
@@ -33,7 +30,6 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_master
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
-      - DISABLE_API_KEY_MASKING=True
       # gRPC server settings (default: disabled)
       - USE_GRPC=${USE_GRPC:-false}
       - GRPC_PORT=${GRPC_PORT:-50051}
@@ -50,7 +46,6 @@ services:
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
       - USE_TERMINAL_CACHE=True
-      - DISABLE_API_KEY_MASKING=True
       # gRPC client settings (default: disabled)
       - USE_GRPC=${USE_GRPC:-false}
       - GRPC_TIMEOUT=${GRPC_TIMEOUT:-5.0}
@@ -67,7 +62,6 @@ services:
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
       - BASE_URL_CART=http://cart:8000/api/v1
       - BASE_URL_JOURNAL=http://journal:8000/api/v1
-      - DISABLE_API_KEY_MASKING=True
     depends_on:
       mongodb:
         condition: service_healthy
@@ -78,7 +72,6 @@ services:
       - DB_NAME_PREFIX=db_journal
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_CART=http://cart:8000/api/v1
-      - DISABLE_API_KEY_MASKING=True
     depends_on:
       mongodb:
         condition: service_healthy
@@ -90,7 +83,6 @@ services:
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
       - BASE_URL_CART=http://cart:8000/api/v1
-      - DISABLE_API_KEY_MASKING=True
     depends_on:
       mongodb:
         condition: service_healthy

@@ -39,6 +39,7 @@ router = APIRouter()
 
 # Get a logger instance for this module
 logger = getLogger(__name__)
+audit_logger = getLogger("audit")
 
 # API endpoint to obtain a JWT access token
 
@@ -75,6 +76,11 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     user = await authenticate_user(form_data.username, form_data.password, tenant_id)
 
     if not user:
+        audit_logger.warning(
+            "Login failed (tenant_id=%s, username=%s)",
+            tenant_id,
+            form_data.username,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username, password or tenant_id",
@@ -97,6 +103,13 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     except Exception as e:
         logger.error(f"update last login failed: {e}. user->{user.username} tenant_id->{tenant_id}")
         # No need to raise exception here - login still succeeds
+
+    audit_logger.info(
+        "Login succeeded (tenant_id=%s, username=%s, is_superuser=%s)",
+        tenant_id,
+        user.username,
+        user.is_superuser,
+    )
 
     return LoginResponse(access_token=access_token, token_type="bearer")
 
@@ -148,6 +161,12 @@ async def register_super_user(user: UserAccount, tenant_id: str = Depends(genera
 
     users_collection = await get_user_collection(user_info.tenant_id)
     await users_collection.insert_one(user_info.model_dump())
+
+    audit_logger.info(
+        "Superuser registered (tenant_id=%s, username=%s)",
+        tenant_id,
+        user.username,
+    )
 
     # Send notification to Slack about the new tenant creation
     await send_info_notification(
@@ -202,6 +221,13 @@ async def register_user_by_superuser(user: UserAccount, current_user: UserAccoun
     # Authenticate and verify the current user is a superuser
     superuser_info = await authenticate_superuser(current_user.username, current_user.tenant_id)
     if not superuser_info:
+        audit_logger.warning(
+            "User registration DENIED — caller is not a superuser "
+            "(tenant_id=%s, caller=%s, target_username=%s)",
+            current_user.tenant_id,
+            current_user.username,
+            user.username,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="You are not authorized to perform this action",
@@ -223,6 +249,13 @@ async def register_user_by_superuser(user: UserAccount, current_user: UserAccoun
 
     users_collection = await get_user_collection(user_info.tenant_id)
     await users_collection.insert_one(user_info.model_dump())
+
+    audit_logger.info(
+        "User registered by superuser (tenant_id=%s, caller=%s, new_username=%s)",
+        current_user.tenant_id,
+        current_user.username,
+        user.username,
+    )
 
     response = ApiResponse(
         success=True,

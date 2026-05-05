@@ -15,17 +15,20 @@ class SchemasTransformerV1(SchemasTransformer):
     def __init__(self):
         super().__init__()
 
-    def transform_terminal(self, terminal_info: TerminalInfoDocument) -> Terminal:
+    def transform_terminal(
+        self, terminal_info: TerminalInfoDocument, include_api_key: bool = False
+    ) -> Terminal:
         """
         Transform a terminal document into a terminal API schema
 
         Args:
             terminal_info: The terminal document to transform
+            include_api_key: When True, return the unmasked api_key. Defaults to False (masked).
 
         Returns:
             Terminal: The API schema representation of the terminal
         """
-        return super().transform_terminal(terminal_info)
+        return super().transform_terminal(terminal_info, include_api_key=include_api_key)
 
     def transform_tenant(self, tenant_info: TenantInfoDocument) -> Tenant:
         """

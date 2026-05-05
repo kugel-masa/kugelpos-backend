@@ -27,6 +27,9 @@ from kugel_common.utils.http_client_helper import get_pooled_client, HttpClientE
 from kugel_common.utils.log_utils import mask_dict_api_key
 
 logger = getLogger(__name__)
+# Audit logger for security events. Uses the shared "audit" qualname so each
+# service routes via its own logging.conf (audit.log file handler with INFO floor).
+audit_logger = getLogger("audit")
 
 """
 Authentication and authorization utilities for OAuth2-based authentication
@@ -263,8 +266,13 @@ async def get_terminal_info_for_terminal_service(
     if (terminal_dict is None) or (terminal_dict.get("api_key") != api_key):
         if api_key != settings.PUBSUB_NOTIFY_API_KEY:
             # allow pubsub notify api key
+            audit_logger.warning(
+                "Invalid api_key attempt (terminal_id=%s, terminal_exists=%s)",
+                terminal_id,
+                terminal_dict is not None,
+            )
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API Key",
                 headers={"WWW-Authenticate": "API-Key"}
             )
@@ -299,11 +307,20 @@ async def get_terminal_info_from_terminal_service(
 
         terminal_dict = response_data.get("data")
         return_terminal = transform_terminal_info(terminal_dict)
+        # The terminal endpoint masks api_key in responses for X-API-KEY auth.
+        # Restore the caller-supplied api_key so downstream services (master-data,
+        # etc.) can keep authenticating via the legacy X-API-KEY header.
+        return_terminal.api_key = api_key
         return return_terminal
 
     except HttpClientError as e:
         # Handle HTTP errors from the client helper
         logger.error(f"Failed to get terminal info for {terminal_id}: {e.message}")
+        if e.status_code in (None, status.HTTP_401_UNAUTHORIZED):
+            audit_logger.warning(
+                "Invalid api_key attempt via terminal service (terminal_id=%s)",
+                terminal_id,
+            )
         raise HTTPException(
             status_code=e.status_code or status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",

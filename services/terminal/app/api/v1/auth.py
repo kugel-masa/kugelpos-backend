@@ -15,6 +15,7 @@ from kugel_common.config.settings import settings
 
 router = APIRouter()
 logger = getLogger(__name__)
+audit_logger = getLogger("audit")
 
 
 class TokenResponse(BaseModel):
@@ -68,6 +69,13 @@ async def create_token(
     expires_in = settings.TERMINAL_TOKEN_EXPIRE_HOURS * 3600
 
     logger.info(f"Terminal token issued for {terminal_info.terminal_id}")
+    audit_logger.info(
+        "Terminal JWT issued via api_key (credential exchange) "
+        "(tenant_id=%s, terminal_id=%s, lookup=%s)",
+        terminal_info.tenant_id,
+        terminal_info.terminal_id,
+        "direct" if terminal_id else "scan",
+    )
 
     return ApiResponse(
         success=True,
@@ -144,6 +152,7 @@ async def _get_terminal_info_by_api_key_scan(api_key: str):
                 )
             return terminal_info
 
+    audit_logger.warning("Invalid api_key attempt on POST /auth/token (scan path)")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API key",

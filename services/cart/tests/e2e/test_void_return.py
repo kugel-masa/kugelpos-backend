@@ -43,7 +43,9 @@ async def get_api_key(http_client, token):
     header = {"Authorization": f"Bearer {token}"}
 
     async with AsyncClient(base_url=base_url) as terminal_client:
-        response = await terminal_client.get(f"/terminals/{terminal_id}", headers=header)
+        response = await terminal_client.get(
+            f"/terminals/{terminal_id}?include_api_key=true", headers=header
+        )
 
     if response.status_code == status.HTTP_200_OK:
         res = response.json()

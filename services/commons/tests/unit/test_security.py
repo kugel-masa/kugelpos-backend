@@ -14,6 +14,7 @@ from kugel_common.security import (
     get_current_user,
     get_service_account_info,
     get_tenant_id,
+    get_terminal_info_from_terminal_service,
     terminal_claims_to_terminal_info,
     transform_terminal_info,
     verify_pubsub_notification_auth,
@@ -312,6 +313,73 @@ class TestTransformTerminalInfo:
         assert info.staff.id == "S2"
         assert info.staff.name == "Bob"
         assert info.staff.pin == "9999"
+
+
+# ---------------------------------------------------------------------------
+# get_terminal_info_from_terminal_service
+# ---------------------------------------------------------------------------
+
+class TestGetTerminalInfoFromTerminalService:
+    """The terminal endpoint masks api_key in responses to X-API-KEY auth.
+    Cart/master-data/etc. cache this TerminalInfoDocument and re-use api_key
+    to call further services, so the helper must restore the caller-supplied
+    api_key on the returned doc. Regression guard for the prod fix that
+    landed alongside DISABLE_API_KEY_MASKING removal.
+    """
+
+    @pytest.mark.asyncio
+    async def test_response_masked_api_key_overwritten_with_caller_api_key(self):
+        """Even if the terminal API responds with a masked api_key, the helper
+        must return a doc carrying the original (caller-supplied) api_key."""
+        masked_response = {
+            "data": {
+                "tenant_id": "T001",
+                "store_code": "001",
+                "terminal_no": 1,
+                "terminal_id": "T001-001-01",
+                "api_key": "abcd...wxyz",  # masked by the terminal service
+            }
+        }
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=masked_response)
+
+        with patch(
+            "kugel_common.security.get_pooled_client",
+            new=AsyncMock(return_value=mock_client),
+        ):
+            result = await get_terminal_info_from_terminal_service(
+                "T001-001-01", "real-unmasked-api-key-1234"
+            )
+
+        assert result.api_key == "real-unmasked-api-key-1234"
+
+    @pytest.mark.asyncio
+    async def test_unmasked_response_still_uses_caller_api_key(self):
+        """Even when response already has the unmasked key (e.g. dev/test),
+        we still authoritatively restore the caller-supplied api_key. This
+        guards against subtle drift if response semantics change later."""
+        unmasked_response = {
+            "data": {
+                "tenant_id": "T001",
+                "store_code": "001",
+                "terminal_no": 1,
+                "terminal_id": "T001-001-01",
+                "api_key": "something-else-server-side",
+            }
+        }
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=unmasked_response)
+
+        with patch(
+            "kugel_common.security.get_pooled_client",
+            new=AsyncMock(return_value=mock_client),
+        ):
+            result = await get_terminal_info_from_terminal_service(
+                "T001-001-01", "real-unmasked-api-key-1234"
+            )
+
+        # Caller-supplied wins, period.
+        assert result.api_key == "real-unmasked-api-key-1234"
 
 
 # ---------------------------------------------------------------------------

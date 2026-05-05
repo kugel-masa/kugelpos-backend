@@ -115,10 +115,10 @@ def set_env_vars():
     print(f"auth response: {res}")
     token = res.get("access_token")
 
-    # get api key from terminal service
+    # get api key from terminal service (user JWT can opt-in to unmasked api_key)
     terminal_id = os.environ.get("TERMINAL_ID")
     header = {"Authorization": f"Bearer {token}"}
-    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}"
+    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
     with Client() as http_terminal_client:
         response = http_terminal_client.get(url=terminal_url, headers=header)
     res = response.json()
