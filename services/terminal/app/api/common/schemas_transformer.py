@@ -1,5 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
+import os
+from kugel_common.utils.log_utils import mask_api_key
 from app.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.documents.tenant_info_document import TenantInfoDocument, StoreInfo
 from app.models.documents.open_close_log import OpenCloseLog
@@ -30,7 +32,7 @@ class SchemasTransformer:
             business_counter=terminal_info.business_counter,
             initial_amount=terminal_info.initial_amount,
             physical_amount=terminal_info.physical_amount,
-            api_key=terminal_info.api_key,
+            api_key=terminal_info.api_key if os.environ.get("DISABLE_API_KEY_MASKING") == "True" else mask_api_key(terminal_info.api_key),
             entry_datetime=terminal_info.created_at.strftime("%Y-%m-%d %H:%M:%S") if terminal_info.created_at else None,
             last_update_datetime=(
                 terminal_info.updated_at.strftime("%Y-%m-%d %H:%M:%S") if terminal_info.updated_at else None
