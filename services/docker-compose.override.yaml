@@ -23,7 +23,7 @@ services:
       - BASE_URL_JOURNAL=http://journal:8000/api/v1
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_STOCK=http://stock:8000/api/v1
-      - DISABLE_API_KEY_MASKING=False
+      - DISABLE_API_KEY_MASKING=True
     depends_on:
       mongodb:
         condition: service_healthy

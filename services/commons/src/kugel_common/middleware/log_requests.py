@@ -33,6 +33,7 @@ from kugel_common.models.repositories.request_log_repository import RequestLogRe
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.config.settings import settings
 from kugel_common.utils.misc import get_app_time_str
+from kugel_common.utils.log_utils import mask_api_key
 from kugel_common.middleware.request_log_buffer import get_request_log_buffer
 
 logger = getLogger(__name__)
@@ -213,16 +214,16 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
     terminal_id = None
 
     api_key = request.headers.get("X-API-Key")
-    logger.debug(f"api_key: {api_key}")
+    logger.debug(f"api_key: {mask_api_key(api_key)}")
     if api_key is not None:
         terminal_id = request.query_params.get("terminal_id")
         logger.debug(f"query_params terminal_id: {terminal_id}")
         if not terminal_id:
-            terminal_id = request.path_params.get("terminal_id") 
+            terminal_id = request.path_params.get("terminal_id")
             logger.debug(f"path_params terminal_id: {terminal_id}")
 
     if terminal_id and api_key:
-        logger.debug(f"terminal_id: {terminal_id}, api_key")
+        logger.debug(f"terminal_id: {terminal_id}, api_key: {mask_api_key(api_key)}")
         terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service=is_terminal_service)
 
     logger.debug(f"terminal_info: {terminal_info}")
