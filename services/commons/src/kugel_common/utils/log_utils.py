@@ -36,15 +36,20 @@ def mask_api_key(api_key: Optional[str]) -> str:
     return f"{api_key[:4]}...{api_key[-4:]}"
 
 
-def mask_dict_api_key(data: Dict[str, Any]) -> Dict[str, Any]:
+def mask_dict_api_key(data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """
     Mask api_key field in dictionary for safe logging.
 
+    Only the top-level keys "api_key" / "API_KEY" are masked; nested
+    dictionaries are not traversed (this is a shallow copy). All current
+    callers pass flat documents from MongoDB, so this is sufficient.
+
     Args:
-        data: Dictionary that may contain api_key field
+        data: Dictionary that may contain api_key field, or None
 
     Returns:
-        Dictionary with masked api_key (original dict is not modified)
+        Dictionary with masked api_key (original dict is not modified),
+        or None if input was None/empty.
     """
     if not data:
         return data
