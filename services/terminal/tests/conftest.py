@@ -122,6 +122,9 @@ def set_env_vars():
     ensure_admin_user_exists(tenant_id, account_base_url)
 
     os.environ["DB_NAME_PREFIX"] = "db_terminal"
+    # Tests need the unmasked API key from terminal API responses to authenticate
+    # subsequent in-process requests; docker compose sets the same flag at runtime.
+    os.environ["DISABLE_API_KEY_MASKING"] = "True"
 
     from kugel_common.database import database as db_helper
 
@@ -141,6 +144,7 @@ def set_env_vars():
     yield
 
     del os.environ["DB_NAME_PREFIX"]
+    del os.environ["DISABLE_API_KEY_MASKING"]
     del os.environ["TOKEN_URL"]
     del os.environ["BASE_URL_TERMINAL"]
     del os.environ["BASE_URL_MASTER_DATA"]
