@@ -478,11 +478,8 @@ async def terminal_signout(
     """
     logger.debug(f"Signing out terminal for terminal {terminal_id}")
     terminal_service = await get_terminal_service_async(tenant_id, terminal_id)
-    # Capture pre-signout staff_id for the audit record (sign_out clears it)
-    pre_signout_info = await terminal_service.get_terminal_info_async()
-    pre_staff_id = pre_signout_info.staff.id if pre_signout_info.staff else None
     try:
-        terminal_info = await terminal_service.sign_out_terminal_async()
+        terminal_info, previous_staff_id = await terminal_service.sign_out_terminal_async()
         return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
     except Exception as e:
         raise e
@@ -494,7 +491,7 @@ async def terminal_signout(
         "Staff signed out of terminal (tenant_id=%s, terminal_id=%s, staff_id=%s)",
         tenant_id,
         terminal_id,
-        pre_staff_id,
+        previous_staff_id,
     )
 
     response = ApiResponse(

@@ -133,6 +133,47 @@ class TestLoginForAccessToken:
 
         assert response.status_code == 200
 
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_login_succeeded(self):
+        """Successful login must be audited (security event)."""
+        user_dict = make_user_dict()
+        user = UserAccountInDB(**user_dict)
+        app = make_app()
+
+        with patch("app.api.v1.account.authenticate_user", return_value=user), \
+             patch("app.api.v1.account.get_user_collection") as mock_col, \
+             patch("app.api.v1.account.audit_logger") as mock_audit:
+            mock_collection = AsyncMock()
+            mock_collection.update_one.return_value = MagicMock(modified_count=1)
+            mock_col.return_value = mock_collection
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/accounts/token",
+                    data={"username": "alice", "password": "pass123", "client_id": "T001"},
+                )
+
+        assert response.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "Login succeeded" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_login_failed(self):
+        """Failed login must be audited as WARNING (brute-force signal)."""
+        app = make_app()
+
+        with patch("app.api.v1.account.authenticate_user", return_value=False), \
+             patch("app.api.v1.account.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/accounts/token",
+                    data={"username": "alice", "password": "wrong", "client_id": "T001"},
+                )
+
+        assert response.status_code == 401
+        warn_calls = [c for c in mock_audit.warning.call_args_list if "Login failed" in c.args[0]]
+        assert len(warn_calls) == 1, mock_audit.warning.call_args_list
+
 
 # ---------------------------------------------------------------------------
 # register_super_user  POST /api/v1/accounts/register

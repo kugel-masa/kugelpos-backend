@@ -2,7 +2,7 @@
 """Unit tests for kugel_common.security."""
 import logging
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
@@ -14,6 +14,7 @@ from kugel_common.security import (
     get_current_user,
     get_service_account_info,
     get_tenant_id,
+    get_terminal_info_for_terminal_service,
     get_terminal_info_from_terminal_service,
     terminal_claims_to_terminal_info,
     transform_terminal_info,
@@ -22,6 +23,7 @@ from kugel_common.security import (
     verify_terminal_token,
     verify_token,
 )
+from kugel_common.utils.http_client_helper import HttpClientError
 
 
 def _user_token(
@@ -380,6 +382,91 @@ class TestGetTerminalInfoFromTerminalService:
 
         # Caller-supplied wins, period.
         assert result.api_key == "real-unmasked-api-key-1234"
+
+    @pytest.mark.asyncio
+    async def test_401_response_emits_audit_warning(self):
+        """A 401 from the terminal service must produce an audit_logger.warning
+        so security ops can detect repeated invalid api_key probes."""
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=HttpClientError(message="unauthorized", status_code=401)
+        )
+
+        with patch(
+            "kugel_common.security.get_pooled_client",
+            new=AsyncMock(return_value=mock_client),
+        ), patch("kugel_common.security.audit_logger") as mock_audit:
+            with pytest.raises(Exception):
+                await get_terminal_info_from_terminal_service("T001-001-01", "wrong")
+
+        warn_calls = [
+            c for c in mock_audit.warning.call_args_list
+            if "Invalid api_key attempt" in c.args[0]
+        ]
+        assert len(warn_calls) == 1, mock_audit.warning.call_args_list
+
+
+# ---------------------------------------------------------------------------
+# get_terminal_info_for_terminal_service (DB-backed lookup)
+# ---------------------------------------------------------------------------
+
+class TestGetTerminalInfoForTerminalService:
+    """Direct-DB path used by the terminal service itself. 401 audit must fire
+    on api_key mismatch unless the caller supplies the PUBSUB_NOTIFY_API_KEY."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_api_key_emits_audit_warning(self):
+        terminal_doc = {
+            "_id": "x",
+            "tenant_id": "T001",
+            "store_code": "001",
+            "terminal_no": 1,
+            "terminal_id": "T001-001-01",
+            "api_key": "stored-correct-key",
+        }
+        mock_collection = MagicMock()
+        mock_collection.find_one = AsyncMock(return_value=terminal_doc)
+        mock_db = MagicMock()
+        mock_db.get_collection = MagicMock(return_value=mock_collection)
+
+        with patch(
+            "kugel_common.security.db_helper.get_db_async",
+            new=AsyncMock(return_value=mock_db),
+        ), patch("kugel_common.security.audit_logger") as mock_audit:
+            with pytest.raises(Exception):
+                await get_terminal_info_for_terminal_service(
+                    "T001-001-01", "wrong-key"
+                )
+
+        warn_calls = [
+            c for c in mock_audit.warning.call_args_list
+            if "Invalid api_key attempt" in c.args[0]
+        ]
+        assert len(warn_calls) == 1, mock_audit.warning.call_args_list
+
+    @pytest.mark.asyncio
+    async def test_terminal_not_found_also_emits_audit_warning(self):
+        """A request for a non-existent terminal_id is also an invalid-key
+        signal — record it so probing scans surface in the audit log."""
+        mock_collection = MagicMock()
+        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_db = MagicMock()
+        mock_db.get_collection = MagicMock(return_value=mock_collection)
+
+        with patch(
+            "kugel_common.security.db_helper.get_db_async",
+            new=AsyncMock(return_value=mock_db),
+        ), patch("kugel_common.security.audit_logger") as mock_audit:
+            with pytest.raises(Exception):
+                await get_terminal_info_for_terminal_service(
+                    "T001-NOEXIST-01", "any-key"
+                )
+
+        warn_calls = [
+            c for c in mock_audit.warning.call_args_list
+            if "Invalid api_key attempt" in c.args[0]
+        ]
+        assert len(warn_calls) == 1, mock_audit.warning.call_args_list
 
 
 # ---------------------------------------------------------------------------

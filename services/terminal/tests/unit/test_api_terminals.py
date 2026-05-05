@@ -370,6 +370,21 @@ class TestDeleteTerminal:
         assert resp.json()["data"]["terminalId"] == TERMINAL_ID
 
     @pytest.mark.asyncio
+    async def test_audit_logger_records_terminal_deleted(self):
+        """DELETE /terminals/{id} destroys an api_key → must hit audit logger."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.delete_terminal_async.return_value = None
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.delete(f"/api/v1/terminals/{TERMINAL_ID}")
+        assert resp.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "Terminal deleted" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+
+    @pytest.mark.asyncio
     async def test_service_error(self):
         app = make_app()
         mock_service = AsyncMock()
@@ -494,6 +509,24 @@ class TestSignIn:
                 )
         assert resp.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_sign_in(self):
+        """sign-in binds staff identity to a terminal — must be audited."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.sign_in_terminal_async.return_value = _make_terminal_doc(status="SignedIn")
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    f"/api/v1/terminals/{TERMINAL_ID}/sign-in",
+                    json={"staff_id": "STAFF01"},
+                )
+        assert resp.status_code == 200
+        info_calls = [c for c in mock_audit.info.call_args_list if "Staff signed in" in c.args[0]]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+
 
 # ---------------------------------------------------------------------------
 # POST /terminals/{terminal_id}/sign-out
@@ -503,7 +536,11 @@ class TestSignOut:
     async def test_success(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.sign_out_terminal_async.return_value = _make_terminal_doc(status="Closed")
+        # sign_out_terminal_async returns (updated_doc, previous_staff_id)
+        mock_service.sign_out_terminal_async.return_value = (
+            _make_terminal_doc(status="Closed"),
+            "S001",
+        )
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -523,6 +560,30 @@ class TestSignOut:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.post(f"/api/v1/terminals/{TERMINAL_ID}/sign-out")
         assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_audit_logger_records_sign_out_with_previous_staff_id(self):
+        """sign-out audit must include the staff_id that was cleared (no extra DB read)."""
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.sign_out_terminal_async.return_value = (
+            _make_terminal_doc(status="Closed"),
+            "STAFF42",
+        )
+
+        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
+             patch("app.api.v1.terminal.audit_logger") as mock_audit:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(f"/api/v1/terminals/{TERMINAL_ID}/sign-out")
+        assert resp.status_code == 200
+        info_calls = [
+            c for c in mock_audit.info.call_args_list
+            if "Staff signed out" in c.args[0] and "STAFF42" in c.args
+        ]
+        assert len(info_calls) == 1, mock_audit.info.call_args_list
+        # Importantly, sign-out must NOT do a separate get_terminal_info_async call
+        # (race-prone + extra DB round-trip). The audit relies on the tuple return.
+        mock_service.get_terminal_info_async.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
