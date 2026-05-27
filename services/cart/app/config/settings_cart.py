@@ -21,11 +21,6 @@ class CartSettings(BaseSettings):
     # Use terminal cache to avoid frequent database queries
     USE_TERMINAL_CACHE: bool = True
 
-    # Item master cache settings (legacy — superseded by MASTER_DATA_CACHE_* below;
-    # to be removed once all repositories are migrated to AbstractMasterDataRepository).
-    ITEM_CACHE_TTL_SECONDS: int = Field(default=300, description="Item cache TTL in seconds (default: 5 minutes)")
-    USE_ITEM_CACHE: bool = Field(default=True, description="Use item cache to avoid redundant API/gRPC calls")
-
     # Master-data cache (shared via Dapr state store, backed by Redis).
     # Read by AbstractMasterDataRepository and its subclasses.
     MASTER_DATA_CACHE_ENABLED: bool = Field(

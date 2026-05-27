@@ -296,6 +296,70 @@ class TestGlobalSwitch:
 
 
 @pytest.mark.asyncio
+class TestInvalidationSafety:
+    """US2 supplementary: invalidate APIs must never break cart operations."""
+
+    async def test_invalidate_swallows_backend_delete_failure(self, cache, monkeypatch, caplog):
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+        await repo.get_or_fetch_one("A")
+
+        async def failing_delete(_key):
+            return False
+        monkeypatch.setattr(cache, "delete", failing_delete)
+
+        with caplog.at_level(logging.WARNING):
+            await repo.invalidate("A")  # MUST NOT raise
+
+        assert any("master cache invalidate failed" in r.message for r in caplog.records)
+
+    async def test_invalidate_all_swallows_backend_increment_failure(
+        self, cache, monkeypatch, caplog
+    ):
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+
+        async def failing_increment(_key):
+            return None
+        monkeypatch.setattr(cache, "increment", failing_increment)
+
+        with caplog.at_level(logging.WARNING):
+            await repo.invalidate_all()  # MUST NOT raise
+
+        assert any(
+            "master cache invalidate_all bump failed" in r.message
+            for r in caplog.records
+        )
+
+    async def test_invalidate_is_noop_when_cache_disabled(self, cache, monkeypatch):
+        """FR-008: with the global switch off, invalidate must not touch the backend."""
+        monkeypatch.setattr(cart_settings, "MASTER_DATA_CACHE_ENABLED", False)
+        delete_calls = 0
+
+        async def counting_delete(_key):
+            nonlocal delete_calls
+            delete_calls += 1
+            return True
+        monkeypatch.setattr(cache, "delete", counting_delete)
+
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+        await repo.invalidate("A")
+        assert delete_calls == 0
+
+    async def test_invalidate_all_is_noop_when_cache_disabled(self, cache, monkeypatch):
+        monkeypatch.setattr(cart_settings, "MASTER_DATA_CACHE_ENABLED", False)
+        increment_calls = 0
+
+        async def counting_increment(_key):
+            nonlocal increment_calls
+            increment_calls += 1
+            return 1
+        monkeypatch.setattr(cache, "increment", counting_increment)
+
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+        await repo.invalidate_all()
+        assert increment_calls == 0
+
+
+@pytest.mark.asyncio
 class TestLogMasking:
     async def test_set_failure_warning_does_not_leak_logical_key_or_value(
         self, cache, monkeypatch, caplog

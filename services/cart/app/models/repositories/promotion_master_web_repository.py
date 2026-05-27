@@ -1,61 +1,74 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
-from kugel_common.utils.http_client_helper import get_pooled_client
-from kugel_common.exceptions import RepositoryException
-from app.models.documents.promotion_master_document import PromotionMasterDocument
-from app.config.settings import settings
+# Copyright 2025 masa@kugel
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+"""Promotion master repository on the shared cache base.
 
-
+Store-scoped: promotions apply per-store. The store_code is supplied at the
+method-call level (not constructor) so the cache key is built from
+store_code_override; see R-009 for the rationale.
+"""
 from logging import getLogger
+
+from kugel_common.exceptions import RepositoryException
+from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
+from kugel_common.utils.http_client_helper import get_pooled_client
+
+from app.config.settings_cart import cart_settings
+from app.models.documents.promotion_master_document import PromotionMasterDocument
+from app.models.repositories.abstract_master_data_repository import (
+    AbstractMasterDataRepository,
+)
 
 logger = getLogger(__name__)
 
 
-class PromotionMasterWebRepository:
-    """
-    Repository class for accessing promotion master data through web API.
-
-    This class provides methods to retrieve active promotion information from the master data service
-    for applying category-based discounts to cart items.
-    """
+class PromotionMasterWebRepository(AbstractMasterDataRepository[PromotionMasterDocument]):
+    cache_namespace = "promotion_master"
+    document_class = PromotionMasterDocument
+    default_ttl_seconds = cart_settings.PROMOTION_MASTER_CACHE_TTL_SECONDS
+    is_store_scoped = True
 
     def __init__(
         self,
         tenant_id: str,
         terminal_info: TerminalInfoDocument,
+        cache_backend: AbstractCacheBackend,
     ):
-        """
-        Initialize the repository with tenant and terminal information.
-
-        Args:
-            tenant_id: The tenant identifier
-            terminal_info: Terminal information document containing API key and store code
-        """
-        self.tenant_id = tenant_id
-        self.terminal_info = terminal_info
-        self.base_url = settings.BASE_URL_MASTER_DATA
+        # store_code lives on the call (and on terminal_info as a fallback for
+        # the business "use my terminal's store when omitted" convention);
+        # the base class does NOT consult terminal_info itself, so we leave
+        # self.store_code as None and pass store_code_override explicitly below.
+        super().__init__(
+            tenant_id=tenant_id,
+            terminal_info=terminal_info,
+            cache_backend=cache_backend,
+            store_code=None,
+        )
 
     async def get_active_promotions_by_store_async(
-        self, store_code: str = None
+        self, store_code: str | None = None
     ) -> list[PromotionMasterDocument]:
-        """
-        Get active promotions filtered by store code.
+        # Business convention: when the caller omits store_code, fall back to
+        # the terminal's home store. This logic is local to the subclass; the
+        # base class only sees a resolved effective_store via the override.
+        effective_store = store_code or self.terminal_info.store_code
+        return await self.get_or_fetch_list(
+            logical_key="active",
+            store_code_override=effective_store,
+            fetcher=lambda: self._fetch_active(effective_store),
+        )
 
-        Retrieves all currently active promotions that apply to the specified store.
-        If store_code is None, uses the terminal's store_code.
+    async def _fetch_one(self, logical_key: str) -> PromotionMasterDocument:
+        raise NotImplementedError(
+            "PromotionMasterWebRepository only supports list lookups."
+        )
 
-        Args:
-            store_code: The store code to filter promotions for (optional)
-
-        Returns:
-            list[PromotionMasterDocument]: List of active promotions for the store
-
-        Raises:
-            RepositoryException: If there's an error communicating with the API
-        """
-        if store_code is None:
-            store_code = self.terminal_info.store_code
-
+    async def _fetch_active(self, store_code: str) -> list[PromotionMasterDocument]:
         client = await get_pooled_client("master-data")
         jwt_token = getattr(self.terminal_info, "jwt_token", None)
         if jwt_token:
@@ -72,20 +85,22 @@ class PromotionMasterWebRepository:
         try:
             response_data = await client.get(endpoint, params=params, headers=headers)
         except Exception as e:
-            message = f"Failed to get active promotions for store {store_code}: {e}"
-            raise RepositoryException(message, logger)
+            raise RepositoryException(
+                message=f"Failed to get active promotions for store {store_code}",
+                collection_name="promotion web",
+                logger=logger,
+                original_exception=e,
+            )
 
-        logger.debug(f"response: {response_data}")
-        data = response_data.get("data", [])
-
-        # Convert response data to PromotionMasterDocument list
-        promotions = []
-        for promo_data in data:
+        promotions: list[PromotionMasterDocument] = []
+        for promo_data in response_data.get("data", []):
             try:
-                promotion = PromotionMasterDocument.from_api_response(promo_data)
-                promotions.append(promotion)
+                promotions.append(PromotionMasterDocument.from_api_response(promo_data))
             except Exception as e:
-                logger.warning(f"Failed to parse promotion data: {promo_data}, error: {e}")
+                # Resilient against partial corruption in upstream data; an
+                # individual bad row should not abort the entire response.
+                logger.warning(
+                    f"Failed to parse promotion data: {promo_data}, error: {e}"
+                )
                 continue
-
         return promotions

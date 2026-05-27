@@ -100,7 +100,17 @@ Dapr pub/sub topics (backed by RabbitMQ):
 - Exception handling with structured error codes
 - Authentication/security utilities
 - HTTP client helpers (`HttpClientHelper`, `DaprClientHelper`)
+- Cache backend abstractions (`AbstractCacheBackend`, `InMemoryCacheBackend`, `DaprStateCacheBackend`)
 - Slack notification utilities
+
+### 7. Master-Data Caching (cart only)
+Cart's master-data repositories (Item, Payment, Promotion, Settings) inherit
+`AbstractMasterDataRepository[TDoc]` (`services/cart/app/models/repositories/`).
+Caching, key construction, TTL, invalidation, and backend-failure fallback
+live in the base; subclasses only implement `_fetch_one` / `_fetch_list`.
+- Backend: Dapr state store `masterstore` (Redis, databaseIndex=3)
+- Key format: `mdcache:{tenant}:{store or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}`
+- Tenant-wide masters declare `is_store_scoped = False` (forces store position to `_`)
 
 ## Error Code Structure
 Format: XXYYZZ

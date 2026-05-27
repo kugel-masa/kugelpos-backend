@@ -167,73 +167,44 @@ class TestItemMasterWebRepositoryErrors:
 
 
 class TestPaymentMasterWebRepository:
-    """Tests for PaymentMasterWebRepository."""
+    """PaymentMasterWebRepository — fetch and error mapping.
 
-    def _make_repo(self, payment_docs=None):
+    Caching behaviour is owned by AbstractMasterDataRepository and tested in
+    test_abstract_master_data_repository.py.
+    """
+
+    def _make_repo(self):
         terminal = _make_terminal_info()
         return PaymentMasterWebRepository(
             tenant_id="T001",
             terminal_info=terminal,
-            payment_master_documents=payment_docs,
+            cache_backend=InMemoryCacheBackend(),
         )
 
     @pytest.mark.asyncio
-    async def test_cache_hit_returns_cached_payment(self):
-        payment = PaymentMasterDocument(payment_code="CASH", description="Cash")
-        repo = self._make_repo(payment_docs=[payment])
-
-        result = await repo.get_payment_by_code_async("CASH")
-
-        assert result.payment_code == "CASH"
-        assert result.description == "Cash"
-
-    @pytest.mark.asyncio
-    async def test_cache_miss_fetches_from_api(self):
+    async def test_fetch_returns_payment_from_api(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.return_value = {
             "data": {"payment_code": "CARD", "description": "Credit Card"}
         }
-
         with patch(
             "app.models.repositories.payment_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
             result = await repo.get_payment_by_code_async("CARD")
-
         assert result.payment_code == "CARD"
         assert result.description == "Credit Card"
-        mock_client.get.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_initializes_empty_list_when_none(self):
-        repo = self._make_repo(payment_docs=None)
-        assert repo.payment_master_documents is None
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = {
-            "data": {"payment_code": "P1", "description": "P1"}
-        }
-
-        with patch(
-            "app.models.repositories.payment_master_web_repository.get_pooled_client",
-            return_value=mock_client,
-        ):
-            await repo.get_payment_by_code_async("P1")
-
-        assert repo.payment_master_documents == []
+        endpoint = mock_client.get.call_args[0][0]
+        assert endpoint == "/tenants/T001/payments/CARD"
 
     @pytest.mark.asyncio
     async def test_404_raises_not_found_exception(self):
         repo = self._make_repo()
-
         error = Exception("Not found")
         error.status_code = 404
-
         mock_client = AsyncMock()
         mock_client.get.side_effect = error
-
         with patch(
             "app.models.repositories.payment_master_web_repository.get_pooled_client",
             return_value=mock_client,
@@ -244,22 +215,14 @@ class TestPaymentMasterWebRepository:
     @pytest.mark.asyncio
     async def test_other_error_raises_repository_exception(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.side_effect = Exception("Timeout")
-
         with patch(
             "app.models.repositories.payment_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
             with pytest.raises(RepositoryException):
                 await repo.get_payment_by_code_async("PAY-ERR")
-
-    def test_set_payment_master_documents(self):
-        repo = self._make_repo()
-        docs = [PaymentMasterDocument(payment_code="X")]
-        repo.set_payment_master_documents(docs)
-        assert repo.payment_master_documents == docs
 
 
 # =========================================================================
@@ -268,22 +231,21 @@ class TestPaymentMasterWebRepository:
 
 
 class TestSettingsMasterWebRepositoryGetAll:
-    """Tests for get_all_settings_async."""
+    """SettingsMaster — bulk fetch via _fetch_list."""
 
-    def _make_repo(self, settings_docs=None):
+    def _make_repo(self):
         terminal = _make_terminal_info()
         return SettingsMasterWebRepository(
             tenant_id="T001",
+            terminal_info=terminal,
+            cache_backend=InMemoryCacheBackend(),
             store_code="S001",
             terminal_no=1,
-            terminal_info=terminal,
-            settings_master_documents=settings_docs,
         )
 
     @pytest.mark.asyncio
     async def test_get_all_settings_success(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.return_value = {
             "success": True,
@@ -292,73 +254,55 @@ class TestSettingsMasterWebRepositoryGetAll:
                 {"name": "setting2", "default_value": "val2"},
             ],
         }
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
             result = await repo.get_all_settings_async()
-
         assert len(result) == 2
         assert result[0].name == "setting1"
-        assert result[1].name == "setting2"
-        assert repo.settings_master_documents == result
 
     @pytest.mark.asyncio
     async def test_get_all_settings_empty_on_no_data(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.return_value = {"success": True, "data": None}
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
-            result = await repo.get_all_settings_async()
-
-        assert result == []
+            assert await repo.get_all_settings_async() == []
 
     @pytest.mark.asyncio
     async def test_get_all_settings_empty_on_success_false(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.return_value = {"success": False, "data": []}
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
-            result = await repo.get_all_settings_async()
-
-        assert result == []
+            assert await repo.get_all_settings_async() == []
 
     @pytest.mark.asyncio
     async def test_get_all_settings_404_returns_empty(self):
         repo = self._make_repo()
-
         error = Exception("Not found")
         error.status_code = 404
-
         mock_client = AsyncMock()
         mock_client.get.side_effect = error
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
-            result = await repo.get_all_settings_async()
-
-        assert result == []
+            # _fetch_list converts 404 to [] (legacy behaviour).
+            assert await repo.get_all_settings_async() == []
 
     @pytest.mark.asyncio
     async def test_get_all_settings_other_error_raises(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.side_effect = Exception("Connection error")
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
@@ -368,108 +312,53 @@ class TestSettingsMasterWebRepositoryGetAll:
 
 
 class TestSettingsMasterWebRepositoryGetByName:
-    """Tests for get_settings_value_by_name_async."""
+    """SettingsMaster — per-name fetch via _fetch_one."""
 
-    def _make_repo(self, settings_docs=None):
+    def _make_repo(self):
         terminal = _make_terminal_info()
         return SettingsMasterWebRepository(
             tenant_id="T001",
+            terminal_info=terminal,
+            cache_backend=InMemoryCacheBackend(),
             store_code="S001",
             terminal_no=1,
-            terminal_info=terminal,
-            settings_master_documents=settings_docs,
         )
 
     @pytest.mark.asyncio
-    async def test_cache_hit_returns_cached_setting(self):
-        setting = SettingsMasterDocument(name="tax_mode", default_value="inclusive")
-        repo = self._make_repo(settings_docs=[setting])
-
-        result = await repo.get_settings_value_by_name_async("tax_mode")
-
-        assert result.name == "tax_mode"
-
-    @pytest.mark.asyncio
-    async def test_cache_miss_fetches_from_api(self):
+    async def test_returns_setting_with_value_mapped_to_default_value(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
-        mock_client.get.return_value = {
-            "data": {"value": "exclusive"}
-        }
-
+        mock_client.get.return_value = {"data": {"value": "exclusive"}}
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
             result = await repo.get_settings_value_by_name_async("tax_mode")
-
         assert result.name == "tax_mode"
-        # The repo maps the API's `data.value` into the doc's
-        # `default_value` field — the old behaviour of dropping the
-        # response value left every fetched setting effectively empty.
+        # The /settings/{name}/value endpoint returns data.value; the repo
+        # maps it into default_value to keep get_setting_value()'s fallback path
+        # working (SettingsMasterDocument has no `value` field).
         assert result.default_value == "exclusive"
-
-    @pytest.mark.asyncio
-    async def test_cache_miss_adds_to_cache(self):
-        repo = self._make_repo()
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = {
-            "data": {"value": "val1"}
-        }
-
-        with patch(
-            "app.models.repositories.settings_master_web_repository.get_pooled_client",
-            return_value=mock_client,
-        ):
-            await repo.get_settings_value_by_name_async("setting_x")
-
-        assert len(repo.settings_master_documents) == 1
-        assert repo.settings_master_documents[0].name == "setting_x"
-
-    @pytest.mark.asyncio
-    async def test_initializes_empty_list_when_none(self):
-        repo = self._make_repo(settings_docs=None)
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = {
-            "data": {"value": "v"}
-        }
-
-        with patch(
-            "app.models.repositories.settings_master_web_repository.get_pooled_client",
-            return_value=mock_client,
-        ):
-            await repo.get_settings_value_by_name_async("s")
-
-        assert isinstance(repo.settings_master_documents, list)
 
     @pytest.mark.asyncio
     async def test_404_returns_none(self):
         repo = self._make_repo()
-
         error = Exception("Not found")
         error.status_code = 404
-
         mock_client = AsyncMock()
         mock_client.get.side_effect = error
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
         ):
-            result = await repo.get_settings_value_by_name_async("missing")
-
-        assert result is None
+            # Legacy contract: per-name 404 surfaces as None, not an exception.
+            assert await repo.get_settings_value_by_name_async("missing") is None
 
     @pytest.mark.asyncio
     async def test_other_error_raises_repository_exception(self):
         repo = self._make_repo()
-
         mock_client = AsyncMock()
         mock_client.get.side_effect = Exception("Server error")
-
         with patch(
             "app.models.repositories.settings_master_web_repository.get_pooled_client",
             return_value=mock_client,
@@ -477,11 +366,19 @@ class TestSettingsMasterWebRepositoryGetByName:
             with pytest.raises(RepositoryException):
                 await repo.get_settings_value_by_name_async("err_setting")
 
-    def test_set_settings_master_documents(self):
-        repo = self._make_repo()
-        docs = [SettingsMasterDocument(name="s1")]
-        repo.set_settings_master_documents(docs)
-        assert repo.settings_master_documents == docs
+    def test_is_store_scoped_property_reflects_store_code(self):
+        # With store_code → per-store scoping; without → tenant-wide.
+        terminal = _make_terminal_info()
+        cache = InMemoryCacheBackend()
+        store_repo = SettingsMasterWebRepository(
+            tenant_id="T001", terminal_info=terminal, cache_backend=cache,
+            store_code="S001", terminal_no=1,
+        )
+        tenant_repo = SettingsMasterWebRepository(
+            tenant_id="T001", terminal_info=terminal, cache_backend=cache,
+        )
+        assert store_repo.is_store_scoped is True
+        assert tenant_repo.is_store_scoped is False
 
 
 # =========================================================================
@@ -497,6 +394,7 @@ class TestPromotionMasterWebRepository:
         return PromotionMasterWebRepository(
             tenant_id="T001",
             terminal_info=terminal,
+            cache_backend=InMemoryCacheBackend(),
         )
 
     @pytest.mark.asyncio

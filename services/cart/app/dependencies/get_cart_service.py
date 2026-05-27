@@ -141,12 +141,17 @@ async def __get_cart_service_async(
         terminal_info=terminal_info,
         cache_backend=cache_backend,
     )
-    payment_master_repo = PaymentMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
+    payment_master_repo = PaymentMasterWebRepository(
+        tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
+    )
     settings_master_repo = SettingsMasterWebRepository(
         tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
         store_code=terminal_info.store_code,
         terminal_no=terminal_info.terminal_no,
-        terminal_info=terminal_info,
     )
     store_info_repo = StoreInfoWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
 
@@ -171,4 +176,5 @@ async def __get_cart_service_async(
         payment_master_repo=payment_master_repo,
         tran_service=tran_service,
         cart_id=cart_id,
+        master_cache_backend=cache_backend,
     )
