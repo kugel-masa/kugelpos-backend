@@ -162,3 +162,9 @@ Format: XXYYZZ
 - Service settings in `/config/settings_*.py`
 - Dapr components in `/dapr/components/`
 - Dapr HTTP port: Default 3500 (configurable via `DAPR_HTTP_PORT`)
+
+## Active Technologies
+- Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ) (072-master-data-cache)
+
+## Recent Changes
+- 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ)

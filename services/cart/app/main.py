@@ -36,8 +36,26 @@ from app.cron.republish_undelivery_message import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await startup_event()
-    yield
-    await close_event()
+    # Build the master-data cache backend once and keep it on app.state so the
+    # DI layer can share a single DaprClientHelper across all requests.
+    from kugel_common.utils.cache.dapr_state_cache_backend import (
+        DaprStateCacheBackend,
+    )
+    from app.config.settings_cart import cart_settings
+
+    app.state.master_cache_backend = DaprStateCacheBackend(
+        store_name=cart_settings.MASTER_DATA_CACHE_STATE_STORE
+    )
+    logger.info(
+        "master-data cache backend initialized: store=%s",
+        cart_settings.MASTER_DATA_CACHE_STATE_STORE,
+    )
+    try:
+        yield
+    finally:
+        if getattr(app.state, "master_cache_backend", None) is not None:
+            await app.state.master_cache_backend.close()
+        await close_event()
 
 
 app = FastAPI(lifespan=lifespan, docs_url="/docs", redoc_url="/redoc")

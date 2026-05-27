@@ -1,0 +1,18 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: masterstore
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis:6379
+    - name: redisPassword
+      value: ""
+    - name: actorStateStore
+      value: "false"
+    - name: ttlInSeconds
+      value: "300"
+    - name: databaseIndex
+      value: "3"
