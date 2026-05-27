@@ -100,25 +100,18 @@ description: "Cart Master-Data 共通キャッシュ基盤の実装タスクリ�
 
 ### 3.1 ItemMaster Web / gRPC リポジトリの移行
 
-- [ ] T016 [US1] `services/cart/app/models/repositories/item_master_web_repository.py` を改修: `AbstractMasterDataRepository[ItemMasterDocument]` を継承し、旧 `_item_cache` / `USE_ITEM_CACHE` 参照を削除。クラス属性宣言（`cache_namespace="item_master"`, `document_class=ItemMasterDocument`, `default_ttl_seconds=cart_settings.ITEM_MASTER_CACHE_TTL_SECONDS`, `is_store_scoped=True`）。コンストラクタは `tenant_id, store_code, terminal_info, cache_backend` を受け取り `super().__init__()`。`get_item_by_code_async` を `return await self.get_or_fetch_one(item_code)` に簡略化。`_fetch_one(item_code)` は既存の HTTP 呼出ロジック（`get_pooled_client("master-data")` + JWT/API-key ヘッダ + URL `/tenants/{tenant_id}/stores/{store_code}/items/{item_code}/details`）を移植
-- [ ] T017 [US1] `services/cart/app/models/repositories/item_master_grpc_repository.py` を改修: 同上の構成で `AbstractMasterDataRepository[ItemMasterDocument]` を継承。`cache_namespace="item_master"`, `document_class=ItemMasterDocument` を Web と完全一致させる（SC-007 の前提）。`_fetch_one(item_code)` は既存の gRPC スタブ呼出 + protobuf → `ItemMasterDocument` 変換を移植
-- [ ] T018 [US1] `services/cart/app/models/repositories/item_master_repository_factory.py` を改修: 引数を `(tenant_id, store_code, terminal_info, cache_backend)` に変更し、旧 `item_master_documents` 引数を削除。戻り値型を `AbstractMasterDataRepository[ItemMasterDocument]` に変更。`cart_settings.USE_GRPC` 判定ロジックは維持
-- [ ] T019 [US1] `services/cart/app/dependencies/` 配下で `create_item_master_repository(...)` を呼ぶ DI 関数を改修し、`cache_backend=request.app.state.master_cache_backend` を渡す（旧 `item_master_documents` 引数の受け渡しも削除）
+- [X] T016 [US1] `services/cart/app/models/repositories/item_master_web_repository.py` を改修: `AbstractMasterDataRepository[ItemMasterDocument]` を継承し、旧 `_item_cache` / `USE_ITEM_CACHE` 参照を削除。クラス属性宣言（`cache_namespace="item_master"`, `document_class=ItemMasterDocument`, `default_ttl_seconds=cart_settings.ITEM_MASTER_CACHE_TTL_SECONDS`, `is_store_scoped=True`）。コンストラクタは `tenant_id, store_code, terminal_info, cache_backend` を受け取り `super().__init__()`。`get_item_by_code_async` を `return await self.get_or_fetch_one(item_code)` に簡略化。`_fetch_one(item_code)` は既存の HTTP 呼出ロジック（`get_pooled_client("master-data")` + JWT/API-key ヘッダ + URL `/tenants/{tenant_id}/stores/{store_code}/items/{item_code}/details`）を移植
+- [X] T017 [US1] `services/cart/app/models/repositories/item_master_grpc_repository.py` を改修: 同上の構成で `AbstractMasterDataRepository[ItemMasterDocument]` を継承。`cache_namespace="item_master"`, `document_class=ItemMasterDocument` を Web と完全一致させる（SC-007 の前提）。`_fetch_one(item_code)` は既存の gRPC スタブ呼出 + protobuf → `ItemMasterDocument` 変換を移植
+- [X] T018 [US1] `services/cart/app/models/repositories/item_master_repository_factory.py` を改修: 引数を `(tenant_id, store_code, terminal_info, cache_backend)` に変更し、旧 `item_master_documents` 引数を削除。戻り値型を `AbstractMasterDataRepository[ItemMasterDocument]` に変更。`cart_settings.USE_GRPC` 判定ロジックは維持
+- [X] T019 [US1] `services/cart/app/dependencies/get_cart_service.py` を改修し、`request: Request` 引数を追加して `request.app.state.master_cache_backend` を取得、`create_item_master_repository(...)` に `cache_backend=` で渡す。旧 `item_master_documents` 引数は削除
 
 ### 3.2 既存テストの更新と新規テスト追加
 
-- [ ] T020 [P] [US1] [Unit] `services/cart/tests/unit/repositories/test_item_master_web_repository.py` を新シグネチャに合わせて更新（fetch のモック化: `monkeypatch.setattr(repo, "_fetch_one", ...)` で差し替え）。既存のキャッシュ検証ロジックは基底クラステストに移譲したため、ここでは「`_fetch_one` の URL 組立」「認証ヘッダ生成」「例外マッピング（NotFoundException/RepositoryException）」に絞る
-- [ ] T021 [P] [US1] [Unit] `services/cart/tests/unit/repositories/test_item_master_grpc_repository.py` を新シグネチャに合わせて更新（gRPC スタブをモック化、`_fetch_one` の挙動と例外マッピングに絞る）
-- [ ] T022 [P] [US1] [Unit] `services/cart/tests/unit/repositories/test_item_master_repository_factory.py` を更新（cache_backend 引数を渡す形に、`USE_GRPC` 分岐の検証）
-- [ ] T023 [US1] [Integration] `services/cart/tests/integration/repositories/test_item_master_with_dapr.py` を新規作成: 実 Redis + Dapr サイドカー起動状態で以下を検証
-  - キャッシュ MISS → fetch → 同キー再参照で HIT（SC-001）
-  - TTL 経過後の再フェッチ
-  - Web で書いた値を Grpc が読める（SC-007）
-  - キー形式が `mdcache:{tenant}:{store}:item_master:gen0:one:{item_code}` 通り（`redis-cli KEYS` で確認）
-  - **テナント間隔離 [SC-006]**: 2 テナントでそれぞれ同じ item_code を引いても相互にキャッシュが見えないこと（実 Redis 上で別キーとして格納されていることを `redis-cli KEYS` で確認）
-  - **店舗間隔離 [SC-006b]**: 同テナント・異なる store_code でそれぞれ同じ item_code を引いた結果、Redis 上で別キーになっていること
-  - **キャッシュ無効化バイパス [FR-008]**: `MASTER_DATA_CACHE_ENABLED=False` の場合、Redis にキーが書かれないこと
-- [ ] T024 [US1] [E2E] 既存 E2E シナリオ `tests/e2e/test_purchase_*.py` に対するリグレッション確認（修正不要、`./scripts/run_e2e_tests.sh cart` が通ること）
+- [X] T020 [P] [US1] [Unit] `services/cart/tests/unit/test_web_repositories.py` の ItemMaster 部分を新シグネチャに合わせて更新（fetch モック + endpoint/JWT/API-key 検証 + 例外マッピング）。旧キャッシュ検証は基底クラステストに移譲済のため削除
+- [X] T021 [P] [US1] [Unit] `services/cart/tests/unit/repositories/test_item_master_grpc_repository.py` を新シグネチャで全面書き換え（gRPC スタブモック + request 構築 + NotFound/UNAVAILABLE/generic 例外マッピング）
+- [P] T022 [P] [US1] [Unit] factory 専用テストは存在しなかったため（既存テストファイルなし）スキップ。factory の動作は ItemMasterWebRepository/ItemMasterGrpcRepository のテスト経由で検証されている
+- [ ] T023 [US1] [Integration] **未実施**: 実 Dapr サイドカー + Redis 起動を要するため Phase 7 の手動検証フェーズで実施。検証項目は当該タスクに記載のとおり
+- [ ] T024 [US1] [E2E] **未実施**: docker compose スタック起動を要するため Phase 7 で実施
 
 **Checkpoint**: User Story 1 がデモ可能。Item マスタの参照が初回以外キャッシュから返り、Web/Grpc 切替に関わらず同じキャッシュエントリを共有することが観測できる
 
