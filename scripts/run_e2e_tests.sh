@@ -48,8 +48,10 @@ if [ ! -f ".env.test" ]; then
     fi
 fi
 
-# Order matters for e2e: account → terminal → master-data → others
-ORDERED_SERVICES=("account" "terminal" "master-data" "journal" "stock" "report" "cart")
+# Order matters for e2e. master-data must precede terminal: terminal sign-in
+# authenticates against staff (e.g. S001) that master-data's setup creates, and
+# cart depends on both a signed-in terminal and master-data items.
+ORDERED_SERVICES=("account" "master-data" "terminal" "journal" "stock" "report" "cart")
 if [ $# -gt 0 ]; then
     SERVICES=("$@")
 else
