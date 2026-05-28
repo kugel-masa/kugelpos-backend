@@ -45,7 +45,6 @@ services:
       - DB_NAME_PREFIX=db_cart
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
-      - USE_TERMINAL_CACHE=True
       # gRPC client settings (default: disabled)
       - USE_GRPC=${USE_GRPC:-false}
       - GRPC_TIMEOUT=${GRPC_TIMEOUT:-5.0}
