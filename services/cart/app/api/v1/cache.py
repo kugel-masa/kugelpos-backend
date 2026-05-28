@@ -2,7 +2,7 @@
 Cache management endpoints for cart service.
 """
 
-from fastapi import APIRouter, status, Depends, Request
+from fastapi import APIRouter, status, Depends, Request, HTTPException
 from logging import getLogger
 from typing import Optional
 
@@ -124,6 +124,15 @@ async def invalidate_master_data_cache(
     Returns:
         Confirmation including the new generation value
     """
+    # Cache invalidation forces subsequent reads to miss and re-fetch from
+    # master-data; restrict it to privileged callers to avoid a regular
+    # terminal triggering a cache stampede against the master-data service.
+    if not (current_user.get("is_superuser") or current_user.get("is_service_account")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Master-data cache invalidation requires a superuser or service account",
+        )
+
     tenant_id = current_user.get("tenant_id")
     username = current_user.get("username")
 

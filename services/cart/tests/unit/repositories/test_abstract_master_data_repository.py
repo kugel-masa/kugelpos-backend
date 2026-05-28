@@ -222,6 +222,39 @@ class TestTenantScopedKeyPlaceholder:
 
 
 @pytest.mark.asyncio
+class TestGenerationMemoization:
+    async def test_generation_read_once_per_instance(self, cache, monkeypatch):
+        """The generation counter is fetched from the backend at most once per
+        store segment per instance; subsequent lookups reuse the memo."""
+        gen_reads = 0
+        original_get = cache.get
+
+        async def counting_get(key):
+            nonlocal gen_reads
+            if key.endswith(":generation"):
+                gen_reads += 1
+            return await original_get(key)
+
+        monkeypatch.setattr(cache, "get", counting_get)
+
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+        await repo.get_or_fetch_one("A")
+        await repo.get_or_fetch_one("B")
+        await repo.get_or_fetch_one("A")
+        # Despite three lookups, the generation key is read from the backend once.
+        assert gen_reads == 1
+
+    async def test_bump_updates_memo_so_same_instance_sees_new_generation(self, cache):
+        """invalidate_all() on an instance must make that instance's own
+        subsequent lookups use the new generation (memo kept consistent)."""
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+        await repo.get_or_fetch_one("A")           # generation 0, cached
+        await repo.invalidate_all()                # bump to 1, memo updated
+        await repo.get_or_fetch_one("A")           # must MISS under generation 1
+        assert repo.fetch_calls == 2
+
+
+@pytest.mark.asyncio
 class TestInvalidation:
     async def test_invalidate_single_key_only(self, cache):
         repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)

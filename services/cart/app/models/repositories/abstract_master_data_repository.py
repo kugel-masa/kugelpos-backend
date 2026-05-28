@@ -81,6 +81,13 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         self.terminal_info = terminal_info
         self.cache_backend = cache_backend
         self.store_code = store_code
+        # Per-instance (i.e. per-request) memo of the generation counter, keyed
+        # by store segment. Repositories are constructed per request, so the
+        # generation is effectively stable for the instance's lifetime; caching
+        # it avoids a second Redis round-trip on every lookup. A concurrent
+        # invalidate_all() from another worker mid-request is not observed until
+        # the next request, which is within the spec's staleness tolerance.
+        self._generation_memo: dict[str, int] = {}
 
     # ===================================================================== #
     # Public API
@@ -222,9 +229,13 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         return f"{_KEY_PREFIX}:{tenant_id}:{store_segment}:{namespace}:generation"
 
     async def _get_generation(self, store_code: Optional[str]) -> int:
+        memo_key = store_code if store_code else _TENANT_SCOPE_PLACEHOLDER
+        if memo_key in self._generation_memo:
+            return self._generation_memo[memo_key]
         gen_key = self._build_generation_key(store_code)
         raw = await self.cache_backend.get(gen_key)
         if raw is None:
+            self._generation_memo[memo_key] = 0
             return 0
         # Counters are stored as {"_counter": N} by the backend's increment().
         # Be defensive in case a legacy bare value is encountered.
@@ -233,17 +244,25 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         else:
             value = raw
         try:
-            return int(value)
+            resolved = int(value)
         except (TypeError, ValueError):
             logger.warning(
                 "master cache generation non-integer: namespace=%s",
                 self.cache_namespace,
             )
-            return 0
+            resolved = 0
+        self._generation_memo[memo_key] = resolved
+        return resolved
 
     async def _bump_generation(self, store_code: Optional[str]) -> Optional[int]:
         gen_key = self._build_generation_key(store_code)
-        return await self.cache_backend.increment(gen_key)
+        new_value = await self.cache_backend.increment(gen_key)
+        if new_value is not None:
+            # Keep this instance's memo consistent with the bump it just made,
+            # so a subsequent lookup on the same instance uses the new generation.
+            memo_key = store_code if store_code else _TENANT_SCOPE_PLACEHOLDER
+            self._generation_memo[memo_key] = new_value
+        return new_value
 
     async def _get_or_fetch(
         self,
