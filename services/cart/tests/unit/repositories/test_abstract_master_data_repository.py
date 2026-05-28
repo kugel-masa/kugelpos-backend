@@ -13,7 +13,6 @@ from kugel_common.exceptions.repository_exceptions import NotFoundException
 from kugel_common.models.documents.base_document_model import BaseDocumentModel
 from kugel_common.utils.cache.in_memory_cache_backend import InMemoryCacheBackend
 
-from app.config.settings_cart import cart_settings
 from app.models.repositories.abstract_master_data_repository import (
     AbstractMasterDataRepository,
 )
@@ -317,15 +316,12 @@ class TestTenantAndStoreIsolation:
 
 @pytest.mark.asyncio
 class TestGlobalSwitch:
-    async def test_disabled_cache_always_calls_source(self, cache, monkeypatch):
-        """FR-008: MASTER_DATA_CACHE_ENABLED=False bypasses cache entirely."""
-        monkeypatch.setattr(cart_settings, "MASTER_DATA_CACHE_ENABLED", False)
-        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
+    async def test_disabled_cache_always_calls_source(self):
+        """FR-008: a None backend (caching disabled) bypasses cache entirely."""
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=None)
         for _ in range(3):
             await repo.get_or_fetch_one("X")
         assert repo.fetch_calls == 3
-        # Nothing was written to the backend store.
-        assert len(cache._store) == 0
 
 
 @pytest.mark.asyncio
@@ -362,34 +358,14 @@ class TestInvalidationSafety:
             for r in caplog.records
         )
 
-    async def test_invalidate_is_noop_when_cache_disabled(self, cache, monkeypatch):
-        """FR-008: with the global switch off, invalidate must not touch the backend."""
-        monkeypatch.setattr(cart_settings, "MASTER_DATA_CACHE_ENABLED", False)
-        delete_calls = 0
+    async def test_invalidate_is_noop_when_cache_disabled(self):
+        """FR-008: with caching disabled (None backend), invalidate is a no-op."""
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=None)
+        await repo.invalidate("A")  # MUST NOT raise (no backend to touch)
 
-        async def counting_delete(_key):
-            nonlocal delete_calls
-            delete_calls += 1
-            return True
-        monkeypatch.setattr(cache, "delete", counting_delete)
-
-        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
-        await repo.invalidate("A")
-        assert delete_calls == 0
-
-    async def test_invalidate_all_is_noop_when_cache_disabled(self, cache, monkeypatch):
-        monkeypatch.setattr(cart_settings, "MASTER_DATA_CACHE_ENABLED", False)
-        increment_calls = 0
-
-        async def counting_increment(_key):
-            nonlocal increment_calls
-            increment_calls += 1
-            return 1
-        monkeypatch.setattr(cache, "increment", counting_increment)
-
-        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=cache)
-        await repo.invalidate_all()
-        assert increment_calls == 0
+    async def test_invalidate_all_is_noop_when_cache_disabled(self):
+        repo = FakeOneRepo(tenant_id="T1", store_code="S1", cache_backend=None)
+        await repo.invalidate_all()  # MUST NOT raise (no backend to touch)
 
 
 @pytest.mark.asyncio

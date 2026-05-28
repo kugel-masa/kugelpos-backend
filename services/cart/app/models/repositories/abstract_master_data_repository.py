@@ -49,8 +49,6 @@ from kugel_common.models.documents.base_document_model import BaseDocumentModel
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
 
-from app.config.settings_cart import cart_settings
-
 logger = logging.getLogger(__name__)
 
 TDoc = TypeVar("TDoc", bound=BaseDocumentModel)
@@ -74,9 +72,13 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         self,
         tenant_id: str,
         terminal_info: TerminalInfoDocument,
-        cache_backend: AbstractCacheBackend,
+        cache_backend: Optional[AbstractCacheBackend],
         store_code: Optional[str] = None,
     ) -> None:
+        # cache_backend is None when caching is globally disabled; in that case
+        # every lookup bypasses the cache and goes straight to the source. This
+        # keeps the base class free of any app-specific config import — the
+        # enable/disable decision is made where the backend is constructed.
         self.tenant_id = tenant_id
         self.terminal_info = terminal_info
         self.cache_backend = cache_backend
@@ -136,8 +138,8 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         store_code_override: Optional[str] = None,
         entry_kind: str = _ENTRY_ONE,
     ) -> None:
-        """Remove a single cache entry. Safe under backend failure."""
-        if not cart_settings.MASTER_DATA_CACHE_ENABLED:
+        """Remove a single cache entry. Safe under backend failure / disabled cache."""
+        if self.cache_backend is None:
             return
         effective_store = self._resolve_store_code(store_code_override)
         generation = await self._get_generation(effective_store)
@@ -154,7 +156,7 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         Invalidate every cache entry in this (tenant, store, namespace) scope
         by atomically bumping the generation counter.
         """
-        if not cart_settings.MASTER_DATA_CACHE_ENABLED:
+        if self.cache_backend is None:
             return
         effective_store = self._resolve_store_code(store_code_override=None)
         new_gen = await self._bump_generation(effective_store)
@@ -274,8 +276,8 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         fetcher: Optional[Callable[[], Awaitable[Any]]],
         list_mode: bool,
     ) -> Any:
-        # Global cache disable: bypass entirely and call the source.
-        if not cart_settings.MASTER_DATA_CACHE_ENABLED:
+        # No backend (caching disabled): bypass entirely and call the source.
+        if self.cache_backend is None:
             return await self._invoke_fetch(logical_key, fetcher, list_mode)
 
         effective_store = self._resolve_store_code(store_code_override)
