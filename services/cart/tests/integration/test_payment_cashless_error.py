@@ -6,13 +6,12 @@ from fastapi import status
 
 
 @pytest.mark.asyncio
-async def test_cashless_payment_with_detailed_receipt_info(http_client):
+async def test_cashless_payment_with_detailed_receipt_info(http_client, api_key):
     """Test cashless payment with detailed receipt info that causes 500 error"""
     
     # Environment variables
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
-    api_key = "test-api-key-12345"  # matches the mock terminal apiKey (integration tier sets no API_KEY env)
     
     # Headers
     headers = {
@@ -165,13 +164,12 @@ async def test_cashless_payment_with_detailed_receipt_info(http_client):
 
 
 @pytest.mark.asyncio
-async def test_cashless_payment_simple(http_client):
+async def test_cashless_payment_simple(http_client, api_key):
     """Test cashless payment with minimal detail to isolate the issue"""
     
     # Environment variables
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
-    api_key = "test-api-key-12345"  # matches the mock terminal apiKey (integration tier sets no API_KEY env)
     
     # Headers
     headers = {
@@ -239,13 +237,12 @@ async def test_cashless_payment_simple(http_client):
 
 
 @pytest.mark.asyncio
-async def test_cashless_payment_with_wrong_case(http_client):
+async def test_cashless_payment_with_wrong_case(http_client, api_key):
     """Test cashless payment with camelCase field names (original request format)"""
     
     # Environment variables
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
-    api_key = "test-api-key-12345"  # matches the mock terminal apiKey (integration tier sets no API_KEY env)
     
     # Headers
     headers = {

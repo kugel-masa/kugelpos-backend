@@ -27,6 +27,11 @@ import respx
 from httpx import AsyncClient, ASGITransport
 
 
+# Single source of truth for the API key shared by the mock terminal payload
+# (the apiKey it returns) and the X-API-KEY header the tests send.
+TEST_API_KEY = "test-api-key-12345"
+
+
 # ---------------------------------------------------------------------------
 # Synthetic item / payment data used by the gRPC + HTTP mocks
 # ---------------------------------------------------------------------------
@@ -169,7 +174,7 @@ def terminal_jwt():
 
 @pytest.fixture
 def api_key():
-    return "test-api-key-12345"
+    return TEST_API_KEY
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +246,7 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
                 "initialAmount": 50000.0,
                 "physicalAmount": None,
                 "staff": {"staffId": "S001", "staffName": "Staff1", "staffPin": "1234"},
-                "apiKey": "test-api-key-12345",
+                "apiKey": TEST_API_KEY,
             },
         }
         respx_mock.get(
