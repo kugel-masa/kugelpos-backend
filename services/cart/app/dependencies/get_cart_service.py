@@ -7,11 +7,12 @@ This module provides dependency injection helpers for creating and configuring
 cart service instances with all necessary repositories and services.
 """
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Request
 from logging import getLogger
 
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
 from app.dependencies.terminal_cache_dependency import get_terminal_info_with_jwt_or_cache
 from app.services.cart_service import CartService
 from app.services.tran_service import TranService
@@ -21,7 +22,13 @@ from app.config.settings import settings
 logger = getLogger(__name__)
 
 
+def _get_master_cache_backend(request: Request) -> AbstractCacheBackend:
+    """Retrieve the singleton master-data cache backend bound at app startup."""
+    return request.app.state.master_cache_backend
+
+
 async def get_cart_service_async(
+    request: Request,
     terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_cache),
 ) -> CartService:
     """
@@ -29,15 +36,21 @@ async def get_cart_service_async(
     Creates and returns a configured cart service instance for API endpoints.
 
     Args:
+        request: FastAPI request (used to access the master-data cache backend)
         terminal_info: Terminal information obtained from API key authentication
 
     Returns:
         Configured CartService instance
     """
-    return await __get_cart_service_async(terminal_info=terminal_info, cart_id=None)
+    return await __get_cart_service_async(
+        terminal_info=terminal_info,
+        cart_id=None,
+        cache_backend=_get_master_cache_backend(request),
+    )
 
 
 async def get_cart_service_with_cart_id_async(
+    request: Request,
     terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_cache),
     cart_id: str = Path(...),
 ) -> CartService:
@@ -46,16 +59,25 @@ async def get_cart_service_with_cart_id_async(
     Creates and returns a configured cart service instance with the specified cart ID.
 
     Args:
+        request: FastAPI request (used to access the master-data cache backend)
         terminal_info: Terminal information obtained from API key authentication
         cart_id: Cart identifier passed in the URL path
 
     Returns:
         Configured CartService instance with the specified cart ID
     """
-    return await __get_cart_service_async(terminal_info=terminal_info, cart_id=cart_id)
+    return await __get_cart_service_async(
+        terminal_info=terminal_info,
+        cart_id=cart_id,
+        cache_backend=_get_master_cache_backend(request),
+    )
 
 
-async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id: str = None) -> CartService:
+async def __get_cart_service_async(
+    terminal_info: TerminalInfoDocument,
+    cart_id: str = None,
+    cache_backend: AbstractCacheBackend = None,
+) -> CartService:
     """
     Internal helper function to create a properly configured cart service.
     Initializes all necessary repositories and services.
@@ -117,13 +139,19 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         tenant_id=tenant_id,
         store_code=terminal_info.store_code,
         terminal_info=terminal_info,
+        cache_backend=cache_backend,
     )
-    payment_master_repo = PaymentMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
+    payment_master_repo = PaymentMasterWebRepository(
+        tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
+    )
     settings_master_repo = SettingsMasterWebRepository(
         tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
         store_code=terminal_info.store_code,
         terminal_no=terminal_info.terminal_no,
-        terminal_info=terminal_info,
     )
     store_info_repo = StoreInfoWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
 
@@ -148,4 +176,5 @@ async def __get_cart_service_async(terminal_info: TerminalInfoDocument, cart_id:
         payment_master_repo=payment_master_repo,
         tran_service=tran_service,
         cart_id=cart_id,
+        master_cache_backend=cache_backend,
     )

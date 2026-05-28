@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from fastapi import APIRouter, status, Depends, Query, Path, HTTPException
+from fastapi import APIRouter, status, Depends, Query, Path, HTTPException, Request
 from logging import getLogger
 import inspect
 
@@ -46,6 +46,7 @@ from app.dependencies.terminal_cache_dependency import _terminal_cache
 
 
 async def get_tran_service_for_pubsub_notification(
+    request: Request,
     tenant_id: str = Path(...),
     store_code: str = Path(...),
     terminal_no: int = Path(...),
@@ -124,13 +125,19 @@ async def get_tran_service_for_pubsub_notification(
     await tranlog_repo.initialize()
     tranlog_delivery_status_repo = TranlogDeliveryStatusRepository(db=db_common, terminal_info=terminal_info)
     await tranlog_delivery_status_repo.initialize()
+    cache_backend = request.app.state.master_cache_backend
     settings_master_repo = SettingsMasterWebRepository(
         tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
         store_code=terminal_info.store_code,
         terminal_no=terminal_info.terminal_no,
-        terminal_info=terminal_info,
     )
-    payment_master_repo = PaymentMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
+    payment_master_repo = PaymentMasterWebRepository(
+        tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
+    )
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
     await transaction_status_repo.initialize()
 
@@ -148,6 +155,7 @@ async def get_tran_service_for_pubsub_notification(
 
 
 async def get_tran_service(
+    request: Request,
     terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_cache),
 ):
     """
@@ -174,13 +182,19 @@ async def get_tran_service(
         db=db_common, terminal_info=terminal_info  # use common db
     )
     await tranlog_delivery_status_repo.initialize()
+    cache_backend = request.app.state.master_cache_backend
     settings_master_repo = SettingsMasterWebRepository(
         tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
         store_code=terminal_info.store_code,
         terminal_no=terminal_info.terminal_no,
-        terminal_info=terminal_info,
     )
-    payment_master_repo = PaymentMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
+    payment_master_repo = PaymentMasterWebRepository(
+        tenant_id=tenant_id,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
+    )
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
     await transaction_status_repo.initialize()
 

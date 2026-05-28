@@ -5,25 +5,25 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """
 Item Master Repository Factory
 
 Provides runtime selection between HTTP and gRPC implementations.
+Both implementations share the same cache namespace and document class
+so cache entries are interchangeable across the two transports.
 """
-
-from typing import Union
-from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
-from app.config.settings_cart import cart_settings
-from app.models.repositories.item_master_web_repository import ItemMasterWebRepository
-from app.models.repositories.item_master_grpc_repository import ItemMasterGrpcRepository
-from app.models.documents.item_master_document import ItemMasterDocument
 import logging
+
+from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
+
+from app.config.settings_cart import cart_settings
+from app.models.documents.item_master_document import ItemMasterDocument
+from app.models.repositories.abstract_master_data_repository import (
+    AbstractMasterDataRepository,
+)
+from app.models.repositories.item_master_grpc_repository import ItemMasterGrpcRepository
+from app.models.repositories.item_master_web_repository import ItemMasterWebRepository
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +32,12 @@ def create_item_master_repository(
     tenant_id: str,
     store_code: str,
     terminal_info: TerminalInfoDocument,
-    item_master_documents: list[ItemMasterDocument] = None,
-) -> Union[ItemMasterWebRepository, ItemMasterGrpcRepository]:
-    """
-    Create item master repository based on configuration
+    cache_backend: AbstractCacheBackend,
+) -> AbstractMasterDataRepository[ItemMasterDocument]:
+    """Return the configured item master repository (HTTP or gRPC).
 
-    Returns:
-        ItemMasterWebRepository or ItemMasterGrpcRepository depending on USE_GRPC setting
+    The selection is controlled by cart_settings.USE_GRPC; the returned
+    instance is interchangeable from the caller's perspective.
     """
     if cart_settings.USE_GRPC:
         logger.info("Using gRPC client for master-data communication")
@@ -46,13 +45,12 @@ def create_item_master_repository(
             tenant_id=tenant_id,
             store_code=store_code,
             terminal_info=terminal_info,
-            item_master_documents=item_master_documents,
+            cache_backend=cache_backend,
         )
-    else:
-        logger.info("Using HTTP client for master-data communication")
-        return ItemMasterWebRepository(
-            tenant_id=tenant_id,
-            store_code=store_code,
-            terminal_info=terminal_info,
-            item_master_documents=item_master_documents,
-        )
+    logger.info("Using HTTP client for master-data communication")
+    return ItemMasterWebRepository(
+        tenant_id=tenant_id,
+        store_code=store_code,
+        terminal_info=terminal_info,
+        cache_backend=cache_backend,
+    )

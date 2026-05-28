@@ -89,6 +89,7 @@ class CartService(ICartService):
         store_info_repo: StoreInfoWebRepository,
         tran_service: TranService,
         cart_id: str = None,
+        master_cache_backend=None,
     ) -> None:
         """
         Initialize the CartService with necessary repositories and configurations.
@@ -121,10 +122,12 @@ class CartService(ICartService):
         self.state_manager = CartStateManager()
         self.strategy_manager = CartStrategyManager()
 
-        # Promotion master repository for fetching promotions at cart creation
+        # Promotion master repository for fetching promotions at cart creation.
+        # The shared cache backend is injected via the DI layer.
         self.promotion_master_repo = PromotionMasterWebRepository(
             tenant_id=self.terminal_info.tenant_id,
             terminal_info=self.terminal_info,
+            cache_backend=master_cache_backend,
         )
 
         try:

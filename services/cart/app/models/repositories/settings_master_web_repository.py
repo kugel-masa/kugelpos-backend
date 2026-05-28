@@ -1,171 +1,148 @@
-# Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from logging import getLogger
+# Copyright 2025 masa@kugel
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+"""Settings master repository on the shared cache base.
 
+Scoping is dynamic: one instance can represent either tenant-level settings
+(store_code=None at construction) or store-level settings (store_code given),
+so is_store_scoped is computed as a property rather than a ClassVar. See R-002.
+"""
+from logging import getLogger
+from typing import Optional
+
+from kugel_common.exceptions import NotFoundException, RepositoryException
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
 from kugel_common.utils.http_client_helper import get_pooled_client
-from kugel_common.exceptions import RepositoryException
+
+from app.config.settings_cart import cart_settings
 from app.models.documents.settings_master_document import SettingsMasterDocument
-from app.config.settings import settings
+from app.models.repositories.abstract_master_data_repository import (
+    AbstractMasterDataRepository,
+)
 
 logger = getLogger(__name__)
 
 
-class SettingsMasterWebRepository:
-    """
-    Repository class for accessing settings master data through web API.
-
-    This class provides methods to retrieve system settings from the master data service
-    and caches retrieved settings to avoid redundant API calls.
-    """
+class SettingsMasterWebRepository(AbstractMasterDataRepository[SettingsMasterDocument]):
+    cache_namespace = "settings_master"
+    document_class = SettingsMasterDocument
+    default_ttl_seconds = cart_settings.SETTINGS_MASTER_CACHE_TTL_SECONDS
 
     def __init__(
         self,
         tenant_id: str,
-        store_code: str = None,
-        terminal_no: int = None,
-        terminal_info: TerminalInfoDocument = None,
-        settings_master_documents: list[SettingsMasterDocument] = None,
+        terminal_info: TerminalInfoDocument,
+        cache_backend: AbstractCacheBackend,
+        store_code: Optional[str] = None,
+        terminal_no: Optional[int] = None,
     ):
-        """
-        Initialize the repository with tenant, store, and terminal information.
-
-        Args:
-            tenant_id: The tenant identifier
-            store_code: Optional store code filter
-            terminal_no: Optional terminal number filter
-            terminal_info: Terminal information document
-            settings_master_documents: Optional list of pre-loaded settings documents for caching
-        """
-        self.tenant_id = tenant_id
-        self.store_code = store_code
+        super().__init__(
+            tenant_id=tenant_id,
+            terminal_info=terminal_info,
+            cache_backend=cache_backend,
+            store_code=store_code,
+        )
         self.terminal_no = terminal_no
-        self.terminal_info = terminal_info
-        self.settings_master_documents = settings_master_documents
-        self.base_url = settings.BASE_URL_MASTER_DATA
+        # Per-instance snapshot of settings observed during this cart's lifetime;
+        # cart_service seeds this on cart resume so previously-referenced
+        # settings resolve without going through master-data again.
+        self._session_docs_by_name: dict[str, SettingsMasterDocument] = {}
 
-    def set_settings_master_documents(self, settings_master_documents: list):
-        """
-        Set the cached settings master documents.
+    def set_settings_master_documents(self, documents: list[SettingsMasterDocument] | None) -> None:
+        """Replace the session snapshot. Called by cart_service on cart resume."""
+        self._session_docs_by_name = {d.name: d for d in (documents or [])}
 
-        Args:
-            settings_master_documents: List of settings master documents to cache
-        """
-        self.settings_master_documents = settings_master_documents
+    @property
+    def settings_master_documents(self) -> list[SettingsMasterDocument]:
+        return list(self._session_docs_by_name.values())
 
-    # get all settings
+    @property
+    def is_store_scoped(self) -> bool:  # type: ignore[override]
+        # Dynamic scoping: tenant-wide when store_code is absent, store-wide otherwise.
+        return self.store_code is not None
+
     async def get_all_settings_async(self) -> list[SettingsMasterDocument]:
-        """
-        Retrieve all settings for the specified tenant, store, and terminal.
+        return await self.get_or_fetch_list("__all__")
 
-        Fetches all settings from the master data service that match the tenant, store,
-        and terminal criteria provided during initialization.
-
-        Returns:
-            list[SettingsMasterDocument]: A list of all matching settings
-
-        Raises:
-            RepositoryException: If there's an error communicating with the API
-        """
-        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
-        client = await get_pooled_client("master-data")
-        jwt_token = getattr(self.terminal_info, "jwt_token", None)
-        if jwt_token:
-            headers = {"Authorization": f"Bearer {jwt_token}"}
-            params = {
-                "store_code": self.store_code,
-                "terminal_no": self.terminal_no,
-            }
-        else:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {
-                "store_code": self.store_code,
-                "terminal_no": self.terminal_no,
-                "terminal_id": self.terminal_info.terminal_id,
-            }
-        endpoint = f"/tenants/{self.tenant_id}/settings"
-
+    async def get_settings_value_by_name_async(self, name: str) -> Optional[SettingsMasterDocument]:
+        if name in self._session_docs_by_name:
+            return self._session_docs_by_name[name]
         try:
-            response_data = await client.get(endpoint, params=params, headers=headers)
-        except Exception as e:
-            if hasattr(e, "status_code") and e.status_code == 404:
-                message = f"settings not found: {e.status_code}"
-                logger.info(message)
-                response_data = {"success": False, "data": None}
-            else:
-                message = f"Request error: {e}"
-                raise RepositoryException(message, logger)
+            doc = await self.get_or_fetch_one(name)
+        except NotFoundException:
+            # Existing API contract: 404 is signalled as None rather than as
+            # an exception (different from how other repos handle missing keys).
+            return None
+        self._session_docs_by_name[name] = doc
+        return doc
 
-        logger.debug(f"response: {response_data}")
+    # ------------------------------------------------------------------ private
 
-        if response_data.get("success") and response_data.get("data"):
-            self.settings_master_documents = [
-                SettingsMasterDocument(**setting) for setting in response_data.get("data")
-            ]
-        else:
-            self.settings_master_documents = []
-        return self.settings_master_documents
-
-    # get settings value by name
-    async def get_settings_value_by_name_async(self, name: str) -> SettingsMasterDocument:
-        """
-        Get a specific setting by its name from cache or from the web API.
-
-        First checks if the setting exists in the cache, and if not, fetches it from the API.
-        The fetched setting is then added to the cache for future use.
-
-        Args:
-            name: The name of the setting to retrieve
-
-        Returns:
-            SettingsMasterDocument: The requested setting document, or None if not found
-
-        Raises:
-            RepositoryException: If there's an error communicating with the API
-        """
-        if self.settings_master_documents is None:
-            self.settings_master_documents = []
-
-        # first check name exist in the list of settings_master_documents
-        setting_doc = next((setting for setting in self.settings_master_documents if setting.name == name), None)
-        if setting_doc is not None:
-            return setting_doc
-
-        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
+    async def _fetch_one(self, name: str) -> SettingsMasterDocument:
         client = await get_pooled_client("master-data")
-        jwt_token = getattr(self.terminal_info, "jwt_token", None)
-        if jwt_token:
-            headers = {"Authorization": f"Bearer {jwt_token}"}
-            params = {
-                "store_code": self.store_code,
-                "terminal_no": self.terminal_no,
-            }
-        else:
-            headers = {"X-API-KEY": self.terminal_info.api_key}
-            params = {
-                "store_code": self.store_code,
-                "terminal_no": self.terminal_no,
-                "terminal_id": self.terminal_info.terminal_id,
-            }
+        headers, params = self._build_auth(extra_params=True)
         endpoint = f"/tenants/{self.tenant_id}/settings/{name}/value"
 
         try:
             response_data = await client.get(endpoint, params=params, headers=headers)
         except Exception as e:
             if hasattr(e, "status_code") and e.status_code == 404:
-                message = f"setting not found for name {name}: {e.status_code}"
-                return None
-                # raise NotFoundException(message, name, logger)
-            else:
-                message = f"Request error for name {name}: {e}"
-                raise RepositoryException(message, logger)
+                raise NotFoundException(
+                    message=f"setting not found for name {name}",
+                    collection_name="settings web",
+                    find_key=name,
+                    logger=logger,
+                    original_exception=e,
+                )
+            raise RepositoryException(
+                message=f"Request error for name {name}",
+                collection_name="settings web",
+                logger=logger,
+                original_exception=e,
+            )
 
-        logger.debug(f"response: {response_data}")
-        # The /settings/{name}/value endpoint returns {"data": {"value": ...}}.
-        # SettingsMasterDocument has no `value` field — only `default_value` and
-        # `values`. Without mapping the response into `default_value`, the doc
-        # would always come back with default_value=None, breaking
-        # get_setting_value's fallback path.
+        # /settings/{name}/value returns {"data": {"value": ...}}; SettingsMasterDocument
+        # has no "value" field, so we map the response into default_value to
+        # preserve the existing get_setting_value() fallback behaviour.
         api_value = (response_data.get("data") or {}).get("value")
-        return_doc = SettingsMasterDocument(name=name, default_value=api_value)
-        self.settings_master_documents.append(return_doc)
-        return return_doc
+        return SettingsMasterDocument(name=name, default_value=api_value)
+
+    async def _fetch_list(self, _logical_key: str) -> list[SettingsMasterDocument]:
+        client = await get_pooled_client("master-data")
+        headers, params = self._build_auth(extra_params=True)
+        endpoint = f"/tenants/{self.tenant_id}/settings"
+
+        try:
+            response_data = await client.get(endpoint, params=params, headers=headers)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                # Legacy behaviour: 404 yields an empty list, not an exception.
+                return []
+            raise RepositoryException(
+                message="Request error fetching all settings",
+                collection_name="settings web",
+                logger=logger,
+                original_exception=e,
+            )
+
+        if response_data.get("success") and response_data.get("data"):
+            return [SettingsMasterDocument(**setting) for setting in response_data["data"]]
+        return []
+
+    def _build_auth(self, *, extra_params: bool) -> tuple[dict, dict]:
+        jwt_token = getattr(self.terminal_info, "jwt_token", None)
+        params = {
+            "store_code": self.store_code,
+            "terminal_no": self.terminal_no,
+        }
+        if jwt_token:
+            headers = {"Authorization": f"Bearer {jwt_token}"}
+        else:
+            headers = {"X-API-KEY": self.terminal_info.api_key}
+            params["terminal_id"] = self.terminal_info.terminal_id
+        return headers, params

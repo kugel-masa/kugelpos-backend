@@ -21,9 +21,25 @@ class CartSettings(BaseSettings):
     # Use terminal cache to avoid frequent database queries
     USE_TERMINAL_CACHE: bool = True
 
-    # Item master cache settings
-    ITEM_CACHE_TTL_SECONDS: int = Field(default=300, description="Item cache TTL in seconds (default: 5 minutes)")
-    USE_ITEM_CACHE: bool = Field(default=True, description="Use item cache to avoid redundant API/gRPC calls")
+    # Master-data cache (shared via Dapr state store, backed by Redis).
+    # Read by AbstractMasterDataRepository and its subclasses.
+    MASTER_DATA_CACHE_ENABLED: bool = Field(
+        default=True,
+        description="Global switch for the master-data cache layer; False bypasses cache and always fetches.",
+    )
+    MASTER_DATA_CACHE_STATE_STORE: str = Field(
+        default="masterstore",
+        description="Dapr state-store component name for master-data cache.",
+    )
+    MASTER_DATA_CACHE_TTL_SECONDS: int = Field(
+        default=300,
+        description="Fallback TTL when a namespace-specific TTL is not set.",
+    )
+    ITEM_MASTER_CACHE_TTL_SECONDS: int = Field(default=300, description="Item master cache TTL in seconds.")
+    PAYMENT_MASTER_CACHE_TTL_SECONDS: int = Field(default=600, description="Payment master cache TTL in seconds.")
+    PROMOTION_MASTER_CACHE_TTL_SECONDS: int = Field(default=60, description="Promotion master cache TTL in seconds.")
+    SETTINGS_MASTER_CACHE_TTL_SECONDS: int = Field(default=600, description="Settings master cache TTL in seconds.")
+    TAX_MASTER_CACHE_TTL_SECONDS: int = Field(default=3600, description="Tax master cache TTL in seconds.")
 
     # gRPC settings
     USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
