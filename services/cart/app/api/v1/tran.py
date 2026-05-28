@@ -41,9 +41,6 @@ router = APIRouter()
 # get an instance of the logger
 logger = getLogger(__name__)
 
-# get the terminal cache instance
-from app.dependencies.terminal_cache_dependency import _terminal_cache
-
 
 async def get_tran_service_for_pubsub_notification(
     request: Request,
@@ -71,49 +68,32 @@ async def get_tran_service_for_pubsub_notification(
     logger.debug(f"DEBUG: get_tran_service_for_pubsub_notification called for terminal_id: {terminal_id}")
     logger.debug(f"DEBUG: auth_info: {auth_info}")
 
-    # Try to get terminal info from cache first
-    terminal_info = _terminal_cache.get(terminal_id)
-    logger.debug(f"DEBUG: terminal_info from cache: {terminal_info}")
+    # Fetch terminal info from the terminal service (no caching; see #127).
+    from kugel_common.utils.http_client_helper import get_pooled_client
+    from kugel_common.utils.service_auth import create_service_token
 
-    if terminal_info is None:
-        # Get terminal info from terminal service using JWT token
-        from kugel_common.utils.http_client_helper import get_pooled_client
-        from kugel_common.utils.service_auth import create_service_token
-        from datetime import datetime, timedelta, timezone
-        import jwt
+    # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
+    client = await get_pooled_client(service_name="terminal")
+    # Use the JWT token from the auth_info if available
+    headers = {}
+    if auth_info.get("auth_type") == "jwt":
+        # Create a service token for inter-service communication
+        service_token = create_service_token(tenant_id=tenant_id, service_name="cart-service")
+        headers["Authorization"] = f"Bearer {service_token}"
 
-        logger.debug("DEBUG: Terminal not in cache, calling terminal service")
+    try:
+        response_data = await client.get(endpoint=f"/terminals/{terminal_id}", headers=headers)
+        logger.debug(f"Terminal service response: {response_data}")
 
-        # Use pooled client for connection reuse (eliminates 50-100ms overhead per request)
-        client = await get_pooled_client(service_name="terminal")
-        # Use the JWT token from the auth_info if available
-        headers = {}
-        if auth_info.get("auth_type") == "jwt":
-            # Create a service token for inter-service communication
-            service_token = create_service_token(tenant_id=tenant_id, service_name="cart-service")
-            headers["Authorization"] = f"Bearer {service_token}"
-            logger.debug("DEBUG: Created JWT token for terminal service")
+        # Transform the response to TerminalInfoDocument
+        from kugel_common.security import transform_terminal_info
 
-        try:
-            logger.debug(f"DEBUG: Calling terminal service with headers: {headers}")
-            logger.debug(f"DEBUG: Terminal service endpoint: /terminals/{terminal_id}")
+        terminal_info = transform_terminal_info(response_data["data"])
 
-            response_data = await client.get(endpoint=f"/terminals/{terminal_id}", headers=headers)
-
-            logger.debug(f"Terminal service response: {response_data}")
-
-            # Transform the response to TerminalInfoDocument
-            from kugel_common.security import transform_terminal_info
-
-            terminal_info = transform_terminal_info(response_data["data"])
-
-            # Cache the terminal info
-            _terminal_cache.set(terminal_id, terminal_info)
-
-        except Exception as e:
-            logger.error(f"Failed to get terminal info from terminal service: {e}")
-            logger.error(f"Error type: {type(e)}, Error details: {str(e)}")
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Terminal not found: {terminal_id}")
+    except Exception as e:
+        logger.error(f"Failed to get terminal info from terminal service: {e}")
+        logger.error(f"Error type: {type(e)}, Error details: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Terminal not found: {terminal_id}")
 
     # Create TranService
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")

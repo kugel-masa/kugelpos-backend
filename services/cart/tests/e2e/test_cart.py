@@ -141,11 +141,7 @@ async def test_cart_operations(http_client):
     # Create tenant
     tenant_id = await create_tenant(http_client, token)
 
-    # Clear terminal cache
-    header = {"Authorization": f"Bearer {token}"}
-    await http_client.delete("/api/v1/cache/terminal", headers=header)
-
-    # Fetch terminal info
+    # Fetch terminal info (terminal_info is no longer cached; see #127)
     terminal_info = await get_terminal_info(tenant_id)
     store_code = terminal_info["storeCode"]
     terminal_no = terminal_info["terminalNo"]

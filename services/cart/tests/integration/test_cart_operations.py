@@ -25,8 +25,6 @@ don't reach:
   POST   /tenants/{tid}/stores/{sc}/terminals/{tn}/transactions/{tno}/void
   POST   /tenants/{tid}/stores/{sc}/terminals/{tn}/transactions/{tno}/return
   POST   /tenants/{tid}/stores/{sc}/terminals/{tn}/transactions/{tno}/delivery-status
-  GET    /cache/terminal/status
-  DELETE /cache/terminal
 
 Cart drives the in-process FastAPI app via ASGITransport. All outbound
 HTTP / gRPC is mocked by the conftest's `mock_outbound` and
@@ -361,23 +359,3 @@ async def test_delivery_status_requires_pubsub_auth(http_client, admin_header):
         headers=admin_header,
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED, response.text
-
-
-@pytest.mark.asyncio
-async def test_cache_terminal_status(http_client, admin_header):
-    """GET /cache/terminal/status returns terminal cache stats."""
-    response = await http_client.get(
-        "/api/v1/cache/terminal/status",
-        headers=admin_header,
-    )
-    assert response.status_code == status.HTTP_200_OK, response.text
-
-
-@pytest.mark.asyncio
-async def test_cache_terminal_clear(http_client, admin_header):
-    """DELETE /cache/terminal clears the terminal cache."""
-    response = await http_client.delete(
-        "/api/v1/cache/terminal",
-        headers=admin_header,
-    )
-    assert response.status_code == status.HTTP_200_OK, response.text

@@ -1,9 +1,9 @@
 # Copyright 2026 masa@kugel
-"""E2E coverage for cart cache management endpoints not exercised by
-the cart state-machine tests:
+"""E2E coverage for the cart master-data cache management endpoint:
 
-  GET    /cache/terminal/status
-  DELETE /cache/terminal
+  DELETE /cache/master-data
+
+(The terminal_info cache and its endpoints were removed in #127.)
 """
 import os
 
@@ -31,26 +31,18 @@ async def admin_token():
 
 
 @pytest.mark.asyncio
-async def test_cache_terminal_status(http_client, admin_token):
-    """GET /cache/terminal/status returns cache stats for the tenant."""
+async def test_invalidate_master_data_cache(http_client, admin_token):
+    """DELETE /cache/master-data bumps the namespace generation for the tenant."""
     h = {"Authorization": f"Bearer {admin_token}"}
-    r = await http_client.get("/api/v1/cache/terminal/status", headers=h)
+    r = await http_client.delete(
+        "/api/v1/cache/master-data",
+        params={"namespace": "promotion_master", "store_code": "5678"},
+        headers=h,
+    )
     assert r.status_code == status.HTTP_200_OK, r.text
     body = r.json()
     assert body["success"] is True
-    # data dict keys are passed through as-is (snake_case), not aliased.
     data = body["data"]
-    assert data["cache_type"] == "terminal_info"
-    assert "tenant_cache_size" in data
-    assert "total_cache_size" in data
-
-
-@pytest.mark.asyncio
-async def test_cache_terminal_clear(http_client, admin_token):
-    """DELETE /cache/terminal clears the cache for the authenticated tenant."""
-    h = {"Authorization": f"Bearer {admin_token}"}
-    r = await http_client.delete("/api/v1/cache/terminal", headers=h)
-    assert r.status_code == status.HTTP_200_OK, r.text
-    body = r.json()
-    assert body["success"] is True
-    assert "items_cleared" in body["data"]
+    assert data["cache_type"] == "master_data"
+    assert data["namespace"] == "promotion_master"
+    assert data["new_generation"] >= 1
