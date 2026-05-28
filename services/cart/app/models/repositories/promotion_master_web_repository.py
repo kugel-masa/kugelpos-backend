@@ -37,7 +37,7 @@ class PromotionMasterWebRepository(AbstractMasterDataRepository[PromotionMasterD
         self,
         tenant_id: str,
         terminal_info: TerminalInfoDocument,
-        cache_backend: AbstractCacheBackend,
+        cache_backend: AbstractCacheBackend | None,
     ):
         # store_code lives on the call (and on terminal_info as a fallback for
         # the business "use my terminal's store when omitted" convention);
