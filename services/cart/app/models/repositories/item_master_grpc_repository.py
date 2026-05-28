@@ -53,9 +53,23 @@ class ItemMasterGrpcRepository(AbstractMasterDataRepository[ItemMasterDocument])
             cache_backend=cache_backend,
             store_code=store_code,
         )
+        # Per-instance snapshot for cart_service's cart.masters.items persistence;
+        # see the Web variant for the rationale.
+        self._session_docs_by_code: dict[str, ItemMasterDocument] = {}
 
     async def get_item_by_code_async(self, item_code: str) -> ItemMasterDocument:
-        return await self.get_or_fetch_one(item_code)
+        if item_code in self._session_docs_by_code:
+            return self._session_docs_by_code[item_code]
+        doc = await self.get_or_fetch_one(item_code)
+        self._session_docs_by_code[item_code] = doc
+        return doc
+
+    def set_item_master_documents(self, documents: list[ItemMasterDocument] | None) -> None:
+        self._session_docs_by_code = {d.item_code: d for d in (documents or [])}
+
+    @property
+    def item_master_documents(self) -> list[ItemMasterDocument]:
+        return list(self._session_docs_by_code.values())
 
     async def _fetch_one(self, item_code: str) -> ItemMasterDocument:
         try:

@@ -6,6 +6,23 @@ from fastapi import status
 from httpx import AsyncClient
 
 
+async def invalidate_promotion_cache(token: str, tenant_id: str, store_code: str):
+    """Invalidate the cart service's promotion_master cache for this store.
+
+    The cart service caches active promotions (PROMOTION_MASTER_CACHE_TTL_SECONDS).
+    After creating/deleting promotions in master-data, e2e tests must bump the
+    cache generation so the change is visible before the TTL expires.
+    """
+    base_url = os.environ.get("BASE_URL_CART")
+    header = {"Authorization": f"Bearer {token}"}
+    async with AsyncClient(base_url=base_url) as client:
+        await client.delete(
+            "/api/v1/cache/master-data",
+            params={"namespace": "promotion_master", "store_code": store_code},
+            headers=header,
+        )
+
+
 async def cleanup_test_promotions(tenant_id: str, promotion_codes: list[str]):
     """
     Physically delete test promotions from database to ensure clean test state.
@@ -107,6 +124,10 @@ async def create_test_promotion(token: str, tenant_id: str, store_code: str):
     # Ignore if promotion already exists (409 conflict)
     if response.status_code not in [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST]:
         print(f"Create promotion response: {response.status_code} {response.text}")
+
+    # Bust the cart-side promotion cache so the newly created promotion is
+    # visible immediately rather than after the namespace TTL expires.
+    await invalidate_promotion_cache(token, tenant_id, store_code)
 
     return "TEST_CART_PROMO"
 
@@ -337,6 +358,8 @@ async def test_category_promo_all_stores(http_client):
             f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
         )
 
+    await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
+
     terminal_id = os.environ.get("TERMINAL_ID")
 
     try:
@@ -447,6 +470,8 @@ async def test_category_promo_best_discount_selected(http_client):
         await client.post(f"/tenants/{tenant_id}/promotions", json=promo1_data, headers=auth_header)
         await client.post(f"/tenants/{tenant_id}/promotions", json=promo2_data, headers=auth_header)
 
+    await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
+
     terminal_id = os.environ.get("TERMINAL_ID")
 
     try:
@@ -545,6 +570,8 @@ async def test_category_promo_not_applied_to_non_matching_category(http_client):
         )
     assert response.status_code == status.HTTP_201_CREATED
 
+    await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
+
     terminal_id = os.environ.get("TERMINAL_ID")
 
     try:
@@ -628,6 +655,8 @@ async def test_category_promo_inactive_not_applied(http_client):
         )
     assert response.status_code == status.HTTP_201_CREATED
 
+    await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
+
     terminal_id = os.environ.get("TERMINAL_ID")
 
     try:
@@ -708,6 +737,8 @@ async def test_category_promo_expired_not_applied(http_client):
             f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
         )
     assert response.status_code == status.HTTP_201_CREATED
+
+    await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
 
     terminal_id = os.environ.get("TERMINAL_ID")
 

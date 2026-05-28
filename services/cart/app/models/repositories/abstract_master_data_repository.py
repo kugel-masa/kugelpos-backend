@@ -206,11 +206,20 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         )
 
     def _build_generation_key(self, store_code: Optional[str]) -> str:
+        return self.build_generation_key(self.tenant_id, store_code, self.cache_namespace)
+
+    @staticmethod
+    def build_generation_key(
+        tenant_id: str, store_code: Optional[str], namespace: str
+    ) -> str:
+        """Build the per-(tenant, store, namespace) generation-counter key.
+
+        Exposed statically so operational tooling (e.g. the cache-invalidation
+        HTTP endpoint) can bump a namespace's generation without constructing a
+        full repository instance.
+        """
         store_segment = store_code if store_code else _TENANT_SCOPE_PLACEHOLDER
-        return (
-            f"{_KEY_PREFIX}:{self.tenant_id}:{store_segment}"
-            f":{self.cache_namespace}:generation"
-        )
+        return f"{_KEY_PREFIX}:{tenant_id}:{store_segment}:{namespace}:generation"
 
     async def _get_generation(self, store_code: Optional[str]) -> int:
         gen_key = self._build_generation_key(store_code)

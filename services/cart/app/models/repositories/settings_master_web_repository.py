@@ -48,6 +48,18 @@ class SettingsMasterWebRepository(AbstractMasterDataRepository[SettingsMasterDoc
             store_code=store_code,
         )
         self.terminal_no = terminal_no
+        # Per-instance snapshot of settings observed during this cart's lifetime;
+        # cart_service seeds this on cart resume so previously-referenced
+        # settings resolve without going through master-data again.
+        self._session_docs_by_name: dict[str, SettingsMasterDocument] = {}
+
+    def set_settings_master_documents(self, documents: list[SettingsMasterDocument] | None) -> None:
+        """Replace the session snapshot. Called by cart_service on cart resume."""
+        self._session_docs_by_name = {d.name: d for d in (documents or [])}
+
+    @property
+    def settings_master_documents(self) -> list[SettingsMasterDocument]:
+        return list(self._session_docs_by_name.values())
 
     @property
     def is_store_scoped(self) -> bool:  # type: ignore[override]
@@ -58,12 +70,16 @@ class SettingsMasterWebRepository(AbstractMasterDataRepository[SettingsMasterDoc
         return await self.get_or_fetch_list("__all__")
 
     async def get_settings_value_by_name_async(self, name: str) -> Optional[SettingsMasterDocument]:
+        if name in self._session_docs_by_name:
+            return self._session_docs_by_name[name]
         try:
-            return await self.get_or_fetch_one(name)
+            doc = await self.get_or_fetch_one(name)
         except NotFoundException:
             # Existing API contract: 404 is signalled as None rather than as
             # an exception (different from how other repos handle missing keys).
             return None
+        self._session_docs_by_name[name] = doc
+        return doc
 
     # ------------------------------------------------------------------ private
 

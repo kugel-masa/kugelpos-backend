@@ -49,10 +49,35 @@ class ItemMasterWebRepository(AbstractMasterDataRepository[ItemMasterDocument]):
             cache_backend=cache_backend,
             store_code=store_code,
         )
+        # Per-instance snapshot of items observed during this cart's lifetime,
+        # used by cart_service to persist cart.masters.items and to restore
+        # those docs on resume without re-fetching from master-data. This is
+        # a separate concern from the cross-request shared cache.
+        self._session_docs_by_code: dict[str, ItemMasterDocument] = {}
 
     async def get_item_by_code_async(self, item_code: str) -> ItemMasterDocument:
-        """Fetch a single item; transparently cached by the base class."""
-        return await self.get_or_fetch_one(item_code)
+        """Fetch a single item; transparently cached by the base class.
+
+        Session snapshot is checked first so a resumed cart's pre-loaded
+        items resolve without going through the shared cache (cart.masters.items
+        is the authoritative state for an in-flight cart).
+        """
+        if item_code in self._session_docs_by_code:
+            return self._session_docs_by_code[item_code]
+        doc = await self.get_or_fetch_one(item_code)
+        self._session_docs_by_code[item_code] = doc
+        return doc
+
+    def set_item_master_documents(self, documents: list[ItemMasterDocument] | None) -> None:
+        """Replace the session snapshot. Called by cart_service on cart resume
+        to seed the items the cart previously referenced."""
+        self._session_docs_by_code = {d.item_code: d for d in (documents or [])}
+
+    @property
+    def item_master_documents(self) -> list[ItemMasterDocument]:
+        """Return the docs observed during this cart's lifetime, for persistence
+        into cart.masters.items."""
+        return list(self._session_docs_by_code.values())
 
     async def _fetch_one(self, item_code: str) -> ItemMasterDocument:
         client = await get_pooled_client("master-data")
