@@ -372,6 +372,13 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
 async def http_client(_reset_db_client_per_test, mock_outbound):
     """In-process AsyncClient bound to the cart FastAPI app."""
     from app.main import app
+    from kugel_common.utils.cache.in_memory_cache_backend import InMemoryCacheBackend
+
+    # ASGITransport does not run the app lifespan, so app.state.master_cache_backend
+    # (normally created in main.py's lifespan) is absent. The DI layer reads it on
+    # every cart/tran request, so provide an in-process backend here. A fresh
+    # instance per test keeps the cache isolated between tests.
+    app.state.master_cache_backend = InMemoryCacheBackend()
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

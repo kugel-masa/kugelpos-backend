@@ -12,7 +12,7 @@ async def test_cashless_payment_with_detailed_receipt_info(http_client):
     # Environment variables
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
-    api_key = os.environ.get("API_KEY")
+    api_key = "test-api-key-12345"  # matches the mock terminal apiKey (integration tier sets no API_KEY env)
     
     # Headers
     headers = {
@@ -171,7 +171,7 @@ async def test_cashless_payment_simple(http_client):
     # Environment variables
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
-    api_key = os.environ.get("API_KEY")
+    api_key = "test-api-key-12345"  # matches the mock terminal apiKey (integration tier sets no API_KEY env)
     
     # Headers
     headers = {
@@ -245,7 +245,7 @@ async def test_cashless_payment_with_wrong_case(http_client):
     # Environment variables
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = os.environ.get("TERMINAL_ID")
-    api_key = os.environ.get("API_KEY")
+    api_key = "test-api-key-12345"  # matches the mock terminal apiKey (integration tier sets no API_KEY env)
     
     # Headers
     headers = {
