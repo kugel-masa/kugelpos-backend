@@ -22,7 +22,7 @@ from app.config.settings import settings
 logger = getLogger(__name__)
 
 
-def _get_master_cache_backend(request: Request) -> AbstractCacheBackend:
+def _get_master_cache_backend(request: Request) -> AbstractCacheBackend | None:
     """Retrieve the singleton master-data cache backend bound at app startup."""
     return request.app.state.master_cache_backend
 
@@ -76,7 +76,7 @@ async def get_cart_service_with_cart_id_async(
 async def __get_cart_service_async(
     terminal_info: TerminalInfoDocument,
     cart_id: str = None,
-    cache_backend: AbstractCacheBackend = None,
+    cache_backend: AbstractCacheBackend | None = None,
 ) -> CartService:
     """
     Internal helper function to create a properly configured cart service.
