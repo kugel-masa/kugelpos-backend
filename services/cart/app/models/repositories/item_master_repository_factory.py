@@ -32,7 +32,7 @@ def create_item_master_repository(
     tenant_id: str,
     store_code: str,
     terminal_info: TerminalInfoDocument,
-    cache_backend: AbstractCacheBackend,
+    cache_backend: AbstractCacheBackend | None,
 ) -> AbstractMasterDataRepository[ItemMasterDocument]:
     """Return the configured item master repository (HTTP or gRPC).
 

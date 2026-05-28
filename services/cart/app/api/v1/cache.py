@@ -60,6 +60,21 @@ async def invalidate_master_data_cache(
     username = current_user.get("username")
 
     backend = request.app.state.master_cache_backend
+    if backend is None:
+        # Caching is disabled — nothing to invalidate.
+        return ApiResponse(
+            success=True,
+            code=status.HTTP_200_OK,
+            message="Master-data cache is disabled; nothing to invalidate",
+            data={
+                "cache_type": "master_data",
+                "tenant_id": tenant_id,
+                "namespace": namespace,
+                "store_code": store_code,
+                "new_generation": None,
+            },
+        )
+
     gen_key = AbstractMasterDataRepository.build_generation_key(
         tenant_id, store_code, namespace
     )

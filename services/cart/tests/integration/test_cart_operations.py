@@ -359,3 +359,29 @@ async def test_delivery_status_requires_pubsub_auth(http_client, admin_header):
         headers=admin_header,
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED, response.text
+
+
+@pytest.mark.asyncio
+async def test_cart_flow_with_cache_disabled(http_client):
+    """FR-008 end-to-end: with the master-data cache disabled (backend None),
+    cart create + item add + subtotal still succeed via direct master-data
+    fetch through the real factory / repositories / DI. Guards the None path
+    that production takes when MASTER_DATA_CACHE_ENABLED=False (the abstract
+    base is unit-tested with None, but this exercises the concrete stack)."""
+    from app.main import app
+
+    # The http_client fixture set an InMemoryCacheBackend; simulate the
+    # disabled configuration (lifespan would set None). The next test's
+    # fixture re-sets a fresh backend, so this does not leak.
+    app.state.master_cache_backend = None
+
+    terminal_id = f"{os.environ.get('TENANT_ID')}-5678-9"
+    headers = _api_headers()
+    cart_id = await _create_cart(http_client, headers, terminal_id)
+    await _add_item(http_client, headers, terminal_id, cart_id)
+
+    response = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text

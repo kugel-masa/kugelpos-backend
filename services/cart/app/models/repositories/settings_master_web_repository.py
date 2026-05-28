@@ -37,7 +37,7 @@ class SettingsMasterWebRepository(AbstractMasterDataRepository[SettingsMasterDoc
         self,
         tenant_id: str,
         terminal_info: TerminalInfoDocument,
-        cache_backend: AbstractCacheBackend,
+        cache_backend: Optional[AbstractCacheBackend],
         store_code: Optional[str] = None,
         terminal_no: Optional[int] = None,
     ):

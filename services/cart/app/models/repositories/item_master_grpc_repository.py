@@ -45,7 +45,7 @@ class ItemMasterGrpcRepository(AbstractMasterDataRepository[ItemMasterDocument])
         tenant_id: str,
         store_code: str,
         terminal_info: TerminalInfoDocument,
-        cache_backend: AbstractCacheBackend,
+        cache_backend: AbstractCacheBackend | None,
     ):
         super().__init__(
             tenant_id=tenant_id,
