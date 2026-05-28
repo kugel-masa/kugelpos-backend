@@ -24,7 +24,7 @@ from kugel_common.models.documents.terminal_info_document import TerminalInfoDoc
 logger = getLogger(__name__)
 
 
-async def get_terminal_info_with_jwt_or_cache(
+async def get_terminal_info_with_jwt_or_apikey(
     terminal_id: Optional[str] = Query(None),
     api_key: Optional[str] = Security(api_key_header),
     token: Optional[str] = Depends(oauth2_scheme),
@@ -39,9 +39,6 @@ async def get_terminal_info_with_jwt_or_cache(
 
     The returned TerminalInfoDocument includes a jwt_token attribute when
     constructed from JWT, enabling downstream JWT forwarding to master-data.
-
-    Note: the historical "_or_cache" suffix is retained for import stability;
-    terminal info is no longer cached (see #127).
 
     Args:
         terminal_id: Optional terminal ID from query parameter (legacy flow)

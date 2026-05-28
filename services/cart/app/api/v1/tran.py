@@ -6,7 +6,7 @@ import inspect
 from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.security import verify_pubsub_notification_auth
-from app.dependencies.terminal_cache_dependency import get_terminal_info_with_jwt_or_cache
+from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
 from kugel_common.status_codes import StatusCodes
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 
@@ -136,7 +136,7 @@ async def get_tran_service_for_pubsub_notification(
 
 async def get_tran_service(
     request: Request,
-    terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_cache),
+    terminal_info: TerminalInfoDocument = Depends(get_terminal_info_with_jwt_or_apikey),
 ):
     """
     Dependency injection helper for transaction service.
