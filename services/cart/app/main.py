@@ -37,19 +37,26 @@ from app.cron.republish_undelivery_message import (
 async def lifespan(app: FastAPI):
     await startup_event()
     # Build the master-data cache backend once and keep it on app.state so the
-    # DI layer can share a single DaprClientHelper across all requests.
+    # DI layer can share a single DaprClientHelper across all requests. When
+    # caching is disabled, expose None so repositories bypass the cache (the
+    # enable/disable decision lives here, keeping the repository base class free
+    # of any app-specific config).
     from kugel_common.utils.cache.dapr_state_cache_backend import (
         DaprStateCacheBackend,
     )
     from app.config.settings_cart import cart_settings
 
-    app.state.master_cache_backend = DaprStateCacheBackend(
-        store_name=cart_settings.MASTER_DATA_CACHE_STATE_STORE
-    )
-    logger.info(
-        "master-data cache backend initialized: store=%s",
-        cart_settings.MASTER_DATA_CACHE_STATE_STORE,
-    )
+    if cart_settings.MASTER_DATA_CACHE_ENABLED:
+        app.state.master_cache_backend = DaprStateCacheBackend(
+            store_name=cart_settings.MASTER_DATA_CACHE_STATE_STORE
+        )
+        logger.info(
+            "master-data cache backend initialized: store=%s",
+            cart_settings.MASTER_DATA_CACHE_STATE_STORE,
+        )
+    else:
+        app.state.master_cache_backend = None
+        logger.info("master-data cache disabled (MASTER_DATA_CACHE_ENABLED=False)")
     try:
         yield
     finally:
