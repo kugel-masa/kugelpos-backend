@@ -27,6 +27,11 @@ import respx
 from httpx import AsyncClient, ASGITransport
 
 
+# Single source of truth for the API key shared by the mock terminal payload
+# (the apiKey it returns) and the X-API-KEY header the tests send.
+TEST_API_KEY = "test-api-key-12345"
+
+
 # ---------------------------------------------------------------------------
 # Synthetic item / payment data used by the gRPC + HTTP mocks
 # ---------------------------------------------------------------------------
@@ -169,7 +174,7 @@ def terminal_jwt():
 
 @pytest.fixture
 def api_key():
-    return "test-api-key-12345"
+    return TEST_API_KEY
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +246,7 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
                 "initialAmount": 50000.0,
                 "physicalAmount": None,
                 "staff": {"staffId": "S001", "staffName": "Staff1", "staffPin": "1234"},
-                "apiKey": "test-api-key-12345",
+                "apiKey": TEST_API_KEY,
             },
         }
         respx_mock.get(
@@ -372,6 +377,13 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
 async def http_client(_reset_db_client_per_test, mock_outbound):
     """In-process AsyncClient bound to the cart FastAPI app."""
     from app.main import app
+    from kugel_common.utils.cache.in_memory_cache_backend import InMemoryCacheBackend
+
+    # ASGITransport does not run the app lifespan, so app.state.master_cache_backend
+    # (normally created in main.py's lifespan) is absent. The DI layer reads it on
+    # every cart/tran request, so provide an in-process backend here. A fresh
+    # instance per test keeps the cache isolated between tests.
+    app.state.master_cache_backend = InMemoryCacheBackend()
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
