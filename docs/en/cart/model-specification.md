@@ -387,7 +387,5 @@ Event published during terminal open/close operations.
 | UNDELIVERED_CHECK_INTERVAL_IN_MINUTES | integer | 5 | Undelivered check interval (minutes) |
 | UNDELIVERED_CHECK_PERIOD_IN_HOURS | integer | 24 | Undelivered check period (hours) |
 | UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES | integer | 15 | Failure determination period (minutes) |
-| TERMINAL_CACHE_TTL_SECONDS | integer | 300 | Terminal cache TTL (seconds) |
-| USE_TERMINAL_CACHE | boolean | true | Terminal cache usage flag |
 | DEBUG | string | "false" | Debug mode |
 | DEBUG_PORT | integer | 5678 | Debug port |

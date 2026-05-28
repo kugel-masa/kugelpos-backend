@@ -16,11 +16,6 @@ class CartSettings(BaseSettings):
     # This port is used for debugging purposes
     DEBUG_PORT: int = 5678
 
-    # Terminal info cache TTL in seconds (default: 5 minutes)
-    TERMINAL_CACHE_TTL_SECONDS: int = 300
-    # Use terminal cache to avoid frequent database queries
-    USE_TERMINAL_CACHE: bool = True
-
     # Master-data cache (shared via Dapr state store, backed by Redis).
     # Read by AbstractMasterDataRepository and its subclasses.
     MASTER_DATA_CACHE_ENABLED: bool = Field(

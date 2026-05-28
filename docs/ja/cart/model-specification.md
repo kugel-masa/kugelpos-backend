@@ -396,7 +396,5 @@ pub/subメッセージ配信状況を追跡するドキュメント。
 | UNDELIVERED_CHECK_INTERVAL_IN_MINUTES | integer | 5 | 未配信チェック間隔（分） |
 | UNDELIVERED_CHECK_PERIOD_IN_HOURS | integer | 24 | 未配信チェック期間（時間） |
 | UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES | integer | 15 | 失敗判定期間（分） |
-| TERMINAL_CACHE_TTL_SECONDS | integer | 300 | ターミナルキャッシュTTL（秒） |
-| USE_TERMINAL_CACHE | boolean | true | ターミナルキャッシュ使用フラグ |
 | DEBUG | string | "false" | デバッグモード |
 | DEBUG_PORT | integer | 5678 | デバッグポート |
