@@ -436,16 +436,49 @@ class AbstractReceiptData(ABC):
 
 ```python
 class ReceiptData(BaseModel):
-    """Receipt data class (ReceiptData, not ReceiptDataModel)"""
-    
-    tenant_id: str
-    terminal_id: str
-    business_date: str
-    generate_date_time: str
-    tranlog_id: str
-    receipt_text: str
-    journal_text: str
+    """Result of a receipt strategy (holds the generated text only)."""
+
+    receipt_text: str   # device-agnostic print document, serialized as a JSON string
+    journal_text: str   # plain-text electronic journal
 ```
+
+**Note:** `receipt_text` carries the device-agnostic print document (the
+`print_document` schema) serialized with `json.dumps`. The field name and `str`
+type are unchanged; only the content format moved from XML to JSON (feature
+#139). `journal_text` remains plain text.
+
+### Print Document JSON Model (`print_document_model.py`)
+
+The structured receipt data uses an OPOS/printer-independent, semantic
+**JSON model** (the old `pydantic-xml` `PrintData`/`BaseXmlModel`/`Table` has
+been removed). `AbstractReceiptData.make_receipt_data()` builds this model and
+stores `json.dumps(...)` of it in `ReceiptData.receipt_text`.
+
+```python
+class PrintDocument(BaseModel):
+    """Root print document. to_dict() emits camelCase JSON."""
+    schema_version: str = "1.0"
+    metadata: Metadata           # documentType/tenantId/storeCode/terminalNo/
+                                 # transactionNo/receiptNo/businessDate/
+                                 # generatedAt/locale/charsPerLine
+    elements: list[Element]      # ordered print elements
+
+# Elements (discriminated by `type`), all inheriting PrintElement:
+#   text / columns(left/mid(startCol)/right) / ruledLine / feed / cut /
+#   barcode / qrcode / image / logo
+
+class PrintElement(BaseModel):
+    """Base for all elements. Carries the internal routing channel
+    (R/J/RJ, default RJ), excluded from the JSON output (exclude=True)."""
+    channel: Literal["R", "J", "RJ"] = Field("RJ", exclude=True)
+```
+
+**R/J/RJ channel (station)**: each element carries an internal `channel`;
+`make_receipt_data()` routes R/RJ elements into `receipt_text` and J/RJ into
+`journal_text`. The channel never appears in the JSON. The `line_split` /
+`line_center` / `line_left` / `line_right` / `line_boarder` helpers accept a
+`channel` argument (default `RJ`). See
+`specs/139-receipt-print-schema/contracts/print-document.schema.md`.
 
 ## 10. Additional Features
 
