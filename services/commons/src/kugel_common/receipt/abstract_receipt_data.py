@@ -29,20 +29,12 @@ from kugel_common.receipt.print_document_model import (
     RuledLineElement,
     TextElement,
 )
-from kugel_common.receipt.receipt_data_model import Constants as const
 from kugel_common.receipt.receipt_data_model import Line, Page
 from kugel_common.utils.text_helper import TextHelper
 
 logger = getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
-
-# Map the internal alignment constants to the print_document align vocabulary.
-_ALIGN_TO_DOC = {
-    const.ALIGN_CENTER: "center",
-    const.ALIGN_LEFT: "left",
-    const.ALIGN_RIGHT: "right",
-}
 
 
 class ReceiptData(BaseModel):
@@ -127,7 +119,9 @@ class AbstractReceiptData(ABC, Generic[T]):
             elif el_type == "columns":
                 text += self._render_columns_element(element, width)
             elif el_type == "ruledLine":
-                text += "".center(width, element.char or "-")
+                # str.center requires a single fill char; take the first char.
+                fill_char = (element.char or "-")[:1] or "-"
+                text += "".center(width, fill_char)
             else:
                 # feed/cut/barcode/qrcode/image/logo do not appear in the
                 # current production strategies; skip them in the plain-text
@@ -168,7 +162,12 @@ class AbstractReceiptData(ABC, Generic[T]):
             if column.slot == "right":
                 right_value = column.value
                 continue
-            start = 0 if column.slot == "left" else (column.start_col or cursor)
+            if column.slot == "left":
+                start = 0
+            elif column.start_col is not None:
+                start = column.start_col
+            else:
+                start = cursor
             if start > cursor:
                 line += TextHelper.space(start - cursor)
                 cursor = start
