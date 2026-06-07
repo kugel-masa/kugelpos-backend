@@ -1,0 +1,206 @@
+{
+  "schemaVersion": "1.0",
+  "metadata": {
+    "documentType": "receipt",
+    "tenantId": "tenant001",
+    "storeCode": "00123",
+    "terminalNo": 1,
+    "transactionNo": 12345,
+    "receiptNo": 100,
+    "businessDate": "2026-04-30",
+    "generatedAt": "2026-04-30T14:30:00+09:00",
+    "locale": "ja-JP",
+    "charsPerLine": 48
+  },
+  "elements": [
+    {
+      "type": "logo",
+      "logoId": "store-top-logo",
+      "align": "center"
+    },
+    {
+      "type": "text",
+      "value": "【 領 収 証 】",
+      "align": "center",
+      "style": {
+        "scaleWidth": 2,
+        "scaleHeight": 2
+      }
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "レジNo. 1"
+        },
+        {
+          "slot": "right",
+          "value": "責# S001"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "value": "2026年04月30日(木) 14:30",
+      "align": "left"
+    },
+    {
+      "type": "ruledLine",
+      "char": "-"
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "おにぎり(鮭)"
+        },
+        {
+          "slot": "right",
+          "value": "150外"
+        }
+      ]
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "お茶 500ml"
+        },
+        {
+          "slot": "mid",
+          "value": "@108 x1",
+          "startCol": 14
+        },
+        {
+          "slot": "right",
+          "value": "108外"
+        }
+      ]
+    },
+    {
+      "type": "ruledLine",
+      "char": "-"
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "小計"
+        },
+        {
+          "slot": "mid",
+          "value": "2点",
+          "startCol": 10
+        },
+        {
+          "slot": "right",
+          "value": "258"
+        }
+      ]
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "  消費税(外税8%)"
+        },
+        {
+          "slot": "right",
+          "value": "20"
+        }
+      ]
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "合計",
+          "style": {
+            "bold": true,
+            "scaleHeight": 2
+          }
+        },
+        {
+          "slot": "right",
+          "value": "\\278",
+          "style": {
+            "bold": true,
+            "scaleHeight": 2
+          }
+        }
+      ]
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "お預り"
+        },
+        {
+          "slot": "right",
+          "value": "\\300"
+        }
+      ]
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "slot": "left",
+          "value": "お釣り"
+        },
+        {
+          "slot": "right",
+          "value": "\\22"
+        }
+      ]
+    },
+    {
+      "type": "ruledLine",
+      "char": "-"
+    },
+    {
+      "type": "text",
+      "value": "レシートNo. 100",
+      "align": "left"
+    },
+    {
+      "type": "barcode",
+      "symbology": "code128",
+      "data": "0012320260430000100",
+      "height": 60,
+      "hri": "below",
+      "align": "center"
+    },
+    {
+      "type": "feed",
+      "lines": 1
+    },
+    {
+      "type": "text",
+      "value": "毎度ありがとうございます",
+      "align": "center"
+    },
+    {
+      "type": "qrcode",
+      "data": "https://survey.example.com/r/0012320260430000100",
+      "errorCorrection": "M",
+      "align": "center"
+    },
+    {
+      "type": "feed",
+      "lines": 2
+    },
+    {
+      "type": "cut",
+      "mode": "partial"
+    }
+  ]
+}

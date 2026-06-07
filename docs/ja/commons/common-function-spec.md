@@ -472,30 +472,42 @@ class ReceiptData(BaseModel):
     journal_text: str = ""   # 電子ジャーナル用テキスト
 ```
 
-**注:** `ReceiptData`は生成されたテキストのみを保持するシンプルな構造です。トランザクション情報（tenant_id, terminal_id等）は、レシート生成時に`AbstractReceiptData`の実装クラスが処理します。
+**注:** `ReceiptData`は生成されたテキストのみを保持するシンプルな構造です。`receipt_text`は **device-agnostic な印字データ（`print_document`スキーマ）を `json.dumps` した JSON 文字列**を保持します（旧来の XML 文字列から移行）。フィールド名・型（`str`）は不変で、中身のフォーマットのみ XML→JSON に変わりました。`journal_text`は従来どおりプレーンテキストの電子ジャーナルです（feature #139）。
 
-### レシート生成用XMLモデル
+### 印字データJSONモデル (`print_document_model.py`)
 
-レシートの構造化データには以下のPydanticXMLモデルを使用：
+レシートの構造化データには、OPOS・特定プリンタ機種に依存しない意味要素ベースの **JSON モデル**を使用します（旧 `pydantic-xml` の `PrintData`/`BaseXmlModel`/`Table` は撤去）。`AbstractReceiptData.make_receipt_data()` がこのモデルを構築し、`json.dumps` した文字列を `ReceiptData.receipt_text` に格納します。
 
 ```python
-class PrintData(BaseXmlModel):
-    """印刷データのルート要素"""
-    pages: list[Page]
+class PrintDocument(BaseModel):
+    """印字文書のルート。to_dict() で camelCase JSON 化"""
+    schema_version: str = "1.0"
+    metadata: Metadata           # documentType/tenantId/storeCode/terminalNo/
+                                 # transactionNo/receiptNo/businessDate/
+                                 # generatedAt/locale/charsPerLine
+    elements: list[Element]      # 順序付き印字要素列
 
-class Page(BaseXmlModel):
-    """ページ要素（複数行やテーブルを含む）"""
-    lines: list[Line | Table]
+# 要素（type で判別するユニオン）: いずれも PrintElement を継承
+#   text       … 単一テキスト行（value/align/style）
+#   columns    … 複数カラム行（left/mid(startCol)/right・カラム単位 style）
+#   ruledLine  … 区切り罫線（char）
+#   feed       … 行送り（lines）
+#   cut        … レシートカット（full/partial）
+#   barcode    … バーコード（symbology/data/height/hri/align）
+#   qrcode     … QRコード（data/errorCorrection/moduleSize/align）
+#   image      … 画像（source: base64/url）
+#   logo       … 事前登録ロゴ（logoId）
 
-class Line(BaseXmlModel):
-    """単一行要素"""
-    text: str
-    align: str = "left"
+class Style(BaseModel):
+    """文字修飾: bold/underline/reverse/scaleWidth/scaleHeight(倍角 1-8)/font"""
 
-class Table(BaseXmlModel):
-    """テーブル要素"""
-    rows: list[TableRow]
+class PrintElement(BaseModel):
+    """全要素の基底。内部ルーティング属性 channel(R/J/RJ, 既定 RJ) を持つ。
+    channel は JSON 出力からは除外(exclude=True)される内部属性。"""
+    channel: Literal["R", "J", "RJ"] = Field("RJ", exclude=True)
 ```
+
+**R/J/RJ チャネル（ステーション）**: 各要素は内部 `channel` を持ち、`make_receipt_data()` が振り分けます。R/RJ → `receipt_text`（レシート）、J/RJ → `journal_text`（電子ジャーナル）。`channel` は JSON 出力には現れません。`line_split`/`line_center`/`line_left`/`line_right`/`line_boarder` の各ヘルパに `channel` 引数（既定 `RJ`）で指定できます。詳細は `specs/139-receipt-print-schema/contracts/print-document.schema.md`。
 
 ## 10. 追加の機能
 

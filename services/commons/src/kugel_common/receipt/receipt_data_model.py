@@ -11,156 +11,45 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from pydantic_xml import BaseXmlModel, attr, element
-from typing import List, Optional
-from logging import getLogger
-import wcwidth
-from pydantic import Field
-from xml.sax.saxutils import escape
+"""
+Internal intermediate representation used while a receipt strategy builds its
+content. A strategy appends print elements to ``Page.lines`` via the
+``line_*`` helpers on ``AbstractReceiptData``; the base then renders the page
+into the device-agnostic ``print_document`` (JSON) and the plain-text
+``journal_text``.
 
-from kugel_common.utils.text_helper import TextHelper
+The XML representation (previously ``PrintData`` / pydantic-xml) has been
+removed; the canonical print-data format is now JSON (see
+``print_document_model``).
+"""
+from logging import getLogger
+from typing import List
+
+from pydantic import BaseModel, Field
+
+from kugel_common.receipt.print_document_model import Element
 
 logger = getLogger(__name__)
 
-# constants
+
 class Constants:
-    """
-    Constants class
-    
-    Defines constants used for receipt printing, including text display types,
-    alignment options, border settings, and frame types.
-    """
+    """Constants used while building receipt content (alignment, element kinds)."""
+
     TYPE_TEXT = "Text"
     TYPE_LINE = "Line"
-    TYPE_BYTE = "Byte"
 
     ALIGN_CENTER = "Center"
     ALIGN_LEFT = "Left"
     ALIGN_RIGHT = "Right"
     ALIGN_SPLIT = "Split"
 
-    BORADER_OFF = "0"
-    BORADER_ON = "1"
 
-    FRAME_BOARDER = "boarder"
-    FRAME_HSIDES = "hsides"
+# Backward-compatible alias: strategies type-annotate built elements as ``Line``.
+# Elements are now ``print_document`` elements (TextElement/ColumnsElement/...).
+Line = Element
 
-    DIMENSION_QR_CODE = "QR_CODE"
 
-# Line model
-class Line(BaseXmlModel, tag="Line"):
-    """
-    Line element model
+class Page(BaseModel):
+    """A page accumulates ordered print elements appended by a strategy."""
 
-    Represents a single line on a receipt.
-    Defines the type, alignment, and content of text lines.
-    """
-    type: str = attr()
-    align: Optional[str] = attr(default=None)
-    dimension: Optional[str] = attr(default=None)
-    description: Optional[str] = Field(default=None)
-    item1: Optional[str] = element(tag="Item1", default=None)
-    item2: Optional[str] = element(tag="Item2", default=None)
-
-    def to_xml(self, **kwargs):
-        """Custom XML serialization"""
-        # Build the XML string manually when description is present
-        if self.description is not None:
-            attrs = [f'type="{escape(self.type)}"']
-            if self.align:
-                attrs.append(f'align="{escape(self.align)}"')
-            if self.dimension:
-                attrs.append(f'dimension="{escape(self.dimension)}"')
-            attr_string = ' '.join(attrs)
-            # Escape the description content
-            return f'<Line {attr_string}>{escape(self.description)}</Line>'.encode('utf-8')
-        else:
-            # Use default serialization for other cases
-            kwargs['exclude_none'] = True
-            return super().to_xml(**kwargs)
-
-    def model_post_init(self, __context):
-        """Adjust item1 width after model initialization"""
-        # Store original item1 value
-        item1_original = self.item1
-        item2 = self.item2
-
-        # Adjust item1 if both item1 and item2 are present
-        if item1_original is not None and item2 is not None:
-            max_width = 32
-            item2_width = wcwidth.wcswidth(item2)
-            item1_max_width = max(0, max_width - item2_width - 1)
-            self.item1 = TextHelper.fixed_left(item1_original, item1_max_width, truncate=True)
-
-# TableRow model
-class TableRow(BaseXmlModel, tag="tr"):
-    """
-    Table row model
-    
-    Represents a single row in a table.
-    Contains multiple columns.
-    """
-    columns: List[str] = element(tag="td", default=[])
-
-# Table model
-class Table(BaseXmlModel, tag="Table"):
-    """
-    Table model
-    
-    Represents a table on a receipt.
-    Contains border, frame, alignment specifications, and multiple rows.
-    """
-    border: str = attr()
-    frame: str = attr()
-    align: Optional[str] = attr(default=None)
-    rows: List[TableRow] = element(default=[])
-
-# Page model
-class Page(BaseXmlModel, tag="Page"):
-    """
-    Page model
-    
-    Represents a single page of a receipt.
-    Contains multiple lines and tables.
-    """
-    lines: List[Line] = element(default=[])
-    tables: List[Table] = element(default=[])
-
-# PrintData model 
-class PrintData(BaseXmlModel, tag="PrintData"):
-    """
-    Print data model
-    
-    Root model representing the complete print data for a receipt.
-    Contains multiple pages and can be converted to XML format.
-    """
-    pages: List[Page] = element(default=[])
-
-    def to_text(self, width: int = 32) -> str:
-        text = ""
-        for page in self.pages:
-            for line in page.lines:
-                if line.type == Constants.TYPE_TEXT:
-                    if line.align is None:
-                        logger.warning(f"Align is None. line->{line}")
-                        continue
-                    desc = line.description if line.description is not None else ""
-                    item1 = line.item1 if line.item1 is not None else ""
-                    item2 = line.item2 if line.item2 is not None else ""
-                    match line.align:
-                        case Constants.ALIGN_CENTER:
-                            text += TextHelper.fixed_center(desc, int(width))
-                        case Constants.ALIGN_LEFT:
-                            text += TextHelper.fixed_left(desc, int(width))
-                        case Constants.ALIGN_RIGHT:
-                            text += TextHelper.fixed_right(desc, int(width))
-                        case Constants.ALIGN_SPLIT:
-                            # item1は既に調整済みなので、スペースを追加
-                            text += item1 + " " + item2
-                elif line.type == Constants.TYPE_LINE:
-                    text += "".center(int(width), "-")
-                elif line.type == Constants.TYPE_BYTE:
-                    logger.debug(f"Byte: {line}")
-                    raise ValueError("Not supported type: Byte")
-                text += "\n"
-        return text
+    lines: List[Element] = Field(default_factory=list)
