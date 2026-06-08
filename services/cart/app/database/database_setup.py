@@ -59,7 +59,13 @@ async def create_cache_cart_collection(tenant_id: str):
         None
     """
     name = settings.DB_COLLECTION_NAME_CACHE_CART
-    index_key_list = [{"keys": {"cart_id": 1}, "unique": True}]
+    index_key_list = [
+        {"keys": {"cart_id": 1}, "unique": True},
+        # TTL index: expire orphaned MongoDB fallback copies, aligned with the Redis
+        # cartstore TTL. Keyed on created_at (always set on insert); updated_at can be
+        # None on first insert and would leave such docs unexpired.
+        {"keys": {"created_at": 1}, "expireAfterSeconds": settings.CACHE_CART_TTL_SECONDS},
+    ]
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
     )
