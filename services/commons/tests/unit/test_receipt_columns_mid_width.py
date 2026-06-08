@@ -111,6 +111,24 @@ def test_mid_without_width_keeps_legacy_behavior(strategy):
     assert line[10:13] == "2pt"  # value sits exactly at startCol, no left padding
 
 
+def test_mid_width_colliding_with_right_keeps_min_one_space(strategy):
+    """When a wide mid cell would overrun the right column, the renderer still
+    emits both values with at least one separating space (no truncation, no
+    crash) — truncation on collision is the consumer's responsibility."""
+    line = _render(
+        strategy,
+        [
+            Column(slot="left", value="ST"),
+            # cell [10, 45): cursor ends at 45, leaving no room before "right".
+            Column(slot="mid", value="MID", start_col=10, width=35, align="left"),
+            Column(slot="right", value="99999"),
+        ],
+        width=48,
+    )
+    assert "MID" in line
+    assert line.endswith(" 99999")  # min one space guaranteed before the right value
+
+
 def test_left_right_pair_unaffected(strategy):
     """The common left+right pair path is unchanged by the mid-width addition."""
     line = _render(strategy, [Column(slot="left", value="合計"), Column(slot="right", value="278")])
