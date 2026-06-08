@@ -65,11 +65,23 @@
 | `slot` | `left`\|`mid`\|`right` | — | `left`=左端起点 / `mid`=`startCol` 起点 / `right`=右端終端 |
 | `value` | string | — | カラムの文字列 |
 | `startCol` | int | — | **`mid` のみ必須**。左からの固定オフセット（半角換算・0始まり、`charsPerLine` 基準） |
-| `align` | `left`\|`center`\|`right` | `left`（`right` slot は `right`） | カラム内の寄せ |
+| `width` | int | — | **`mid` のみ**。セル幅（半角換算）。`mid` のセルは `[startCol, startCol + width)` となり、`align` はこのセル内で適用される。`left`/`right` はアンカーからセルを導出するため `width` を無視する |
+| `align` | `left`\|`center`\|`right` | `left`（`right` slot は `right`） | カラム内（セル内）の寄せ |
 | `style` | Style | （なし） | **カラム単位**の文字修飾 |
 
+**セル境界の導出**
+- `left`: col 0 起点。セルは次のアンカー（`mid` の `startCol` または `right`）まで。
+- `mid`: `startCol` 起点。`width` があればセルは `[startCol, startCol + width)`。`width` 無しの場合はセル未定義（`value` を `startCol` に置くのみ＝従来動作、`align` は意味を持たない）。
+- `right`: 右端終端。セル幅 ＝ 内容幅（`value` 幅）。
+
+**`align`（セル内の寄せ）** — `mid` で `width` を指定した場合に well-defined となる。
+- `align="left"`（既定）: `value` を `startCol` に置く（セル右側を空白で埋める）。
+- `align="right"`: セル内で右寄せ。`startCol` から `value` 開始位置まで左側を空白で埋める。
+- `align="center"`: セル内で中央寄せ。
+- `value` がセル幅より広い場合は右へはみ出す（はみ出し側のパディングなし）。
+
 **レイアウト規則（消費者が実施）**
-- `left` は col 0 から、`mid` は `startCol` から右へ、`right` は右端へ寄せる。
+- `left` は col 0 から、`mid` は `startCol` から右へ、`right` は右端へ寄せる。`mid` の `width` 指定時は上記 `align` をセル内で適用する。
 - 桁衝突時は `mid` の開始位置で `left` を切詰める（同様に `right` の開始位置で `mid` を切詰める）。
 - 倍角カラムは 2 セル換算で配置する。
 - `charsPerLine`（設計基準）と実機幅が異なる場合、消費者が `charsPerLine` を基準に実幅へ適合させる。

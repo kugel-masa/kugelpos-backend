@@ -171,12 +171,37 @@ class AbstractReceiptData(ABC, Generic[T]):
             if start > cursor:
                 line += TextHelper.space(start - cursor)
                 cursor = start
-            line += column.value
-            cursor += wcwidth.wcswidth(column.value)
+            # A `mid` column with an explicit width defines a cell
+            # [startCol, startCol + width) that `align` operates within;
+            # otherwise the value is placed as-is at its start (legacy mid/left).
+            if column.slot == "mid" and column.width is not None:
+                cell = self._render_mid_cell(column.value, column.width, column.align)
+                line += cell
+                cursor += wcwidth.wcswidth(cell)
+            else:
+                line += column.value
+                cursor += wcwidth.wcswidth(column.value)
         if right_value is not None:
             pad = width - cursor - wcwidth.wcswidth(right_value)
             line += TextHelper.space(max(1, pad)) + right_value
         return line
+
+    @staticmethod
+    def _render_mid_cell(value: str, cell_width: int, align: Optional[str]) -> str:
+        """Render a `mid` column value inside its [startCol, startCol+width) cell.
+
+        ``align`` is honored within the cell: ``right`` left-pads with spaces,
+        ``center`` centers, ``left`` (default) right-pads. A value wider than the
+        cell overflows to the right with no padding on the overflow side."""
+        pad_total = max(0, cell_width - wcwidth.wcswidth(value))
+        if align == "right":
+            left_pad, right_pad = pad_total, 0
+        elif align == "center":
+            left_pad = pad_total // 2
+            right_pad = pad_total - left_pad
+        else:  # left / default
+            left_pad, right_pad = 0, pad_total
+        return TextHelper.space(left_pad) + value + TextHelper.space(right_pad)
 
     #
     # date/format helpers
