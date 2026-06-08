@@ -255,7 +255,10 @@ def build_print_document_example() -> PrintDocument:
 #       print_document = self.build_print_document(model)         # ← make_receipt_text(XML) を置換
 #       journal_text   = self.make_journal_text(                  # 電子ジャーナルは維持
 #           self.generate_print_data(model))
-#       return ReceiptData(print_document=print_document, journal_text=journal_text)
+#       # receipt_text(str) は据え置き。中身に print_document の JSON 文字列を入れる。
+#       return ReceiptData(
+#           receipt_text=json.dumps(print_document, ensure_ascii=False),
+#           journal_text=journal_text)
 # =====================================================================
 if __name__ == "__main__":
     print(build_print_document_example().to_json())

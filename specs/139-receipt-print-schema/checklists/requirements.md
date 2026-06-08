@@ -26,10 +26,10 @@
 - [x] **DeviceGW API 契約・frontend パススルー契約はスコープ外**（消費者責務として短く参照）
 - [x] **terminal の開閉店/現金レシートも JSON 化対象**（kugel_common XML 廃止に伴い必須）
 - [x] **report の帳票レシート生成器（4 種）も JSON 化対象**（`AbstractReceiptData` 経由のため連動）
-- [x] **R/J/RJ チャネルは kugelpos に存在しない** → FR-007 はチャネル軸を導入せず `journal_text` 維持に限定
+- [x] **R/J/RJ チャネルは元実装に存在しなかった**が後続合意で導入 → FR-007 は R/J/RJ チャネル（内部ルーティング属性・JSON 非出力・既定 RJ）を導入。`journal_text` は回帰なく維持
 - [x] **spec 番号 = issue 番号（139）** に統一（流用元 stpos の方式に合わせる）
 
 ## 備考
 
-- 影響範囲: kugel_common + cart + terminal + journal + report。`receipt_text` 参照は 146 箇所（document/schema/transformer/pub-sub/テスト）。
+- 影響範囲: 変更は **kugel_common（生成ロジック）に閉じる**。`receipt_text` フィールド（`str`・名前）は全サービスで不変で、中身が XML→JSON 文字列に変わるのみ。cart/terminal/journal/report は **コード無改変**（既存 `receipt_text` 参照はそのまま動作）。
 - 印字生成器は計 7（cart×1, terminal×2, report×4）。基底 `AbstractReceiptData` の XML 撤去により全生成器が連動。
