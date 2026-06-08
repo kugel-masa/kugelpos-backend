@@ -72,7 +72,9 @@
         {
           "slot": "mid",
           "value": "@108 x1",
-          "startCol": 14
+          "startCol": 14,
+          "width": 10,
+          "align": "right"
         },
         {
           "slot": "right",

@@ -21,7 +21,8 @@ Level 1 のポイント:
   - 複数カラム行は columns 要素（left/mid/right）で**意味のまま**出力する
     （空白を焼き込まない）。桁揃えは DeviceGW が metadata.charsPerLine を
     基準に実施する（ADR-0003）。
-  - mid は startCol（左からの固定オフセット）。桁衝突時は mid.startCol で left を切詰め。
+  - mid は startCol（左からの固定オフセット）。width 指定時はセル [startCol, startCol+width)
+    内で align を適用（right=左を空白埋め）。桁衝突時は mid.startCol で left を切詰め。
   - style は text=行単位 / columns=カラム単位。
 
 構成:
@@ -66,6 +67,7 @@ class Column(BaseModel):
     slot: Literal["left", "mid", "right"]
     value: str
     start_col: Optional[int] = Field(None, alias="startCol")  # mid のみ必須
+    width: Optional[int] = Field(None, ge=0)  # mid のみ: セル [startCol, startCol+width)
     align: Optional[Literal["left", "center", "right"]] = None  # 既定: left/mid=left, right=right
     style: Optional[Style] = None
 
@@ -157,8 +159,8 @@ def L(value, style=None):                     # left カラム
     return Column(slot="left", value=value, style=style)
 
 
-def M(value, start_col, style=None):          # mid カラム（開始位置指定）
-    return Column(slot="mid", value=value, start_col=start_col, style=style)
+def M(value, start_col, width=None, align=None, style=None):  # mid カラム（開始位置＋セル幅）
+    return Column(slot="mid", value=value, start_col=start_col, width=width, align=align, style=style)
 
 
 def R(value, style=None):                     # right カラム
@@ -219,7 +221,7 @@ def build_print_document_example() -> PrintDocument:
     # ===== ボディ =====
     b.rule()
     b.columns(L("おにぎり(鮭)"), R("150外"))
-    b.columns(L("お茶 500ml"), M("@108 x1", start_col=14), R("108外"))
+    b.columns(L("お茶 500ml"), M("@108 x1", start_col=14, width=10, align="right"), R("108外"))
     b.rule()
     b.columns(L("小計"), M("2点", start_col=10), R("258"))
     b.columns(L("  消費税(外税8%)"), R("20"))

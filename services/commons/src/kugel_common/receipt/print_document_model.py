@@ -80,6 +80,11 @@ class Column(BaseModel):
     # Required only for the `mid` slot: fixed offset from the left (half-width
     # columns, 0-based, based on metadata.charsPerLine).
     start_col: Optional[int] = Field(None, alias="startCol")
+    # `mid` only: explicit cell width (half-width columns). With it the `mid`
+    # cell is [startCol, startCol + width) and `align` operates within that cell
+    # (right -> left-padded with spaces, center -> centered). `left`/`right`
+    # derive their cell from anchors and ignore `width`.
+    width: Optional[int] = Field(None, ge=0)
     # Default per slot: left/mid -> left, right -> right (resolved by consumer).
     align: Optional[Literal["left", "center", "right"]] = None
     style: Optional[Style] = None
