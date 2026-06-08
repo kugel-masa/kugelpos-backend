@@ -60,7 +60,7 @@ POS のレシート/ジャーナル印字において、現在 backend（kugel_c
 
 | トピック | 変更の種類 | 発行者 | 購読者 | 変更の概要 |
 |---|---|---|---|---|
-| `tranlog_report`（`topic-tranlog`/`-cloud`） | **スキーマ変更（破壊的）** | cart | report, journal, stock | `tranlog` ペイロードのフィールド（`receipt_text`/`journal_text`）は不変。`receipt_text` の中身が XML→JSON 文字列に変わるのみ（購読側のコード改修は不要） |
+| `tranlog_report`（`topic-tranlog`/`-cloud`） | 中身のみ変化（スキーマ不変） | cart | report, journal, stock | `tranlog` ペイロードのフィールド（`receipt_text`/`journal_text`）は不変。`receipt_text` の中身が XML→JSON 文字列に変わるのみ（購読側のコード改修は不要） |
 
 > トピックのパブリッシャー/サブスクライバー割り当て・ペイロードのフィールド構成は変更しない。変更するのは **`receipt_text` の中身**（XML→JSON 文字列）。Edge↔Cloud sync のペイロードも中身が変わる（XML 撤去により容量は削減方向）。
 
@@ -70,12 +70,12 @@ POS のレシート/ジャーナル印字において、現在 backend（kugel_c
 
 | インターフェース | 変更の種類 | 影響するサービス | 後方互換性 |
 |---|---|---|---|
-| 印字データモデル（kugel_common） | 置換（JSON 新設・XML 廃止） | cart, terminal, report, journal | **破壊的** |
-| Cart API レスポンス（`POST /carts/{cart_id}/bill` 等） | フィールド置換 | cart | 中身のみ変化（フィールド不変。`receipt_text` の中身が XML→JSON 文字列。`journal_text` 維持） |
-| Terminal API レスポンス（開閉店/現金入出金） | フィールド置換 | terminal | **破壊的**（同上） |
-| `tranlog` ドキュメント（共有・MongoDB/pub-sub/sync） | フィールド置換 | cart, report, journal | **破壊的** |
-| `journal_document` / `open_close_log` / `cash_in_out_log` | フィールド置換 | journal, terminal, report | **破壊的**（保存する受領レシートを XML→JSON へ） |
-| 帳票（report）API レスポンス | フィールド置換 | report | **破壊的**（`receiptText` の中身が JSON へ） |
+| 印字データモデル（kugel_common 内部） | 置換（JSON 新設・XML 撤去） | kugel_common | **破壊的（commons 内部のみ）**。外部公開フィールドは不変 |
+| Cart API レスポンス（`POST /carts/{cart_id}/bill` 等） | 中身のみ変化 | cart | フィールド不変。`receipt_text` の中身が XML→JSON 文字列。`journal_text` 維持 |
+| Terminal API レスポンス（開閉店/現金入出金） | 中身のみ変化 | terminal | フィールド不変。`receipt_text` の中身が XML→JSON 文字列 |
+| `tranlog` ドキュメント（共有・MongoDB/pub-sub/sync） | 中身のみ変化 | cart, report, journal | フィールド不変。`receipt_text` の中身が JSON 文字列に（pub-sub/sync も中身のみ・容量は削減方向） |
+| `journal_document` / `open_close_log` / `cash_in_out_log` | 中身のみ変化 | journal, terminal, report | フィールド不変。保存する `receipt_text` の中身が XML→JSON へ |
+| 帳票（report）API レスポンス | 中身のみ変化 | report | フィールド不変。`receipt_text`（`receiptText`）の中身が JSON へ |
 
 ---
 
@@ -101,10 +101,10 @@ POS のレシート/ジャーナル印字において、現在 backend（kugel_c
 **Affected Services**: kugel_common, cart
 
 #### Acceptance Criteria
-1. **Given** 通常販売取引, **When** 取引を確定する, **Then** Cart レスポンスと `tranlog` に新スキーマ準拠の `print_document`(JSON) が含まれる
+1. **Given** 通常販売取引, **When** 取引を確定する, **Then** Cart レスポンスと `tranlog` の `receipt_text`（`str`・フィールド名不変）に新スキーマ準拠の JSON 文字列（`print_document` スキーマ）が入る
 2. **Given** 同一取引, **When** JSON と移行前 XML を比較する, **Then** 両者が表現する印字行（文言・順序）が論理的に一致する
 3. **Given** JSON 印字データ, **When** スキーマ検証を行う, **Then** `schemaVersion` を含むスキーマに完全適合する
-4. **Given** 取引確定後の `tranlog` / Cart レスポンス, **When** フィールドを確認する, **Then** `receipt_text`(XML) が**含まれず**、`journal_text` は従来どおり生成される
+4. **Given** 取引確定後の `tranlog` / Cart レスポンス, **When** `receipt_text` の中身を確認する, **Then** XML ではなく `print_document` スキーマ準拠の JSON 文字列であり（フィールド名・`str` 型は不変）、`journal_text` は従来どおり生成される
 
 ---
 

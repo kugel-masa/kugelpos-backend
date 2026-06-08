@@ -18,8 +18,6 @@ kugel_common = {file = "commons/dist/kugel_common-0.1.53-py3-none-any.whl"}
 bcrypt = "==3.2.0"
 python-multipart = "*"
 httpx = "*"
-pydantic-xml = {extras = ["lxml"], version = "*"}
-lxml = "*"
 wcwidth = "*"
 debugpy = "*"
 aiohttp = "*"

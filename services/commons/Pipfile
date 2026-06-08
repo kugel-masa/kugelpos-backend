@@ -16,8 +16,6 @@ httpx = "*"
 aiohttp = "*"
 pydantic = "*"
 pydantic-settings = "*"
-pydantic-xml = {extras = ["lxml"], version = "*"}
-lxml = "*"
 python-dotenv = "*"
 pytz = "*"
 passlib = {extras = ["bcrypt"], version = "*"}

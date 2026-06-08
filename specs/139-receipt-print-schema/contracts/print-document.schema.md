@@ -26,18 +26,20 @@
 
 ### metadata
 
-| フィールド | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `documentType` | string | ○ | `"receipt"`（帳票は `"report"` を想定） |
-| `tenantId` | string | ○ | テナント識別子 |
-| `storeCode` | string | ○ | 店舗コード |
-| `terminalNo` | int | ○ | 端末番号 |
-| `transactionNo` | int | △ | 取引番号 |
-| `receiptNo` | int | △ | レシート番号 |
-| `businessDate` | string(`YYYY-MM-DD`) | △ | 営業日 |
-| `generatedAt` | string(ISO8601) | ○ | 生成時刻（タイムゾーン付き） |
-| `locale` | string | △ | 例 `"ja-JP"` |
-| `charsPerLine` | int | ○ | **設計基準桁数（半角換算）**。`columns` の `startCol`・右端終端・`text` 整列はこの桁数を基準に設計する。消費者はこの値を基準に実機幅へ適合させる |
+> **凡例（必須）**: ○＝常に出力（既定値あり）。△＝任意（値が無ければ `exclude_none` で出力から省略）。消費者は△フィールドの欠落を許容すること。
+
+| フィールド | 型 | 必須 | 既定 | 説明 |
+|---|---|---|---|---|
+| `documentType` | string | ○ | `"receipt"` | `"receipt"`（帳票は `"report"` を想定） |
+| `tenantId` | string | △ | — | テナント識別子（None 時は省略） |
+| `storeCode` | string | △ | — | 店舗コード（None 時は省略） |
+| `terminalNo` | int | △ | — | 端末番号（None 時は省略） |
+| `transactionNo` | int | △ | — | 取引番号 |
+| `receiptNo` | int | △ | — | レシート番号 |
+| `businessDate` | string(`YYYY-MM-DD`) | △ | — | 営業日 |
+| `generatedAt` | string(ISO8601) | △ | — | 生成時刻（タイムゾーン付き、None 時は省略） |
+| `locale` | string | ○ | `"ja-JP"` | 例 `"ja-JP"` |
+| `charsPerLine` | int | ○ | `32` | **設計基準桁数（半角換算）**。`columns` の `startCol`・右端終端・`text` 整列はこの桁数を基準に設計する。消費者はこの値を基準に実機幅へ適合させる |
 
 ---
 

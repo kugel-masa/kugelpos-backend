@@ -39,7 +39,7 @@
   1. `page = generate_print_data(model)`（既存どおり header/body/footer が Page.lines に Element を積む）
   2. `print_document = build_print_document(model, page.lines)`（Metadata 構築 + camelCase dict 化）
   3. `journal_text = render_journal_text(page.lines, self.width)`（**現行 `to_text` と同一出力**）
-  4. `return ReceiptData(print_document=print_document, journal_text=journal_text)`
+  4. `return ReceiptData(receipt_text=json.dumps(print_document, ensure_ascii=False), journal_text=journal_text)`（**`receipt_text` は `str` 据え置き**。新フィールドは追加せず、中身に JSON 文字列を入れる）
 - **`make_receipt_text`（XML）と `to_xml` 経路を削除**。
 - 後方互換シム（戻り値を Element に変更、引数・呼び出し側は不変）:
   - `line_left/center/right(text)` → `TextElement(value=text, align=...)`
@@ -102,7 +102,7 @@ services/commons/src/kugel_common/receipt/
 | リスク | 緩和 |
 |---|---|
 | journal_text 回帰 | render_journal_text を to_text とバイト等価に移植。cart/terminal/report の既存 unit テストで確認 |
-| `receipt_text` 参照漏れ（146 箇所） | grep ベースで service ごとに潰し、最後に全 grep で 0 を確認（テスト除く production コード） |
+| XML 経路の撤去漏れ | `to_xml`/`pydantic_xml`/`BaseXmlModel`/`PrintData` を grep ベースで service ごとに潰し、最後に全 grep で 0 を確認（テスト除く production コード）。**`receipt_text` フィールドは据え置きのため改名・除去はしない** |
 | 歴史データ（XML）の読み出し | `receipt_text` は `str` のまま。旧 XML も新 JSON も同一フィールドに入るためデシリアライズは壊れない。読み出し側は中身の format を判別（先頭が `{`=JSON / `<`=XML）すればよい |
 | pub/sub 購読側の不整合 | cart 発行と journal/report 購読を同一リリースで切替（ハードカットオーバー） |
 
@@ -110,5 +110,5 @@ services/commons/src/kugel_common/receipt/
 
 - SC-001/003: `print_document_model` のスキーマ + 要素テスト
 - SC-002/005: production 生成器の内容不変 + journal バイト等価
-- SC-004: 実装後 `grep -r receipt_text services/*/app` が production コードで 0
+- SC-004: 実装後 `grep -r 'to_xml\|pydantic_xml' services/*/app services/commons/src` が production コードで 0（`receipt_text` フィールドは維持）
 - SC-006: 全 unit/integration テスト パス
