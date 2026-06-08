@@ -229,6 +229,10 @@ class CartRepository(AbstractRepository[CartDocument]):
             # Record failure
             self._record_failure()
             raise e
+        # Best-effort: remove any MongoDB fallback copy left behind by a prior
+        # circuit-open write. Without this, fallback docs accumulate in cache_cart
+        # and are never cleaned up. Failures here must not break the delete contract.
+        await self.__delete_db_fallback_copy_async(cart_id)
 
     async def __cache_cart_async(self, cart: CartDocument, isNew: bool = False) -> None:
         """
@@ -246,7 +250,13 @@ class CartRepository(AbstractRepository[CartDocument]):
             CartCannotCreateException is raised if there is an error when creating the cart
             UpdateNotWorkException is raised if there is an error when updating the cart
         """
-        cart_data = cart.model_dump()
+        # Use mode="json" so datetime fields (created_at/updated_at and the embedded
+        # master snapshot's promotion start/end datetimes) become ISO strings that
+        # aiohttp's stdlib json encoder can serialize. Without it, the POST raises
+        # "Object of type datetime is not JSON serializable" on every request and the
+        # cart silently falls back to MongoDB. Round-trip is safe: __get_cached_cart_async
+        # rebuilds via CartDocument(**cart_data), and pydantic parses ISO strings back to datetime.
+        cart_data = cart.model_dump(mode="json")
         state_post_data = [{"key": cart.cart_id, "value": cart_data}]
         logger.debug(f"State post data: {state_post_data}")
 
@@ -378,6 +388,25 @@ class CartRepository(AbstractRepository[CartDocument]):
         except Exception as e:
             message = f"Failed to delete cart: cart_id->{cart_id} err->{e}"
             raise CannotDeleteException(message, self.collection_name, cart_id, logger)
+
+    async def __delete_db_fallback_copy_async(self, cart_id: str) -> None:
+        """
+        Best-effort removal of a cart's MongoDB fallback copy in cache_cart.
+
+        Used after a successful Redis (Dapr state store) delete to clean up any
+        document left behind by an earlier circuit-open / fallback write. This is
+        intentionally non-raising: a missing copy is the normal case, and any error
+        must not turn a successful cache delete into a failure.
+
+        args:
+            cart_id: str - Cart ID whose fallback copy should be removed
+        return:
+            None
+        """
+        try:
+            await self.delete_async({"cart_id": cart_id})
+        except Exception as e:
+            logger.warning(f"Failed to delete MongoDB fallback copy for cart_id->{cart_id}: {e}")
 
     def __get_shard_key(self, cartDocument: CartDocument):
         """

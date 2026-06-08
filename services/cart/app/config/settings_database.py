@@ -4,6 +4,11 @@ from pydantic_settings import BaseSettings
 
 class DBCollectionSettings(BaseSettings):
     DB_COLLECTION_NAME_CACHE_CART: str = "cache_cart"
+    # TTL for the MongoDB cache_cart fallback collection, aligned with the Redis
+    # cartstore TTL (dapr/components/cartstore.yaml: ttlInSeconds=36000, 10h). Applied
+    # as a TTL index on created_at so orphaned fallback docs expire instead of growing
+    # unbounded. Note: the index is only added when the collection is first created.
+    CACHE_CART_TTL_SECONDS: int = 36000
     DB_COLLECTION_NAME_TRAN_LOG: str = "log_tran"
     DB_COLLECTION_NAME_TRAN_LOG_DELIVERY_STATUS: str = "status_tran_delivery"
     DB_COLLECTION_NAME_STATUS_TRAN: str = "status_tran"

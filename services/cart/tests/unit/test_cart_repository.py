@@ -439,6 +439,139 @@ class TestCartRepositoryDaprCacheAsync:
                 await repo._CartRepository__cache_cart_async(cart)
 
 
+class TestCartRepositoryCacheJsonSerialization:
+    """Regression tests for issue #141: the Dapr/Redis cache payload must be JSON-serializable.
+
+    Before the fix, __cache_cart_async called cart.model_dump() (no mode="json"), leaving
+    datetime objects in the payload. aiohttp's stdlib json encoder then raised
+    "Object of type datetime is not JSON serializable" on every write, silently falling
+    back to MongoDB. These tests assert the posted payload survives json.dumps.
+    """
+
+    def _make_repo(self):
+        db = _make_mock_db()
+        terminal_info = _make_terminal_info()
+        return CartRepository(db, terminal_info)
+
+    def _make_cart_with_datetimes(self) -> CartDocument:
+        from app.models.documents.promotion_master_document import PromotionMasterDocument
+
+        cart = CartDocument(cart_id="cart-dt-01", tenant_id="T001", store_code="S001", business_date="20240601")
+        # Base document datetimes (always present in practice).
+        cart.created_at = datetime(2024, 6, 1, 9, 0, 0)
+        cart.updated_at = datetime(2024, 6, 1, 9, 5, 0)
+        # Embedded master snapshot also carries datetimes.
+        cart.masters.promotions = [
+            PromotionMasterDocument(
+                start_datetime=datetime(2024, 6, 1, 0, 0, 0),
+                end_datetime=datetime(2024, 6, 30, 23, 59, 59),
+            )
+        ]
+        return cart
+
+    @pytest.mark.asyncio
+    async def test_cache_payload_is_json_serializable(self):
+        import json
+
+        repo = self._make_repo()
+        cart = self._make_cart_with_datetimes()
+
+        captured = {}
+
+        def _capture_post(url, json=None):
+            captured["json"] = json
+            return _make_aiohttp_context_manager(AsyncMock(status=204, text=AsyncMock(return_value="")))
+
+        mock_session = MagicMock()
+        mock_session.post.side_effect = _capture_post
+
+        with patch(
+            "app.models.repositories.cart_repository.get_dapr_statestore_session",
+            return_value=mock_session,
+        ):
+            await repo._CartRepository__cache_cart_async(cart)
+
+        # The core assertion: the payload aiohttp would encode must not raise.
+        # (With the pre-fix model_dump(), this raises TypeError on the datetime fields.)
+        json.dumps(captured["json"])
+        value = captured["json"][0]["value"]
+        assert isinstance(value["created_at"], str)
+        assert isinstance(value["masters"]["promotions"][0]["start_datetime"], str)
+
+    @pytest.mark.asyncio
+    async def test_cache_payload_round_trips_back_to_datetime(self):
+        repo = self._make_repo()
+        cart = self._make_cart_with_datetimes()
+
+        captured = {}
+
+        def _capture_post(url, json=None):
+            captured["json"] = json
+            return _make_aiohttp_context_manager(AsyncMock(status=204, text=AsyncMock(return_value="")))
+
+        mock_session = MagicMock()
+        mock_session.post.side_effect = _capture_post
+
+        with patch(
+            "app.models.repositories.cart_repository.get_dapr_statestore_session",
+            return_value=mock_session,
+        ):
+            await repo._CartRepository__cache_cart_async(cart)
+
+        # __get_cached_cart_async rebuilds via CartDocument(**cart_data); pydantic must
+        # parse the ISO strings back into datetimes, preserving the original values.
+        rebuilt = CartDocument(**captured["json"][0]["value"])
+        assert rebuilt.created_at == cart.created_at
+        assert rebuilt.masters.promotions[0].start_datetime == cart.masters.promotions[0].start_datetime
+
+
+class TestCartRepositoryDeleteFallbackCleanup:
+    """Tests for issue #141 secondary fix: delete must also remove the MongoDB fallback copy."""
+
+    def _make_repo(self):
+        db = _make_mock_db()
+        terminal_info = _make_terminal_info()
+        return CartRepository(db, terminal_info)
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_redis_and_db_fallback_copy(self):
+        repo = self._make_repo()
+        repo._CartRepository__delete_cached_cart_async = AsyncMock()
+        repo.delete_async = AsyncMock(return_value=True)
+
+        await repo.delete_cart_async("cart-cleanup-01")
+
+        repo._CartRepository__delete_cached_cart_async.assert_awaited_once_with("cart-cleanup-01")
+        repo.delete_async.assert_awaited_once_with({"cart_id": "cart-cleanup-01"})
+
+    @pytest.mark.asyncio
+    async def test_db_fallback_cleanup_failure_does_not_break_delete(self):
+        repo = self._make_repo()
+        repo._CartRepository__delete_cached_cart_async = AsyncMock()
+        repo.delete_async = AsyncMock(side_effect=Exception("db down"))
+
+        # Cleanup failure must be swallowed: the cache delete already succeeded.
+        await repo.delete_cart_async("cart-cleanup-02")
+
+        repo._CartRepository__delete_cached_cart_async.assert_awaited_once_with("cart-cleanup-02")
+        assert repo._circuit_open is False
+
+    @pytest.mark.asyncio
+    async def test_delete_does_not_clean_db_when_circuit_open(self):
+        repo = self._make_repo()
+        repo._circuit_open = True
+        repo._last_failure_time = time.time()
+        repo._CartRepository__delete_cart_from_db_async = AsyncMock()
+        repo.delete_async = AsyncMock()
+
+        await repo.delete_cart_async("cart-cleanup-03")
+
+        # Circuit-open path deletes directly from DB; the extra best-effort cleanup
+        # is only for the cache-success path and must not run here.
+        repo._CartRepository__delete_cart_from_db_async.assert_awaited_once_with("cart-cleanup-03")
+        repo.delete_async.assert_not_awaited()
+
+
 class TestCartRepositoryDaprGetCachedAsync:
     """Tests for the private __get_cached_cart_async method (Dapr state store GET)."""
 
@@ -680,6 +813,7 @@ class TestCartRepositoryDeleteCartAsync:
         repo = self._make_repo()
         repo._failure_count = 2
         repo._CartRepository__delete_cached_cart_async = AsyncMock()
+        repo.delete_async = AsyncMock()  # best-effort MongoDB fallback cleanup
 
         await repo.delete_cart_async("cart-del-ok")
 

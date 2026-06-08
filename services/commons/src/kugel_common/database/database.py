@@ -273,6 +273,7 @@ async def create_collection_with_indexes_async(
                 keys_dict = index_info.get("keys", {})
                 unique = index_info.get("unique", False)
                 partial_filter = index_info.get("partialFilterExpression")
+                expire_after_seconds = index_info.get("expireAfterSeconds")
                 logger.info(f"keys_dict: {keys_dict}")
                 index_name = index_name_org + "_" + "_".join([str(key) for key in keys_dict.keys()])
                 logger.info(f"Creating index: {index_name} for collection: {collection_name}")
@@ -282,6 +283,7 @@ async def create_collection_with_indexes_async(
                     index_name=index_name,
                     unique=unique,
                     partial_filter_expression=partial_filter,
+                    expire_after_seconds=expire_after_seconds,
                 )
                 await execute_command_async(command=command_json, db=db)
     except (ConnectionFailure, ServerSelectionTimeoutError):
@@ -400,6 +402,7 @@ def create_indexes_command(
     index_name: str,
     unique: Optional[bool] = None,
     partial_filter_expression: Optional[dict] = None,
+    expire_after_seconds: Optional[int] = None,
 ):
     """
     Create a MongoDB command for creating indexes
@@ -416,6 +419,10 @@ def create_indexes_command(
             applies only to documents matching the filter (e.g., only when
             an optional field is present). Useful when a unique key would
             otherwise collide on documents whose key fields are missing/null.
+        expire_after_seconds: Optional TTL in seconds. When set, MongoDB treats
+            the index as a TTL index and removes documents whose indexed datetime
+            field is older than this many seconds. The index key must be a single
+            field holding a BSON date; documents missing the field never expire.
 
     Returns:
         dict: MongoDB command for creating the specified indexes
@@ -432,6 +439,9 @@ def create_indexes_command(
 
     if partial_filter_expression is not None:
         index["partialFilterExpression"] = partial_filter_expression
+
+    if expire_after_seconds is not None:
+        index["expireAfterSeconds"] = expire_after_seconds
 
     indexes.append(index)
 
