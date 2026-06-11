@@ -13,7 +13,7 @@ from httpx import AsyncClient
 from datetime import datetime
 from unittest.mock import patch
 from tests.log_maker import make_tran_log
-from kugel_common.utils.misc import get_app_time_str
+from kugel_common.utils.misc import get_app_time, get_app_time_str
 
 
 @pytest.mark.asyncio()
@@ -39,7 +39,7 @@ async def test_terminal_id_parsing_with_api_key(http_client):
     store_code = os.environ.get("STORE_CODE")
     terminal_no = int(os.environ.get("TERMINAL_NO"))
     terminal_id = os.environ.get("TERMINAL_ID")  # Format: T9999-5678-5555
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
 
     # Get JWT token to retrieve API key
     login_data = {
@@ -193,7 +193,7 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client, clean
     terminal_no_2 = 5556  # Additional terminal for filtering test
     terminal_id_1 = f"{tenant_id}-{store_code}-{terminal_no_1}"
     terminal_id_2 = f"{tenant_id}-{store_code}-{terminal_no_2}"
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
 
     # Get JWT token
     login_data = {

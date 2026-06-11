@@ -3,6 +3,7 @@ import pytest, os, asyncio
 from fastapi import status
 from httpx import AsyncClient
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 from tests.check_report_data import check_report_data
 
@@ -13,7 +14,7 @@ async def test_report_operations(http_client):
     tenant_id: str = os.environ.get("TENANT_ID")
     store_code: str = os.environ.get("STORE_CODE")
     terminal_no: int = int(os.environ.get("TERMINAL_NO"))
-    business_date: str = datetime.now().strftime("%Y%m%d")
+    business_date: str = get_app_time().strftime("%Y%m%d")
 
     # get token from auth service
     login_data = {
@@ -211,7 +212,7 @@ async def test_flush_backward_compatibility(http_client):
     store_code = os.getenv("STORE_CODE")
     terminal_no = int(os.getenv("TERMINAL_NO"))
     terminal_id = os.getenv("TERMINAL_ID", f"{tenant_id}-{store_code}-{terminal_no}")
-    business_date = os.getenv("BUSINESS_DATE", datetime.now().strftime("%Y%m%d"))
+    business_date = os.getenv("BUSINESS_DATE", get_app_time().strftime("%Y%m%d"))
 
     # Get token for authenticated requests
     login_data = {

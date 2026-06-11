@@ -8,9 +8,17 @@ restored, report unchanged-net).
 import os
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+
+
+def _app_business_date() -> str:
+    """Business date in the backend's app timezone. Services compute it via
+    settings.TIMEZONE (default Asia/Tokyo), not host-local time, so a UTC
+    host must not use datetime.now() here (#150)."""
+    return datetime.now(ZoneInfo(os.environ.get("TIMEZONE", "Asia/Tokyo"))).strftime("%Y%m%d")
 
 
 def _client(url_env: str) -> httpx.Client:
@@ -154,7 +162,7 @@ async def test_bill_then_void_propagates(wait_for):
     transaction_no, amount = _bill_cart(api_key, terminal_id, item_code, quantity=2)
     assert amount > 0
 
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = _app_business_date()
 
     def _journal_types() -> list[int]:
         with _client("URL_JOURNAL") as c:

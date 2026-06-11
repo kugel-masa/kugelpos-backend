@@ -20,9 +20,17 @@ Uses a fresh tenant per run so reruns don't pollute existing state.
 import os
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+
+
+def _app_business_date() -> str:
+    """Business date in the backend's app timezone. Services compute it via
+    settings.TIMEZONE (default Asia/Tokyo), not host-local time, so a UTC
+    host must not use datetime.now() here (#150)."""
+    return datetime.now(ZoneInfo(os.environ.get("TIMEZONE", "Asia/Tokyo"))).strftime("%Y%m%d")
 
 
 def _new_tenant_id() -> str:
@@ -213,7 +221,7 @@ async def test_pos_full_journey(wait_for):
     # 8. Wait for Dapr pub/sub fan-out (cart -> report / journal / stock).
     # Poll journal until the transaction surfaces; cuts the steady-state
     # wait when fan-out is fast and surfaces a real timeout if it hangs.
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = _app_business_date()
 
     def _journal_has_transaction() -> bool:
         with _client("URL_JOURNAL") as c:
