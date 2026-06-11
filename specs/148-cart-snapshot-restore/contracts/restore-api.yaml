@@ -1,0 +1,166 @@
+# OpenAPI 契約: cart restore API + signed_snapshot レスポンスフィールド（#148）
+# 注: 抜粋契約。既存の cart API（ApiResponse エンベロープ・認証）の規約を継承する。
+openapi: 3.0.3
+info:
+  title: Kugelpos Cart Service — signed cart snapshot & restore (feature 148)
+  version: "1.0"
+
+paths:
+  /api/v1/carts/restore:
+    post:
+      summary: 署名付きスナップショットからカートを復元する
+      description: |
+        署名検証（HMAC-SHA256, kid 世代）→ スコープ検証（テナント + 店舗一致）→
+        衝突判定（同一 cart_id が存在すれば既存サーバ側を優先し差分通知）→ 再構築。
+        終端状態（completed/cancelled）のスナップショットは 401506 で冪等拒否。
+        すべての結果（成功 / 既存返却 / 拒否）を log_cart_restore に監査記録する。
+      security:
+        - apiKeyAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: terminal_id
+          in: query
+          required: true
+          schema: { type: string }
+          description: 要求端末の terminal_id（既存エンドポイントと同一規約）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnapshotEnvelope"
+      responses:
+        "200":
+          description: |
+            復元成功（restored=true）または既存カート返却（restored=false）。
+            diverged=true は提示スナップショットと既存カートの内容不一致（差分通知）。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseCart"
+        "400":
+          description: 検証エラー（userError.code に 401501/401502/401503/401504/401506）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseError"
+        "401":
+          description: 端末認証エラー（既存規約）
+        "403":
+          description: スコープ違反（userError.code = 401505 — テナント / 店舗不一致）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseError"
+
+  # 既存のカート変更系エンドポイント（変更点のみ記載）:
+  #   POST /api/v1/carts
+  #   POST /api/v1/carts/{cart_id}/cancel
+  #   POST /api/v1/carts/{cart_id}/lineItems
+  #   POST /api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel
+  #   PATCH /api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice
+  #   PATCH /api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity
+  #   POST /api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts
+  #   POST /api/v1/carts/{cart_id}/subtotal
+  #   POST /api/v1/carts/{cart_id}/discounts
+  #   POST /api/v1/carts/{cart_id}/payments
+  #   POST /api/v1/carts/{cart_id}/bill
+  #   POST /api/v1/carts/{cart_id}/resume-item-entry
+  # → 各レスポンスの data（Cart）に signedSnapshot フィールドが追加される（後方互換・Optional）。
+  #   GET 系レスポンスには付加しない（R-005）。
+
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SnapshotEnvelope:
+      type: object
+      description: 署名付きカートスナップショット（data-model.md §1）
+      required:
+        - schemaVersion
+        - issuedAt
+        - kid
+        - tenantId
+        - storeCode
+        - terminalNo
+        - cartDocument
+        - signature
+      properties:
+        schemaVersion:
+          type: integer
+          example: 1
+        issuedAt:
+          type: string
+          format: date-time
+          description: 発行時刻（ISO8601 UTC）
+        kid:
+          type: string
+          description: 署名鍵 ID（世代管理用）
+          example: "v1"
+        tenantId:
+          type: string
+        storeCode:
+          type: string
+        terminalNo:
+          type: integer
+          description: スナップショット発行端末（要求端末と異なってよい — 同一テナント+店舗内）
+        cartDocument:
+          type: object
+          description: CartDocument.model_dump(mode="json") の全体（masters 含む）。スキーマは CartDocument に従う
+          additionalProperties: true
+        signature:
+          type: string
+          description: signature を除くエンベロープ全体の canonical JSON への HMAC-SHA256（hex）
+          example: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+
+    CartWithSnapshot:
+      type: object
+      description: 既存 Cart スキーマへの追加フィールドのみ記載（既存フィールドは不変）
+      properties:
+        signedSnapshot:
+          oneOf:
+            - $ref: "#/components/schemas/SnapshotEnvelope"
+            - type: "null"
+          description: 変更適用後の最新スナップショット。生成失敗時は null（縮退、R-006）
+        restored:
+          type: boolean
+          nullable: true
+          description: restore レスポンスのみ。true=新規再構築 / false=既存カート返却
+        diverged:
+          type: boolean
+          nullable: true
+          description: restore レスポンスのみ。true=提示スナップショットと既存カートが不一致（差分通知）
+
+    ApiResponseCart:
+      type: object
+      description: kugel_common ApiResponse[Cart]（既存エンベロープ）
+      properties:
+        success: { type: boolean, example: true }
+        code: { type: integer, example: 200 }
+        message: { type: string }
+        data:
+          $ref: "#/components/schemas/CartWithSnapshot"
+        operation: { type: string, example: "restore_cart" }
+
+    ApiResponseError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        code: { type: integer, example: 400 }
+        message: { type: string }
+        userError:
+          type: object
+          properties:
+            code:
+              type: string
+              description: 4015xx（data-model.md §5 のエラーコード表）
+              example: "401501"
+            message: { type: string }

@@ -175,6 +175,8 @@ Format: XXYYZZ
 
 ## Active Technologies
 - Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ) (072-master-data-cache)
+- Python 3.12+（既存サービスと同一） + FastAPI、Pydantic v2、Motor（async MongoDB）、Dapr（state store `cartstore`）。署名は標準ライブラリ `hmac` / `hashlib` / `json` のみ — **新規外部依存なし** (148-cart-snapshot-restore)
+- MongoDB テナント別 DB（`db_cart_{tenant_id}`）に `log_cart_restore` コレクション新設。カートキャッシュ（Redis / `cache_cart` フォールバック）は既存どおり (148-cart-snapshot-restore)
 
 ## Recent Changes
 - 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ)
