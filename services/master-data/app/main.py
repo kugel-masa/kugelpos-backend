@@ -44,6 +44,7 @@ from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, Compo
 from kugel_common.utils.health_check import HealthChecker
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.middleware.log_requests import log_requests
+from kugel_common.middleware.http_compression import add_gzip_response_middleware
 
 # Import routers for different types of master data
 from app.api.v1.staff_master import router as v1_staff_master_router
@@ -127,6 +128,11 @@ app.include_router(
 
 # Add middleware to log all HTTP requests with service name "master-data"
 app.middleware("http")(log_requests("master-data"))
+
+# Compress responses for clients that send Accept-Encoding: gzip.
+# Registered after log_requests so compression runs outermost and the
+# request log still observes the uncompressed body.
+add_gzip_response_middleware(app)
 
 # Register global exception handlers for consistent error responses
 register_exception_handlers(app)
