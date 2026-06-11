@@ -7,6 +7,7 @@
 #     http://www.apache.org/licenses/LICENSE-2.0
 import os
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 import pytest
 import pytest_asyncio
@@ -40,7 +41,7 @@ async def test_setup_data(setup_db: AsyncIOMotorDatabase):
     assert setup_db is not None
     print("database name: ", setup_db.name)
 
-    business_date_str = datetime.now().strftime("%Y%m%d")
+    business_date_str = get_app_time().strftime("%Y%m%d")
 
     terminal_info = _make_terminal_info(
         tenant_id=os.environ.get("TENANT_ID"),

@@ -20,6 +20,7 @@ os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-56
 import pytest_asyncio
 from httpx import AsyncClient, Client
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 from dotenv import load_dotenv
 import locale
 from unittest.mock import patch
@@ -101,7 +102,7 @@ def set_env_vars():
     os.environ["STORE_CODE"] = "5678"
     os.environ["TERMINAL_NO"] = "5555"
     os.environ["TERMINAL_ID"] = f"{tenant_id}-5678-5555"
-    os.environ["BUSINESS_DATE"] = datetime.now().strftime("%Y%m%d")
+    os.environ["BUSINESS_DATE"] = get_app_time().strftime("%Y%m%d")
 
     from kugel_common.database import database as db_helper
 

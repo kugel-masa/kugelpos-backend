@@ -14,9 +14,17 @@ every service for the same transaction in one place.
 import os
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+
+
+def _app_business_date() -> str:
+    """Business date in the backend's app timezone. Services compute it via
+    settings.TIMEZONE (default Asia/Tokyo), not host-local time, so a UTC
+    host must not use datetime.now() here (#150)."""
+    return datetime.now(ZoneInfo(os.environ.get("TIMEZONE", "Asia/Tokyo"))).strftime("%Y%m%d")
 
 
 def _client(url_env: str) -> httpx.Client:
@@ -169,7 +177,7 @@ async def test_bill_propagates_to_journal_report_stock(wait_for):
         assert resp.status_code == 200, resp.text
         transaction_no = resp.json()["data"]["transactionNo"]
 
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = _app_business_date()
 
     # Wait for fan-out: poll journal until the transaction is present.
     # Once journal sees it, report and stock have typically caught up

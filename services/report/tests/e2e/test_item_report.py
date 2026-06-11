@@ -17,6 +17,7 @@ import asyncio
 from fastapi import status
 from httpx import AsyncClient
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 
 def check_item_report_data(report_data: dict):
@@ -119,7 +120,7 @@ async def test_item_report_operations(http_client):
     tenant_id: str = os.environ.get("TENANT_ID")
     store_code: str = os.environ.get("STORE_CODE")
     terminal_no: int = int(os.environ.get("TERMINAL_NO"))
-    business_date: str = datetime.now().strftime("%Y%m%d")
+    business_date: str = get_app_time().strftime("%Y%m%d")
     
     # get token from auth service
     login_data = {

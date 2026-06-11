@@ -18,6 +18,7 @@ sales-report regression tests:
 """
 import os
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 import pytest
 from fastapi import status
@@ -97,7 +98,7 @@ async def test_get_store_reports_empty(http_client, admin_header):
     """GET /reports returns successfully (empty/zero data) for a fresh store
     with no transactions."""
     tenant_id = os.environ.get("TENANT_ID")
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
 
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/5678/reports",
@@ -115,7 +116,7 @@ async def test_get_store_reports_empty(http_client, admin_header):
 async def test_get_terminal_reports_empty(http_client, admin_header):
     """GET .../terminals/{tn}/reports — same as above but at terminal scope."""
     tenant_id = os.environ.get("TENANT_ID")
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
 
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/5678/terminals/9/reports",

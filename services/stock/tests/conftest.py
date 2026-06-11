@@ -20,6 +20,7 @@ os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-56
 import pytest_asyncio
 from httpx import AsyncClient
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 from dotenv import load_dotenv
 
 
@@ -64,7 +65,7 @@ def set_env_vars():
     os.environ["STORE_CODE"] = "5678"
     os.environ["TERMINAL_NO"] = "5555"
     os.environ["TERMINAL_ID"] = f"{tenant_id}-5678-5555"
-    os.environ["BUSINESS_DATE"] = datetime.now().strftime("%Y%m%d")
+    os.environ["BUSINESS_DATE"] = get_app_time().strftime("%Y%m%d")
 
     # Set alert cooldown to 0 for testing
     os.environ["ALERT_COOLDOWN_SECONDS"] = "0"

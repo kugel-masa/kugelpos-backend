@@ -11,9 +11,17 @@ entries. Here we cover the auth-boundary / shape contracts directly.
 import os
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+
+
+def _app_business_date() -> str:
+    """Business date in the backend's app timezone. Services compute it via
+    settings.TIMEZONE (default Asia/Tokyo), not host-local time, so a UTC
+    host must not use datetime.now() here (#150)."""
+    return datetime.now(ZoneInfo(os.environ.get("TIMEZONE", "Asia/Tokyo"))).strftime("%Y%m%d")
 
 
 def _client(url_env: str) -> httpx.Client:
@@ -62,7 +70,7 @@ def test_dapr_subscriber_drops_missing_event_id(url_env, path):
         "terminal_no": 1,
         "transaction_no": 1,
         "transaction_type": 101,
-        "business_date": datetime.now().strftime("%Y%m%d"),
+        "business_date": _app_business_date(),
         "open_counter": 1,
         "business_counter": 1,
         "generate_date_time": datetime.now().isoformat(),
