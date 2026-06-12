@@ -7,11 +7,12 @@ from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.status_codes import StatusCodes
 from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.api.v1.schemas import (
-    Cart, 
-    CartCreateRequest, 
-    CartCreateResponse, 
-    Item, 
-    PaymentRequest, 
+    Cart,
+    CartCreateRequest,
+    CartCreateResponse,
+    CartRestoreRequest,
+    Item,
+    PaymentRequest,
     DiscountRequest,
     ItemQuantityUpdateRequest,
     ItemUnitPriceUpdateRequest,
@@ -664,6 +665,58 @@ async def resume_item_entry(
         code=status.HTTP_200_OK,
         message=f"Item entry resumed. cart_id: {cart_id}",
         data=_cart_data_with_snapshot(cart_service, cart_doc),
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
+    return response
+
+
+@router.post(
+    "/carts/restore",
+    status_code=status.HTTP_200_OK,
+    response_model=ApiResponse[Cart],
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
+        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def restore_cart(
+    restore_req: CartRestoreRequest,
+    cart_service: CartService = Depends(get_cart_service_async),
+):
+    """
+    Restore a cart from a signed snapshot envelope (issue #148).
+
+    Verifies the snapshot signature and scope, then re-materializes the cart
+    on this backend. If a cart with the same cart_id already exists, the
+    existing server-side cart wins and is returned with restored=false
+    (diverged=true when the snapshot content differs). Every attempt is
+    recorded in the restore audit trail.
+
+    Args:
+        restore_req: The signed snapshot envelope previously issued in a
+            cart-mutating response
+        cart_service: Injected cart service instance
+
+    Returns:
+        API response with the cart data, restore result flags, and a fresh
+        signed snapshot of the cart as it now exists on this backend
+    """
+    envelope = restore_req.model_dump(mode="json")
+    logger.debug(f"Restoring cart from snapshot (cart_id: {envelope.get('cart_document', {}).get('cart_id')})")
+    cart_doc, restored, diverged = await cart_service.restore_cart_async(envelope)
+
+    data = _cart_data_with_snapshot(cart_service, cart_doc)
+    data["restored"] = restored
+    data["diverged"] = diverged
+
+    response = ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Cart restored. cart_id: {cart_doc.cart_id}, restored: {restored}, diverged: {diverged}",
+        data=data,
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response

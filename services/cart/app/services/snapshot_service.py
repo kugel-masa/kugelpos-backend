@@ -193,6 +193,29 @@ def verify_envelope(envelope: dict) -> CartDocument:
         raise SnapshotInvalidException("Snapshot cart document does not parse", logger, e)
 
 
+def extract_audit_meta(envelope: dict) -> dict:
+    """
+    Best-effort extraction of audit metadata from a presented envelope.
+
+    Works on malformed envelopes too (rejections must still be traceable),
+    so every field is optional and extraction never raises. Keys match the
+    CartRestoreLogRepository.add_record_async keyword arguments.
+    """
+    if not isinstance(envelope, dict):
+        return {"cart_id": None}
+
+    def _as(value, types):
+        return value if isinstance(value, types) else None
+
+    return {
+        "cart_id": _safe_cart_id(envelope),
+        "snapshot_issued_at": _as(envelope.get("issued_at"), str),
+        "snapshot_terminal_no": _as(envelope.get("terminal_no"), int),
+        "snapshot_kid": _as(envelope.get("kid"), str),
+        "snapshot_schema_version": _as(envelope.get("schema_version"), int),
+    }
+
+
 def _safe_cart_id(envelope: dict) -> Optional[str]:
     """Best-effort cart_id extraction for logging; never raises."""
     try:

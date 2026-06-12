@@ -66,11 +66,11 @@
 
 **Independent Test**: バックエンド A 相当でスナップショット取得 → キャッシュからカートを削除（quickstart.md §3 の手順）→ restore → 商品追加〜bill まで通ることを確認
 
-- [ ] T016 [US1] `services/cart/app/api/v1/schemas.py` に restore リクエスト（SnapshotEnvelope ボディ）/レスポンス（`ApiResponse[Cart]`）スキーマを追加（contracts/restore-api.yaml）
-- [ ] T017 [US1] `services/cart/app/services/snapshot_service.py` に `verify_envelope(envelope)` を追加: signature を除いた canonical 再直列化 → kid 解決 → HMAC 検証 → `CartDocument(**cart_document)` 再構築を返す（拒否系の詳細マッピングは US3 で拡充）
-- [ ] T018 [US1] `services/cart/app/services/cart_service.py` に `restore_cart_async(envelope)` を追加: 検証（T017）→ テナント/店舗スコープ確認 → 既存カート確認（存在すれば既存を返し `restored=False` — 上書きしない、FR-006）→ 非存在なら再構築してキャッシュ書き込み（既存 `__cache_cart_async` / resume の `set_*_master_documents` パターンを流用）→ 監査レコード書き込み（T009、result=`restored`/`existing_returned`）→ 復元後カートの新スナップショットを返却
-- [ ] T019 [US1] `services/cart/app/api/v1/cart.py` に `POST /carts/restore?terminal_id=` エンドポイントを追加（既存の `get_terminal_info_with_jwt_or_apikey` 認証・`ApiResponse[Cart]` 規約、R-009）
-- [ ] T020 [US1] `services/cart/tests/integration/test_cart_restore.py` を新規作成: (1) キャッシュ削除後の restore 成功（`restored=true`・状態/明細/masters が一致・新スナップショット同梱）、(2) restore 後に商品追加→小計→支払い→bill が成功し tranlog が正常生成、(3) カート存在時の restore は既存を返す（`restored=false`）、(4) 復元可能状態は idle/entering_item/paying のみ、(5) restore 後に master-data 側の価格を変更しても明細単価が変わらない（取引開始時点のマスタ文脈の維持 — spec Edge Case「マスタ乖離」）
+- [X] T016 [US1] `services/cart/app/api/v1/schemas.py` に restore リクエスト（SnapshotEnvelope ボディ）/レスポンス（`ApiResponse[Cart]`）スキーマを追加（contracts/restore-api.yaml）
+- [X] T017 [US1] `services/cart/app/services/snapshot_service.py` に `verify_envelope(envelope)` を追加: signature を除いた canonical 再直列化 → kid 解決 → HMAC 検証 → `CartDocument(**cart_document)` 再構築を返す（拒否系の詳細マッピングは US3 で拡充）
+- [X] T018 [US1] `services/cart/app/services/cart_service.py` に `restore_cart_async(envelope)` を追加: 検証（T017）→ テナント/店舗スコープ確認 → 既存カート確認（存在すれば既存を返し `restored=False` — 上書きしない、FR-006）→ 非存在なら再構築してキャッシュ書き込み（既存 `__cache_cart_async` / resume の `set_*_master_documents` パターンを流用）→ 監査レコード書き込み（T009、result=`restored`/`existing_returned`）→ 復元後カートの新スナップショットを返却
+- [X] T019 [US1] `services/cart/app/api/v1/cart.py` に `POST /carts/restore?terminal_id=` エンドポイントを追加（既存の `get_terminal_info_with_jwt_or_apikey` 認証・`ApiResponse[Cart]` 規約、R-009）
+- [X] T020 [US1] `services/cart/tests/integration/test_cart_restore.py` を新規作成: (1) キャッシュ削除後の restore 成功（`restored=true`・状態/明細/masters が一致・新スナップショット同梱）、(2) restore 後に商品追加→小計→支払い→bill が成功し tranlog が正常生成、(3) カート存在時の restore は既存を返す（`restored=false`）、(4) 復元可能状態は idle/entering_item/paying のみ、(5) restore 後に master-data 側の価格を変更しても明細単価が変わらない（取引開始時点のマスタ文脈の維持 — spec Edge Case「マスタ乖離」）
 
 **Checkpoint**: バックエンド切替の取引継続（SC-001/SC-002 の機能面）が成立 — **ここまでが MVP**
 
