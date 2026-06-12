@@ -17,7 +17,7 @@
 | `cart_document` | object | ✅ | `CartDocument.model_dump(mode="json")` の全体（`masters` 含む）。復元時は `CartDocument(**cart_document)` で再構築（R-002） |
 | `signature` | str (hex) | ✅ | `signature` を除くエンベロープ全体の canonical JSON への HMAC-SHA256（R-003）。不一致は `401501`、欠落/形式不正は `401502` |
 
-**正規化規則（R-003）**: `json.dumps(envelope_without_signature, sort_keys=True, separators=(",", ":"), ensure_ascii=True)` の UTF-8 バイト列に署名する。検証側は受信 dict から `signature` を除いて同一手順で再直列化し、`hmac.compare_digest` で比較する。
+**正規化規則（R-003）**: `json.dumps(envelope_without_signature, sort_keys=True, separators=(",", ":"), ensure_ascii=True)` の UTF-8 バイト列に署名する。**正規化対象は常に Pydantic モデルの `model_dump(mode="json")`（snake_case、`by_alias` なし）**とする: 検証側は受信 JSON（wire 上は camelCase）をエンベロープモデルに取り込んでから `signature` を除いて同一手順で直列化し、`hmac.compare_digest` で比較する。wire 表記の揺れ（camelCase/snake_case）は署名検証に影響しない。
 
 **整合性ルール**: `cart_document` 内の `tenant_id` / `store_code` / `terminal_no` とエンベロープの帰属情報は生成時に一致させる。検証時は**エンベロープ側**（署名で保護された値）を認可判定に使う。
 
@@ -82,5 +82,6 @@ JWT の `SECRET_KEY` は使用しない（FR-011 鍵分離）。前世代鍵の�
 カートの状態機械（initial → idle → entering_item → paying → completed/cancelled）は変更しない。
 
 - **復元可能な状態**: `idle` / `entering_item` / `paying`（スナップショットの `cart_document.status` をそのまま復元し、対応する state クラスで再開）
-- **終端状態**（`completed` / `cancelled`）のスナップショット: 復元せず `401506`（冪等応答、FR-007 / Edge Case）。確定処理の冪等性は既存の `cart_id` ベースの取引同一性に依存し、本フィーチャーでは取引ログの二重発行をしないことをテストで保証する
+- **終端状態**（`completed` / `cancelled`）のスナップショット: 復元せず `401506`（冪等応答、FR-007 / Edge Case）
+- **確定処理の冪等性の境界（spec Clarifications 2026-06-12）**: 現行 tranlog は `cart_id` を持たず、一意性は `(tenant_id, store_code, terminal_no, transaction_no)`（bill ごとに新規採番）。そのため確定済み取引の**終端前**スナップショットを restore → 確定すると二重計上が構造上可能であり、その防止（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue のスコープ**。本フィーチャーは終端状態の冪等拒否（`401506`）と監査証跡による事後検知までを保証する
 - **restore 成功後**: 通常のカートと完全に同等（Redis キャッシュに書き込み、以降の操作は既存フロー — FR-004/FR-010）

@@ -53,7 +53,7 @@
 - [ ] T011 [P] [US2] `services/cart/tests/unit/test_snapshot_service.py` を新規作成: エンベロープ組み立て・署名対象の安定性・縮退（鍵未設定で None + 例外を漏らさない）・サイズ warning
 - [ ] T012 [US2] `services/cart/app/api/common/schemas.py` の `BaseCart` に Optional フィールド `signed_snapshot` / `restored` / `diverged` を追加（data-model.md §2。既存フィールド不変）
 - [ ] T013 [US2] `services/cart/app/api/v1/schemas_transformer.py` の `transform_cart` に optional の snapshot 引数を追加し、渡されたら `signed_snapshot` に詰める
-- [ ] T014 [US2] `services/cart/app/api/v1/cart.py` の変更系 13 ハンドラ（create/cancel/lineItems/明細 cancel/unitPrice/quantity/明細 discounts/subtotal/discounts/payments/bill/resume-item-entry）で `snapshot_service.build_envelope` を呼び transformer に渡す。GET 系は変更しない（R-005）
+- [ ] T014 [US2] `services/cart/app/api/v1/cart.py` の変更系 12 ハンドラ（create/cancel/lineItems/明細 cancel/unitPrice/quantity/明細 discounts/subtotal/discounts/payments/bill/resume-item-entry）で `snapshot_service.build_envelope` を呼び transformer に渡す。GET 系は変更しない（R-005）
 - [ ] T015 [US2] `services/cart/tests/integration/test_cart_snapshot_attach.py` を新規作成: (1) 変更系全エンドポイントのレスポンスに `signedSnapshot` が含まれ署名が自己検証できる、(2) `cartDocument.masters.items` にスキャン済み商品が同梱、(3) GET には含まれない、(4) 鍵未設定時は null + 操作自体は成功（縮退）
 
 **Checkpoint**: クライアントは常に最新の復元コピーを受け取れる（MVP の前半）
@@ -70,7 +70,7 @@
 - [ ] T017 [US1] `services/cart/app/services/snapshot_service.py` に `verify_envelope(envelope)` を追加: signature を除いた canonical 再直列化 → kid 解決 → HMAC 検証 → `CartDocument(**cart_document)` 再構築を返す（拒否系の詳細マッピングは US3 で拡充）
 - [ ] T018 [US1] `services/cart/app/services/cart_service.py` に `restore_cart_async(envelope)` を追加: 検証（T017）→ テナント/店舗スコープ確認 → 既存カート確認（存在すれば既存を返し `restored=False` — 上書きしない、FR-006）→ 非存在なら再構築してキャッシュ書き込み（既存 `__cache_cart_async` / resume の `set_*_master_documents` パターンを流用）→ 監査レコード書き込み（T009、result=`restored`/`existing_returned`）→ 復元後カートの新スナップショットを返却
 - [ ] T019 [US1] `services/cart/app/api/v1/cart.py` に `POST /carts/restore?terminal_id=` エンドポイントを追加（既存の `get_terminal_info_with_jwt_or_apikey` 認証・`ApiResponse[Cart]` 規約、R-009）
-- [ ] T020 [US1] `services/cart/tests/integration/test_cart_restore.py` を新規作成: (1) キャッシュ削除後の restore 成功（`restored=true`・状態/明細/masters が一致・新スナップショット同梱）、(2) restore 後に商品追加→小計→支払い→bill が成功し tranlog が正常生成、(3) カート存在時の restore は既存を返す（`restored=false`）、(4) 復元可能状態は idle/entering_item/paying のみ
+- [ ] T020 [US1] `services/cart/tests/integration/test_cart_restore.py` を新規作成: (1) キャッシュ削除後の restore 成功（`restored=true`・状態/明細/masters が一致・新スナップショット同梱）、(2) restore 後に商品追加→小計→支払い→bill が成功し tranlog が正常生成、(3) カート存在時の restore は既存を返す（`restored=false`）、(4) 復元可能状態は idle/entering_item/paying のみ、(5) restore 後に master-data 側の価格を変更しても明細単価が変わらない（取引開始時点のマスタ文脈の維持 — spec Edge Case「マスタ乖離」）
 
 **Checkpoint**: バックエンド切替の取引継続（SC-001/SC-002 の機能面）が成立 — **ここまでが MVP**
 
@@ -99,7 +99,7 @@
 
 - [ ] T025 [US4] `services/cart/app/services/cart_service.py` の衝突パスに差分判定を実装: 提示エンベロープの `cart_document` と既存カートの canonical JSON 比較（data-model.md §2）→ `diverged` フラグをレスポンスと監査レコードに設定
 - [ ] T026 [US4] 終端状態（completed/cancelled）スナップショットの restore を 401506 で冪等拒否し監査記録（FR-007・Edge Case。`services/cart/app/services/cart_service.py`）
-- [ ] T027 [US4] `services/cart/tests/integration/test_cart_restore_replay.py` を新規作成: (1) 操作を進めた後に古いスナップショットを restore → `restored=false` + `diverged=true` + 監査記録、(2) bill 済みカートの古いスナップショット restore → 401506、tranlog が増えない（二重計上なし、SC-004）、(3) `log_cart_restore` を cart_id で引くと発行端末・要求端末・発行時刻・結果の全履歴が追跡できる（発行端末 ≠ 要求端末のケース含む、FR-012）
+- [ ] T027 [US4] `services/cart/tests/integration/test_cart_restore_replay.py` を新規作成: (1) 操作を進めた後に古いスナップショットを restore → `restored=false` + `diverged=true` + 監査記録、(2) 終端状態（completed/cancelled）スナップショットの restore → 401506 で冪等拒否・カート作成なし・監査記録、(3) `log_cart_restore` を cart_id で引くと発行端末・要求端末・発行時刻・結果の全履歴が追跡できる（発行端末 ≠ 要求端末のケース含む、FR-012）。※確定済み取引の**終端前**スナップショットによる二重計上の防止は別 issue（tranlog への cart_id 追加、spec Clarifications 2026-06-12）のスコープであり、本タスクでは監査証跡から検知可能であることのみ検証する
 
 **Checkpoint**: 全ユーザーストーリーの受け入れシナリオが integration レベルで充足
 
@@ -147,7 +147,7 @@ Phase 1 (Setup) ─→ Phase 2 (Foundational) ─→ Phase 3 (US2: 付加)
 
 - **MVP = Phase 1〜4**（US2 + US1）: 「全変更レスポンスにスナップショット + restore で取引継続」が成立した時点で phase 1 の核心価値（SC-001/SC-002）をデモできる
 - **セキュリティ完成 = Phase 5**（US3）: 本番投入の最低ライン（SC-003）
-- **整合性完成 = Phase 6**（US4）: 差分通知・冪等・監査（SC-004）
+- **整合性完成 = Phase 6**（US4）: 差分通知・終端状態の冪等拒否・監査。**SC-004（二重計上ゼロ）の完全達成は別 issue（取引確定の cart_id 冪等化）に依存**
 - **リリース判定 = Phase 7**: 実測（SC-005/SC-006）が R-008 の基準内であることを確認して有効化（#147 完了が前提）
 
 **Total**: 31 タスク（US2: 6 / US1: 5 / US3: 4 / US4: 3 / Setup+Foundational: 9 / Polish: 4）

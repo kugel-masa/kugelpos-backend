@@ -53,7 +53,9 @@ snapshot = {
 - アルゴリズム = **HMAC-SHA256**（`hmac` + `hashlib` 標準ライブラリのみ、新規依存なし）。検証は `hmac.compare_digest` で定数時間比較。
 - `kid`・`schema_version`・帰属情報はエンベロープ内にあるため**自動的に署名対象に含まれる**（FR-003 の鍵すり替え防止を満たす）。
 
-**Rationale**: Python の `json.dumps` のキー順・区切り・ASCII エスケープを固定すれば、同一内容 → 同一バイト列が言語処理系のバージョンに依らず成立する。float の表現揺れが理論上の懸念だが、署名と検証はともに「受信した JSON テキストを再パースせず、エンベロープ dict から同一手順で再直列化する」ため、揺れは往復で一致する（検証側は受信 dict から signature を除いて再直列化して比較）。
+- **正規化の表現系（重要）**: wire 上のスキーマは `BaseSchemaModel` の `alias_generator=to_lower_camel` により **camelCase** だが、署名・検証は**必ず Pydantic モデル経由**で行う: 受信 JSON をエンベロープモデルに取り込み（`populate_by_name=True` で camelCase/snake_case 両対応）、**`model_dump(mode="json")`（フィールド名 = snake_case、`by_alias` なし）の dict を正規化して署名対象バイト列を得る**。生成側も同じ手順。これにより wire 表記（camelCase）と内部表現（snake_case）の差異が署名検証に影響しない。
+
+**Rationale**: Python の `json.dumps` のキー順・区切り・ASCII エスケープを固定すれば、同一内容 → 同一バイト列が言語処理系のバージョンに依らず成立する。float の表現揺れが理論上の懸念だが、署名と検証はともに「Pydantic モデルから同一手順で直列化した dict」を使うため、揺れは往復で一致する。
 
 **Alternatives considered**: JWS（python-jose 等）: 標準的だが依存追加と base64 膨張のわりに、バックエンド間でしか使わない本用途では利点が薄い。RFC 8785 (JCS): 厳密だが実装/依存コストが過剰。
 

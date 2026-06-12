@@ -23,7 +23,8 @@
 **Project Type**: マイクロサービス（変更は cart + kugel_common に限定）
 **Performance Goals**: スナップショット生成+署名で p95 +50ms 以内（SC-006）
 **Constraints**: 40 商品カートで gzip 後 15KB 以下（SC-005、#147 の圧縮が前提）。スナップショット生成失敗は縮退（操作は成功、warning ログ — R-006）
-**Scale/Scope**: cart 変更系 13 エンドポイントへのフィールド付加 + 新規 1 エンドポイント + 新規コレクション 1
+**Scale/Scope**: cart 変更系 12 エンドポイントへのフィールド付加 + 新規 1 エンドポイント + 新規コレクション 1
+**Out-of-scope dependency**: 取引確定の cart_id 冪等化（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue** で対応（spec Clarifications 2026-06-12）。SC-004 の完全達成は当該 issue に依存
 
 ## Constitution Check
 
