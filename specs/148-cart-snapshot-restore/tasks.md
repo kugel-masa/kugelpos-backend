@@ -45,7 +45,7 @@
 
 ## Phase 3: User Story 2 - すべてのカート変更レスポンスで最新の復元コピーを受け取る (Priority: P1)
 
-**Goal**: カート変更系 13 エンドポイント（contracts/restore-api.yaml のコメント一覧）のレスポンスに `signedSnapshot` を付加。GET には付加しない。生成失敗は縮退
+**Goal**: カート変更系 12 エンドポイント（contracts/restore-api.yaml のコメント一覧）のレスポンスに `signedSnapshot` を付加。GET には付加しない。生成失敗は縮退
 
 **Independent Test**: 変更系の全エンドポイントを順に呼び、全レスポンスにスナップショット（masters 同梱・署名つき）が含まれ、内容がサーバ側の正のデータと一致することを確認（spec User Story 2）
 
@@ -99,7 +99,7 @@
 
 - [ ] T025 [US4] `services/cart/app/services/cart_service.py` の衝突パスに差分判定を実装: 提示エンベロープの `cart_document` と既存カートの canonical JSON 比較（data-model.md §2）→ `diverged` フラグをレスポンスと監査レコードに設定
 - [ ] T026 [US4] 終端状態（completed/cancelled）スナップショットの restore を 401506 で冪等拒否し監査記録（FR-007・Edge Case。`services/cart/app/services/cart_service.py`）
-- [ ] T027 [US4] `services/cart/tests/integration/test_cart_restore_replay.py` を新規作成: (1) 操作を進めた後に古いスナップショットを restore → `restored=false` + `diverged=true` + 監査記録、(2) 終端状態（completed/cancelled）スナップショットの restore → 401506 で冪等拒否・カート作成なし・監査記録、(3) `log_cart_restore` を cart_id で引くと発行端末・要求端末・発行時刻・結果の全履歴が追跡できる（発行端末 ≠ 要求端末のケース含む、FR-012）。※確定済み取引の**終端前**スナップショットによる二重計上の防止は別 issue（tranlog への cart_id 追加、spec Clarifications 2026-06-12）のスコープであり、本タスクでは監査証跡から検知可能であることのみ検証する
+- [ ] T027 [US4] `services/cart/tests/integration/test_cart_restore_replay.py` を新規作成: (1) 操作を進めた後に古いスナップショットを restore → `restored=false` + `diverged=true` + 監査記録、(2) 終端状態（completed/cancelled）スナップショットの restore → 401506 で冪等拒否・カート作成なし・監査記録、(3) `log_cart_restore` を cart_id で引くと発行端末・要求端末・発行時刻・結果の全履歴が追跡できる（発行端末 ≠ 要求端末のケース含む、FR-012）。※確定済み取引の**終端前**スナップショットによる二重計上の防止は別 issue #152（tranlog への cart_id 追加、spec Clarifications 2026-06-12）のスコープであり、本タスクでは監査証跡から検知可能であることのみ検証する
 
 **Checkpoint**: 全ユーザーストーリーの受け入れシナリオが integration レベルで充足
 
@@ -147,7 +147,7 @@ Phase 1 (Setup) ─→ Phase 2 (Foundational) ─→ Phase 3 (US2: 付加)
 
 - **MVP = Phase 1〜4**（US2 + US1）: 「全変更レスポンスにスナップショット + restore で取引継続」が成立した時点で phase 1 の核心価値（SC-001/SC-002）をデモできる
 - **セキュリティ完成 = Phase 5**（US3）: 本番投入の最低ライン（SC-003）
-- **整合性完成 = Phase 6**（US4）: 差分通知・終端状態の冪等拒否・監査。**SC-004（二重計上ゼロ）の完全達成は別 issue（取引確定の cart_id 冪等化）に依存**
+- **整合性完成 = Phase 6**（US4）: 差分通知・終端状態の冪等拒否・監査。**SC-004（二重計上ゼロ）の完全達成は別 issue #152（取引確定の cart_id 冪等化）に依存**
 - **リリース判定 = Phase 7**: 実測（SC-005/SC-006）が R-008 の基準内であることを確認して有効化（#147 完了が前提）
 
 **Total**: 31 タスク（US2: 6 / US1: 5 / US3: 4 / US4: 3 / Setup+Foundational: 9 / Polish: 4）

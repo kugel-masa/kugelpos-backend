@@ -24,7 +24,7 @@
 **Performance Goals**: スナップショット生成+署名で p95 +50ms 以内（SC-006）
 **Constraints**: 40 商品カートで gzip 後 15KB 以下（SC-005、#147 の圧縮が前提）。スナップショット生成失敗は縮退（操作は成功、warning ログ — R-006）
 **Scale/Scope**: cart 変更系 12 エンドポイントへのフィールド付加 + 新規 1 エンドポイント + 新規コレクション 1
-**Out-of-scope dependency**: 取引確定の cart_id 冪等化（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue** で対応（spec Clarifications 2026-06-12）。SC-004 の完全達成は当該 issue に依存
+**Out-of-scope dependency**: 取引確定の cart_id 冪等化（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue #152** で対応（spec Clarifications 2026-06-12）。SC-004 の完全達成は当該 issue に依存
 
 ## Constitution Check
 
@@ -106,7 +106,7 @@ services/cart/tests/
 ## 実装フェーズの概要（tasks.md の入力）
 
 1. **基盤**: `hmac_signer.py`（commons）+ 鍵設定ロード + 起動時検証 — unit テスト先行
-2. **スナップショット付加**: `snapshot_service.py` → transformer → 変更系 13 エンドポイントのレスポンス確認（integration）
+2. **スナップショット付加**: `snapshot_service.py` → transformer → 変更系 12 エンドポイントのレスポンス確認（integration）
 3. **restore API**: エラーコード → 監査 repository → `restore_cart_async`（検証 → スコープ → 衝突 → 再構築）→ エンドポイント（integration: 正常/改ざん/スコープ違反/衝突/終端状態）
 4. **e2e + 計測**: 二重バックエンド切替シナリオ、サイズ/レイテンシ実測（SC-005/SC-006）、結果を issue #148 へフィードバック
 

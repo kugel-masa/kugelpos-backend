@@ -83,5 +83,5 @@ JWT の `SECRET_KEY` は使用しない（FR-011 鍵分離）。前世代鍵の�
 
 - **復元可能な状態**: `idle` / `entering_item` / `paying`（スナップショットの `cart_document.status` をそのまま復元し、対応する state クラスで再開）
 - **終端状態**（`completed` / `cancelled`）のスナップショット: 復元せず `401506`（冪等応答、FR-007 / Edge Case）
-- **確定処理の冪等性の境界（spec Clarifications 2026-06-12）**: 現行 tranlog は `cart_id` を持たず、一意性は `(tenant_id, store_code, terminal_no, transaction_no)`（bill ごとに新規採番）。そのため確定済み取引の**終端前**スナップショットを restore → 確定すると二重計上が構造上可能であり、その防止（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue のスコープ**。本フィーチャーは終端状態の冪等拒否（`401506`）と監査証跡による事後検知までを保証する
+- **確定処理の冪等性の境界（spec Clarifications 2026-06-12）**: 現行 tranlog は `cart_id` を持たず、一意性は `(tenant_id, store_code, terminal_no, transaction_no)`（bill ごとに新規採番）。そのため確定済み取引の**終端前**スナップショットを restore → 確定すると二重計上が構造上可能であり、その防止（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue #152 のスコープ**。本フィーチャーは終端状態の冪等拒否（`401506`）と監査証跡による事後検知までを保証する
 - **restore 成功後**: 通常のカートと完全に同等（Redis キャッシュに書き込み、以降の操作は既存フロー — FR-004/FR-010）
