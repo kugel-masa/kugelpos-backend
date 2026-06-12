@@ -82,10 +82,10 @@
 
 **Independent Test**: 正当なスナップショットを 1 バイト改ざんして restore に提示 → 401501 で拒否され、カートが作成されず、監査/ログから追跡できる
 
-- [ ] T021 [US3] `services/cart/app/services/snapshot_service.py` の `verify_envelope` に拒否系の詳細マッピングを実装: 署名不一致→401501、署名欠落/形式不正/パース不能→401502、未知 kid→401503、schema_version 非対応→401504（T003 の例外を送出。security warning ログは英語）
-- [ ] T022 [US3] `services/cart/app/services/cart_service.py` の `restore_cart_async` にスコープ違反→401505（エンベロープ側の tenant_id/store_code と認証コンテキストを比較、FR-005/FR-012）と、**全拒否パターンの監査レコード書き込み**（result=`rejected` + reject_reason、FR-007/NFR-003）を実装
-- [ ] T023 [P] [US3] `services/cart/tests/unit/test_snapshot_verify.py` を新規作成: 改ざん 1 バイト・署名欠落・未知 kid・前世代鍵での検証成功・バージョン非対応の各ケースが正しい例外になる
-- [ ] T024 [US3] `services/cart/tests/integration/test_cart_restore_reject.py` を新規作成: 改ざん（401501）・署名欠落（401502）・未知 kid（401503）・非対応バージョン（401504）・他テナント/他店舗（401505、HTTP 403）の各拒否でカートが作成されず、`log_cart_restore` に rejected レコードが残る
+- [X] T021 [US3] `services/cart/app/services/snapshot_service.py` の `verify_envelope` に拒否系の詳細マッピングを実装: 署名不一致→401501、署名欠落/形式不正/パース不能→401502、未知 kid→401503、schema_version 非対応→401504（T003 の例外を送出。security warning ログは英語）
+- [X] T022 [US3] `services/cart/app/services/cart_service.py` の `restore_cart_async` にスコープ違反→401505（エンベロープ側の tenant_id/store_code と認証コンテキストを比較、FR-005/FR-012）と、**全拒否パターンの監査レコード書き込み**（result=`rejected` + reject_reason、FR-007/NFR-003）を実装
+- [X] T023 [P] [US3] `services/cart/tests/unit/test_snapshot_verify.py` を新規作成: 改ざん 1 バイト・署名欠落・未知 kid・前世代鍵での検証成功・バージョン非対応の各ケースが正しい例外になる
+- [X] T024 [US3] `services/cart/tests/integration/test_cart_restore_reject.py` を新規作成: 改ざん（401501）・署名欠落（401502）・未知 kid（401503）・非対応バージョン（401504）・他テナント/他店舗（401505、HTTP 403）の各拒否でカートが作成されず、`log_cart_restore` に rejected レコードが残る
 
 **Checkpoint**: 不正スナップショットは 100% 拒否 + 追跡可能（SC-003）
 
@@ -97,9 +97,9 @@
 
 **Independent Test**: 古いスナップショットの restore →確定を 2 系統で実施し、取引が二重計上されず、監査証跡から再提示を追跡できる
 
-- [ ] T025 [US4] `services/cart/app/services/cart_service.py` の衝突パスに差分判定を実装: 提示エンベロープの `cart_document` と既存カートの canonical JSON 比較（data-model.md §2）→ `diverged` フラグをレスポンスと監査レコードに設定
-- [ ] T026 [US4] 終端状態（completed/cancelled）スナップショットの restore を 401506 で冪等拒否し監査記録（FR-007・Edge Case。`services/cart/app/services/cart_service.py`）
-- [ ] T027 [US4] `services/cart/tests/integration/test_cart_restore_replay.py` を新規作成: (1) 操作を進めた後に古いスナップショットを restore → `restored=false` + `diverged=true` + 監査記録、(2) 終端状態（completed/cancelled）スナップショットの restore → 401506 で冪等拒否・カート作成なし・監査記録、(3) `log_cart_restore` を cart_id で引くと発行端末・要求端末・発行時刻・結果の全履歴が追跡できる（発行端末 ≠ 要求端末のケース含む、FR-012）。※確定済み取引の**終端前**スナップショットによる二重計上の防止は別 issue #152（tranlog への cart_id 追加、spec Clarifications 2026-06-12）のスコープであり、本タスクでは監査証跡から検知可能であることのみ検証する
+- [X] T025 [US4] `services/cart/app/services/cart_service.py` の衝突パスに差分判定を実装: 提示エンベロープの `cart_document` と既存カートの canonical JSON 比較（data-model.md §2）→ `diverged` フラグをレスポンスと監査レコードに設定
+- [X] T026 [US4] 終端状態（completed/cancelled）スナップショットの restore を 401506 で冪等拒否し監査記録（FR-007・Edge Case。`services/cart/app/services/cart_service.py`）
+- [X] T027 [US4] `services/cart/tests/integration/test_cart_restore_replay.py` を新規作成: (1) 操作を進めた後に古いスナップショットを restore → `restored=false` + `diverged=true` + 監査記録、(2) 終端状態（completed/cancelled）スナップショットの restore → 401506 で冪等拒否・カート作成なし・監査記録、(3) `log_cart_restore` を cart_id で引くと発行端末・要求端末・発行時刻・結果の全履歴が追跡できる（発行端末 ≠ 要求端末のケース含む、FR-012）。※確定済み取引の**終端前**スナップショットによる二重計上の防止は別 issue #152（tranlog への cart_id 追加、spec Clarifications 2026-06-12）のスコープであり、本タスクでは監査証跡から検知可能であることのみ検証する
 
 **Checkpoint**: 全ユーザーストーリーの受け入れシナリオが integration レベルで充足
 
