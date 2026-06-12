@@ -8,6 +8,7 @@ Sequence:
 """
 import os
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 import pytest
 from fastapi import status
@@ -34,8 +35,8 @@ async def test_post_and_get_journals(http_client, admin_header):
     tenant_id = os.environ.get("TENANT_ID")
     store_code = "5678"
     terminal_no = 9
-    business_date = datetime.now().strftime("%Y%m%d")
-    transaction_no = int(datetime.now().strftime("%H%M%S"))
+    business_date = get_app_time().strftime("%Y%m%d")
+    transaction_no = int(get_app_time().strftime("%H%M%S"))
 
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/journals",
@@ -82,7 +83,7 @@ async def test_post_and_get_journals(http_client, admin_header):
 async def test_get_journals_with_filters(http_client, admin_header):
     """GET /journals with various filter params returns successfully."""
     tenant_id = os.environ.get("TENANT_ID")
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
 
     response = await http_client.get(
         f"/api/v1/tenants/{tenant_id}/stores/5678/journals"

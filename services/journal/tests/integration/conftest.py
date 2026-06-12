@@ -34,7 +34,7 @@ async def _setup_journal_db(set_env_vars):
     from app.database import database_setup
     from app.models.documents.jornal_document import JournalDocument
     from app.models.repositories.journal_repository import JournalRepository
-    from kugel_common.utils.misc import get_app_time_str
+    from kugel_common.utils.misc import get_app_time, get_app_time_str
 
     db_helper.MONGODB_URI = os.environ.get("MONGODB_URI")
     db_client = await db_helper.get_client_async()
@@ -51,7 +51,7 @@ async def _setup_journal_db(set_env_vars):
     journal_repo = JournalRepository(db, tenant_id)
     store_code = os.environ.get("STORE_CODE")
     terminal_no = int(os.environ.get("TERMINAL_NO"))
-    business_date_str = datetime.now().strftime("%Y%m%d")
+    business_date_str = get_app_time().strftime("%Y%m%d")
 
     for seq, recipt_no, with_amount in [(122, 788, False), (123, 789, True)]:
         kwargs = dict(

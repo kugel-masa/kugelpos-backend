@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "b358d3611b8156ae01c33ac3a9e6270ba8df48f16c74c27afe4bc2c95dd35327"
+            "sha256": "533ccc5f2ec17702691fa32df382ac31fe2f70e98d5a354ea63de5d509a86ebf"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -688,9 +688,9 @@
             "version": "==3.18"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.54-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.55-py3-none-any.whl",
             "hashes": [
-                "sha256:723af3508a44df35691a7ff6313034569257dd53e790f7cff6ffbee8e9a842f1"
+                "sha256:498b1cf122b67f3f73c26e081c727a3a84f4791ed380e31816eeeceaad38b7f6"
             ]
         },
         "motor": {
@@ -1274,7 +1274,7 @@
                 "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466",
                 "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"
             ],
-            "markers": "python_version >= '3.9'",
+            "markers": "python_version < '3.13'",
             "version": "==4.15.0"
         },
         "typing-inspection": {
@@ -1954,7 +1954,7 @@
                 "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466",
                 "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"
             ],
-            "markers": "python_version >= '3.9'",
+            "markers": "python_version < '3.13'",
             "version": "==4.15.0"
         }
     }

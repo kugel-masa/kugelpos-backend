@@ -9,6 +9,7 @@ from fastapi import status
 import os
 from httpx import AsyncClient
 from datetime import datetime, timedelta
+from kugel_common.utils.misc import get_app_time
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 # db_helper imported locally in functions to avoid connection reuse
@@ -490,7 +491,7 @@ async def test_payment_report_via_api(http_client):
     
     tenant_id = os.environ.get("TENANT_ID")
     store_code = os.environ.get("STORE_CODE")
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
     
     # Get authentication token
     login_data = {
@@ -646,7 +647,7 @@ async def test_payment_report_error_handling(http_client):
         params={
             "report_scope": "daily",
             "report_type": "payment",
-            "business_date": datetime.now().strftime("%Y%m%d"),
+            "business_date": get_app_time().strftime("%Y%m%d"),
             "open_counter": 1
         }
     )

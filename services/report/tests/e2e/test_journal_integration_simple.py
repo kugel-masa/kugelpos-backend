@@ -8,6 +8,7 @@ import os
 import pytest
 from httpx import AsyncClient
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 
 @pytest.mark.asyncio
@@ -17,7 +18,7 @@ async def test_api_key_journal_integration():
     store_code = os.environ.get("STORE_CODE", "S001")
     terminal_no = int(os.environ.get("TERMINAL_NO", "1"))
     terminal_id = os.environ.get("TERMINAL_ID", f"{tenant_id}_{store_code}_{terminal_no}")
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
     base_url_report = os.environ.get("BASE_URL_REPORT", "http://localhost:8004")
     base_url_terminal = os.environ.get("BASE_URL_TERMINAL", "http://localhost:8001")
     token_url = os.environ.get("TOKEN_URL", "http://localhost:8000/api/v1/auth/token")

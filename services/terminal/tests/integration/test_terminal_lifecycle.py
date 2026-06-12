@@ -25,6 +25,7 @@ to the same conftest's localhost:3500 catch-all.
 """
 import os
 from datetime import datetime
+from kugel_common.utils.misc import get_app_time
 
 import pytest
 from fastapi import status
@@ -157,7 +158,7 @@ async def test_open(http_client, admin_header, mock_outbound_services):
     terminal_id, _ = await _create_terminal(http_client, admin_header)
     await _signin(http_client, admin_header, terminal_id)
     response = await _open(http_client, admin_header, terminal_id)
-    business_date = datetime.now().strftime("%Y%m%d")
+    business_date = get_app_time().strftime("%Y%m%d")
     assert response.json()["data"]["businessDate"] == business_date
     assert response.headers.get("x-new-token"), "open should issue X-New-Token"
 

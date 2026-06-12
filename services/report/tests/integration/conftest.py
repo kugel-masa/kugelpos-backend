@@ -12,6 +12,7 @@ to apply.
 """
 import os
 from datetime import datetime, timedelta, timezone
+from kugel_common.utils.misc import get_app_time
 
 import httpx
 import jwt
@@ -34,7 +35,7 @@ def set_env_vars():
     os.environ.setdefault("STORE_CODE", "5678")
     os.environ.setdefault("TERMINAL_NO", "5555")
     os.environ.setdefault("TERMINAL_ID", f"{tenant_id}-5678-5555")
-    os.environ.setdefault("BUSINESS_DATE", datetime.now().strftime("%Y%m%d"))
+    os.environ.setdefault("BUSINESS_DATE", get_app_time().strftime("%Y%m%d"))
 
     from kugel_common.database import database as db_helper
     mongodb_uri = os.environ.get("MONGODB_URI") or "mongodb://localhost:27017/"
@@ -75,7 +76,7 @@ def mock_outbound():
                 "tenantId": tenant_id, "storeCode": "5678",
                 "terminalNo": 5555, "description": "Test",
                 "functionMode": "Sales", "status": "Opened",
-                "businessDate": datetime.now().strftime("%Y%m%d"),
+                "businessDate": get_app_time().strftime("%Y%m%d"),
                 "openCounter": 1, "businessCounter": 1,
                 "initialAmount": 0.0, "physicalAmount": None,
                 "staff": {"staffId": "S001", "staffName": "Staff", "staffPin": "1234"},

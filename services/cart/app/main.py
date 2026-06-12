@@ -18,6 +18,7 @@ logger_request = getLogger("requestLogger")
 # Import the required application modules after the logger is configured
 from kugel_common.database import database as db_helper
 from kugel_common.middleware.log_requests import log_requests
+from kugel_common.middleware.http_compression import add_gzip_response_middleware
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
 from kugel_common.utils.health_check import HealthChecker
@@ -101,6 +102,11 @@ app.add_middleware(
 
 # Add a middleware to log all HTTP requests to the cart service
 app.middleware("http")(log_requests("cart"))
+
+# Compress responses for clients that send Accept-Encoding: gzip.
+# Registered after log_requests so compression runs outermost and the
+# request log still observes the uncompressed body.
+add_gzip_response_middleware(app)
 
 # Register global exception handlers for consistent error responses
 register_exception_handlers(app)

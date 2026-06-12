@@ -17,6 +17,7 @@ MongoDB needed:
 import os
 import re
 from datetime import datetime, timedelta, timezone  # noqa: F401
+from kugel_common.utils.misc import get_app_time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -240,7 +241,7 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
                 "description": "Test Terminal",
                 "functionMode": "OpenTerminal",
                 "status": "Opened",
-                "businessDate": datetime.now().strftime("%Y%m%d"),
+                "businessDate": get_app_time().strftime("%Y%m%d"),
                 "openCounter": 1,
                 "businessCounter": 1,
                 "initialAmount": 50000.0,
@@ -263,7 +264,7 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
                 "storeCode": store_code,
                 "storeName": "Test Store",
                 "status": "Idle",
-                "businessDate": datetime.now().strftime("%Y%m%d"),
+                "businessDate": get_app_time().strftime("%Y%m%d"),
                 "tags": [],
             },
         }))
