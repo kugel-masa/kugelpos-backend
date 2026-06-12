@@ -25,6 +25,7 @@
 **Constraints**: 40 商品カートで gzip 後 15KB 以下（SC-005、#147 の圧縮が前提）。スナップショット生成失敗は縮退（操作は成功、warning ログ — R-006）
 **Scale/Scope**: cart 変更系 12 エンドポイントへのフィールド付加 + 新規 1 エンドポイント + 新規コレクション 1
 **Out-of-scope dependency**: 取引確定の cart_id 冪等化（tranlog への `cart_id` 追加 + 確定時重複検査）は**別 issue #152** で対応（spec Clarifications 2026-06-12）。SC-004 の完全達成は当該 issue に依存
+**Auth 前提**: フェイルオーバー用途の restore は **JWT 認証前提**（#67 実装済み — terminal info を JWT クレームから再構築。API キー経路は復元先の terminal service が端末を解決できる場面のみ有効。JWT の `SECRET_KEY` はフェイルオーバー網で共有）
 
 ## Constitution Check
 

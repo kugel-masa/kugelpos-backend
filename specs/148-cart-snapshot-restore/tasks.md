@@ -109,7 +109,7 @@
 
 **Purpose**: e2e 実証・Success Criteria の実測・運用文書
 
-- [ ] T028 `services/cart/tests/e2e/test_cart_restore.py` を新規作成: quickstart.md §2〜§4 のフルシナリオ（カート作成→商品追加→スナップショット捕捉→Redis キー削除→restore→継続→bill→改ざん拒否→衝突）を実スタックで検証。既存 `tests/e2e/test_cart.py` のセットアップパターンを流用
+- [ ] T028 `services/cart/tests/e2e/test_cart_restore.py` を新規作成: quickstart.md §2〜§4 のフルシナリオ（カート作成→商品追加→スナップショット捕捉→Redis キー削除→restore→継続→bill→改ざん拒否→衝突）を実スタックで検証。既存 `tests/e2e/test_cart.py` のセットアップパターンを流用。**restore は JWT 認証で実施**（フェイルオーバー前提の検証 — terminal info が JWT クレームから再構築されることを含めて確認。既存 `test_cart_jwt_auth.py` 参照）
 - [ ] T029 [P] サイズ/レイテンシ計測（SC-005/SC-006）: `/perf-test` 標準手順で 40 商品カートの gzip 後レスポンスサイズと変更系 API の p95 増分を計測し、結果を issue #148 にコメントで記録（R-008 の判断基準と突き合わせ。gzip は #147 完了が前提）
 - [ ] T030 [P] `docs/ja/cart-snapshot-key-rotation.md` を新規作成: 鍵ローテーション手順（通常: 新 kid 追加→24h 後に旧鍵削除 / 緊急: 即時差し替え＝進行中取引の復元コピー犠牲の明記、FR-011）
 - [ ] T031 `cd services/cart && pipenv run ruff check --fix app/ && pipenv run ruff format app/`（commons も同様）+ quickstart.md の手順を通しで実行して成立を確認
