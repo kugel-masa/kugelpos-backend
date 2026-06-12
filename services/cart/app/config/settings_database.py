@@ -16,3 +16,4 @@ class DBCollectionSettings(BaseSettings):
     DB_COLLECTION_NAME_TAX_MASTER: str = "master_tax"
     DB_COLLECTION_NAME_PAYMENT_MASTER: str = "master_payment"
     DB_COLLECTION_NAME_TERMINAL_COUTER: str = "info_terminal_counter"
+    DB_COLLECTION_NAME_LOG_CART_RESTORE: str = "log_cart_restore"

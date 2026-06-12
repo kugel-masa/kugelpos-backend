@@ -36,6 +36,20 @@ class CartSettings(BaseSettings):
     SETTINGS_MASTER_CACHE_TTL_SECONDS: int = Field(default=600, description="Settings master cache TTL in seconds.")
     TAX_MASTER_CACHE_TTL_SECONDS: int = Field(default=3600, description="Tax master cache TTL in seconds.")
 
+    # Signed cart snapshot (client-carried cart phase 1, issue #148).
+    # Format: "<kid>:<base64 key>[,<kid>:<base64 key>...]". The first entry is the
+    # current signing key; the rest are previous generations accepted for verification
+    # only (rotation grace). Empty means the snapshot feature runs degraded: cart
+    # responses carry no snapshot and the restore API rejects all envelopes.
+    SNAPSHOT_HMAC_KEYS: str = Field(
+        default="",
+        description="HMAC keys for cart snapshot signing as 'kid:base64key' CSV; first entry signs, the rest verify.",
+    )
+    SNAPSHOT_SIZE_WARN_BYTES: int = Field(
+        default=262144,
+        description="Raw snapshot size threshold in bytes that triggers a warning log.",
+    )
+
     # gRPC settings
     USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
     GRPC_TIMEOUT: float = Field(default=5.0, description="gRPC request timeout in seconds")

@@ -320,6 +320,91 @@ class AlreadyVoidedException(ServiceException):
         )
 
 
+# Snapshot / restore exceptions (issue #148)
+class SnapshotSignatureMismatchException(ServiceException):
+    """Exception raised when the snapshot signature does not verify (tampered envelope)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class SnapshotInvalidException(ServiceException):
+    """Exception raised when the snapshot envelope is malformed or its signature is missing."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_INVALID,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_INVALID),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class SnapshotUnknownKidException(ServiceException):
+    """Exception raised when the snapshot references an unknown or retired signing key id."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_UNKNOWN_KID,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_UNKNOWN_KID),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class SnapshotVersionUnsupportedException(ServiceException):
+    """Exception raised when the snapshot schema version is not supported."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_VERSION_UNSUPPORTED,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_VERSION_UNSUPPORTED),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class SnapshotScopeViolationException(ServiceException):
+    """Exception raised when the snapshot tenant or store does not match the auth context."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_SCOPE_VIOLATION,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_SCOPE_VIOLATION),
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+
+class SnapshotTerminalStateException(ServiceException):
+    """Exception raised when restoring a snapshot of a finalized (terminal-state) cart."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_TERMINAL_STATE,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_TERMINAL_STATE),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
 class AlreadyRefundedException(ServiceException):
     """
     Exception raised when a transaction has already been refunded.

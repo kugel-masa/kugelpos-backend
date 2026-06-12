@@ -57,6 +57,13 @@ async def lifespan(app: FastAPI):
     else:
         app.state.master_cache_backend = None
         logger.info("master-data cache disabled (MASTER_DATA_CACHE_ENABLED=False)")
+
+    # Validate snapshot signing keys at startup so a misconfigured
+    # SNAPSHOT_HMAC_KEYS surfaces here (degraded mode) instead of on the
+    # first request (issue #148).
+    from app.services.snapshot_service import init_snapshot_signer
+
+    init_snapshot_signer()
     try:
         yield
     finally:

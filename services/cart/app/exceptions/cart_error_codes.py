@@ -41,6 +41,15 @@ class CartErrorCode:
     ALREADY_VOIDED = "403005"  # 既に取消済み
     ALREADY_REFUNDED = "403006"  # 既に返品済み
 
+    # Snapshot / restore errors (4015xx, issue #148)
+    SNAPSHOT_SIGNATURE_MISMATCH = "401501"  # Signature verification failed (tampered)
+    SNAPSHOT_INVALID = "401502"  # Missing signature / malformed envelope
+    SNAPSHOT_UNKNOWN_KID = "401503"  # Unknown or expired signing key id
+    SNAPSHOT_VERSION_UNSUPPORTED = "401504"  # Unsupported snapshot schema version
+    SNAPSHOT_SCOPE_VIOLATION = "401505"  # Tenant / store scope mismatch
+    SNAPSHOT_TERMINAL_STATE = "401506"  # Snapshot of a finalized (terminal-state) cart
+    SNAPSHOT_GENERATION_FAILED = "401507"  # Internal snapshot generation failure (degraded)
+
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
     SIGN_IN_OUT_ERROR = "404002"  # サインイン・サインアウトエラー
@@ -75,6 +84,14 @@ class CartErrorMessage:
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "値引金額が残高より多いです",
             CartErrorCode.DISCOUNT_ALLOCATION_ERROR: "値引の按分処理に失敗しました",
             CartErrorCode.DISCOUNT_RESTRICTION: "値引禁止商品です",
+            # スナップショット/restore 関連
+            CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH: "スナップショットの署名が一致しません",
+            CartErrorCode.SNAPSHOT_INVALID: "スナップショットの形式が不正です",
+            CartErrorCode.SNAPSHOT_UNKNOWN_KID: "スナップショットの署名鍵が不明または期限切れです",
+            CartErrorCode.SNAPSHOT_VERSION_UNSUPPORTED: "スナップショットのバージョンが未対応です",
+            CartErrorCode.SNAPSHOT_SCOPE_VIOLATION: "スナップショットのテナントまたは店舗が一致しません",
+            CartErrorCode.SNAPSHOT_TERMINAL_STATE: "確定済み取引のスナップショットは復元できません",
+            CartErrorCode.SNAPSHOT_GENERATION_FAILED: "スナップショットの生成に失敗しました",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "端末の状態を確認してください",
             CartErrorCode.SIGN_IN_OUT_ERROR: "担当者の登録状況を確認してください",
@@ -101,6 +118,14 @@ class CartErrorMessage:
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "Balance is less than discount",
             CartErrorCode.DISCOUNT_ALLOCATION_ERROR: "Discount allocation error",
             CartErrorCode.DISCOUNT_RESTRICTION: "Discount restriction",
+            # スナップショット/restore 関連
+            CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH: "Snapshot signature mismatch",
+            CartErrorCode.SNAPSHOT_INVALID: "Invalid snapshot envelope",
+            CartErrorCode.SNAPSHOT_UNKNOWN_KID: "Unknown or expired snapshot signing key",
+            CartErrorCode.SNAPSHOT_VERSION_UNSUPPORTED: "Unsupported snapshot schema version",
+            CartErrorCode.SNAPSHOT_SCOPE_VIOLATION: "Snapshot tenant or store scope mismatch",
+            CartErrorCode.SNAPSHOT_TERMINAL_STATE: "Cannot restore a snapshot of a finalized transaction",
+            CartErrorCode.SNAPSHOT_GENERATION_FAILED: "Snapshot generation failed",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "Check terminal status",
             CartErrorCode.SIGN_IN_OUT_ERROR: "Check sign-in/out status",

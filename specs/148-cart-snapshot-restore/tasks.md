@@ -22,9 +22,9 @@
 
 **Purpose**: 全ストーリーが参照する設定とエラーコードの土台
 
-- [ ] T001 `services/cart/app/config/settings_cart.py` に `SNAPSHOT_HMAC_KEYS`（既定 `""`）と `SNAPSHOT_SIZE_WARN_BYTES`（既定 262144）を追加（data-model.md §4）
-- [ ] T002 [P] `services/cart/app/exceptions/cart_error_codes.py` にサブカテゴリ 4015xx（401501〜401507、data-model.md §5）を追加し、`ErrorMessage` に ja/en メッセージを定義
-- [ ] T003 [P] `services/cart/app/exceptions/cart_exceptions.py` に 4015xx に対応する例外クラス（署名不一致・検証不能・未知 kid・バージョン非対応・スコープ違反・終端状態）を既存例外のパターンで追加
+- [X] T001 `services/cart/app/config/settings_cart.py` に `SNAPSHOT_HMAC_KEYS`（既定 `""`）と `SNAPSHOT_SIZE_WARN_BYTES`（既定 262144）を追加（data-model.md §4）
+- [X] T002 [P] `services/cart/app/exceptions/cart_error_codes.py` にサブカテゴリ 4015xx（401501〜401507、data-model.md §5）を追加し、`ErrorMessage` に ja/en メッセージを定義
+- [X] T003 [P] `services/cart/app/exceptions/cart_exceptions.py` に 4015xx に対応する例外クラス（署名不一致・検証不能・未知 kid・バージョン非対応・スコープ違反・終端状態）を既存例外のパターンで追加
 
 ---
 
@@ -32,12 +32,12 @@
 
 **Purpose**: 全ストーリーが依存するブロッキング前提。**このフェーズ完了までストーリー実装に着手しない**
 
-- [ ] T004 `services/commons/src/kugel_common/utils/hmac_signer.py` を新規作成: canonical JSON 生成（`sort_keys=True, separators=(",", ":"), ensure_ascii=True`）、kid→鍵マップによる HMAC-SHA256 署名/検証（`hmac.compare_digest`）、`"<kid>:<base64>[,...]"` 形式のパーサ（R-003/R-004。コメント・ログは英語）
-- [ ] T005 [P] `services/commons/tests/unit/test_hmac_signer.py` を新規作成: 正規化の安定性（キー順・Unicode・往復一致）、署名/検証、kid 世代（前世代で検証可・未知 kid 拒否）、鍵文字列パース異常系
-- [ ] T006 `services/cart/app/api/common/schemas.py` に `SnapshotEnvelope` スキーマ（schema_version / issued_at / kid / tenant_id / store_code / terminal_no / cart_document / signature、data-model.md §1）を追加
-- [ ] T007 cart 起動時の鍵ロード検証を追加（`services/cart/app/main.py` の lifespan）: `SNAPSHOT_HMAC_KEYS` をパースし、未設定なら縮退モードの warning、パース不能なら明示エラーをログ（R-006 の fail-fast。ログは英語）
-- [ ] T008 [P] `services/cart/app/models/documents/cart_restore_log_document.py` を新規作成: 監査レコード文書（data-model.md §3 のフィールド）
-- [ ] T009 `services/cart/app/models/repositories/cart_restore_log_repository.py` を新規作成し、`services/cart/app/config/settings_database.py` に `DB_COLLECTION_NAME_LOG_CART_RESTORE = "log_cart_restore"` を追加、`services/cart/app/database/database_setup.py` にコレクション作成 + インデックス（`cart_id`, `event_datetime`）を登録
+- [X] T004 `services/commons/src/kugel_common/utils/hmac_signer.py` を新規作成: canonical JSON 生成（`sort_keys=True, separators=(",", ":"), ensure_ascii=True`）、kid→鍵マップによる HMAC-SHA256 署名/検証（`hmac.compare_digest`）、`"<kid>:<base64>[,...]"` 形式のパーサ（R-003/R-004。コメント・ログは英語）
+- [X] T005 [P] `services/commons/tests/unit/test_hmac_signer.py` を新規作成: 正規化の安定性（キー順・Unicode・往復一致）、署名/検証、kid 世代（前世代で検証可・未知 kid 拒否）、鍵文字列パース異常系
+- [X] T006 `services/cart/app/api/common/schemas.py` に `SnapshotEnvelope` スキーマ（schema_version / issued_at / kid / tenant_id / store_code / terminal_no / cart_document / signature、data-model.md §1）を追加
+- [X] T007 cart 起動時の鍵ロード検証を追加（`services/cart/app/main.py` の lifespan）: `SNAPSHOT_HMAC_KEYS` をパースし、未設定なら縮退モードの warning、パース不能なら明示エラーをログ（R-006 の fail-fast。ログは英語）
+- [X] T008 [P] `services/cart/app/models/documents/cart_restore_log_document.py` を新規作成: 監査レコード文書（data-model.md §3 のフィールド）
+- [X] T009 `services/cart/app/models/repositories/cart_restore_log_repository.py` を新規作成し、`services/cart/app/config/settings_database.py` に `DB_COLLECTION_NAME_LOG_CART_RESTORE = "log_cart_restore"` を追加、`services/cart/app/database/database_setup.py` にコレクション作成 + インデックス（`cart_id`, `event_datetime`）を登録
 
 **Checkpoint**: 署名ユーティリティ・エンベロープ・監査基盤が単体で動作。以降のストーリーを開始できる
 
@@ -49,12 +49,12 @@
 
 **Independent Test**: 変更系の全エンドポイントを順に呼び、全レスポンスにスナップショット（masters 同梱・署名つき）が含まれ、内容がサーバ側の正のデータと一致することを確認（spec User Story 2）
 
-- [ ] T010 [US2] `services/cart/app/services/snapshot_service.py` を新規作成: `build_envelope(cart_doc, terminal_info)`（`model_dump(mode="json")` → エンベロープ組み立て → 署名）、生成失敗時は None を返して warning ログ（縮退、R-006）、raw サイズが `SNAPSHOT_SIZE_WARN_BYTES` 超なら warning（R-008）
-- [ ] T011 [P] [US2] `services/cart/tests/unit/test_snapshot_service.py` を新規作成: エンベロープ組み立て・署名対象の安定性・縮退（鍵未設定で None + 例外を漏らさない）・サイズ warning
-- [ ] T012 [US2] `services/cart/app/api/common/schemas.py` の `BaseCart` に Optional フィールド `signed_snapshot` / `restored` / `diverged` を追加（data-model.md §2。既存フィールド不変）
-- [ ] T013 [US2] `services/cart/app/api/v1/schemas_transformer.py` の `transform_cart` に optional の snapshot 引数を追加し、渡されたら `signed_snapshot` に詰める
-- [ ] T014 [US2] `services/cart/app/api/v1/cart.py` の変更系 12 ハンドラ（create/cancel/lineItems/明細 cancel/unitPrice/quantity/明細 discounts/subtotal/discounts/payments/bill/resume-item-entry）で `snapshot_service.build_envelope` を呼び transformer に渡す。GET 系は変更しない（R-005）
-- [ ] T015 [US2] `services/cart/tests/integration/test_cart_snapshot_attach.py` を新規作成: (1) 変更系全エンドポイントのレスポンスに `signedSnapshot` が含まれ署名が自己検証できる、(2) `cartDocument.masters.items` にスキャン済み商品が同梱、(3) GET には含まれない、(4) 鍵未設定時は null + 操作自体は成功（縮退）
+- [X] T010 [US2] `services/cart/app/services/snapshot_service.py` を新規作成: `build_envelope(cart_doc, terminal_info)`（`model_dump(mode="json")` → エンベロープ組み立て → 署名）、生成失敗時は None を返して warning ログ（縮退、R-006）、raw サイズが `SNAPSHOT_SIZE_WARN_BYTES` 超なら warning（R-008）
+- [X] T011 [P] [US2] `services/cart/tests/unit/test_snapshot_service.py` を新規作成: エンベロープ組み立て・署名対象の安定性・縮退（鍵未設定で None + 例外を漏らさない）・サイズ warning
+- [X] T012 [US2] `services/cart/app/api/common/schemas.py` の `BaseCart` に Optional フィールド `signed_snapshot` / `restored` / `diverged` を追加（data-model.md §2。既存フィールド不変）
+- [X] T013 [US2] `services/cart/app/api/v1/schemas_transformer.py` の `transform_cart` に optional の snapshot 引数を追加し、渡されたら `signed_snapshot` に詰める
+- [X] T014 [US2] `services/cart/app/api/v1/cart.py` の変更系 12 ハンドラ（create/cancel/lineItems/明細 cancel/unitPrice/quantity/明細 discounts/subtotal/discounts/payments/bill/resume-item-entry）で `snapshot_service.build_envelope` を呼び transformer に渡す。GET 系は変更しない（R-005）
+- [X] T015 [US2] `services/cart/tests/integration/test_cart_snapshot_attach.py` を新規作成: (1) 変更系全エンドポイントのレスポンスに `signedSnapshot` が含まれ署名が自己検証できる、(2) `cartDocument.masters.items` にスキャン済み商品が同梱、(3) GET には含まれない、(4) 鍵未設定時は null + 操作自体は成功（縮退）
 
 **Checkpoint**: クライアントは常に最新の復元コピーを受け取れる（MVP の前半）
 
