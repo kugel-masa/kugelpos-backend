@@ -60,23 +60,34 @@ async def create_tenant(http_client, token):
     return tenant_id
 
 
-# Helper - open the terminal (function_mode -> sign-in -> open -> Sales mode)
+# Helper - open the terminal (function_mode -> sign-in -> open -> Sales mode).
+# Idempotent: other e2e suites may have left the terminal opened/signed-in,
+# so terminal-status business errors (4060xx, e.g. "already opened") are
+# tolerated on each step.
 async def open_terminal():
     terminal_id = os.environ.get("TERMINAL_ID")
     api_key = os.environ.get("API_KEY")
     header = {"X-API-KEY": api_key}
     base_url = os.environ.get("BASE_URL_TERMINAL")
+
+    def _ok(r):
+        if r.status_code == status.HTTP_200_OK:
+            return
+        if r.status_code == status.HTTP_400_BAD_REQUEST and '"4060' in r.text:
+            return  # already in the desired state
+        raise AssertionError(r.text)
+
     async with AsyncClient(base_url=base_url) as client:
         r = await client.patch(
             f"/terminals/{terminal_id}/function_mode", json={"function_mode": "OpenTerminal"}, headers=header
         )
-        assert r.status_code == status.HTTP_200_OK, r.text
+        _ok(r)
         r = await client.post(
             f"/terminals/{terminal_id}/sign-in", json={"staff_id": "S001", "staff_pin": "1234"}, headers=header
         )
-        assert r.status_code == status.HTTP_200_OK, r.text
+        _ok(r)
         r = await client.post(f"/terminals/{terminal_id}/open", json={"initial_amount": 50000}, headers=header)
-        assert r.status_code == status.HTTP_200_OK, r.text
+        _ok(r)
         r = await client.patch(
             f"/terminals/{terminal_id}/function_mode", json={"function_mode": "Sales"}, headers=header
         )
@@ -85,17 +96,15 @@ async def open_terminal():
 
 # Helper - terminal JWT (terminal info travels in the claims, #67)
 async def get_terminal_jwt() -> str:
-    terminal_id = os.environ.get("TERMINAL_ID")
     api_key = os.environ.get("API_KEY")
     base_url = os.environ.get("BASE_URL_TERMINAL").removesuffix("/api/v1")
     async with AsyncClient(base_url=base_url) as client:
         r = await client.post(
             "/api/v1/auth/token",
-            params={"terminal_id": terminal_id},
             headers={"X-API-KEY": api_key},
         )
     assert r.status_code == status.HTTP_200_OK, r.text
-    return r.json()["access_token"]
+    return r.json()["data"]["access_token"]
 
 
 def delete_cart_from_redis(cart_id: str):
