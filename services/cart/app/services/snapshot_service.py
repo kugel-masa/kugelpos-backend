@@ -12,6 +12,7 @@ Snapshot generation is best-effort (degraded mode): a failure to build or
 sign a snapshot must never fail the underlying cart operation. Verification
 is strict: with no keys configured, every envelope is rejected.
 """
+
 from logging import getLogger
 from typing import Optional
 
@@ -74,9 +75,7 @@ def init_snapshot_signer(force: bool = False) -> Optional[HmacSigner]:
             )
         except ValueError as e:
             _signer = None
-            logger.error(
-                "SNAPSHOT_HMAC_KEYS is malformed; cart snapshot feature is degraded: %s", e
-            )
+            logger.error("SNAPSHOT_HMAC_KEYS is malformed; cart snapshot feature is degraded: %s", e)
     _initialized = True
     return _signer
 
@@ -112,8 +111,7 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
         raw_size = len(canonical_json_bytes(payload))
         if raw_size > settings.SNAPSHOT_SIZE_WARN_BYTES:
             logger.warning(
-                "Snapshot for cart %s is %d bytes raw (threshold %d); "
-                "consider revisiting the size budget (R-008)",
+                "Snapshot for cart %s is %d bytes raw (threshold %d); " "consider revisiting the size budget (R-008)",
                 cart_doc.cart_id,
                 raw_size,
                 settings.SNAPSHOT_SIZE_WARN_BYTES,

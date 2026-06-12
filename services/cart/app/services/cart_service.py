@@ -382,9 +382,7 @@ class CartService(ICartService):
 
         return cart_doc
 
-    async def _apply_sales_promotions_async(
-        self, cart_doc: CartDocument, phase: str = "line_item"
-    ) -> CartDocument:
+    async def _apply_sales_promotions_async(self, cart_doc: CartDocument, phase: str = "line_item") -> CartDocument:
         """
         Apply sales promotion strategies matching the specified execution phase.
 
@@ -844,9 +842,7 @@ class CartService(ICartService):
         if existing_cart is not None:
             diverged = self.__comparable_cart_bytes(existing_cart) != self.__comparable_cart_bytes(snapshot_cart)
             await self.__add_restore_audit_async("existing_returned", audit_meta, diverged=diverged)
-            logger.info(
-                "Restore returned existing cart %s (diverged=%s)", snapshot_cart.cart_id, diverged
-            )
+            logger.info("Restore returned existing cart %s (diverged=%s)", snapshot_cart.cart_id, diverged)
             return existing_cart, False, diverged
 
         # 5. Rebuild on this backend: hydrate the master repositories from the
@@ -859,7 +855,9 @@ class CartService(ICartService):
         await self.__cache_cart_async(cart_doc=snapshot_cart, cart_status=CartStatus.NoUpdate, isNew=True)
 
         await self.__add_restore_audit_async("restored", audit_meta)
-        logger.info("Cart %s restored from snapshot issued at %s", snapshot_cart.cart_id, audit_meta.get("snapshot_issued_at"))
+        logger.info(
+            "Cart %s restored from snapshot issued at %s", snapshot_cart.cart_id, audit_meta.get("snapshot_issued_at")
+        )
         return snapshot_cart, True, False
 
     @staticmethod

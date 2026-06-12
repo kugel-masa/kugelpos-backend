@@ -1,5 +1,6 @@
 # Copyright 2026 masa@kugel
 """Unit tests for snapshot envelope verification rejections (issue #148, T023)."""
+
 import base64
 
 import pytest
@@ -16,7 +17,6 @@ from app.exceptions import (
 )
 from app.models.documents.cart_document import CartDocument
 from app.services import snapshot_service
-
 
 KEY_V1 = "v1:" + base64.b64encode(b"a" * 32).decode()
 KEY_V2 = "v2:" + base64.b64encode(b"b" * 32).decode()

@@ -1,5 +1,6 @@
 # Copyright 2026 masa@kugel
 """Unit tests for app.services.snapshot_service (envelope assembly, T011)."""
+
 import base64
 import json
 
@@ -12,7 +13,6 @@ from kugel_common.utils.hmac_signer import HmacSigner
 from app.config.settings import settings
 from app.models.documents.cart_document import CartDocument
 from app.services import snapshot_service
-
 
 KEY_SPEC = "v1:" + base64.b64encode(b"k" * 32).decode()
 

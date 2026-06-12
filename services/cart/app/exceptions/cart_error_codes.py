@@ -2,6 +2,7 @@
 """
 カートサービス固有のエラーコードとエラーメッセージの定義
 """
+
 from kugel_common.exceptions.error_codes import ErrorMessage as CommonErrorMessage
 
 

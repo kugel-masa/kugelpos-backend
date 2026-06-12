@@ -12,6 +12,7 @@ of the full cart document (masters included). Query (GET) responses carry
 none, and with no signing keys configured the operation still succeeds
 with a null snapshot (degraded mode).
 """
+
 import base64
 import os
 
@@ -23,7 +24,6 @@ from kugel_common.utils.hmac_signer import HmacSigner
 from app.api.common.schemas import SnapshotEnvelope
 from app.config.settings import settings
 from app.services import snapshot_service
-
 
 KEY_SPEC = "it-v1:" + base64.b64encode(b"integration-test-key-32-bytes!!!").decode()
 

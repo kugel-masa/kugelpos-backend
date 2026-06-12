@@ -2,6 +2,7 @@
 """
 Audit record for cart snapshot restore attempts (issue #148)
 """
+
 from typing import Optional
 from kugel_common.models.documents.abstract_document import AbstractDocument
 

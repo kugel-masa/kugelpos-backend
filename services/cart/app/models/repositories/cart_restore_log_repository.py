@@ -2,6 +2,7 @@
 """
 Repository for the cart restore audit trail (issue #148)
 """
+
 from typing import Optional
 from logging import getLogger
 from motor.motor_asyncio import AsyncIOMotorDatabase

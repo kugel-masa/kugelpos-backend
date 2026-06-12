@@ -17,6 +17,7 @@ already-finalized transaction is restored and re-billed is out of scope
 here — that is issue #152 (cart_id on tranlog). This module verifies the
 detection side only.
 """
+
 import base64
 import os
 
@@ -25,7 +26,6 @@ from fastapi import status
 
 from app.config.settings import settings
 from app.services import snapshot_service
-
 
 KEY_SPEC = "it-v1:" + base64.b64encode(b"integration-test-key-32-bytes!!!").decode()
 
@@ -170,9 +170,7 @@ async def test_audit_trail_traces_full_replay_history(http_client, snapshot_keys
     cart_id, snapshot = await _create_cart_with_items(http_client)
 
     # Attempt 1: existing cart -> existing_returned (no divergence)
-    r = await http_client.post(
-        f"/api/v1/carts/restore?terminal_id={terminal_id}", json=snapshot, headers=headers
-    )
+    r = await http_client.post(f"/api/v1/carts/restore?terminal_id={terminal_id}", json=snapshot, headers=headers)
     assert r.status_code == status.HTTP_200_OK
 
     # Attempt 2: progress the cart, replay -> existing_returned + diverged
@@ -182,18 +180,14 @@ async def test_audit_trail_traces_full_replay_history(http_client, snapshot_keys
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK
-    r = await http_client.post(
-        f"/api/v1/carts/restore?terminal_id={terminal_id}", json=snapshot, headers=headers
-    )
+    r = await http_client.post(f"/api/v1/carts/restore?terminal_id={terminal_id}", json=snapshot, headers=headers)
     assert r.status_code == status.HTTP_200_OK
 
     # Attempt 3: tampered replay -> rejected
     tampered = dict(snapshot)
     tampered["cartDocument"] = dict(snapshot["cartDocument"])
     tampered["cartDocument"]["balance_amount"] = 0.01
-    r = await http_client.post(
-        f"/api/v1/carts/restore?terminal_id={terminal_id}", json=tampered, headers=headers
-    )
+    r = await http_client.post(f"/api/v1/carts/restore?terminal_id={terminal_id}", json=tampered, headers=headers)
     assert r.status_code == status.HTTP_400_BAD_REQUEST
 
     logs = await _restore_logs(cart_id)

@@ -12,6 +12,7 @@ MongoDB fallback copy (the integration environment has no Dapr sidecar, so
 the cache lives in cache_cart), then restores from the snapshot and drives
 the transaction to completion.
 """
+
 import base64
 import os
 
@@ -20,7 +21,6 @@ from fastapi import status
 
 from app.config.settings import settings
 from app.services import snapshot_service
-
 
 KEY_SPEC = "it-v1:" + base64.b64encode(b"integration-test-key-32-bytes!!!").decode()
 
