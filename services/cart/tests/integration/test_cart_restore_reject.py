@@ -216,3 +216,21 @@ async def test_other_tenant_snapshot_rejected_401505(http_client, snapshot_keys)
     assert r.status_code == status.HTTP_403_FORBIDDEN, r.text
     assert r.json()["user_error"]["code"] == "401505"
     assert not await _cart_exists(cart_id)
+
+
+@pytest.mark.asyncio
+async def test_restore_requires_opened_signed_in_terminal(http_client, snapshot_keys, terminal_jwt):
+    """Restore is guarded like cart creation: a terminal that is not opened
+    (and not signed in) is rejected before any snapshot processing."""
+    cart_id, snapshot = await _orphan_snapshot(http_client)
+
+    # The terminal_jwt fixture carries status=Idle and no staff claims
+    r = await http_client.post(
+        f"/api/v1/carts/restore?terminal_id={_terminal_id()}",
+        json=snapshot,
+        headers={"Authorization": f"Bearer {terminal_jwt}", "Content-Type": "application/json"},
+    )
+    assert r.status_code == status.HTTP_400_BAD_REQUEST, r.text
+    assert r.json()["user_error"]["code"] == "404001"
+    assert not await _cart_exists(cart_id)
+    assert "404001" in await _rejected_reasons(cart_id)

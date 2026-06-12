@@ -797,6 +797,13 @@ class CartService(ICartService):
         """
         audit_meta = snapshot_service.extract_audit_meta(envelope)
         try:
+            # 0. The restored cart must be operable immediately: require an
+            #    opened, signed-in terminal (same guard as cart creation).
+            if self.terminal_info.status != TerminalStatus.Opened.value:
+                raise TerminalStatusException(f"Terminal is not opened. status: {self.terminal_info.status}", logger)
+            if self.terminal_info.staff is None:
+                raise SignInOutException("Terminal is not signed in", logger)
+
             # 1. Verify signature and rebuild the cart document
             snapshot_cart = snapshot_service.verify_envelope(envelope)
 
@@ -829,17 +836,25 @@ class CartService(ICartService):
             raise
 
         # 4. Conflict check: the existing server-side cart wins (FR-006).
+        #    The repository is queried directly because an absent cart is the
+        #    NORMAL failover case here — going through __get_cached_cart_async
+        #    would emit a fatal log + Slack notification on every restore.
         #    Only a clean not-found proceeds to restore; any other read error
         #    propagates rather than risking an overwrite.
         self.cart_id = snapshot_cart.cart_id
         try:
-            existing_cart = await self.__get_cached_cart_async(snapshot_cart.cart_id)
-        except CartNotFoundException as e:
-            if not isinstance(e.original_exception, NotFoundException):
-                raise
+            existing_cart = await self.cart_repo.get_cached_cart_async(snapshot_cart.cart_id)
+        except NotFoundException:
             existing_cart = None
 
         if existing_cart is not None:
+            # Hydrate repositories and state from the existing cart (same as a
+            # normal cache resume) so the response reflects server-side truth.
+            self.settings_master_repo.set_settings_master_documents(existing_cart.masters.settings)
+            self.item_master_repo.set_item_master_documents(existing_cart.masters.items)
+            self.tax_master_repo.set_tax_master_documents(existing_cart.masters.taxes)
+            self.state_manager.set_state(existing_cart.status)
+            self.current_cart = existing_cart
             diverged = self.__comparable_cart_bytes(existing_cart) != self.__comparable_cart_bytes(snapshot_cart)
             await self.__add_restore_audit_async("existing_returned", audit_meta, diverged=diverged)
             logger.info("Restore returned existing cart %s (diverged=%s)", snapshot_cart.cart_id, diverged)
