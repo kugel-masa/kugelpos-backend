@@ -704,7 +704,11 @@ async def restore_cart(
         API response with the cart data, restore result flags, and a fresh
         signed snapshot of the cart as it now exists on this backend
     """
-    envelope = restore_req.model_dump(mode="json")
+    # Signature verification re-serializes this dict canonically; the signed
+    # form is ALWAYS the snake_case field-name representation, so by_alias
+    # is pinned explicitly (a future by_alias=True here would break every
+    # signature even though the wire format looks fine).
+    envelope = restore_req.model_dump(mode="json", by_alias=False)
     logger.debug(f"Restoring cart from snapshot (cart_id: {envelope.get('cart_document', {}).get('cart_id')})")
     cart_doc, restored, diverged = await cart_service.restore_cart_async(envelope)
 

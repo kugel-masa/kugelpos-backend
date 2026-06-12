@@ -878,12 +878,16 @@ class CartService(ICartService):
     @staticmethod
     def __comparable_cart_bytes(cart_doc: CartDocument) -> bytes:
         """
-        Canonical bytes of a cart document for divergence comparison,
-        excluding storage bookkeeping fields (timestamps/etag) that shift
-        on every cache write without representing transaction content.
+        Canonical bytes of a cart document for divergence comparison.
+
+        Excludes storage bookkeeping fields (timestamps/etag) that shift on
+        every cache write, and `staff`, which the repository re-injects from
+        the CURRENT terminal info on every cache read — comparing it would
+        flag a benign operator change as snapshot divergence and make the
+        audit signal unreliable.
         """
         data = cart_doc.model_dump(mode="json")
-        for volatile in ("created_at", "updated_at", "etag"):
+        for volatile in ("created_at", "updated_at", "etag", "staff"):
             data.pop(volatile, None)
         return canonical_json_bytes(data)
 
@@ -893,9 +897,14 @@ class CartService(ICartService):
         """
         Record a restore attempt in the audit trail (FR-007).
 
-        A failed audit write never masks a rejection (the rejection is the
-        caller's primary outcome), but it does fail a successful restore:
-        a state-changing restore must be traceable.
+        Audit-write failure handling depends on whether server state changed:
+        - "rejected" / "existing_returned" mutate nothing, so the original
+          outcome wins and the failure is only logged (with the full record
+          payload, so the trace survives in the app log).
+        - "restored" already materialized the cart, so the failure is logged
+          the same way and then raised: a state-changing restore that cannot
+          be persisted to the trail must surface loudly. A client retry hits
+          the existing-cart path and gets audited there.
         """
         if self.cart_restore_log_repo is None:
             logger.warning("Restore audit repository not configured; skipping audit record")
@@ -908,10 +917,18 @@ class CartService(ICartService):
                 **audit_meta,
             )
         except Exception as e:
-            if result == "rejected":
-                logger.error("Failed to write restore audit record (rejected path): %s", e)
-                return
-            raise
+            # Keep the trace in the application log even when the DB write
+            # failed; this is the fallback audit trail.
+            logger.error(
+                "Failed to write restore audit record: result=%s reject_reason=%s diverged=%s meta=%s error=%s",
+                result,
+                reject_reason,
+                diverged,
+                audit_meta,
+                e,
+            )
+            if result == "restored":
+                raise
 
     # Save cart document to cache
     async def __cache_cart_async(self, cart_doc: CartDocument, cart_status: CartStatus, isNew: bool = False) -> None:
