@@ -13,6 +13,7 @@ from logging import getLogger
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
+from app.api.common.schemas import SnapshotEnvelope
 from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
 from app.exceptions import SnapshotRequiredException
 from app.services.cart_service import CartService
@@ -81,6 +82,19 @@ async def get_cart_service_with_cart_id_async(
 
     snapshot = request.scope.get("cart_snapshot")
     if snapshot is not None:
+        # Normalize to the snake_case representation the signature is computed
+        # over: responses serialize the envelope in camelCase (BaseSchemmaModel
+        # uses a camelCase alias generator), so a client echoes camelCase. Parse
+        # through SnapshotEnvelope (populate_by_name accepts either casing) and
+        # dump with by_alias=False — the same normalization the restore endpoint
+        # applies before verification (FR-010).
+        if isinstance(snapshot, dict):
+            try:
+                snapshot = SnapshotEnvelope(**snapshot).model_dump(mode="json", by_alias=False)
+            except Exception:
+                # Malformed shape: pass it through so verify raises the proper
+                # snapshot error (and records the rejection in the audit trail).
+                pass
         await cart_service.prepare_stateless_from_snapshot(snapshot)
     elif settings.CART_REQUEST_SNAPSHOT_MODE.upper() == "REQUIRED":
         raise SnapshotRequiredException(
