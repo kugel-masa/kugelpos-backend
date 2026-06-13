@@ -19,6 +19,7 @@ logger_request = getLogger("requestLogger")
 from kugel_common.database import database as db_helper
 from kugel_common.middleware.log_requests import log_requests
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
+from app.middleware.snapshot_envelope import SnapshotEnvelopePeelMiddleware
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
 from kugel_common.utils.health_check import HealthChecker
@@ -113,6 +114,12 @@ app.add_middleware(
 
 # Add a middleware to log all HTTP requests to the cart service
 app.middleware("http")(log_requests("cart"))
+
+# Client-carried cart phase 2 (issue #156): peel the wrapped request snapshot
+# envelope onto scope["cart_snapshot"] and forward the inner payload. Registered
+# after log_requests so it runs OUTSIDE it — the request log observes only the
+# peeled payload, not the (large) carried snapshot (NFR-005 / issue #155).
+app.add_middleware(SnapshotEnvelopePeelMiddleware)
 
 # Compress responses for clients that send Accept-Encoding: gzip.
 # Registered after log_requests so compression runs outermost and the

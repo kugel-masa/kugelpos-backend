@@ -14,6 +14,7 @@ from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
 from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
+from app.exceptions import SnapshotRequiredException
 from app.services.cart_service import CartService
 from app.services.tran_service import TranService
 from app.config.settings import settings
@@ -65,12 +66,29 @@ async def get_cart_service_with_cart_id_async(
 
     Returns:
         Configured CartService instance with the specified cart ID
+
+    Client-carried cart phase 2 (issue #156): if the request carried a snapshot
+    (peeled onto request.scope["cart_snapshot"] by SnapshotEnvelopePeelMiddleware),
+    arm the stateless path — the cart is reconstructed from the snapshot and the
+    server-side cache is not consulted. Otherwise the cache-authoritative path is
+    used; in REQUIRED mode a snapshot-less mutating request is rejected.
     """
-    return await __get_cart_service_async(
+    cart_service = await __get_cart_service_async(
         terminal_info=terminal_info,
         cart_id=cart_id,
         cache_backend=_get_master_cache_backend(request),
     )
+
+    snapshot = request.scope.get("cart_snapshot")
+    if snapshot is not None:
+        await cart_service.prepare_stateless_from_snapshot(snapshot)
+    elif settings.CART_REQUEST_SNAPSHOT_MODE.upper() == "REQUIRED":
+        raise SnapshotRequiredException(
+            "A carried snapshot is required for cart-mutating requests (CART_REQUEST_SNAPSHOT_MODE=REQUIRED)",
+            logger,
+        )
+
+    return cart_service
 
 
 async def __get_cart_service_async(

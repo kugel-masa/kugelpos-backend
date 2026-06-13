@@ -112,9 +112,11 @@ class SnapshotEnvelopePeelMiddleware:
 
         snapshot, new_body = peel_snapshot_envelope(body)
 
-        # Expose the snapshot to downstream dependencies via request.state.
-        state = scope.setdefault("state", {})
-        state["cart_snapshot"] = snapshot
+        # Expose the peeled snapshot to downstream dependencies via a dedicated
+        # scope key (read with request.scope.get("cart_snapshot")). A top-level
+        # scope key is robust across Starlette versions, unlike scope["state"]
+        # which the framework may initialize/replace.
+        scope["cart_snapshot"] = snapshot
 
         sent = False
 

@@ -405,6 +405,20 @@ class SnapshotTerminalStateException(ServiceException):
         )
 
 
+class SnapshotRequiredException(ServiceException):
+    """Exception raised when a mutating request omits the snapshot in REQUIRED mode (issue #156)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_REQUIRED,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_REQUIRED),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
 class AlreadyRefundedException(ServiceException):
     """
     Exception raised when a transaction has already been refunded.

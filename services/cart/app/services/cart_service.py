@@ -127,6 +127,12 @@ class CartService(ICartService):
         self.cart_id = cart_id
         self.current_cart = None
 
+        # Client-carried cart phase 2 (issue #156). When armed via
+        # prepare_stateless_from_snapshot, the service serves the reconstructed
+        # cart and skips server-side cache reads/writes (FR-004).
+        self._stateless = False
+        self._snapshot_cart = None
+
         self.state_manager = CartStateManager()
         self.strategy_manager = CartStrategyManager()
 
@@ -875,6 +881,70 @@ class CartService(ICartService):
         )
         return snapshot_cart, True, False
 
+    async def prepare_stateless_from_snapshot(self, envelope: dict) -> None:
+        """
+        Arm the per-request stateless path from a carried snapshot (issue #156).
+
+        Verifies and reconstructs the cart from the presented snapshot envelope,
+        then pins it so subsequent cart reads return the reconstructed cart and
+        cache writes are skipped — the operation never depends on server-side
+        cache (FR-004). Verification and scope/state rules are identical to
+        restore_cart_async (FR-010). Rejections raise the same snapshot
+        exceptions and are recorded in the audit trail (FR-007).
+
+        Args:
+            envelope: Snapshot envelope as a snake_case dict (the peeled
+                request.scope["cart_snapshot"]).
+        """
+        audit_meta = snapshot_service.extract_audit_meta(envelope)
+        try:
+            # Same operability guard as restore / cart creation.
+            if self.terminal_info.status != TerminalStatus.Opened.value:
+                raise TerminalStatusException(f"Terminal is not opened. status: {self.terminal_info.status}", logger)
+            if self.terminal_info.staff is None:
+                raise SignInOutException("Terminal is not signed in", logger)
+
+            # Verify signature/version/kid and rebuild the cart document.
+            snapshot_cart = snapshot_service.verify_envelope(envelope)
+
+            # Scope check: same tenant AND store (FR-005 / FR-012).
+            if (
+                envelope.get("tenant_id") != self.terminal_info.tenant_id
+                or envelope.get("store_code") != self.terminal_info.store_code
+            ):
+                raise SnapshotScopeViolationException(
+                    f"Snapshot scope mismatch: snapshot={envelope.get('tenant_id')}/{envelope.get('store_code')} "
+                    f"auth={self.terminal_info.tenant_id}/{self.terminal_info.store_code}",
+                    logger,
+                )
+
+            # Only in-flight carts are operable; terminal-state snapshots are
+            # rejected (a non-finalize op on a finalized cart is invalid).
+            if snapshot_cart.status in (CartStatus.Completed.value, CartStatus.Cancelled.value):
+                raise SnapshotTerminalStateException(
+                    f"Snapshot of a finalized cart cannot be operated on: status={snapshot_cart.status}",
+                    logger,
+                )
+            if snapshot_cart.status not in snapshot_service.RESTORABLE_STATUSES or not snapshot_cart.cart_id:
+                raise SnapshotInvalidException(
+                    f"Snapshot cart is not operable: status={snapshot_cart.status} cart_id={snapshot_cart.cart_id}",
+                    logger,
+                )
+        except ServiceException as e:
+            await self.__add_restore_audit_async("rejected", audit_meta, reject_reason=e.error_code)
+            raise
+
+        # Arm the stateless path: reconstruct master context + state, pin the
+        # cart. Subsequent __get_cached_cart_async / __cache_cart_async observe
+        # _stateless and bypass the cache.
+        self._stateless = True
+        self._snapshot_cart = snapshot_cart
+        self.cart_id = snapshot_cart.cart_id
+        self.settings_master_repo.set_settings_master_documents(snapshot_cart.masters.settings)
+        self.item_master_repo.set_item_master_documents(snapshot_cart.masters.items)
+        self.tax_master_repo.set_tax_master_documents(snapshot_cart.masters.taxes)
+        self.state_manager.set_state(snapshot_cart.status)
+
     @staticmethod
     def __comparable_cart_bytes(cart_doc: CartDocument) -> bytes:
         """
@@ -952,6 +1022,15 @@ class CartService(ICartService):
 
         # Save updated item master information to cache
         cart_doc.masters.items = self.item_master_repo.item_master_documents
+
+        if self._stateless:
+            # Snapshot-present path (issue #156): the response snapshot is the
+            # authority; do not depend on server-side cache (FR-004). Keep the
+            # pinned cart current so re-reads in this request stay consistent.
+            self._snapshot_cart = cart_doc
+            self.current_cart = None
+            return
+
         try:
             await self.cart_repo.cache_cart_async(cart_doc, isNew)
         except Exception as e:
@@ -984,6 +1063,17 @@ class CartService(ICartService):
         Returns:
             CartDocument: The retrieved cart document
         """
+        # Snapshot-present path (issue #156): serve the reconstructed cart and
+        # never read the server-side cache (FR-004).
+        if self._stateless:
+            cart = self._snapshot_cart
+            self.settings_master_repo.set_settings_master_documents(cart.masters.settings)
+            self.item_master_repo.set_item_master_documents(cart.masters.items)
+            self.tax_master_repo.set_tax_master_documents(cart.masters.taxes)
+            self.state_manager.set_state(cart.status)
+            self.current_cart = cart
+            return cart
+
         # Get cart information from cache
         try:
             cart = await self.cart_repo.get_cached_cart_async(cart_id)
@@ -1029,6 +1119,9 @@ class CartService(ICartService):
         Raises:
             CartNotFoundException: If the cart cannot be found in the cache
         """
+        if self._stateless:
+            # No server-side cache entry to remove on the snapshot-present path.
+            return None
         try:
             await self.cart_repo.delete_cart_async(cart_id)
         except Exception as e:

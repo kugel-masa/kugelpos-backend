@@ -57,4 +57,5 @@ from .cart_exceptions import (
     SnapshotVersionUnsupportedException,
     SnapshotScopeViolationException,
     SnapshotTerminalStateException,
+    SnapshotRequiredException,
 )
