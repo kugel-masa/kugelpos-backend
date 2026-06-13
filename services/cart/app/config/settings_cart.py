@@ -50,6 +50,28 @@ class CartSettings(BaseSettings):
         description="Raw snapshot size threshold in bytes that triggers a warning log.",
     )
 
+    # Client-carried cart phase 2 (issue #156).
+    # Per-request snapshot handling mode (service-wide migration switch):
+    #   DUAL     - accept both: a request carrying a snapshot is processed
+    #              statelessly (snapshot authoritative, cache not consulted);
+    #              a request without a snapshot falls back to the phase 1
+    #              cache-authoritative path. Lets phase 1/2 clients coexist.
+    #   REQUIRED - reject snapshot-less mutating requests with a dedicated error
+    #              (post-migration; cache no longer the authority).
+    # The presence/absence branching is automatic per request; this setting only
+    # controls whether the snapshot-less path is permitted.
+    CART_REQUEST_SNAPSHOT_MODE: str = Field(
+        default="DUAL",
+        description="Per-request snapshot mode: 'DUAL' (accept snapshot-less) or 'REQUIRED' (reject snapshot-less).",
+    )
+    # Max decompressed request-body size (bytes) for the request-decompression
+    # middleware; bodies exceeding this are rejected before being fully expanded
+    # (zip-bomb guard). Kept in line with SNAPSHOT_SIZE_WARN_BYTES.
+    REQUEST_DECOMPRESS_MAX_BYTES: int = Field(
+        default=1048576,
+        description="Maximum decompressed request body size in bytes; larger is rejected (zip-bomb guard).",
+    )
+
     # gRPC settings
     USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
     GRPC_TIMEOUT: float = Field(default=5.0, description="gRPC request timeout in seconds")

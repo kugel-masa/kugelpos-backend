@@ -46,3 +46,8 @@ class CartDocument(BaseTransaction):
     balance_amount: Optional[float] = 0.0  # Final amount after all calculations
     line_items: Optional[list[CartLineItem]] = []  # Items in the cart
     masters: Optional[ReferenceMasters] = ReferenceMasters()  # References to master data
+    # Client-carried cart phase 2 (issue #156). Carried in the snapshot so that
+    # transaction numbering and time are deterministic across retries/backends.
+    seq: Optional[int] = 0  # Per-open-session transaction sequence; 0 until first finalize
+    # Client-stamped transaction time (set at bill), source of tranlog.generate_date_time
+    transaction_datetime: Optional[str] = None
