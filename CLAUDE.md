@@ -177,6 +177,8 @@ Format: XXYYZZ
 - Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ) (072-master-data-cache)
 - Python 3.12+（既存サービスと同一） + FastAPI、Pydantic v2、Motor（async MongoDB）、Dapr（state store `cartstore`）。署名は標準ライブラリ `hmac` / `hashlib` / `json` のみ — **新規外部依存なし** (148-cart-snapshot-restore)
 - MongoDB テナント別 DB（`db_cart_{tenant_id}`）に `log_cart_restore` コレクション新設。カートキャッシュ（Redis / `cache_cart` フォールバック）は既存どおり (148-cart-snapshot-restore)
+- Python 3.12+（既存サービスと同一） + FastAPI、Pydantic v2、Motor（async MongoDB）、Dapr（pub/sub `pubsub-tranlog-report` / topic `topic-tranlog`、state store）。署名は phase 1 の `kugel_common.utils.hmac_signer`（標準ライブラリのみ）。リクエスト展開は標準 `gzip` + `brotli`（クライアント .NET 8 が `br`/`gzip` 標準対応） (156-stateless-cart)
+- MongoDB テナント別 DB。tranlog（report/journal）・stock_update のインデックスを cart_id 基準へ是正。監査は phase 1 `log_cart_restore` を一般化 (156-stateless-cart)
 
 ## Recent Changes
 - 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ)

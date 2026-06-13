@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: Cart client-carried request snapshot (phase 2, #156)
+  version: 0.1.0
+  description: >
+    Phase 2 extends every cart-mutating request to optionally carry the signed
+    snapshot the client last received. Presence of `signedSnapshot` selects the
+    stateless path (snapshot is authoritative, cache not consulted); absence
+    selects the legacy cache-authoritative path during the DUAL migration mode.
+    The envelope is identical to the phase 1 response snapshot (#148); the field
+    name and shape mirror the response so a client returns what it received.
+
+paths:
+  /api/v1/carts/{cart_id}/lineItems:
+    post:
+      summary: Add line items (representative mutating endpoint)
+      description: >
+        Representative of all cart-mutating endpoints (lineItems, subtotal,
+        discounts, payments, bill, cancel, resume-item-entry, line-item
+        cancel/unitPrice/quantity/discounts). Each accepts an optional
+        `signedSnapshot` in the request body. Endpoints that previously had no
+        body accept a body containing only `signedSnapshot`.
+      parameters:
+        - name: cart_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MutatingRequestWithSnapshot'
+          application/json; charset=utf-8:
+            schema:
+              $ref: '#/components/schemas/MutatingRequestWithSnapshot'
+      responses:
+        '200':
+          description: >
+            Operation applied. Response carries the cart view plus a fresh
+            signed snapshot (phase 1 contract, unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '400':
+          description: Snapshot verification failed (tampered / malformed / scope / version).
+        '409':
+          description: >
+            Terminal-state snapshot (already finalized/cancelled) presented for a
+            non-finalize mutation.
+        '413':
+          description: Decompressed request body exceeds the size guard (FR-009).
+        '422':
+          description: >
+            Snapshot omitted while CART_REQUEST_SNAPSHOT_MODE=REQUIRED
+            (post-migration). In DUAL mode, omission is accepted (legacy path).
+
+components:
+  schemas:
+    MutatingRequestWithSnapshot:
+      type: object
+      description: >
+        Operation-specific fields (varies per endpoint) plus the optional
+        carried snapshot. Shown here with line-item fields as an example.
+      properties:
+        items:
+          type: array
+          description: Operation payload (endpoint-specific; example shown).
+          items:
+            type: object
+        signedSnapshot:
+          $ref: '#/components/schemas/SnapshotEnvelope'
+      additionalProperties: true
+
+    SnapshotEnvelope:
+      type: object
+      description: Identical to the phase 1 (#148) response envelope. Unchanged schema_version.
+      required: [schema_version, issued_at, kid, tenant_id, store_code, terminal_no, cart_document, signature]
+      properties:
+        schema_version: { type: integer, example: 1 }
+        issued_at: { type: string }
+        kid: { type: string }
+        tenant_id: { type: string }
+        store_code: { type: string }
+        terminal_no: { type: integer }
+        cart_document:
+          type: object
+          description: >
+            Full CartDocument dump (snake_case). Phase 2 adds `seq` (per-open
+            transaction sequence, carried). business_counter is sourced from
+            terminal_info at finalize, not duplicated here.
+          properties:
+            cart_id: { type: string }
+            seq:
+              type: integer
+              description: Per-open-session transaction sequence (0 until first finalize).
+          additionalProperties: true
+        signature: { type: string }
+
+    CartResponse:
+      type: object
+      description: Phase 1 response shape (cart view + signedSnapshot), unchanged.
+      properties:
+        success: { type: boolean }
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            cartId: { type: string }
+            signedSnapshot:
+              $ref: '#/components/schemas/SnapshotEnvelope'
+          additionalProperties: true
+      additionalProperties: true
