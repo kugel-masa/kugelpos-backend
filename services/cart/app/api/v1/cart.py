@@ -7,16 +7,18 @@ from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.status_codes import StatusCodes
 from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.api.v1.schemas import (
-    Cart, 
-    CartCreateRequest, 
-    CartCreateResponse, 
-    Item, 
-    PaymentRequest, 
+    Cart,
+    CartCreateRequest,
+    CartCreateResponse,
+    CartRestoreRequest,
+    Item,
+    PaymentRequest,
     DiscountRequest,
     ItemQuantityUpdateRequest,
     ItemUnitPriceUpdateRequest,
 )
 from app.dependencies.get_cart_service import get_cart_service_async, get_cart_service_with_cart_id_async
+from app.services import snapshot_service
 from app.services.cart_service import CartService
 
 # Create a router instance
@@ -24,6 +26,18 @@ router = APIRouter()
 
 # Get logger instance
 logger = getLogger(__name__)
+
+
+def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
+    """
+    Transform a mutated cart into response data with a signed snapshot attached.
+
+    Every cart-mutating response carries a restorable copy of the cart
+    (issue #148). Snapshot generation is best-effort: on failure the field
+    is null and the operation itself still succeeds.
+    """
+    snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
+    return SchemasTransformerV1().transform_cart(cart_doc=cart_doc, snapshot=snapshot).model_dump()
 
 
 # API Endpoints
@@ -70,11 +84,19 @@ async def create_cart(
     except Exception as e:
         raise e
 
+    # Creation is a mutation, so its response also carries a signed snapshot
+    # (FR-001). The snapshot is built from the cached (authoritative) cart;
+    # skip the extra cache read entirely when generation is degraded.
+    snapshot = None
+    if snapshot_service.get_snapshot_signer() is not None:
+        cart_doc = await cart_service.get_cart_async()
+        snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
+
     response = ApiResponse(
         success=True,
         code=status.HTTP_201_CREATED,
         message=f"Cart Created. cart_id: {cart_id}",
-        data=CartCreateResponse(cart_id=cart_id).model_dump(),
+        data=CartCreateResponse(cart_id=cart_id, signed_snapshot=snapshot).model_dump(),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     logger.debug(f"create_cart_response: {response}")
@@ -122,6 +144,8 @@ async def get_cart(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Cart found. cart_id: {cart_id}",
+        # Query responses carry no snapshot (R-005): the restorable copy is
+        # guaranteed by mutating responses only.
         data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
@@ -166,7 +190,7 @@ async def cancel_transaction(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Cart Cancelled. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -214,7 +238,7 @@ async def add_items(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Items added to cart. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -260,7 +284,7 @@ async def cancel_line_item(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Line item cancelled. cart_id: {cart_id}, lineNo: {lineNo}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -309,7 +333,7 @@ async def update_item_unit_price(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Unit price updated. cart_id: {cart_id}, line_no: {lineNo}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -358,7 +382,7 @@ async def update_item_quantity(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Quantity updated. cart_id: {cart_id}, line_no: {lineNo}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -409,7 +433,7 @@ async def add_discount_to_line_item(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Discount added. cart_id: {cart_id}, line_no: {lineNo}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -453,7 +477,7 @@ async def subtotal(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Subtotal calculated. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -502,7 +526,7 @@ async def discount_to_cart(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Discount added. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -550,7 +574,7 @@ async def payments(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Payment processed. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -595,7 +619,7 @@ async def bill(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Bill processed. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
@@ -640,7 +664,63 @@ async def resume_item_entry(
         success=True,
         code=status.HTTP_200_OK,
         message=f"Item entry resumed. cart_id: {cart_id}",
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
+        data=_cart_data_with_snapshot(cart_service, cart_doc),
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
+    return response
+
+
+@router.post(
+    "/carts/restore",
+    status_code=status.HTTP_200_OK,
+    response_model=ApiResponse[Cart],
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
+        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def restore_cart(
+    restore_req: CartRestoreRequest,
+    cart_service: CartService = Depends(get_cart_service_async),
+):
+    """
+    Restore a cart from a signed snapshot envelope (issue #148).
+
+    Verifies the snapshot signature and scope, then re-materializes the cart
+    on this backend. If a cart with the same cart_id already exists, the
+    existing server-side cart wins and is returned with restored=false
+    (diverged=true when the snapshot content differs). Every attempt is
+    recorded in the restore audit trail.
+
+    Args:
+        restore_req: The signed snapshot envelope previously issued in a
+            cart-mutating response
+        cart_service: Injected cart service instance
+
+    Returns:
+        API response with the cart data, restore result flags, and a fresh
+        signed snapshot of the cart as it now exists on this backend
+    """
+    # Signature verification re-serializes this dict canonically; the signed
+    # form is ALWAYS the snake_case field-name representation, so by_alias
+    # is pinned explicitly (a future by_alias=True here would break every
+    # signature even though the wire format looks fine).
+    envelope = restore_req.model_dump(mode="json", by_alias=False)
+    logger.debug(f"Restoring cart from snapshot (cart_id: {envelope.get('cart_document', {}).get('cart_id')})")
+    cart_doc, restored, diverged = await cart_service.restore_cart_async(envelope)
+
+    data = _cart_data_with_snapshot(cart_service, cart_doc)
+    data["restored"] = restored
+    data["diverged"] = diverged
+
+    response = ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Cart restored. cart_id: {cart_doc.cart_id}, restored: {restored}, diverged: {diverged}",
+        data=data,
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response

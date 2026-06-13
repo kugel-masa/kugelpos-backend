@@ -24,9 +24,14 @@ from app.exceptions import (
     BalanceGreaterThanZeroException,
     TerminalStatusException,
     SignInOutException,
+    SnapshotInvalidException,
+    SnapshotScopeViolationException,
+    SnapshotTerminalStateException,
 )
 
+from kugel_common.utils.hmac_signer import canonical_json_bytes
 from app.models.repositories.cart_repository import CartRepository
+from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
 from app.models.repositories.terminal_counter_repository import (
     TerminalCounterRepository,
 )
@@ -44,6 +49,7 @@ from app.models.repositories.promotion_master_web_repository import (
 )
 from app.models.documents.cart_document import CartDocument
 from app.enums.terminal_status import TerminalStatus
+from app.services import snapshot_service
 from app.services.cart_service_interface import ICartService
 from app.services.cart_state_manager import CartStateManager
 from app.services.cart_strategy_manager import CartStrategyManager
@@ -90,6 +96,7 @@ class CartService(ICartService):
         tran_service: TranService,
         cart_id: str = None,
         master_cache_backend=None,
+        cart_restore_log_repo: CartRestoreLogRepository = None,
     ) -> None:
         """
         Initialize the CartService with necessary repositories and configurations.
@@ -115,6 +122,7 @@ class CartService(ICartService):
         self.payment_master_repo = payment_master_repo
         self.store_info_repo = store_info_repo
         self.tran_service = tran_service
+        self.cart_restore_log_repo = cart_restore_log_repo
 
         self.cart_id = cart_id
         self.current_cart = None
@@ -374,9 +382,7 @@ class CartService(ICartService):
 
         return cart_doc
 
-    async def _apply_sales_promotions_async(
-        self, cart_doc: CartDocument, phase: str = "line_item"
-    ) -> CartDocument:
+    async def _apply_sales_promotions_async(self, cart_doc: CartDocument, phase: str = "line_item") -> CartDocument:
         """
         Apply sales promotion strategies matching the specified execution phase.
 
@@ -767,6 +773,162 @@ class CartService(ICartService):
         await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.EnteringItem)
 
         return cart_doc
+
+    async def restore_cart_async(self, envelope: dict) -> tuple[CartDocument, bool, bool]:
+        """
+        Restore a cart from a signed snapshot envelope (issue #148).
+
+        Pipeline: signature verification -> tenant/store scope check ->
+        restorable-state check -> conflict check (an existing cart with the
+        same cart_id always wins; the snapshot never overwrites server
+        state, FR-006) -> cache write -> audit record.
+
+        Every attempt (restored / existing returned / rejected) is recorded
+        in the log_cart_restore audit trail (FR-007).
+
+        Args:
+            envelope: Snapshot envelope as a snake_case dict
+                (SnapshotEnvelope.model_dump(mode="json"))
+
+        Returns:
+            Tuple of (cart document, restored, diverged) where restored is
+            False when an existing cart was returned, and diverged is True
+            when the presented snapshot differs from that existing cart.
+        """
+        audit_meta = snapshot_service.extract_audit_meta(envelope)
+        try:
+            # 0. The restored cart must be operable immediately: require an
+            #    opened, signed-in terminal (same guard as cart creation).
+            if self.terminal_info.status != TerminalStatus.Opened.value:
+                raise TerminalStatusException(f"Terminal is not opened. status: {self.terminal_info.status}", logger)
+            if self.terminal_info.staff is None:
+                raise SignInOutException("Terminal is not signed in", logger)
+
+            # 1. Verify signature and rebuild the cart document
+            snapshot_cart = snapshot_service.verify_envelope(envelope)
+
+            # 2. Scope check against the signed attribution (FR-005 / FR-012):
+            #    same tenant AND same store; any terminal within them may restore.
+            if (
+                envelope.get("tenant_id") != self.terminal_info.tenant_id
+                or envelope.get("store_code") != self.terminal_info.store_code
+            ):
+                raise SnapshotScopeViolationException(
+                    f"Snapshot scope mismatch: snapshot={envelope.get('tenant_id')}/{envelope.get('store_code')} "
+                    f"auth={self.terminal_info.tenant_id}/{self.terminal_info.store_code}",
+                    logger,
+                )
+
+            # 3. Only in-flight carts are restorable; finalized snapshots are
+            #    rejected idempotently (FR-007).
+            if snapshot_cart.status in (CartStatus.Completed.value, CartStatus.Cancelled.value):
+                raise SnapshotTerminalStateException(
+                    f"Snapshot of a finalized cart cannot be restored: status={snapshot_cart.status}",
+                    logger,
+                )
+            if snapshot_cart.status not in snapshot_service.RESTORABLE_STATUSES or not snapshot_cart.cart_id:
+                raise SnapshotInvalidException(
+                    f"Snapshot cart is not restorable: status={snapshot_cart.status} cart_id={snapshot_cart.cart_id}",
+                    logger,
+                )
+        except ServiceException as e:
+            await self.__add_restore_audit_async("rejected", audit_meta, reject_reason=e.error_code)
+            raise
+
+        # 4. Conflict check: the existing server-side cart wins (FR-006).
+        #    The repository is queried directly because an absent cart is the
+        #    NORMAL failover case here — going through __get_cached_cart_async
+        #    would emit a fatal log + Slack notification on every restore.
+        #    Only a clean not-found proceeds to restore; any other read error
+        #    propagates rather than risking an overwrite.
+        self.cart_id = snapshot_cart.cart_id
+        try:
+            existing_cart = await self.cart_repo.get_cached_cart_async(snapshot_cart.cart_id)
+        except NotFoundException:
+            existing_cart = None
+
+        if existing_cart is not None:
+            # Hydrate repositories and state from the existing cart (same as a
+            # normal cache resume) so the response reflects server-side truth.
+            self.settings_master_repo.set_settings_master_documents(existing_cart.masters.settings)
+            self.item_master_repo.set_item_master_documents(existing_cart.masters.items)
+            self.tax_master_repo.set_tax_master_documents(existing_cart.masters.taxes)
+            self.state_manager.set_state(existing_cart.status)
+            self.current_cart = existing_cart
+            diverged = self.__comparable_cart_bytes(existing_cart) != self.__comparable_cart_bytes(snapshot_cart)
+            await self.__add_restore_audit_async("existing_returned", audit_meta, diverged=diverged)
+            logger.info("Restore returned existing cart %s (diverged=%s)", snapshot_cart.cart_id, diverged)
+            return existing_cart, False, diverged
+
+        # 5. Rebuild on this backend: hydrate the master repositories from the
+        #    snapshot (same pattern as cache resume) so the transaction keeps
+        #    its original master context, then write the authoritative cache.
+        self.settings_master_repo.set_settings_master_documents(snapshot_cart.masters.settings)
+        self.item_master_repo.set_item_master_documents(snapshot_cart.masters.items)
+        self.tax_master_repo.set_tax_master_documents(snapshot_cart.masters.taxes)
+        self.state_manager.set_state(snapshot_cart.status)
+        await self.__cache_cart_async(cart_doc=snapshot_cart, cart_status=CartStatus.NoUpdate, isNew=True)
+
+        await self.__add_restore_audit_async("restored", audit_meta)
+        logger.info(
+            "Cart %s restored from snapshot issued at %s", snapshot_cart.cart_id, audit_meta.get("snapshot_issued_at")
+        )
+        return snapshot_cart, True, False
+
+    @staticmethod
+    def __comparable_cart_bytes(cart_doc: CartDocument) -> bytes:
+        """
+        Canonical bytes of a cart document for divergence comparison.
+
+        Excludes storage bookkeeping fields (timestamps/etag) that shift on
+        every cache write, and `staff`, which the repository re-injects from
+        the CURRENT terminal info on every cache read — comparing it would
+        flag a benign operator change as snapshot divergence and make the
+        audit signal unreliable.
+        """
+        data = cart_doc.model_dump(mode="json")
+        for volatile in ("created_at", "updated_at", "etag", "staff"):
+            data.pop(volatile, None)
+        return canonical_json_bytes(data)
+
+    async def __add_restore_audit_async(
+        self, result: str, audit_meta: dict, reject_reason: str = None, diverged: bool = False
+    ) -> None:
+        """
+        Record a restore attempt in the audit trail (FR-007).
+
+        Audit-write failure handling depends on whether server state changed:
+        - "rejected" / "existing_returned" mutate nothing, so the original
+          outcome wins and the failure is only logged (with the full record
+          payload, so the trace survives in the app log).
+        - "restored" already materialized the cart, so the failure is logged
+          the same way and then raised: a state-changing restore that cannot
+          be persisted to the trail must surface loudly. A client retry hits
+          the existing-cart path and gets audited there.
+        """
+        if self.cart_restore_log_repo is None:
+            logger.warning("Restore audit repository not configured; skipping audit record")
+            return
+        try:
+            await self.cart_restore_log_repo.add_record_async(
+                result=result,
+                reject_reason=reject_reason,
+                diverged=diverged,
+                **audit_meta,
+            )
+        except Exception as e:
+            # Keep the trace in the application log even when the DB write
+            # failed; this is the fallback audit trail.
+            logger.error(
+                "Failed to write restore audit record: result=%s reject_reason=%s diverged=%s meta=%s error=%s",
+                result,
+                reject_reason,
+                diverged,
+                audit_meta,
+                e,
+            )
+            if result == "restored":
+                raise
 
     # Save cart document to cache
     async def __cache_cart_async(self, cart_doc: CartDocument, cart_status: CartStatus, isNew: bool = False) -> None:

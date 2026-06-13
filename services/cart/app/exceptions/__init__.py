@@ -51,4 +51,10 @@ from .cart_exceptions import (
     UnexpectedErrorException,
     AlreadyVoidedException,
     AlreadyRefundedException,
+    SnapshotSignatureMismatchException,
+    SnapshotInvalidException,
+    SnapshotUnknownKidException,
+    SnapshotVersionUnsupportedException,
+    SnapshotScopeViolationException,
+    SnapshotTerminalStateException,
 )

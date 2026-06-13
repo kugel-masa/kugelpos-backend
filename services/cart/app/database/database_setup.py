@@ -181,6 +181,30 @@ async def create_status_tran_collection(tenant_id: str):
     )
 
 
+async def create_cart_restore_log_collection(tenant_id: str):
+    """
+    Creates the cart restore audit collection with indexes (issue #148).
+
+    This collection records every restore API attempt (success / existing
+    returned / rejected) and is indexed for per-cart tracing and time-ordered
+    audit queries. No TTL: retention follows the other log collections.
+
+    Args:
+        tenant_id: The tenant identifier used to create the database name
+
+    Returns:
+        None
+    """
+    name = settings.DB_COLLECTION_NAME_LOG_CART_RESTORE
+    index_key_list = [
+        {"keys": {"cart_id": 1}, "unique": False},
+        {"keys": {"event_datetime": 1}, "unique": False},
+    ]
+    await create_some_collection(
+        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+    )
+
+
 async def create_collections(tenant_id: str):
     """
     Creates all required collections for the Cart service.
@@ -200,6 +224,7 @@ async def create_collections(tenant_id: str):
     await create_request_log_collection(tenant_id)
     await create_tran_log_delivery_status_collection(tenant_id)
     await create_status_tran_collection(tenant_id)
+    await create_cart_restore_log_collection(tenant_id)
 
     # add more collections here
 

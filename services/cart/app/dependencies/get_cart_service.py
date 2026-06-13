@@ -90,6 +90,9 @@ async def __get_cart_service_async(
         Fully configured CartService instance
     """
     from app.models.repositories.cart_repository import CartRepository
+    from app.models.repositories.cart_restore_log_repository import (
+        CartRestoreLogRepository,
+    )
     from app.models.repositories.terminal_counter_repository import (
         TerminalCounterRepository,
     )
@@ -124,6 +127,7 @@ async def __get_cart_service_async(
     db_common = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_commons")  # ← 修正
 
     cart_repo = CartRepository(db=db, terminal_info=terminal_info)
+    cart_restore_log_repo = CartRestoreLogRepository(db=db, terminal_info=terminal_info)
     terminal_counter_repo = TerminalCounterRepository(db=db, terminal_info=terminal_info)
     await terminal_counter_repo.initialize()
     tax_master_repo = TaxMasterRepository(db=db, terminal_info=terminal_info)
@@ -177,4 +181,5 @@ async def __get_cart_service_async(
         tran_service=tran_service,
         cart_id=cart_id,
         master_cache_backend=cache_backend,
+        cart_restore_log_repo=cart_restore_log_repo,
     )

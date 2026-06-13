@@ -132,7 +132,7 @@ class SchemasTransformer:
             return_taxes.append(return_tax)
         return return_taxes
 
-    def transform_cart(self, cart_doc: CartDocument) -> BaseCart:
+    def transform_cart(self, cart_doc: CartDocument, snapshot: dict = None) -> BaseCart:
         """
         Transform a cart document to an API cart schema.
 
@@ -141,11 +141,15 @@ class SchemasTransformer:
 
         Args:
             cart_doc: Cart document from the database
+            snapshot: Optional signed snapshot envelope (snake_case dict) to
+                attach to the response (issue #148); None on query responses
+                or when snapshot generation is degraded
 
         Returns:
             BaseCart object for API response
         """
         return_cart = BaseCart(
+            signed_snapshot=snapshot,
             cartId=cart_doc.cart_id,
             tenant_id=cart_doc.tenant_id,
             store_code=cart_doc.store_code,

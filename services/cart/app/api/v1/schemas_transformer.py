@@ -77,17 +77,18 @@ class SchemasTransformerV1(SchemasTransformer):
         """
         return super().transform_discounts(discounts)
 
-    def transform_cart(self, cart_doc: CartDocument) -> Cart:
+    def transform_cart(self, cart_doc: CartDocument, snapshot: dict = None) -> Cart:
         """
         Transform a cart document to a v1 API cart schema.
 
         Args:
             cart_doc: Cart document from the database
+            snapshot: Optional signed snapshot envelope to attach (issue #148)
 
         Returns:
             v1 Cart object for API response
         """
-        return super().transform_cart(cart_doc)
+        return super().transform_cart(cart_doc, snapshot=snapshot)
 
     def trasform_tran(self, tranlog: BaseTransaction) -> Tran:
         """

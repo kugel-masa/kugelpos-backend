@@ -177,6 +177,28 @@ class BaseTran(BaseSchemmaModel):
     status: Optional[BaseTranStatus] = None
 
 
+class SnapshotEnvelope(BaseSchemmaModel):
+    """
+    Signed cart snapshot envelope (client-carried cart phase 1, issue #148).
+
+    Carries the full cart document (including reference masters) plus the
+    metadata needed to verify and restore it on a backend that has never
+    seen the cart. The signature covers the canonical JSON of every field
+    except `signature` itself, always computed over the snake_case
+    model_dump(mode="json") representation (wire-level camelCase aliasing
+    does not affect verification).
+    """
+
+    schema_version: int
+    issued_at: str
+    kid: str
+    tenant_id: str
+    store_code: str
+    terminal_no: int
+    cart_document: dict
+    signature: str
+
+
 class BaseCart(BaseTran):
     """
     Model representing a cart in the system, extending the base transaction.
@@ -187,6 +209,14 @@ class BaseCart(BaseTran):
     cart_status: str
     subtotal_amount: float
     balance_amount: float
+    # Signed snapshot of the cart after the mutation was applied (issue #148).
+    # None on query (GET) responses and when snapshot generation is degraded.
+    signed_snapshot: Optional[SnapshotEnvelope] = None
+    # Restore-only result flags: restored=False means an existing cart was
+    # returned instead (existing server-side cart wins); diverged=True means
+    # the presented snapshot differs from that existing cart.
+    restored: Optional[bool] = None
+    diverged: Optional[bool] = None
 
 
 # Store and User Related Schemas
@@ -230,6 +260,9 @@ class BaseCartCreateResponse(BaseSchemmaModel):
     """
 
     cart_id: str
+    # Signed snapshot of the freshly created cart (issue #148); None when
+    # snapshot generation is degraded.
+    signed_snapshot: Optional[SnapshotEnvelope] = None
 
 
 class BaseCartDeleteResponse(BaseSchemmaModel):
