@@ -32,10 +32,10 @@
 - [ ] T003 [P] `services/commons/src/kugel_common/models/documents/base_tranlog.py` の `BaseTransaction` に `cart_id: Optional[str]` を追加（#152 の中核、R-004）
 - [ ] T004 [P] `services/commons/src/kugel_common/middleware/http_compression.py` にリクエストボディ展開 ASGI ミドルウェアを追加: `Content-Encoding: gzip` / `br` を展開、展開後サイズ上限ガード（超過は途中打ち切りで 413 相当）、非圧縮は素通し（R-006/FR-009）。`brotli` 依存を commons の Pipfile に追加
 - [ ] T005 `services/cart/app/models/documents/cart_document.py` の `CartDocument` に `seq: int`（既定 0）と `transaction_datetime`（取引時刻の持ち回り、型は plan で確定）を追加（data-model）
-- [ ] T006 `services/cart/app/api/common/schemas.py` および `services/cart/app/api/v1/schemas.py` の変更系リクエストに任意フィールド `signed_snapshot`（`SnapshotEnvelope` 型、`Optional`）を追加。ボディを持たなかった操作には `signed_snapshot` のみの任意ボディを許容（R-001、contracts/request-snapshot.yaml）
+- [ ] T006 スナップショット搬送（H 案、R-001 見直し）: cart のボディ処理ミドルウェア `services/cart/app/middleware/snapshot_envelope.py`（新規）を実装。変更系ルートで、ボディが `signedSnapshot` キーを持つ JSON オブジェクトなら `signedSnapshot` を `request.state.cart_snapshot` に退避しボディを `payload` の中身へ差し替え、素のボディは素通し。エンドポイント署名・リクエストスキーマは無改修（配列ボディ対応のため per-schema フィールドは採らない）。`main.py` に登録（T010 と統合可）。contracts/request-snapshot.yaml を H 案に更新
 - [ ] T007 `services/cart/app/services/snapshot_service.py` の検証を毎リクエスト用に一般化（`verify_envelope` を restore と共通で使えるよう整理。検証順: 形式→version→kid→署名→スコープ→状態）。restore と同一規則であることを担保（FR-010）。restore API 残置の回帰は既存 phase 1 restore テスト群（`test_cart_restore*.py`）の緑維持でカバー（専用タスクは設けない — ユーザー判断 2026-06-13）
 - [ ] T008 `services/cart/app/services/cart_service.py` に「あり経路の再構成」を追加: 検証済みスナップショットからマスタ再ハイドレート + 状態設定で `current_cart` を構成し、**キャッシュを読まない・書かない**（phase 1 `restore_cart_async` の再構成を毎リクエスト・キャッシュ非依存に一般化、R-002/FR-004）
-- [ ] T009 `services/cart/app/dependencies/get_cart_service.py` を分岐化: リクエストに `signed_snapshot` あり→あり経路（T008 で再構成）、なし→なし経路（従来どおりキャッシュ）。`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` のときはなし経路を専用エラーで拒否（R-002/FR-008）
+- [ ] T009 `services/cart/app/dependencies/get_cart_service.py` を分岐化: `request.state.cart_snapshot`（T006 のミドルウェアが退避）あり→あり経路（T008 で再構成）、なし→なし経路（従来どおりキャッシュ）。`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` のときはなし経路を専用エラー（401508）で拒否（R-002/FR-008）
 - [ ] T010 `services/cart/app/main.py` にリクエスト展開ミドルウェア（T004）を登録（log_requests との順序に注意 — 展開後にログ・ハンドラが本文を読む）
 - [ ] T011 [P] `services/commons/tests/unit/` にリクエスト展開ミドルウェアの unit テスト（gzip/br 展開・サイズ上限超過の拒否・非圧縮素通し）
 

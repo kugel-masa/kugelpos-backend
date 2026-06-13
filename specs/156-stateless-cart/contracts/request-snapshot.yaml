@@ -1,25 +1,30 @@
 openapi: 3.0.3
 info:
   title: Cart client-carried request snapshot (phase 2, #156)
-  version: 0.1.0
+  version: 0.2.0
   description: >
-    Phase 2 extends every cart-mutating request to optionally carry the signed
-    snapshot the client last received. Presence of `signedSnapshot` selects the
-    stateless path (snapshot is authoritative, cache not consulted); absence
-    selects the legacy cache-authoritative path during the DUAL migration mode.
-    The envelope is identical to the phase 1 response snapshot (#148); the field
-    name and shape mirror the response so a client returns what it received.
+    Phase 2 carries the signed snapshot the client last received in every
+    cart-mutating request. To support endpoints whose body is a top-level JSON
+    array (add_items, payments, discounts) as well as object/body-less ones,
+    phase 2 clients send a UNIFORM wrapped body:
+
+        { "signedSnapshot": <envelope>, "payload": <original body> }
+
+    A cart body-processing middleware peels `signedSnapshot` into request.state
+    and replaces the body with `payload` (the original shape: array/object), so
+    existing endpoint signatures (e.g. `list[Item]`) are unchanged and the DI
+    layer branches on request.state. Legacy phase 1 clients send the bare
+    original body (array/object/none) with no `signedSnapshot` key; those pass
+    through untouched and take the cache-authoritative path (DUAL mode).
 
 paths:
   /api/v1/carts/{cart_id}/lineItems:
     post:
       summary: Add line items (representative mutating endpoint)
       description: >
-        Representative of all cart-mutating endpoints (lineItems, subtotal,
-        discounts, payments, bill, cancel, resume-item-entry, line-item
-        cancel/unitPrice/quantity/discounts). Each accepts an optional
-        `signedSnapshot` in the request body. Endpoints that previously had no
-        body accept a body containing only `signedSnapshot`.
+        Representative of all cart-mutating endpoints. Phase 2 sends the wrapped
+        body; phase 1 sends the bare legacy body. After middleware peel, the
+        endpoint receives its original body shape (here, an array of items).
       parameters:
         - name: cart_id
           in: path
@@ -30,10 +35,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/MutatingRequestWithSnapshot'
-          application/json; charset=utf-8:
-            schema:
-              $ref: '#/components/schemas/MutatingRequestWithSnapshot'
+              oneOf:
+                - $ref: '#/components/schemas/WrappedMutatingRequest'
+                - $ref: '#/components/schemas/LegacyLineItemsBody'
       responses:
         '200':
           description: >
@@ -46,32 +50,41 @@ paths:
         '400':
           description: Snapshot verification failed (tampered / malformed / scope / version).
         '409':
-          description: >
-            Terminal-state snapshot (already finalized/cancelled) presented for a
-            non-finalize mutation.
+          description: Terminal-state snapshot presented for a non-finalize mutation.
         '413':
           description: Decompressed request body exceeds the size guard (FR-009).
         '422':
           description: >
             Snapshot omitted while CART_REQUEST_SNAPSHOT_MODE=REQUIRED
-            (post-migration). In DUAL mode, omission is accepted (legacy path).
+            (error 401508). In DUAL mode, omission is accepted (legacy path).
 
 components:
   schemas:
-    MutatingRequestWithSnapshot:
+    WrappedMutatingRequest:
       type: object
       description: >
-        Operation-specific fields (varies per endpoint) plus the optional
-        carried snapshot. Shown here with line-item fields as an example.
+        Phase 2 uniform wire format for ALL mutating endpoints. The middleware
+        peels signedSnapshot and forwards `payload` as the endpoint's body.
+      required: [payload]
       properties:
-        items:
-          type: array
-          description: Operation payload (endpoint-specific; example shown).
-          items:
-            type: object
         signedSnapshot:
           $ref: '#/components/schemas/SnapshotEnvelope'
-      additionalProperties: true
+        payload:
+          description: >
+            The original endpoint body, unchanged in shape — a JSON array for
+            add_items/payments/discounts, an object for quantity/unit-price
+            updates, or omitted for body-less operations (subtotal/bill/cancel/
+            resume).
+          oneOf:
+            - type: array
+              items: { type: object }
+            - type: object
+
+    LegacyLineItemsBody:
+      type: array
+      description: Phase 1 bare body (no snapshot); takes the cache-authoritative path.
+      items:
+        type: object
 
     SnapshotEnvelope:
       type: object
@@ -88,13 +101,13 @@ components:
           type: object
           description: >
             Full CartDocument dump (snake_case). Phase 2 adds `seq` (per-open
-            transaction sequence, carried). business_counter is sourced from
+            transaction sequence, carried) and `transaction_datetime`
+            (client-stamped at bill). business_counter is sourced from
             terminal_info at finalize, not duplicated here.
           properties:
             cart_id: { type: string }
-            seq:
-              type: integer
-              description: Per-open-session transaction sequence (0 until first finalize).
+            seq: { type: integer }
+            transaction_datetime: { type: string, nullable: true }
           additionalProperties: true
         signature: { type: string }
 

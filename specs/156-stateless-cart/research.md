@@ -6,20 +6,24 @@ spec「未解決事項」および Technical Context の不明点を確定する
 
 ## R-001: リクエストでのスナップショット搬送方法
 
-**Decision**: 変更系リクエストのボディに**任意フィールド `signed_snapshot`**（phase 1 のエンベロープと同一形）を追加する。既存のリクエストボディを持つエンドポイント（lineItems / discounts 等）はそのボディに追加し、ボディを持たない操作（subtotal / cancel / resume-item-entry 等）には `signed_snapshot` のみを持つ任意ボディを受け付ける。ヘッダ搬送・専用ラッパは採らない。
+**Decision（H 案・2026-06-13 見直し）**: phase 2 クライアントは変更系リクエストを**ラップボディ `{ "signedSnapshot": <envelope>, "payload": <元のボディ> }`** で統一送信する。cart の**ボディ処理ミドルウェア**がルーティング前に、ボディが `signedSnapshot` キーを持つ JSON オブジェクトなら `signedSnapshot` を `request.state` に退避し、ボディを `payload` の中身（元の `list[Item]` 等）に差し替えて下流へ渡す。`signedSnapshot` キーを持たない素のボディ（phase 1 の配列/オブジェクト/ボディ無し）は素通しし `request.state` のスナップショットは None。
 
-**Rationale**:
-- スナップショットは大きい（40 商品で ~2 KB gzip 前は数十 KB）。ヘッダはサイズ制約・圧縮非対応のため不適。ボディが自然。
-- phase 1 のレスポンス側 `signed_snapshot` と**同名・同形**にすることで、クライアントは「受け取ったものをそのまま次のリクエストに詰める」だけでよい（往復の対称性）。
-- 任意フィールドにすることで FR-008 のデュアルモード（あり/なし分岐）が素直に表現できる（フィールドの有無＝経路）。
+**当初案（ボディに任意フィールド追加）を破棄した理由**: 変更系の 4 エンドポイント（`add_items` / `add_discount_to_line_item` / `discount_to_cart` / `payments`）は**トップレベル JSON 配列**をボディに取り、サイブリングのフィールドを追加できない。配列をオブジェクト化する案は phase 1 クライアントを壊し、デュアルモードの後方互換と矛盾する。
 
-**Alternatives considered**: (a) 共通リクエストラッパで全エンドポイントを包む → 既存 API 形状を破壊し後方互換を失う。(b) ヘッダ `X-Cart-Snapshot` → サイズ・圧縮で不利。(c) 専用の単一「操作 API」に集約 → 既存エンドポイント体系の作り直しで過大。
+**Rationale（H 案）**:
+- 配列・オブジェクト・ボディ無しの全エンドポイントで**一様**に搬送でき、改修が**ミドルウェア 1 箇所に集中**（エンドポイント署名は無改修）。
+- `request.state` 経由で **DI 層が分岐**できる（R-002 を維持）。
+- 素のボディは素通しなので**完全に後方互換**（phase 1 クライアント＝なし経路）。判別は「`signedSnapshot` キーの有無」だけで、既存のどのボディもこのキーを持たないため安全。
+- ボディ搬送なので**サイズ制限がない**（ヘッダ上限と無関係。さらに FR-009 の圧縮と併用可）。
+- このボディ書き換えは T004 のリクエスト展開ミドルウェアと同じ「ルーティング前にボディを触る」層であり、**展開と peel を統合**できるため増分が小さい（ただし peel は cart 固有、展開は commons 汎用なので層を分けてもよい）。
+
+**Alternatives considered**: (a) ヘッダ `X-Cart-Snapshot` → ヘッダ上限で大規模カートが載らず却下（ユーザー判断）。(b) Union ボディ（配列エンドポイントを `list | {payload, snapshot}` に）→ エンドポイント署名改修・あり/なし分岐がサービスに散る（R-002 と不整合）。(c) 配列のオブジェクト化 → 破壊的。
 
 ---
 
 ## R-002: あり/なし経路の分岐点（デュアルモード実装）
 
-**Decision**: 分岐は **dependency 層（`get_cart_service_with_cart_id_async` 相当）**で行う。リクエストに `signed_snapshot` があれば、phase 1 の `snapshot_service.verify_envelope` で検証・再構成したカートを `CartService.current_cart` に注入して「あり経路（ステートレス）」のサービスを構築する。なければ従来どおりキャッシュから読む「なし経路」のサービスを構築する。`CartService` のビジネスロジック（状態機械・採番・確定）は経路によらず共通。
+**Decision**: 分岐は **dependency 層（`get_cart_service_with_cart_id_async` 相当）**で行う。ボディ処理ミドルウェア（R-001 H 案）が `request.state` に退避したスナップショットを DI が参照し、あれば phase 1 の `snapshot_service.verify_envelope` で検証・再構成したカートを `CartService.current_cart` に注入して「あり経路（ステートレス）」のサービスを構築する。なければ従来どおりキャッシュから読む「なし経路」のサービスを構築する（`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` ならなし経路を専用エラーで拒否）。`CartService` のビジネスロジック（状態機械・採番・確定）は経路によらず共通。
 
 **Rationale**:
 - 既存の DI（`app/dependencies/get_cart_service.py`）がカート取得の単一の入口であり、ここで「カートをどこから得るか（スナップショット vs キャッシュ）」だけを切り替えれば、下流のロジックを二重化せずに済む。
