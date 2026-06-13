@@ -33,7 +33,7 @@
 - [ ] T004 [P] `services/commons/src/kugel_common/middleware/http_compression.py` にリクエストボディ展開 ASGI ミドルウェアを追加: `Content-Encoding: gzip` / `br` を展開、展開後サイズ上限ガード（超過は途中打ち切りで 413 相当）、非圧縮は素通し（R-006/FR-009）。`brotli` 依存を commons の Pipfile に追加
 - [ ] T005 `services/cart/app/models/documents/cart_document.py` の `CartDocument` に `seq: int`（既定 0）と `transaction_datetime`（取引時刻の持ち回り、型は plan で確定）を追加（data-model）
 - [ ] T006 `services/cart/app/api/common/schemas.py` および `services/cart/app/api/v1/schemas.py` の変更系リクエストに任意フィールド `signed_snapshot`（`SnapshotEnvelope` 型、`Optional`）を追加。ボディを持たなかった操作には `signed_snapshot` のみの任意ボディを許容（R-001、contracts/request-snapshot.yaml）
-- [ ] T007 `services/cart/app/services/snapshot_service.py` の検証を毎リクエスト用に一般化（`verify_envelope` を restore と共通で使えるよう整理。検証順: 形式→version→kid→署名→スコープ→状態）。restore と同一規則であることを担保（FR-010）
+- [ ] T007 `services/cart/app/services/snapshot_service.py` の検証を毎リクエスト用に一般化（`verify_envelope` を restore と共通で使えるよう整理。検証順: 形式→version→kid→署名→スコープ→状態）。restore と同一規則であることを担保（FR-010）。restore API 残置の回帰は既存 phase 1 restore テスト群（`test_cart_restore*.py`）の緑維持でカバー（専用タスクは設けない — ユーザー判断 2026-06-13）
 - [ ] T008 `services/cart/app/services/cart_service.py` に「あり経路の再構成」を追加: 検証済みスナップショットからマスタ再ハイドレート + 状態設定で `current_cart` を構成し、**キャッシュを読まない・書かない**（phase 1 `restore_cart_async` の再構成を毎リクエスト・キャッシュ非依存に一般化、R-002/FR-004）
 - [ ] T009 `services/cart/app/dependencies/get_cart_service.py` を分岐化: リクエストに `signed_snapshot` あり→あり経路（T008 で再構成）、なし→なし経路（従来どおりキャッシュ）。`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` のときはなし経路を専用エラーで拒否（R-002/FR-008）
 - [ ] T010 `services/cart/app/main.py` にリクエスト展開ミドルウェア（T004）を登録（log_requests との順序に注意 — 展開後にログ・ハンドラが本文を読む）
@@ -79,10 +79,10 @@
 
 **Independent Test**: 正当なスナップショットを 1 バイト改ざんして各変更系 API に同梱→ 全エンドポイントで拒否・カート無影響・監査記録。
 
-- [ ] T020 [US3] 監査の一般化: phase 1 `services/cart/app/models/documents/cart_restore_log_document.py` / `cart_restore_log_repository.py` を毎リクエスト検証へ拡張（`api_path` 追加、`result` 値拡張、異常系のみ記録）。コレクション名の改称要否を確定（R-009/FR-007）
+- [ ] T020 [US3] 監査の一般化＋改称: phase 1 `cart_restore_log_document.py` / `cart_restore_log_repository.py` を毎リクエスト検証へ拡張（`api_path` 追加、`result` 値拡張、異常系のみ記録）し、コレクションを `log_cart_restore` → **`log_cart_snapshot_event`** へ改称、document/repository も対応名へリネーム。既存 `log_cart_restore` レコードがあれば新コレクションへ移行（R-009/FR-007）
 - [ ] T021 [US3] 検証失敗・スコープ違反・終端状態・バージョン非対応を T007 の検証パイプラインで拒否し、監査記録。あり経路の全変更系エンドポイントで検証が必ず通ること（検証欠落エンドポイントなし、NFR-003）
 - [ ] T022 [P] [US3] `services/cart/tests/unit/test_per_request_verify.py`（新規）: 検証パイプラインの各拒否分岐（改ざん・欠署名・未知 kid・version 外・スコープ違反）
-- [ ] T023 [P] [US3] `services/cart/tests/integration/test_tamper_rejection_all_endpoints.py`（新規）: 全変更系エンドポイントで改ざんスナップショット拒否・カート無影響・監査記録を確認（SC-003）
+- [ ] T023 [P] [US3] `services/cart/tests/integration/test_tamper_rejection_all_endpoints.py`（新規）: 全変更系エンドポイントで改ざんスナップショット拒否・カート無影響・監査記録を確認（SC-003）。あわせて NFR-004 を担保: **拒否後、同じ操作を正当なスナップショットで再送すると成功する**（拒否は当該リクエストの失敗にとどまり進行中取引を失わせない）ことをアサート
 
 **Checkpoint**: 攻撃面（全変更系 API）の検証が網羅され、改ざんが 100% 拒否される。
 
@@ -98,7 +98,7 @@
 
 - [ ] T024 [US4] `services/cart/app/services/tran_service.py` の確定で `cart_id` を tranlog に引き継ぐ（CartDocument→BaseTransaction、T003 のフィールドへ）
 - [ ] T025 [US4] `tran_service.py` の採番をあり経路で carried 化: `transaction_no`=carried `seq`、`receipt_no` も carried、`generate_date_time` を carried `transaction_datetime` から設定（サーバ時刻スタンプ `:166`・サーバカウンタ `:159,173` をあり経路で不使用）。なし経路は従来採番を維持（デュアル一貫性）（R-003/FR-012）
-- [ ] T026 [US4] 取引時刻のスタンプ点を実装: paying 遷移時に `transaction_datetime` を署名済みスナップショットへ記録（または bill リクエストでクライアント供給 — plan の決定に従う）。あり経路の確定が carried snapshot の決定論的関数になることを保証
+- [ ] T026 [US4] 取引時刻のクライアント打刻を実装: bill リクエストにクライアント打刻の確定時刻フィールドを追加し、あり経路の確定でそれを `generate_date_time` と confirmed スナップショットの `transaction_datetime` に設定。リトライで同値を再送 → 決定論的に同一の時刻・レシートになることを保証（FR-012、Clarifications 2026-06-13）
 - [ ] T027 [US4] 端末交換・初期導入: open ごとの `business_counter` 取得で seq が新エポックから始まること、seq 復元処理が無いことを確認（既存 open フローの利用、terminal service 側の seq 初期化要否を確定）
 - [ ] T028 [P] [US4] report: `services/report/app/models/repositories/tranlog_repository.py` の存在チェックを cart_id 基準に差し替え、`services/report/app/database/database_setup.py` の unique index を `(tenant, store, cart_id)` へ（+ 参照用 `(tenant, store, terminal, business_counter, transaction_no)`）（R-005）
 - [ ] T029 [P] [US4] journal: `services/journal/app/services/log_service.py` / `services/journal/app/database/database_setup.py` の tranlog 存在チェック・index を cart_id 基準へ

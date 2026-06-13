@@ -39,7 +39,11 @@ spec「未解決事項」および Technical Context の不明点を確定する
 
 **seq の初期値源**: 開設セッションの最初の確定で `seq=1`。`seq` は cart_document に持つため、カート作成時のスナップショット（phase 1 で付与済み）に `seq=0`（未確定）を載せ、確定のたびに +1 する。端末はセッションをまたいで seq を持ち越さない（open ごとに business_counter が変わるためリセットされる）。
 
-**確定の決定論化（取引時刻の持ち回り）**: 連番に加え、確定時にサーバ時刻でスタンプされる **`generate_date_time`（`tran_service.py:166` の `get_app_time_str()`）も持ち回り化**する。理由: レシート（`receipt_text` / `journal_text`、`tran_service.py:262-267`）はこの tranlog から生成され、レスポンス受領後に発行される。lost-ACK でリトライ先が確定し直すとサーバ時刻が変わり、先勝ちで保全される1件目の台帳時刻と、客が受け取る（リトライ応答からの）レシート時刻が食い違う。`generate_date_time` を carried（paying 遷移時に署名済みスナップショットへ記録、または bill リクエストでクライアント供給）にすれば確定が carried snapshot の決定論的関数になり、リトライ先でも同一の番号・時刻・レシートを返せる。`business_date`（`cart.business_date` 由来、`tran_service.py:163`）は既に carried。スタンプ点の選択は plan/tasks で確定。
+**確定の決定論化（取引時刻のクライアント打刻）**: 連番に加え、確定時にサーバ時刻でスタンプされる **`generate_date_time`（`tran_service.py:166` の `get_app_time_str()`）をクライアント打刻に変更**する（spec Clarifications 2026-06-13 で確定）。理由: レシート（`receipt_text` / `journal_text`、`tran_service.py:262-267`）はこの tranlog から生成され、レスポンス受領後に発行される。lost-ACK でリトライ先が確定し直すとサーバ時刻が変わり、先勝ちで保全される1件目の台帳時刻と、客が受け取る（リトライ応答からの）レシート時刻が食い違う。
+
+**決定**: 取引時刻は**端末が確定（bill）時に打刻し bill リクエストで供給**する。バックエンドは `generate_date_time` にこのクライアント値を用いる（`get_app_time_str()` をあり経路で使わない）。lost-ACK でも端末は自分の打刻値を保持しており同値でリトライ可能なため、どのバックエンドでも同一時刻になり決定論が成立。確定レスポンスが返す completed スナップショットの `cart_document.transaction_datetime` にこの値を含め署名する。`business_date`（`cart.business_date` 由来、`tran_service.py:163`）は既に carried。
+
+**Alternatives considered**: (a) paying 遷移時にサーバが署名済みスナップショットへ記録 → 「支払い開始時刻」になり現行の「確定時刻」意味からずれる。(b) サーバ確定時刻＋下流 last-wins（最大時刻採用）→ ledger=receipt は成立しうるが、バックエンド間クロックずれで「最大時刻 ≠ 客が受け取った試行」になり破綻、かつ不変台帳の上書きを要する。クライアント打刻が「確定時刻の意味維持・lost-ACK 耐性・クロックずれ非依存・先勝ち維持」を同時に満たす。
 
 **Rationale**: spec Clarifications（2026-06-13）で確定済み。交換・オフライン確定・ステートレスを同時に満たす唯一の構成。`business_counter` が非リセットのため `(business_counter, seq)` が単独で一意になり、交換時の seq 復元が不要。取引時刻の持ち回りにより確定が決定論的になり、先勝ちスキップ（R-005）と台帳=レシートの一致が両立する。
 
@@ -89,7 +93,7 @@ spec「未解決事項」および Technical Context の不明点を確定する
 **Decision**: cart の設定（環境変数）に **`CART_REQUEST_SNAPSHOT_MODE`**（仮、値: `DUAL` / `REQUIRED`、既定 `DUAL`）を追加（spec FR-008、サービス全体粒度）。
 - `DUAL`: あり経路（スナップショット）/ なし経路（キャッシュ権威）を毎リクエスト自動分岐。
 - `REQUIRED`: なし経路を明確なエラー（専用エラーコード）で拒否。
-- 移行完了判定用に、なし経路の発生件数を**運用メトリクス**（カウンタ・ログ集計）として観測可能にする（FR-007 の異常系監査とは別系統）。
+- 移行完了判定用のなし経路発生件数は、**既存のリクエストログの集計で代替**する（専用メトリクス実装タスクは設けない — ユーザー判断 2026-06-13）。なし経路通過は通常のリクエストログに現れるため、運用側の集計で「なし経路ゼロ」を確認して `REQUIRED` へ切り替える。FR-007 の異常系監査とは別系統。
 - 移行期間中はサーバ側キャッシュ・サーキットブレーカー・フォールバックを残置（FR-004）。撤去は移行完了後の後続作業（本スコープ外）。
 
 **Rationale**: spec で確定。phase 1 の `SNAPSHOT_HMAC_KEYS` と同じ env レベルの設定方式に倣い一貫性を保つ。
@@ -110,7 +114,7 @@ spec「未解決事項」および Technical Context の不明点を確定する
 
 ## R-009: 監査証跡の保存先
 
-**Decision**: phase 1 の `log_cart_restore` コレクション・リポジトリを**一般化**して再利用する（毎リクエスト検証の異常系 + restore + 乖離 + 連番異常を記録）。コレクション名は意味に合わせて `log_cart_snapshot_event`（仮）へ改称、または `log_cart_restore` を拡張（plan/tasks で確定）。記録は**異常系のみ**（検証失敗・スコープ違反・終端拒否・乖離・連番異常）。正常系の毎リクエストは記録しない（FR-007、NFR-005）。
+**Decision**: phase 1 の `log_cart_restore` コレクション・リポジトリを**一般化**して再利用するが、記録対象が restore 以外（毎リクエスト検証の異常系・乖離・連番異常）に広がるため、**コレクションを `log_cart_snapshot_event` へ改称**する（ユーザー判断 2026-06-13）。`cart_restore_log_document` / `cart_restore_log_repository` も対応する命名（例 `cart_snapshot_event_log_*`）へリネーム。phase 1 で書かれた既存 `log_cart_restore` レコードがあれば新コレクションへ移行する（phase 1 は既定縮退で本番データはほぼ無い想定だが、マイグレーションを tasks に含める）。記録は**異常系のみ**（検証失敗・スコープ違反・終端拒否・乖離・連番異常）。正常系の毎リクエストは記録しない（FR-007、NFR-005）。
 
 **Rationale**: phase 1 が `result` / `reject_reason` / `diverged` 等のフィールドを持つ汎用的な監査レコードをすでに実装済み。毎リクエスト検証への一般化は API 経路（どのエンドポイントか）の記録追加程度で済む。
 

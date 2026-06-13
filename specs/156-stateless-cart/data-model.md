@@ -9,7 +9,7 @@ phase 1 で確立したエンベロープ・監査レコードを再利用し、
 phase 1 の `SnapshotEnvelope`（`schema_version` / `issued_at` / `kid` / `tenant_id` / `store_code` / `terminal_no` / `cart_document` / `signature`）をそのまま使用する。phase 2 では「レスポンスで受領 → 次のリクエストで返送」の往復単位になる。
 
 - **エンベロープ形は変更しない**（`schema_version` 据え置き）。phase 2 で必要な `seq` は `cart_document` 内に含まれるため、エンベロープ自体のスキーマ拡張は不要（R-003）。
-- 署名は phase 1 と同一（canonical JSON over HMAC-SHA256、snake_case 表現）。phase 1 発行のスナップショットが phase 2 バックエンドでもそのまま検証・受領できること（FR-011）。
+- 署名は phase 1 と同一（canonical JSON over HMAC-SHA256、snake_case 表現）。phase 1 発行のスナップショットが phase 2 バックエンドでもそのまま検証・受領できること（FR-011）。phase 1 形式は `seq` / `transaction_datetime` を持たないが、署名は提示された dump に対して計算されるため検証は通り、欠損フィールドは既定（`seq=0`）扱いとする。**専用の相互運用テストは設けない**（既存の署名検証テストでカバーされる前提 — ユーザー判断 2026-06-13）。
 
 ### リクエスト側の搬送（新規）
 
@@ -24,11 +24,23 @@ phase 1 の `SnapshotEnvelope`（`schema_version` / `issued_at` / `kid` / `tenan
 | フィールド | 型 | 説明 | 備考 |
 |---|---|---|---|
 | `seq` | `int` | 開設セッション内の取引連番（持ち回り）。カート作成時 0、確定のたびに +1 | 新規。`business_counter` と組で取引連番を構成（FR-012） |
-| `transaction_datetime` | `str`（仮） | 取引時刻（持ち回り）。確定の決定論化のため、サーバ時刻スタンプではなく carried 値を使う | 新規。`generate_date_time` の供給源（FR-012）。スタンプ点は plan で確定 |
+| `transaction_datetime` | `str` | 取引時刻（クライアント打刻）。確定（bill）時に端末が打刻した値。confirmed 後の cart_document に保持され、署名される。tranlog の `generate_date_time` の源（FR-012）。型は既存 `generate_date_time`（`get_app_time_str()` 文字列）に合わせる | 新規 |
 
 - `seq` / `transaction_datetime` は cart_document に含まれるため、スナップショット（=cart_document の dump）で自動的に持ち回られる。
+- **確定時刻の供給**: 取引時刻は確定前の（paying 状態の）スナップショットには未だ無い（クライアントが bill 時に打刻するため）。よって **bill リクエストは別フィールドで確定時刻を供給**し（署名済みスナップショット＝paying 状態 ＋ クライアント打刻の確定時刻）、バックエンドはそれを `generate_date_time` と confirmed スナップショットの `transaction_datetime` に設定する。lost-ACK のリトライ時、クライアントは同じ打刻値を再送する（決定論）。
 - `business_counter` は既存（`terminal_info` 経由で取得済み）。cart_document に冗長保持はせず、確定時に `terminal_info.business_counter` から取得する（既存 `tran_service.py:165` を踏襲）。
 - 確定時の tranlog 生成は carried snapshot の決定論的関数とする: `transaction_no`=`seq`、`receipt_no`、`generate_date_time` を carried 値から設定し、サーバ時刻スタンプ（現状 `tran_service.py:166`）・サーバカウンタ採番（`:159,173`）をあり経路では使わない。これによりリトライ先でも同一のレシート・台帳になり、先勝ちスキップと整合する。
+
+---
+
+### 用語対応（取引時刻）
+
+| 名称 | 置き場所 | 意味 |
+|---|---|---|
+| `transaction_datetime` | `CartDocument`（carried、スナップショット内） | クライアントが bill 時に打刻する確定時刻 |
+| `generate_date_time` | `BaseTransaction`（tranlog、既存） | 確定時に `transaction_datetime` の値を設定する先。レシート・台帳に現れる取引時刻 |
+
+両者は同一の取引時刻を指す（carried 値 → 確定時に tranlog へ転記）。
 
 ---
 
@@ -70,7 +82,7 @@ phase 1 の `log_cart_restore`（`cart_restore_log_document.py`）を一般化�
 | `cart_id` / `snapshot_issued_at` / `snapshot_terminal_no` / `snapshot_kid` / `snapshot_schema_version` | 監査メタ | 既存 |
 | `diverged` | 乖離フラグ | 既存 |
 
-- コレクション名は `log_cart_restore` 拡張 or `log_cart_snapshot_event` 改称（tasks で確定）。TTL なし、テナント別 DB。
+- コレクションは `log_cart_restore` → **`log_cart_snapshot_event` へ改称**（ユーザー判断 2026-06-13）。document / repository も対応名にリネーム。phase 1 の既存レコードがあれば新コレクションへ移行。TTL なし、テナント別 DB。
 
 ---
 
