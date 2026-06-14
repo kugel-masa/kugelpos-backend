@@ -435,10 +435,17 @@ class TerminalService:
         # business_counter and receipt_no and may have advanced them during an
         # offline session. Reconcile via max() so an offline-used value is never
         # reused (terminal service is the durable home; gaps allowed, no reuse).
+        # getattr-guarded reads: an existing terminal loaded from storage may
+        # have been model_construct'd without the new receipt_no field.
         if client_business_counter is not None:
-            terminal.business_counter = max(terminal.business_counter or 0, client_business_counter)
+            terminal.business_counter = max(getattr(terminal, "business_counter", None) or 0, client_business_counter)
         if client_receipt_no is not None:
-            terminal.receipt_no = max(terminal.receipt_no or 0, client_receipt_no)
+            terminal.receipt_no = max(getattr(terminal, "receipt_no", None) or 0, client_receipt_no)
+        # Initialize the receipt counter on first open so the token always seeds
+        # one (the client advances it per bill; first receipt becomes 1). A
+        # configurable start value / rollover is a follow-up.
+        if getattr(terminal, "receipt_no", None) is None:
+            terminal.receipt_no = 0
 
         if terminal.business_date == get_app_time().strftime("%Y%m%d"):
             terminal.open_counter += 1
