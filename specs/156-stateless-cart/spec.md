@@ -32,6 +32,7 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 - **A-2（逐次引き継ぎ）**: 端末故障時の代替端末への引き継ぎは**逐次**（端末1が操作を停止してから端末2が最新スナップショットで継続）に限る。同一カートを2端末が同時に操作する運用は対象外（A-1 違反）。phase 1 FR-012 の「同一店舗内なら別端末でも復元可」はこの逐次引き継ぎの範囲で適用する。
 - **A-3（同一操作リトライ）**: クライアントは、レスポンスを受け取れなかった操作を**同じ操作・同じ入力**として再送する。直前の操作の結果を取り込む前に別の操作へ進むことはしない（これを行うと系譜が分岐＝フォークし、A-1 を崩す）。
 - **A-4（採番権威としての端末）**: 取引連番の seq 部分は端末が単一の直列発行者として所有する（FR-012）。これは A-1/A-3 が成り立つことで安全に成立する。
+- **A-6（オフライン開設）**: 端末はオフラインのまま開設（open）できる（Clarifications 2026-06-14、案 B）。`business_counter` と `receipt_no` は端末が所有し、open のたびに端末がローカルで前進させ、terminal service とはオンライン復帰時に `max` で reconcile する。これにより bill だけでなく open もオフライン耐性を持つ。番号の一意性（再利用禁止）は max reconcile と、交換時の tranlog 高水位照会／安全ジャンプで担保し、欠番は許容する。
 - **A-5（スナップショットは不透明・全フィールド保存）**: クライアントは署名付きスナップショットを**不透明な塊として保持・返送**し、中身を解釈して再構成・改変してはならない。署名は `cart_document` の全フィールドにかかるため、クライアントが未知フィールド（将来サーバが追加する `seq`・`transaction_datetime` 等）を**1つでも落とすと署名が一致せず拒否**される。検証は canonical JSON（キーソート・正規化）で行うのでキー順・空白の変化は許容されるが、**フィールドの集合と値は完全に保存**しなければならない。実装上は、スナップショットを生 JSON（不透明文字列）として保持・送信するか、未知フィールドを保持する仕組み（例: .NET の `JsonExtensionData`）を用いること。「型付きで読んで未知フィールドを捨てる」往復は禁止。表示は従来のビュー（レスポンスの整形済みカート）で行い、スナップショットは触らず往復させる。
 
 ---
@@ -40,6 +41,7 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 
 ### Session 2026-06-14
 
+- Q: 端末が**オフラインのまま開設（open）**する運用は必要か？ open は terminal service との同期点（business_counter 払い出し・receipt_no シード）だが、オフライン時の規則が未定義だった。 → A: **オフライン開設を許す（案 B）**。よって `business_counter` も端末が所有・持ち回り、open のたびに端末がローカルで前進させる（receipt_no と同一モデル）。terminal service は耐久ホームとして open 時に `max(service値, 端末提示値)` で reconcile。seq は端末の business_counter エポックでリセットするためオフライン開設でも矛盾なく動く。代償: 端末交換＋オフライン未reconcile で business_counter / receipt_no が衝突しうる稀ケースは、tranlog 高水位照会 or 安全ジャンプ（欠番許容・**再利用禁止**）で防ぐ。open イベント自体（opencloselog 記録・business_date 設定）もオフライン時は端末側で確定し後で reconcile する（詳細は plan）。これにより bill だけでなく open もオフライン耐性を持ち、phase 2 の「障害中も取引を開始・継続できる」が完成する。
 - Q: 取引連番 seq は「開設で business_counter が上がり 1 から」と決めたが、`receipt_no`（客向けレシート番号）の phase 2 での扱いは？ → A: **receipt_no は開設リセットせず連続**とする（ユーザー判断: 開設リセットは不可）。seq（開設セッション内連番）とは別物。連続にする以上、決定論と交換耐性のため**耐久ホームを terminal service に置き、端末がセッション中だけ持ち回る**: open でシード→ bill で端末が採番・供給（オフライン可・リトライ同値）→ **open 時に `max(terminal service 値, 端末提示値)` で reconcile**（オフライン精算で close reconcile が飛んでも端末の高い方が勝ち再利用を防ぐ）。端末は receipt_no を close→open 跨ぎで永続保持する。**欠番は許容、再利用は禁止**。端末交換＋オフライン未reconcile の稀ケースのみ tranlog 高水位の権威照会 or 安全ジャンプ。seq は前回決定（開設リセット・business_counter エポック）のまま。理由: transaction_no で「通し番号を捨て (business_counter, seq) にした＝連続はセッション跨ぎの端末状態が要り交換に弱い」判断は受け入れつつ、receipt_no は客向け連続が要件のため terminal service を耐久ホームにして交換耐性を確保する。
 
 ### Session 2026-06-13
@@ -58,7 +60,7 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 | サービス名 | 変更の種類 | 変更の概要 |
 |---|---|---|
 | cart | 変更 | 変更系 API のリクエスト契約拡張（スナップショット受領・検証・再構成）、採番の持ち回り化（`terminal_counter` 撤去）、あり/なし経路の分岐（デュアルモード）、乖離検知と監査。サーバ側キャッシュの権威撤去は移行完了後 |
-| terminal | 変更 | `business_counter` の払い出しは既存（open 時）。**`receipt_no`（連続）のシードと open 時 `max` reconcile** を追加（耐久ホーム）。seq は business_counter エポックで端末側リセットのため terminal service 変更不要 |
+| terminal | 変更 | オフライン開設対応（Clarifications 2026-06-14）: **`business_counter` と `receipt_no` を端末所有・持ち回りに変更**し、terminal service は耐久ホームとして open 時に `max(service値, 端末提示値)` で reconcile。open イベント（opencloselog / business_date）のオフライン確定・後 reconcile。seq は business_counter エポックで端末側リセット |
 | report / journal / stock | 変更 | 取引データ消費を `cart_id` キーの冪等 upsert（後勝ち）に統一。連番の一意・欠番の監査検知。`transaction_no` 単独キーの是正 |
 | kugel_common（共通ライブラリ） | 変更 | 圧縮リクエストボディの受領（展開後サイズ上限ガード付き — phase 0 で意図的に保留した分）。署名・検証は phase 1 のユーティリティをそのまま使用 |
 
@@ -218,7 +220,7 @@ phase 1 の restore API は、明示的な復元用途のため残置する（MU
 
 取引連番は `(business_counter, seq)` の複合とし（MUST）、以下に従う:
 
-- `business_counter` は terminal service が open のたびに払い出す単調増加・非リセットの値とする（既存挙動を踏襲）。
+- `business_counter` は端末の開設エポック（単調増加・非リセット）。**オフライン開設を許すため（Clarifications 2026-06-14）、business_counter は端末が所有し、open のたびに端末がローカルで前進させる**（オフライン可）。耐久ホームは terminal service に置き、receipt_no と同一の仕組みで揃える: open でシード、open 時に端末提示値と `max(service値, 端末提示値)` で reconcile、端末は close→open を跨いで保持。**欠番許容・再利用禁止**。端末交換＋オフライン未reconcile の稀ケースは tranlog 高水位照会 or 安全ジャンプ（再利用禁止）。
 - `seq` は開設セッション内で 1 から始まる連番とし、端末がローカルに採番・前進させ、スナップショットで持ち回る（MUST）。
 - 確定時、tranlog には持ち回り中の `(business_counter, seq)` を刻む（MUST）。cart backend は取引連番について新たなサーバ側カウンタを参照してはならない（MUST NOT — 現行 `terminal_counter` の transaction/receipt 採番は撤去する）。
 - 端末交換・再開設は open を伴い新 `business_counter` を得るため、seq の復元を要してはならない（MUST NOT — 新エポックで seq=1 から再開する）。
