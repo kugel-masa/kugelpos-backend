@@ -38,6 +38,10 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 
 ## Clarifications
 
+### Session 2026-06-14
+
+- Q: 取引連番 seq は「開設で business_counter が上がり 1 から」と決めたが、`receipt_no`（客向けレシート番号）の phase 2 での扱いは？ → A: **receipt_no は開設リセットせず連続**とする（ユーザー判断: 開設リセットは不可）。seq（開設セッション内連番）とは別物。連続にする以上、決定論と交換耐性のため**耐久ホームを terminal service に置き、端末がセッション中だけ持ち回る**: open でシード→ bill で端末が採番・供給（オフライン可・リトライ同値）→ **open 時に `max(terminal service 値, 端末提示値)` で reconcile**（オフライン精算で close reconcile が飛んでも端末の高い方が勝ち再利用を防ぐ）。端末は receipt_no を close→open 跨ぎで永続保持する。**欠番は許容、再利用は禁止**。端末交換＋オフライン未reconcile の稀ケースのみ tranlog 高水位の権威照会 or 安全ジャンプ。seq は前回決定（開設リセット・business_counter エポック）のまま。理由: transaction_no で「通し番号を捨て (business_counter, seq) にした＝連続はセッション跨ぎの端末状態が要り交換に弱い」判断は受け入れつつ、receipt_no は客向け連続が要件のため terminal service を耐久ホームにして交換耐性を確保する。
+
 ### Session 2026-06-13
 
 - Q: 同一 `cart_id` のサーバ側残存状態とスナップショットが乖離した場合の勝者は？（FR-005） → A: **提示スナップショットを正とする**。前提 A-1（1カート=1クライアント）により系譜は本来1本道であり、乖離（フォーク）は通常運転では発生しない異常系（複数端末の同時操作・レスポンス欠落後の枝分かれ等）。よって「どちらが新しいか」の順序づけ機構は設けず、提示スナップショットを正としたうえで、乖離が起きた事実は監査証跡に記録する（検知）。スカラーのリビジョン比較は lost-ACK 後の正当な再送を「巻き戻し」と誤検知するため、判定には用いない（監査の補助情報に留める）。
@@ -54,7 +58,7 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 | サービス名 | 変更の種類 | 変更の概要 |
 |---|---|---|
 | cart | 変更 | 変更系 API のリクエスト契約拡張（スナップショット受領・検証・再構成）、採番の持ち回り化（`terminal_counter` 撤去）、あり/なし経路の分岐（デュアルモード）、乖離検知と監査。サーバ側キャッシュの権威撤去は移行完了後 |
-| terminal | 変更（軽微） | `business_counter` の払い出しは既存（open 時）。seq の初期値（=1）をセッション開始コンテキストに含める調整が必要な場合あり（plan で確定） |
+| terminal | 変更 | `business_counter` の払い出しは既存（open 時）。**`receipt_no`（連続）のシードと open 時 `max` reconcile** を追加（耐久ホーム）。seq は business_counter エポックで端末側リセットのため terminal service 変更不要 |
 | report / journal / stock | 変更 | 取引データ消費を `cart_id` キーの冪等 upsert（後勝ち）に統一。連番の一意・欠番の監査検知。`transaction_no` 単独キーの是正 |
 | kugel_common（共通ライブラリ） | 変更 | 圧縮リクエストボディの受領（展開後サイズ上限ガード付き — phase 0 で意図的に保留した分）。署名・検証は phase 1 のユーティリティをそのまま使用 |
 
@@ -218,9 +222,15 @@ phase 1 の restore API は、明示的な復元用途のため残置する（MU
 - `seq` は開設セッション内で 1 から始まる連番とし、端末がローカルに採番・前進させ、スナップショットで持ち回る（MUST）。
 - 確定時、tranlog には持ち回り中の `(business_counter, seq)` を刻む（MUST）。cart backend は取引連番について新たなサーバ側カウンタを参照してはならない（MUST NOT — 現行 `terminal_counter` の transaction/receipt 採番は撤去する）。
 - 端末交換・再開設は open を伴い新 `business_counter` を得るため、seq の復元を要してはならない（MUST NOT — 新エポックで seq=1 から再開する）。
-- `receipt_no` も同様に複合・持ち回りとする（MUST）。
 
-取引の一意性キーは `(tenant_id, store_code, terminal_no, business_counter, seq)` とする（MUST）。
+**`receipt_no`（客向けレシート番号）は連続カウンタとする**（MUST — 開設でリセットしない。seq とは異なる扱い）。決定論・交換耐性のため、耐久ホームを **terminal service** に置き、端末がセッション中に持ち回って採番する:
+- open 時、terminal service が現在の `receipt_no` 値を端末へ渡す（既存の `business_counter`/`open_counter` と同じくクレーム経由）。
+- bill 時、端末がローカルで `receipt_no` を採番・前進させてリクエストで供給する（オフライン確定可。リトライは同値を再送＝決定論）。
+- **open 時の reconcile**: 端末は自分が保持する最新 `receipt_no` を提示し、terminal service は `max(自身の保持値, 端末提示値)` を基準に新セッションのシードを払い出す（MUST — オフライン精算で close 時 reconcile が届かなくても、端末側の高い方が勝ち、番号の**再利用を防ぐ**）。端末は `receipt_no` を close→open を跨いで永続保持する（クライアント側責務）。
+- 連続・単調増加・**再利用なし**を保証する（MUST NOT 再利用）。**欠番は許容**する（close 前のデバイス故障等で末尾が飛びうるが、再利用しないことを優先）。
+- **端末交換 ＋ オフライン未reconcile** の稀ケース（代替端末がクライアント保持値を持たない）では、terminal service は当該端末の tranlog 高水位（max `receipt_no`）を権威照会してシードするか、安全マージン分ジャンプ（欠番許容・再利用なし）する（MUST — 再利用を防ぐ）。
+
+取引の一意性キーは `(tenant_id, store_code, terminal_no, business_counter, seq)` とする（MUST）。`receipt_no` の一意性は `(tenant_id, store_code, terminal_no, receipt_no)` で担保する。
 
 **確定が決定論的であること（取引時刻のクライアント打刻・持ち回り）**: 確定（bill）の出力（tranlog・レシート）は、提示された carried snapshot ＋ クライアント供給の確定時刻の決定論的関数でなければならない（MUST）。レシートはレスポンス受領後に発行されるため、lost-ACK でリトライ先（別バックエンド）が確定し直しても、**同じ取引番号・同じ取引時刻・同じレシート内容**を返さなければ、確定済み台帳（先勝ち）と客の手元のレシートが食い違う。
 

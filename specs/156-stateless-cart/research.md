@@ -36,7 +36,7 @@ spec「未解決事項」および Technical Context の不明点を確定する
 
 ## R-003: 取引連番の持ち回り化（`(business_counter, seq)`）
 
-**Decision**: `transaction_no` / `receipt_no` を **`(business_counter, seq)` の複合**に再定義する（spec FR-012）。
+**Decision**: `transaction_no` を **`(business_counter, seq)` の複合**に再定義する（spec FR-012）。`receipt_no` は別扱いで、**開設リセットしない連続カウンタ**とし、耐久ホームを terminal service に置いて端末が持ち回る（open でシード・bill で供給・open 時 `max` reconcile・欠番許容/再利用禁止。spec Clarifications 2026-06-14、FR-012）。以下の seq の規則は `transaction_no` に適用される。
 - `business_counter`: terminal service が open 時に払い出す既存の単調増加値（`terminal_service.py:429`、非リセット）。JWT クレーム / terminal_info 経由で持ち回る（既存 `tranlog.business_counter = terminal_info.business_counter`、`tran_service.py:165` をそのまま活用）。
 - `seq`: 開設セッション内連番。**スナップショット（cart_document）に保持**し、端末がローカルに採番・前進。あり経路では確定時にこの持ち回り `seq` を tranlog に刻む。
 - cart の `TerminalCounterRepository` による transaction/receipt 採番（`tran_service.py:159,173`、`numbering_count`）は**あり経路では使用しない**。なし経路（移行期間）では従来どおり `numbering_count` を使う（デュアルモードの一貫性）。移行完了後に `terminal_counter` の transaction/receipt 採番を撤去。

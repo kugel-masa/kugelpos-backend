@@ -29,7 +29,8 @@ phase 1 の `SnapshotEnvelope`（`schema_version` / `issued_at` / `kid` / `tenan
 - `seq` / `transaction_datetime` は cart_document に含まれるため、スナップショット（=cart_document の dump）で自動的に持ち回られる。
 - **確定時刻の供給**: 取引時刻は確定前の（paying 状態の）スナップショットには未だ無い（クライアントが bill 時に打刻するため）。よって **bill リクエストは別フィールドで確定時刻を供給**し（署名済みスナップショット＝paying 状態 ＋ クライアント打刻の確定時刻）、バックエンドはそれを `generate_date_time` と confirmed スナップショットの `transaction_datetime` に設定する。lost-ACK のリトライ時、クライアントは同じ打刻値を再送する（決定論）。
 - `business_counter` は既存（`terminal_info` 経由で取得済み）。cart_document に冗長保持はせず、確定時に `terminal_info.business_counter` から取得する（既存 `tran_service.py:165` を踏襲）。
-- 確定時の tranlog 生成は carried snapshot の決定論的関数とする: `transaction_no`=`seq`、`receipt_no`、`generate_date_time` を carried 値から設定し、サーバ時刻スタンプ（現状 `tran_service.py:166`）・サーバカウンタ採番（`:159,173`）をあり経路では使わない。これによりリトライ先でも同一のレシート・台帳になり、先勝ちスキップと整合する。
+- 確定時の tranlog 生成は carried snapshot ＋ クライアント供給の確定コンテキストの決定論的関数とする: `transaction_no`=carried `seq`、`receipt_no`=端末が terminal service シード値から採番した連続値、`generate_date_time`=クライアント打刻時刻。サーバ時刻スタンプ（現状 `tran_service.py:166`）・サーバカウンタ採番（`:159,173`）をあり経路では使わない。これによりリトライ先でも同一のレシート・台帳になり、先勝ちスキップと整合する。
+- `receipt_no` は seq と異なり**開設リセットしない連続カウンタ**。耐久ホームは terminal service（open でシード、open 時 `max(service値, 端末提示値)` で reconcile、欠番許容・再利用禁止）。詳細は spec FR-012 / Clarifications 2026-06-14。
 
 ---
 
