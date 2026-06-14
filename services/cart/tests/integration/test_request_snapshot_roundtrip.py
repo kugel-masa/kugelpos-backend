@@ -169,3 +169,14 @@ async def test_tampered_wrapped_request_is_rejected(http_client, snapshot_keys):
     )
     # Signature mismatch -> rejected (not a successful 200).
     assert r.status_code != status.HTTP_200_OK, r.text
+
+    # The per-request rejection is audited, and records which API it came from.
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"db_cart_{os.environ.get('TENANT_ID')}")
+    logs = [
+        doc
+        async for doc in db[settings.DB_COLLECTION_NAME_LOG_CART_RESTORE].find({"cart_id": cart_id, "result": "rejected"})
+    ]
+    assert logs, "expected a rejected audit record for the tampered request"
+    assert any((log.get("api_path") or "").endswith("/lineItems") for log in logs), logs

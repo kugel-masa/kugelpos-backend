@@ -26,6 +26,10 @@ class CartRestoreLogDocument(AbstractDocument):
 
     # Outcome: "restored" / "existing_returned" / "rejected"
     result: str
+    # API path where the event occurred (issue #156). None for the restore
+    # endpoint; the mutating endpoint path for per-request snapshot rejections,
+    # so the audit trail distinguishes which operation a rejection came from.
+    api_path: Optional[str] = None
     # Cart error code on rejection (e.g. 401501); None on success
     reject_reason: Optional[str] = None
     # True when the presented snapshot differs from an existing cart

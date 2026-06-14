@@ -95,7 +95,7 @@ async def get_cart_service_with_cart_id_async(
                 # Malformed shape: pass it through so verify raises the proper
                 # snapshot error (and records the rejection in the audit trail).
                 pass
-        await cart_service.prepare_stateless_from_snapshot(snapshot)
+        await cart_service.prepare_stateless_from_snapshot(snapshot, api_path=request.url.path)
     elif settings.CART_REQUEST_SNAPSHOT_MODE.upper() == "REQUIRED":
         raise SnapshotRequiredException(
             "A carried snapshot is required for cart-mutating requests (CART_REQUEST_SNAPSHOT_MODE=REQUIRED)",

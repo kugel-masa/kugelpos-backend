@@ -39,19 +39,21 @@ class CartRestoreLogRepository(AbstractRepository[CartRestoreLogDocument]):
         cart_id: Optional[str] = None,
         reject_reason: Optional[str] = None,
         diverged: bool = False,
+        api_path: Optional[str] = None,
         snapshot_issued_at: Optional[str] = None,
         snapshot_terminal_no: Optional[int] = None,
         snapshot_kid: Optional[str] = None,
         snapshot_schema_version: Optional[int] = None,
     ) -> CartRestoreLogDocument:
         """
-        Append one restore audit record for the authenticated terminal.
+        Append one restore/snapshot-event audit record for the terminal.
 
         Args:
             result: "restored" / "existing_returned" / "rejected"
             cart_id: Target cart id from the snapshot, when parseable
             reject_reason: Cart error code on rejection (e.g. "401501")
             diverged: True when the snapshot differs from an existing cart
+            api_path: API path of the event (issue #156); None for restore
             snapshot_*: Metadata extracted from the presented envelope
         """
         record = CartRestoreLogDocument(
@@ -62,6 +64,7 @@ class CartRestoreLogRepository(AbstractRepository[CartRestoreLogDocument]):
             result=result,
             reject_reason=reject_reason,
             diverged=diverged,
+            api_path=api_path,
             snapshot_issued_at=snapshot_issued_at,
             snapshot_terminal_no=snapshot_terminal_no,
             snapshot_kid=snapshot_kid,

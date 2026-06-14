@@ -906,7 +906,7 @@ class CartService(ICartService):
         )
         return snapshot_cart, True, False
 
-    async def prepare_stateless_from_snapshot(self, envelope: dict) -> None:
+    async def prepare_stateless_from_snapshot(self, envelope: dict, api_path: str = None) -> None:
         """
         Arm the per-request stateless path from a carried snapshot (issue #156).
 
@@ -956,7 +956,7 @@ class CartService(ICartService):
                     logger,
                 )
         except ServiceException as e:
-            await self.__add_restore_audit_async("rejected", audit_meta, reject_reason=e.error_code)
+            await self.__add_restore_audit_async("rejected", audit_meta, reject_reason=e.error_code, api_path=api_path)
             raise
 
         # Arm the stateless path: reconstruct master context + state, pin the
@@ -987,7 +987,7 @@ class CartService(ICartService):
         return canonical_json_bytes(data)
 
     async def __add_restore_audit_async(
-        self, result: str, audit_meta: dict, reject_reason: str = None, diverged: bool = False
+        self, result: str, audit_meta: dict, reject_reason: str = None, diverged: bool = False, api_path: str = None
     ) -> None:
         """
         Record a restore attempt in the audit trail (FR-007).
@@ -1009,6 +1009,7 @@ class CartService(ICartService):
                 result=result,
                 reject_reason=reject_reason,
                 diverged=diverged,
+                api_path=api_path,
                 **audit_meta,
             )
         except Exception as e:
