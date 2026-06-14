@@ -51,6 +51,10 @@ def create_terminal_token(
         claims["open_counter"] = terminal_info.open_counter
     if terminal_info.business_counter is not None:
         claims["business_counter"] = terminal_info.business_counter
+    # getattr keeps this robust against model_construct'd instances (e.g. test
+    # fixtures) that may not have the field set.
+    if getattr(terminal_info, "receipt_no", None) is not None:
+        claims["receipt_no"] = terminal_info.receipt_no
 
     # Staff claims (only present when signed in)
     if terminal_info.staff and terminal_info.staff.id:

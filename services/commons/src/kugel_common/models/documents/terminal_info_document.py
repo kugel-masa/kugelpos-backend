@@ -35,6 +35,11 @@ class TerminalInfoDocument(AbstractDocument):
     business_date: Optional[str] = None
     open_counter: Optional[int] = None
     business_counter: Optional[int] = None
+    # Client-carried cart phase 2 (issue #156): continuous, customer-facing
+    # receipt number counter. Terminal service is its durable home; it seeds the
+    # current value at open and the terminal carries/advances it during the
+    # session (see FR-012). Carried in the terminal token claims.
+    receipt_no: Optional[int] = None
     staff: Optional[StaffMasterDocument] = None
     initial_amount: Optional[float] = None
     physical_amount: Optional[float] = None

@@ -394,12 +394,23 @@ class TerminalService:
 
     # Terminal open/close methods
 
-    async def open_terminal_async(self, initial_amout: float) -> OpenCloseLog:
+    async def open_terminal_async(
+        self,
+        initial_amout: float,
+        client_business_counter: int = None,
+        client_receipt_no: int = None,
+    ) -> OpenCloseLog:
         """
         Open a terminal for business operations
 
         Args:
             initial_amout: Initial cash amount in the drawer
+            client_business_counter: Client-carried business_counter (issue #156).
+                The terminal owns these counters and may have advanced them during
+                an offline session; reconcile via max() so a value used offline is
+                never reused. None when the client carries nothing (first open).
+            client_receipt_no: Client-carried receipt_no (issue #156); reconciled
+                via max() and seeded into the token for the new session.
 
         Returns:
             OpenCloseLog: Log entry for the terminal opening
@@ -420,12 +431,23 @@ class TerminalService:
             message = f"Terminal is already opened: {self.terminal_id}"
             raise TerminalStatusException(message=message, logger=logger)
 
+        # Client-carried cart phase 2 (issue #156): the terminal owns
+        # business_counter and receipt_no and may have advanced them during an
+        # offline session. Reconcile via max() so an offline-used value is never
+        # reused (terminal service is the durable home; gaps allowed, no reuse).
+        if client_business_counter is not None:
+            terminal.business_counter = max(terminal.business_counter or 0, client_business_counter)
+        if client_receipt_no is not None:
+            terminal.receipt_no = max(terminal.receipt_no or 0, client_receipt_no)
+
         if terminal.business_date == get_app_time().strftime("%Y%m%d"):
             terminal.open_counter += 1
         else:
             terminal.business_date = get_app_time().strftime("%Y%m%d")
             terminal.open_counter = 1
 
+        # New open epoch (after reconcile, so it is strictly above any
+        # offline-used business_counter).
         terminal.business_counter += 1
         terminal.status = TerminalStatus.Opened.value
         terminal.initial_amount = initial_amout

@@ -544,7 +544,11 @@ async def terminal_open(
     try:
         if terminal_open is None:
             terminal_open = TerminalOpenRequest()
-        open_log = await terminal_service.open_terminal_async(terminal_open.initial_amount)
+        open_log = await terminal_service.open_terminal_async(
+            terminal_open.initial_amount,
+            client_business_counter=terminal_open.business_counter,
+            client_receipt_no=terminal_open.receipt_no,
+        )
         return_json = SchemasTransformerV1().transform_open_log(open_log).model_dump()
     except Exception as e:
         raise e

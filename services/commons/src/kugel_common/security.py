@@ -183,6 +183,7 @@ def terminal_claims_to_terminal_info(claims: dict) -> TerminalInfoDocument:
         business_date=claims.get("business_date"),
         open_counter=claims.get("open_counter"),
         business_counter=claims.get("business_counter"),
+        receipt_no=claims.get("receipt_no"),
     )
 
     # Reconstruct staff if present in claims

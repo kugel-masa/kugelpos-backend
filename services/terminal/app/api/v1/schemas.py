@@ -14,6 +14,8 @@ Each class represents a specific data structure used in the API endpoints for:
 - Cash operations
 """
 
+from typing import Optional
+
 from app.api.common.schemas import *
 
 
@@ -109,9 +111,13 @@ class TerminalOpenRequest(BaseTerminalOpenRequest):
 
     Contains information required to open a terminal:
     - initial_amount: The initial cash amount in the terminal drawer
+    - business_counter / receipt_no: client-carried counter values (issue #156).
+      The terminal owns these and may have advanced them offline; the service
+      reconciles via max() so an offline-used value is never reused.
     """
 
-    pass
+    business_counter: Optional[int] = None
+    receipt_no: Optional[int] = None
 
 
 class TerminalCloseRequest(BaseTerminalCloseRequest):
