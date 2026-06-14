@@ -152,6 +152,10 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
         """
         tranlog = BaseTransaction()
+        # Carry the cart identity into the tranlog so downstream consumers can
+        # dedupe a duplicate finalize on cart_id (client-carried cart phase 2,
+        # issue #156 / #152).
+        tranlog.cart_id = cart.cart_id
         tranlog.tenant_id = self.terminal_info.tenant_id
         tranlog.store_code = self.terminal_info.store_code
         tranlog.store_name = cart.store_name

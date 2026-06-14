@@ -149,6 +149,11 @@ class BaseTransaction(AbstractDocument):
     business_counter: Optional[int] = None
     generate_date_time: Optional[str] = None
     receipt_no: Optional[int] = None
+    # Transaction identity for client-carried cart phase 2 (issue #156 / #152).
+    # Carried from the cart at finalize; downstream consumers (report/journal/
+    # stock) dedupe on cart_id so a duplicate finalize (lost-ACK retry to any
+    # backend) converges to exactly one record (first-wins skip).
+    cart_id: Optional[str] = None
     user: Optional[UserInfoDocument] = None
     sales: Optional[SalesInfo] = None
 
