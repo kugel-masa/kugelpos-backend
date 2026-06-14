@@ -731,6 +731,18 @@ class CartService(ICartService):
         """
         logger.debug(f"Bill-> cart_id: {self.cart_id}")
 
+        # A client-carried finalize context is only valid on the stateless
+        # (signed-snapshot) path (issue #156 / bug_006). On the cache-authoritative
+        # path the server assigns the transaction/receipt numbers, so honoring a
+        # client-supplied context would let a phase-1 client forge the numbering.
+        # Reject it loudly rather than silently ignoring it.
+        if transaction_datetime is not None and not self._stateless:
+            message = (
+                f"Finalize context supplied without a signed snapshot, cart_id: {self.cart_id}. "
+                "Carried numbering requires the stateless (snapshot) path."
+            )
+            raise SnapshotInvalidException(message, logger)
+
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
         logger.debug(f"Bill-> cart_doc: {cart_doc}")
@@ -753,8 +765,9 @@ class CartService(ICartService):
         # Carry the client-stamped finalize context onto the cart (after
         # subtotal, which may rebuild cart_doc) so create_tranlog stamps the
         # tranlog deterministically (issue #156). transaction_datetime present
-        # turns on carried numbering.
-        if transaction_datetime is not None:
+        # turns on carried numbering — only ever on the stateless path (the
+        # non-stateless case is rejected at the top of this method, bug_006).
+        if transaction_datetime is not None and self._stateless:
             cart_doc.seq = seq
             cart_doc.receipt_no = receipt_no
             cart_doc.transaction_datetime = transaction_datetime

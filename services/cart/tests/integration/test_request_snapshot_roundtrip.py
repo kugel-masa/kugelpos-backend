@@ -203,6 +203,36 @@ async def test_required_mode_allows_get_rejects_snapshotless_mutation(http_clien
 
 
 @pytest.mark.asyncio
+async def test_snapshotless_bill_with_finalize_context_is_rejected(http_client, snapshot_keys):
+    """bug_006: a finalize context (client-supplied numbering) on the
+    cache-authoritative path (no signed snapshot) must be rejected — otherwise a
+    phase-1 client could forge the transaction/receipt numbers."""
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    balance = r.json()["data"]["balanceAmount"]
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json=[{"paymentCode": "01", "amount": int(balance)}],
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    # No wrapped body / no signed snapshot, but a finalize context is supplied.
+    forged = {"seq": 1, "receiptNo": 2, "transactionDatetime": "2026-06-14T03:04:05"}
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
+        json=forged,
+        headers=headers,
+    )
+    # Carried numbering requires the stateless (snapshot) path -> rejected.
+    assert r.status_code != status.HTTP_200_OK, r.text
+
+
+@pytest.mark.asyncio
 async def test_tampered_wrapped_request_is_rejected(http_client, snapshot_keys):
     """A tampered carried snapshot is rejected before the operation is applied (US3)."""
     terminal_id = _terminal_id()

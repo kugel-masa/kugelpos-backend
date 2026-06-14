@@ -787,6 +787,72 @@ class TestTranlogRepository:
         with pytest.raises(CannotCreateException):
             await repo.create_tranlog_async(tranlog)
 
+    @staticmethod
+    def _tranlog(cart_id="C1", transaction_type=1, is_cancelled=False, transaction_no=500):
+        from kugel_common.models.documents.base_tranlog import BaseTransaction
+
+        t = BaseTransaction(
+            tenant_id="T001",
+            store_code="S001",
+            terminal_no=1,
+            transaction_no=transaction_no,
+            transaction_type=transaction_type,
+            generate_date_time="2024-06-01T12:00:00Z",
+            cart_id=cart_id,
+        )
+        t.sales = BaseTransaction.SalesInfo()
+        t.sales.is_cancelled = is_cancelled
+        return t
+
+    @pytest.mark.asyncio
+    async def test_idempotent_returns_existing_for_same_finalize(self):
+        """A lost-ACK retry of the SAME finalize (same cart_id, type, is_cancelled)
+        returns the persisted tranlog without re-inserting (issue #156)."""
+        repo = self._make_repo()
+        existing = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        repo.get_one_async = AsyncMock(return_value=existing)
+        repo.create_async = AsyncMock(return_value=True)
+
+        incoming = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        result = await repo.create_tranlog_async(incoming)
+
+        assert result is existing
+        repo.create_async.assert_not_awaited()  # idempotent: no second insert
+
+    @pytest.mark.asyncio
+    async def test_conflict_when_cart_id_reused_for_different_op(self):
+        """bug_008: a stale-snapshot Cancel (is_cancelled=True) reusing a completed
+        sale's cart_id must NOT borrow the sale's record — it raises a conflict so
+        the new op is not silently swallowed while reporting success."""
+        from app.exceptions import FinalizeConflictException
+
+        repo = self._make_repo()
+        existing_sale = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        repo.get_one_async = AsyncMock(return_value=existing_sale)
+        repo.create_async = AsyncMock(return_value=True)
+
+        stale_cancel = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=True)
+        with pytest.raises(FinalizeConflictException):
+            await repo.create_tranlog_async(stale_cancel)
+        repo.create_async.assert_not_awaited()  # never attempted the conflicting insert
+
+    @pytest.mark.asyncio
+    async def test_propagates_duplicate_key_for_concurrent_race(self):
+        """bug_001: when the pre-check misses (concurrent finalize) and the insert
+        loses on the unique cart_id index, the DuplicateKeyException propagates
+        (NOT wrapped into CannotCreateException) so the caller can recover idempotently."""
+        from kugel_common.exceptions import DuplicateKeyException
+
+        repo = self._make_repo()
+        repo.get_one_async = AsyncMock(return_value=None)  # pre-check misses
+        repo.create_async = AsyncMock(
+            side_effect=DuplicateKeyException("dup", "tran", {"cart_id": "C9"})
+        )
+
+        incoming = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        with pytest.raises(DuplicateKeyException):
+            await repo.create_tranlog_async(incoming)
+
     @pytest.mark.asyncio
     async def test_get_tranlog_by_transaction_no_builds_correct_query(self):
         repo = self._make_repo()

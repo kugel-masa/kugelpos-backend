@@ -315,6 +315,36 @@ async def create_collection_with_indexes_async(
                 raise
             except Exception as e:  # an already-present/conflicting index must not block startup
                 logger.warning(f"Index {idx_name} ensure skipped on {collection_name}: {e}")
+
+        # Migration verification (issue #156 / bug_007): on an EXISTING collection a
+        # silently-skipped drop or ensure can leave a stale unique index that blocks
+        # finalize inserts, or leave a newly-required unique index (e.g. the cart_id
+        # dedupe) missing — both fail OPEN and look healthy. So verify the end-state
+        # by index key pattern (name-agnostic) and hard-fail if it was not achieved.
+        # New collections skip this: there is nothing to migrate and a brand-new
+        # collection always reflects index_keys_list exactly.
+        if not created:
+            final_info = await db[collection_name].index_information()
+            present = [tuple((k, v) for k, v in info.get("key", [])) for info in final_info.values()]
+
+            for index_info in index_keys_list:
+                want = tuple((k, v) for k, v in index_info.get("keys", {}).items())
+                if want not in present:
+                    raise DatabaseException(
+                        f"Required index {want} missing on {collection_name} after migration "
+                        "(index ensure failed — likely existing data violates a new unique constraint)",
+                        logger,
+                    )
+
+            if drop_indexes_by_keys:
+                for drop_keys in drop_indexes_by_keys:
+                    stale = tuple((k, v) for k, v in drop_keys.items())
+                    if stale in present:
+                        raise DatabaseException(
+                            f"Stale index {stale} still present on {collection_name} after migration "
+                            "(drop failed — it may block finalize inserts)",
+                            logger,
+                        )
     except (ConnectionFailure, ServerSelectionTimeoutError):
         # Re-raise so the @with_connection_retry decorator can retry the
         # whole operation (including re-acquiring the db handle).

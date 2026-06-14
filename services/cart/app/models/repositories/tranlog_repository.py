@@ -3,11 +3,12 @@ from logging import getLogger
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
-from kugel_common.exceptions import CannotCreateException
+from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.config.settings import settings
+from app.exceptions import FinalizeConflictException
 
 logger = getLogger(__name__)
 
@@ -63,14 +64,35 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
                     }
                 )
                 if existing is not None:
-                    logger.warning(f"Idempotent finalize: tranlog for cart_id={tranlog.cart_id} already exists")
-                    return existing
+                    # Only a genuine retry of the SAME finalize is idempotent.
+                    # A DIFFERENT operation reusing this cart_id (e.g. a stale
+                    # EnteringItem snapshot replayed as a Cancel over a Completed
+                    # sale) must NOT borrow the existing record's result — that
+                    # would silently swallow the new op while reporting success
+                    # (bug_008). Require the operation identity to match.
+                    if self.__is_same_finalize(existing, tranlog):
+                        logger.warning(f"Idempotent finalize: tranlog for cart_id={tranlog.cart_id} already exists")
+                        return existing
+                    message = (
+                        f"cart_id={tranlog.cart_id} already finalized as a different transaction "
+                        f"(existing type={existing.transaction_type}, cancelled={self.__is_cancelled(existing)}; "
+                        f"incoming type={tranlog.transaction_type}, cancelled={self.__is_cancelled(tranlog)})"
+                    )
+                    raise FinalizeConflictException(message, logger)
 
             tranlog.shard_key = self.__get_shard_key(tranlog)
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")
             if not await self.create_async(tranlog):
                 raise Exception()
             return tranlog
+        except (DuplicateKeyException, FinalizeConflictException):
+            # bug_001: a concurrent identical finalize won the race — our insert
+            # lost on the unique cart_id index. Propagate the DuplicateKeyException
+            # so the caller (which owns the finalize transaction) can abort it and
+            # re-read the winner's tranlog idempotently in a fresh session; recovery
+            # cannot happen here because the transaction is already poisoned.
+            # FinalizeConflictException is a deliberate 409 and must not be masked.
+            raise
         except Exception as e:
             message = (
                 "Failed to create tranlog: "
@@ -152,6 +174,27 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             f"TranlogRepository.get_tranlog_list_by_query_async: query->{query} limit->{limit} page->{page} sort->{sort}"
         )
         return await self.get_paginated_list_async(filter=query, limit=limit, page=page, sort=sort)
+
+    @staticmethod
+    def __is_cancelled(tranlog: BaseTransaction) -> bool:
+        """Whether the tranlog represents a cancelled sale (sales.is_cancelled)."""
+        sales = getattr(tranlog, "sales", None)
+        return bool(getattr(sales, "is_cancelled", False)) if sales is not None else False
+
+    def __is_same_finalize(self, existing: BaseTransaction, incoming: BaseTransaction) -> bool:
+        """
+        Decide whether an already-persisted tranlog is the SAME finalize operation
+        as the incoming one (a true idempotent retry) versus a different operation
+        that happens to reuse the cart_id (issue #156 / bug_008).
+
+        The operation identity is (transaction_type, is_cancelled): a Cancel and a
+        normal Sale of the same cart share transaction_type but differ on
+        sales.is_cancelled, so both must be compared.
+        """
+        return (
+            existing.transaction_type == incoming.transaction_type
+            and self.__is_cancelled(existing) == self.__is_cancelled(incoming)
+        )
 
     def __get_shard_key(self, tranlog: BaseTransaction) -> str:
         """

@@ -58,4 +58,5 @@ from .cart_exceptions import (
     SnapshotScopeViolationException,
     SnapshotTerminalStateException,
     SnapshotRequiredException,
+    FinalizeConflictException,
 )

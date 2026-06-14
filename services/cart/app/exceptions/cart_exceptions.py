@@ -419,6 +419,23 @@ class SnapshotRequiredException(ServiceException):
         )
 
 
+class FinalizeConflictException(ServiceException):
+    """Raised when a cart_id is reused for a DIFFERENT finalize than the one already
+    persisted (issue #156 / bug_008): e.g. a stale-snapshot cancel replayed over a
+    completed sale. The existing record must NOT be borrowed as an idempotent result,
+    so this surfaces as a conflict instead of silently swallowing the new operation."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.FINALIZE_CONFLICT,
+            CartErrorMessage.get_message(CartErrorCode.FINALIZE_CONFLICT),
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
 class AlreadyRefundedException(ServiceException):
     """
     Exception raised when a transaction has already been refunded.

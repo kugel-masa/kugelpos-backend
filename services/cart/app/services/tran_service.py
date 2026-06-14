@@ -16,6 +16,7 @@ from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
 from kugel_common.enums import TransactionType
 from kugel_common.utils.slack_notifier import send_warning_notification
+from kugel_common.exceptions import DuplicateKeyException
 
 from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.tranlog_delivery_status_repository import (
@@ -41,6 +42,7 @@ from app.exceptions import (
     InternalErrorException,
     AlreadyVoidedException,
     AlreadyRefundedException,
+    FinalizeConflictException,
 )
 from app.config.settings import settings
 from app.utils.pubsub_manager import PubsubManager
@@ -311,6 +313,44 @@ class TranService:
             tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
             await self.tranlog_repository.commit_transaction()
 
+        except FinalizeConflictException:
+            # bug_008: the cart_id is already finalized as a DIFFERENT transaction
+            # (e.g. a stale-snapshot cancel over a completed sale). Abort the (not
+            # yet poisoned) transaction and surface the 409 as-is — do NOT mask it
+            # as a 500, and do NOT borrow the unrelated record as an idempotent result.
+            await self.tranlog_repository.abort_transaction()
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
+            raise
+        except DuplicateKeyException as e:
+            # bug_001: a concurrent identical finalize won the race. Our insert lost
+            # on the unique cart_id index and poisoned THIS transaction, so we cannot
+            # recover inside it — abort, drop the session, then re-read the winning
+            # tranlog in a fresh (non-transaction) session and return it. The finalize
+            # is idempotent on cart_id, so the retry observes the same result instead
+            # of a 500. The winner already published, so we do NOT publish again.
+            await self.tranlog_repository.abort_transaction()
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
+            existing = None
+            if tranlog.cart_id is not None:
+                existing = await self.tranlog_repository.get_one_async(
+                    {
+                        "tenant_id": tranlog.tenant_id,
+                        "store_code": tranlog.store_code,
+                        "cart_id": tranlog.cart_id,
+                    }
+                )
+            if existing is not None:
+                logger.warning(
+                    f"Concurrent finalize race for cart_id={tranlog.cart_id}; "
+                    "returning the winning tranlog idempotently"
+                )
+                return existing
+            # The duplicate was on some other unique index (not the cart_id race) —
+            # surface it as a real failure.
+            message = f"Error creating tranlog: {e}"
+            raise InternalErrorException(message, logger) from e
         except Exception as e:
             await self.tranlog_repository.abort_transaction()
             message = f"Error creating tranlog: {e}"
