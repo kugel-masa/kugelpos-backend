@@ -160,25 +160,40 @@ class TranService:
         tranlog.store_code = self.terminal_info.store_code
         tranlog.store_name = cart.store_name
         tranlog.terminal_no = self.terminal_info.terminal_no
-        tranlog.transaction_no = await self.terminal_counter_repository.numbering_count(
-            countType=CounterType.Transaction.value
-        )
         tranlog.transaction_type = cart.transaction_type
         tranlog.business_date = cart.business_date
         tranlog.open_counter = self.terminal_info.open_counter
         tranlog.business_counter = self.terminal_info.business_counter
-        tranlog.generate_date_time = get_app_time_str()
-        # Settings come back as strings (master-data /settings/{name}/value
-        # returns the value as-is). The counter increment uses MongoDB's
-        # $add aggregation which fails with TypeMismatch on non-numeric
-        # operands, so cast here.
-        receipt_start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
-        receipt_end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
-        tranlog.receipt_no = await self.terminal_counter_repository.numbering_count(
-            countType=CounterType.Receipt.value,
-            start_value=int(receipt_start_raw) if receipt_start_raw is not None else 1,
-            end_value=int(receipt_end_raw) if receipt_end_raw is not None else sys.maxsize,
-        )
+
+        # Client-carried cart phase 2 (issue #156): when the client carries the
+        # finalize context (it stamps transaction_datetime at bill), the
+        # transaction number, receipt number, and time are taken from the
+        # carried values — NOT the server-side counters/clock — so a retried
+        # finalize on any backend produces the same number/time/receipt and the
+        # downstream cart_id dedupe converges to one record. Without a carried
+        # time (legacy / no-snapshot path) the server-side numbering is used.
+        carried = cart.transaction_datetime is not None
+        if carried:
+            # (business_counter, seq) composite: transaction_no carries seq.
+            tranlog.transaction_no = cart.seq
+            tranlog.generate_date_time = cart.transaction_datetime
+            tranlog.receipt_no = cart.receipt_no
+        else:
+            tranlog.transaction_no = await self.terminal_counter_repository.numbering_count(
+                countType=CounterType.Transaction.value
+            )
+            tranlog.generate_date_time = get_app_time_str()
+            # Settings come back as strings (master-data /settings/{name}/value
+            # returns the value as-is). The counter increment uses MongoDB's
+            # $add aggregation which fails with TypeMismatch on non-numeric
+            # operands, so cast here.
+            receipt_start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
+            receipt_end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
+            tranlog.receipt_no = await self.terminal_counter_repository.numbering_count(
+                countType=CounterType.Receipt.value,
+                start_value=int(receipt_start_raw) if receipt_start_raw is not None else 1,
+                end_value=int(receipt_end_raw) if receipt_end_raw is not None else sys.maxsize,
+            )
         tranlog.user = cart.user
         tranlog.sales = cart.sales
         tranlog.line_items = cart.line_items

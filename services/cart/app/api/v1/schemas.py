@@ -22,6 +22,7 @@ from app.api.common.schemas import (
     BaseTran,
     BaseStore,
     BaseUser,
+    BaseSchemmaModel,
     SnapshotEnvelope,
 )
 
@@ -172,6 +173,24 @@ class CartRestoreRequest(SnapshotEnvelope):
     """
 
     pass
+
+
+class FinalizeContext(BaseSchemmaModel):
+    """
+    Client-carried finalize context for the bill endpoint (issue #156).
+
+    On the stateless (snapshot-present) path the terminal stamps the
+    transaction's number, receipt number, and time at bill and supplies them
+    here so a retried finalize on any backend yields the same values
+    (deterministic finalize, FR-012). Absent on the cache-authoritative path,
+    where the server assigns them. All fields optional so a body-less bill
+    (legacy / no-snapshot) still parses. Accepts camelCase (seq / receiptNo /
+    transactionDatetime) via the inherited alias generator.
+    """
+
+    seq: Optional[int] = None
+    receipt_no: Optional[int] = None
+    transaction_datetime: Optional[str] = None
 
 
 class CartDeleteResponse(BaseCartDeleteResponse):

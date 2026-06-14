@@ -1,6 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.  # api/routes/cart.py
 from fastapi import APIRouter, status, Depends
 from logging import getLogger
+from typing import Optional
 import inspect
 
 from kugel_common.schemas.api_response import ApiResponse
@@ -11,6 +12,7 @@ from app.api.v1.schemas import (
     CartCreateRequest,
     CartCreateResponse,
     CartRestoreRequest,
+    FinalizeContext,
     Item,
     PaymentRequest,
     DiscountRequest,
@@ -594,6 +596,7 @@ async def payments(
     },
 )
 async def bill(
+    finalize: Optional[FinalizeContext] = None,
     cart_service: CartService = Depends(get_cart_service_with_cart_id_async),
 ):
     """
@@ -603,6 +606,10 @@ async def bill(
     it for receipt generation and storage.
 
     Args:
+        finalize: Client-carried finalize context (issue #156). On the
+            stateless path the terminal stamps the transaction number, receipt
+            number, and time here so a retried finalize is deterministic.
+            Omitted on the cache-authoritative path (server assigns them).
         cart_service: Injected cart service instance with cart_id
 
     Returns:
@@ -611,7 +618,11 @@ async def bill(
     cart_id = cart_service.cart_id
     logger.debug(f"Billing cart {cart_id}")
     try:
-        cart_doc = await cart_service.bill_async()
+        cart_doc = await cart_service.bill_async(
+            seq=finalize.seq if finalize else None,
+            receipt_no=finalize.receipt_no if finalize else None,
+            transaction_datetime=finalize.transaction_datetime if finalize else None,
+        )
     except Exception as e:
         raise e
 

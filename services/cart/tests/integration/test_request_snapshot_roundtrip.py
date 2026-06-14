@@ -108,6 +108,43 @@ async def test_wrapped_request_continues_after_cache_wipe(http_client, snapshot_
 
 
 @pytest.mark.asyncio
+async def test_carried_finalize_context_drives_numbering(http_client, snapshot_keys):
+    """A stateless bill uses the client-supplied seq/receipt/time (carried numbering)."""
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    balance = r.json()["data"]["balanceAmount"]
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json=[{"paymentCode": "01", "amount": int(balance)}],
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    paying_snapshot = r.json()["data"]["signedSnapshot"]
+    assert paying_snapshot is not None
+
+    # Distinctive carried values a server counter would never produce.
+    finalize_ctx = {"seq": 7777, "receiptNo": 8888, "transactionDatetime": "2026-06-14T01:02:03"}
+    wrapped = {"signedSnapshot": paying_snapshot, "payload": finalize_ctx}
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
+        json=wrapped,
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    bill_data = r.json()["data"]
+    assert bill_data["cartStatus"] == "Completed"
+    # The carried finalize context drove the numbering, not server counters.
+    assert bill_data["transactionNo"] == 7777, bill_data
+    assert bill_data["receiptNo"] == 8888, bill_data
+
+
+@pytest.mark.asyncio
 async def test_tampered_wrapped_request_is_rejected(http_client, snapshot_keys):
     """A tampered carried snapshot is rejected before the operation is applied (US3)."""
     terminal_id = _terminal_id()

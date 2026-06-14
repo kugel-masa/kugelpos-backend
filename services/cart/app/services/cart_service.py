@@ -702,12 +702,26 @@ class CartService(ICartService):
         return cart_doc
 
     # Complete the transaction
-    async def bill_async(self) -> CartDocument:
+    async def bill_async(
+        self,
+        seq: int = None,
+        receipt_no: int = None,
+        transaction_datetime: str = None,
+    ) -> CartDocument:
         """
         Complete the transaction and finalize the cart.
 
         Verifies that the balance is zero, creates a transaction log entry,
         and marks the cart as completed.
+
+        Args:
+            seq: Client-carried transaction sequence (issue #156). On the
+                stateless path the terminal supplies the finalize context so
+                the transaction number/receipt/time are deterministic across
+                retries; create_tranlog uses them instead of server counters.
+            receipt_no: Client-carried receipt number (issue #156).
+            transaction_datetime: Client-stamped transaction time (issue #156).
+                Its presence is the signal that turns on carried numbering.
 
         Returns:
             CartDocument: The final cart document with completed status
@@ -721,6 +735,8 @@ class CartService(ICartService):
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
         logger.debug(f"Bill-> cart_doc: {cart_doc}")
 
+        # Carry the client-stamped finalize context onto the cart so
+        # create_tranlog stamps the tranlog deterministically (issue #156).
         # Check if the event can be accepted in the current state
         self.state_manager.check_event_sequence(self)
 
@@ -733,6 +749,15 @@ class CartService(ICartService):
             raise BalanceGreaterThanZeroException(message, logger)
 
         logger.debug(f"Bill-> balance: {cart_doc.balance_amount}")
+
+        # Carry the client-stamped finalize context onto the cart (after
+        # subtotal, which may rebuild cart_doc) so create_tranlog stamps the
+        # tranlog deterministically (issue #156). transaction_datetime present
+        # turns on carried numbering.
+        if transaction_datetime is not None:
+            cart_doc.seq = seq
+            cart_doc.receipt_no = receipt_no
+            cart_doc.transaction_datetime = transaction_datetime
 
         # Create transaction log
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)
