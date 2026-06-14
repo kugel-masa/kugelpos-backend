@@ -84,6 +84,11 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
                 raise Exception()
             return tranlog
 
+        except DuplicateKeyException:
+            # Concurrent duplicate finalize (issue #156): the unique-index race
+            # loser — the benign "already converged" signal, skip not error.
+            logger.warning(f"Transaction already exists (duplicate-key on insert): {tranlog}")
+            return tranlog
         except Exception as e:
             message = (
                 "Failed to create tranlog: "

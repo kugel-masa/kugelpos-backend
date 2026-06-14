@@ -14,10 +14,15 @@ async def create_some_collection(
     collection_name: str,
     index_keys_list: list,
     index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     db_name = f"{settings.DB_NAME_PREFIX}_{tenant_id}"
     await db_helper.create_collection_with_indexes_async(
-        db_name=db_name, collection_name=collection_name, index_keys_list=index_keys_list, index_name=index_name
+        db_name=db_name,
+        collection_name=collection_name,
+        index_keys_list=index_keys_list,
+        index_name=index_name,
+        drop_indexes_by_keys=drop_indexes_by_keys,
     )
 
 
@@ -26,8 +31,7 @@ async def create_tran_collection(tenant_id: str):
     name = settings.DB_COLLECTION_NAME_TRAN
     # Client-carried cart phase 2 (issue #156 / #152): cart_id is the dedupe
     # identity (partial-unique). The numbering tuple includes business_counter
-    # because transaction_no is the per-open seq. NOTE: only applied to
-    # newly-created collections; existing collections need an index migration.
+    # because transaction_no is the per-open seq.
     index_keys_list = [
         {
             "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
@@ -40,7 +44,12 @@ async def create_tran_collection(tenant_id: str):
         },
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_keys_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_keys_list,
+        index_name=name + "_index",
+        # Issue #156 migration: drop the old unique index missing business_counter.
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}],
     )
 
 

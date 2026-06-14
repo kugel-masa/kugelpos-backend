@@ -96,7 +96,9 @@ async def get_cart_service_with_cart_id_async(
                 # snapshot error (and records the rejection in the audit trail).
                 pass
         await cart_service.prepare_stateless_from_snapshot(snapshot, api_path=request.url.path)
-    elif settings.CART_REQUEST_SNAPSHOT_MODE.upper() == "REQUIRED":
+    elif settings.CART_REQUEST_SNAPSHOT_MODE.upper() == "REQUIRED" and request.method not in ("GET", "HEAD", "OPTIONS"):
+        # REQUIRED rejects only mutating requests; safe (read-only) methods such
+        # as GET must still be able to read a cart without a snapshot (issue #156).
         raise SnapshotRequiredException(
             "A carried snapshot is required for cart-mutating requests (CART_REQUEST_SNAPSHOT_MODE=REQUIRED)",
             logger,

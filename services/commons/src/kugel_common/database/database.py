@@ -247,6 +247,7 @@ async def create_collection_with_indexes_async(
         collection_name: str,
         index_keys_list: list,
         index_name: str,
+        drop_indexes_by_keys: list = None,
 ):
     """
     Create a collection with specified indexes asynchronously
@@ -268,24 +269,52 @@ async def create_collection_with_indexes_async(
         created = await create_collection_async(collection_name=collection_name, db=db)
         if created:
             logger.info(f"Collection created: {collection_name}")
-            index_name_org = index_name
-            for index_info in index_keys_list:
-                keys_dict = index_info.get("keys", {})
-                unique = index_info.get("unique", False)
-                partial_filter = index_info.get("partialFilterExpression")
-                expire_after_seconds = index_info.get("expireAfterSeconds")
-                logger.info(f"keys_dict: {keys_dict}")
-                index_name = index_name_org + "_" + "_".join([str(key) for key in keys_dict.keys()])
-                logger.info(f"Creating index: {index_name} for collection: {collection_name}")
-                command_json = create_indexes_command(
-                    collection_name=collection_name,
-                    index_keys=keys_dict,
-                    index_name=index_name,
-                    unique=unique,
-                    partial_filter_expression=partial_filter,
-                    expire_after_seconds=expire_after_seconds,
-                )
+
+        # Migration support: drop stale indexes whose key pattern no longer
+        # matches the desired set (matched by key pattern, not name, so it is
+        # robust to naming). Used to retire a unique index whose key columns
+        # changed (e.g. issue #156 reworked the tranlog/stock uniqueness).
+        if drop_indexes_by_keys:
+            try:
+                existing = await db[collection_name].index_information()
+                for drop_keys in drop_indexes_by_keys:
+                    want = [(k, v) for k, v in drop_keys.items()]
+                    for idx_name, info in existing.items():
+                        if idx_name == "_id_":
+                            continue
+                        if [(k, v) for k, v in info.get("key", [])] == want:
+                            await db[collection_name].drop_index(idx_name)
+                            logger.info(f"Dropped stale index {idx_name} ({drop_keys}) on {collection_name}")
+            except (ConnectionFailure, ServerSelectionTimeoutError):
+                raise
+            except Exception as e:  # best-effort migration; do not block startup
+                logger.warning(f"Stale-index drop skipped on {collection_name}: {e}")
+
+        # Ensure the desired indexes on BOTH new and existing collections
+        # (createIndexes is idempotent for an identical name+spec). This is what
+        # applies the issue #156 cart_id / business_counter indexes to already
+        # existing tenant collections.
+        index_name_org = index_name
+        for index_info in index_keys_list:
+            keys_dict = index_info.get("keys", {})
+            unique = index_info.get("unique", False)
+            partial_filter = index_info.get("partialFilterExpression")
+            expire_after_seconds = index_info.get("expireAfterSeconds")
+            idx_name = index_name_org + "_" + "_".join([str(key) for key in keys_dict.keys()])
+            command_json = create_indexes_command(
+                collection_name=collection_name,
+                index_keys=keys_dict,
+                index_name=idx_name,
+                unique=unique,
+                partial_filter_expression=partial_filter,
+                expire_after_seconds=expire_after_seconds,
+            )
+            try:
                 await execute_command_async(command=command_json, db=db)
+            except (ConnectionFailure, ServerSelectionTimeoutError):
+                raise
+            except Exception as e:  # an already-present/conflicting index must not block startup
+                logger.warning(f"Index {idx_name} ensure skipped on {collection_name}: {e}")
     except (ConnectionFailure, ServerSelectionTimeoutError):
         # Re-raise so the @with_connection_retry decorator can retry the
         # whole operation (including re-acquiring the db handle).

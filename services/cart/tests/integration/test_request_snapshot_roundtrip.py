@@ -145,6 +145,64 @@ async def test_carried_finalize_context_drives_numbering(http_client, snapshot_k
 
 
 @pytest.mark.asyncio
+async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys):
+    """B2: a retried finalize (same snapshot + finalize context) returns the same
+    result, not a 500 — the duplicate insert is handled idempotently."""
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    balance = r.json()["data"]["balanceAmount"]
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json=[{"paymentCode": "01", "amount": int(balance)}],
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    paying_snapshot = r.json()["data"]["signedSnapshot"]
+
+    ctx = {"seq": 5151, "receiptNo": 5152, "transactionDatetime": "2026-06-14T02:03:04"}
+    wrapped = {"signedSnapshot": paying_snapshot, "payload": ctx}
+
+    r1 = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", json=wrapped, headers=headers)
+    assert r1.status_code == status.HTTP_200_OK, r1.text
+    assert r1.json()["data"]["transactionNo"] == 5151
+
+    # Retry the exact same finalize: reconstructs from the same paying snapshot,
+    # produces the same (cart_id, seq) -> idempotent, same result, no 500.
+    r2 = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", json=wrapped, headers=headers)
+    assert r2.status_code == status.HTTP_200_OK, r2.text
+    assert r2.json()["data"]["transactionNo"] == 5151
+
+
+@pytest.mark.asyncio
+async def test_required_mode_allows_get_rejects_snapshotless_mutation(http_client, snapshot_keys, monkeypatch):
+    """B3: in REQUIRED mode a snapshot-less GET still reads the cart, while a
+    snapshot-less mutating request is rejected."""
+    from app.config.settings import settings
+
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+
+    monkeypatch.setattr(settings, "CART_REQUEST_SNAPSHOT_MODE", "REQUIRED")
+
+    # Read-only GET must still work (no snapshot required for a safe method).
+    r = await http_client.get(f"/api/v1/carts/{cart_id}?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+
+    # A snapshot-less mutating request is rejected.
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json=[{"itemCode": "49-01", "quantity": 1}],
+        headers=headers,
+    )
+    assert r.status_code != status.HTTP_200_OK, r.text
+
+
+@pytest.mark.asyncio
 async def test_tampered_wrapped_request_is_rejected(http_client, snapshot_keys):
     """A tampered carried snapshot is rejected before the operation is applied (US3)."""
     terminal_id = _terminal_id()

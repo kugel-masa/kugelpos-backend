@@ -15,12 +15,14 @@ async def create_some_collection(
     collection_name: str,
     index_keys_list: list,
     index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     await db_helper.create_collection_with_indexes_async(
         db_name=f"{settings.DB_NAME_PREFIX}_{tenant_id}",
         collection_name=collection_name,
         index_keys_list=index_keys_list,
         index_name=index_name,
+        drop_indexes_by_keys=drop_indexes_by_keys,
     )
 
 
@@ -49,9 +51,7 @@ async def create_stock_update_collection(tenant_id: str):
         # (issue #156 / #152): a duplicate finalize carries the same cart_id,
         # so this index stops the second stock movement at the DB layer.
         # Partial filter scopes it to transaction-driven updates (cart_id
-        # present); manual adjustments (cart_id NULL) are excluded. NOTE: only
-        # applied to newly-created collections; existing collections need an
-        # index migration in production.
+        # present); manual adjustments (cart_id NULL) are excluded.
         {
             "keys": {
                 "tenant_id": 1,
@@ -65,7 +65,22 @@ async def create_stock_update_collection(tenant_id: str):
         },
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Issue #156 migration: drop the old unique index keyed on transaction_no
+        # (now the per-open seq) before relying on the cart_id index.
+        drop_indexes_by_keys=[
+            {
+                "tenant_id": 1,
+                "store_code": 1,
+                "terminal_no": 1,
+                "transaction_no": 1,
+                "item_code": 1,
+                "update_type": 1,
+            }
+        ],
     )
 
 

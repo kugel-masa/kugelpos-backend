@@ -21,6 +21,7 @@ async def create_some_collection(
     collection_name: str,
     index_keys_list: list,
     index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     """
     Creates a MongoDB collection with specified indexes.
@@ -42,7 +43,11 @@ async def create_some_collection(
 
     # Create the collection with indexes
     await db_helper.create_collection_with_indexes_async(
-        db_name=db_name, collection_name=collection_name, index_keys_list=index_keys_list, index_name=index_name
+        db_name=db_name,
+        collection_name=collection_name,
+        index_keys_list=index_keys_list,
+        index_name=index_name,
+        drop_indexes_by_keys=drop_indexes_by_keys,
     )
 
 
@@ -105,11 +110,29 @@ async def create_tran_log_collection(tenant_id: str):
         None
     """
     name = settings.DB_COLLECTION_NAME_TRAN_LOG
+    # Client-carried cart phase 2 (issue #156): cart_id is the transaction
+    # identity (partial-unique). transaction_no is now the per-open seq and is
+    # NOT unique on its own across sessions, so the numbering tuple includes
+    # business_counter. Mirrors the downstream report/journal indexes.
     index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}, "unique": True}
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "unique": True,
+        },
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "cart_id": 1},
+            "unique": True,
+            "partialFilterExpression": {"cart_id": {"$type": "string"}},
+        },
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Issue #156 migration: retire the old unique index that lacked
+        # business_counter (transaction_no is now the per-open seq).
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}],
     )
 
 

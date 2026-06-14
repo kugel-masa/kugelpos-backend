@@ -49,6 +49,23 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             CannotCreateException: If the transaction log could not be created
         """
         try:
+            # Idempotent finalize pre-check (issue #156): a lost-ACK retry of the
+            # same finalize carries the same cart_id. Return the already-persisted
+            # tranlog BEFORE attempting the insert — the insert runs inside the
+            # finalize transaction, and letting the duplicate hit the unique index
+            # would abort that transaction (and recovery-within-it would fail).
+            if tranlog.cart_id is not None:
+                existing = await self.get_one_async(
+                    {
+                        "tenant_id": tranlog.tenant_id,
+                        "store_code": tranlog.store_code,
+                        "cart_id": tranlog.cart_id,
+                    }
+                )
+                if existing is not None:
+                    logger.warning(f"Idempotent finalize: tranlog for cart_id={tranlog.cart_id} already exists")
+                    return existing
+
             tranlog.shard_key = self.__get_shard_key(tranlog)
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")
             if not await self.create_async(tranlog):

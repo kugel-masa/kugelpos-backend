@@ -1,6 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 from app.api.common.schemas import (
     BaseCart,
     BaseItem,
@@ -183,14 +184,37 @@ class FinalizeContext(BaseSchemmaModel):
     transaction's number, receipt number, and time at bill and supplies them
     here so a retried finalize on any backend yields the same values
     (deterministic finalize, FR-012). Absent on the cache-authoritative path,
-    where the server assigns them. All fields optional so a body-less bill
-    (legacy / no-snapshot) still parses. Accepts camelCase (seq / receiptNo /
-    transactionDatetime) via the inherited alias generator.
+    where the server assigns them. The three fields are all-or-nothing (a
+    partial context would write a null transaction_no/receipt_no); accepts
+    camelCase (seq / receiptNo / transactionDatetime) via the alias generator.
     """
 
     seq: Optional[int] = None
     receipt_no: Optional[int] = None
     transaction_datetime: Optional[str] = None
+
+    @field_validator("transaction_datetime")
+    @classmethod
+    def _validate_datetime(cls, v):
+        # The carried time becomes the authoritative tranlog generate_date_time
+        # and feeds the business-date bucket (split on "T"); reject anything that
+        # is not an ISO-8601 datetime so it can't corrupt downstream bucketing.
+        if v is None:
+            return v
+        try:
+            datetime.fromisoformat(v)
+        except (ValueError, TypeError):
+            raise ValueError("transaction_datetime must be an ISO-8601 datetime string")
+        if "T" not in v:
+            raise ValueError("transaction_datetime must include a 'T' date/time separator")
+        return v
+
+    @model_validator(mode="after")
+    def _all_or_none(self):
+        provided = [self.seq is not None, self.receipt_no is not None, self.transaction_datetime is not None]
+        if any(provided) and not all(provided):
+            raise ValueError("seq, receipt_no and transaction_datetime must all be provided together")
+        return self
 
 
 class CartDeleteResponse(BaseCartDeleteResponse):

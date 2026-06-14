@@ -514,6 +514,11 @@ class TranService:
 
         tran.transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
         tran.receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
+        # The void is its own transaction: give it a fresh cart_id so it does NOT
+        # inherit the original sale's cart_id (issue #156). Downstream consumers
+        # dedupe on cart_id; reusing the original's would make them skip the void
+        # (the sale stays counted, inventory never reversed).
+        tran.cart_id = str(uuid.uuid4())
         tran.generate_date_time = get_app_time_str()
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for void transaction
@@ -684,6 +689,9 @@ class TranService:
         tran.transaction_type = TransactionType.ReturnSales.value
         tran.transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
         tran.receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
+        # The return is its own transaction: fresh cart_id so it does not inherit
+        # the original sale's cart_id and get skipped by downstream dedupe (#156).
+        tran.cart_id = str(uuid.uuid4())
         tran.generate_date_time = get_app_time_str()
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for return transaction
