@@ -52,12 +52,25 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
         """
         try:
 
-            filter = {
-                "tenant_id": tranlog.tenant_id,
-                "store_code": tranlog.store_code,
-                "terminal_no": tranlog.terminal_no,
-                "transaction_no": tranlog.transaction_no,
-            }
+            # Client-carried cart phase 2 (issue #156 / #152): dedupe on cart_id
+            # (the transaction identity) so a duplicate finalize converges to one
+            # record (first-wins skip). Fall back to (business_counter,
+            # transaction_no) for legacy records without cart_id — transaction_no
+            # alone is the per-open seq and not unique across sessions.
+            if tranlog.cart_id is not None:
+                filter = {
+                    "tenant_id": tranlog.tenant_id,
+                    "store_code": tranlog.store_code,
+                    "cart_id": tranlog.cart_id,
+                }
+            else:
+                filter = {
+                    "tenant_id": tranlog.tenant_id,
+                    "store_code": tranlog.store_code,
+                    "terminal_no": tranlog.terminal_no,
+                    "business_counter": tranlog.business_counter,
+                    "transaction_no": tranlog.transaction_no,
+                }
 
             # Check if the transaction log already exists
             if await self.get_one_async(filter):

@@ -51,6 +51,7 @@ class StockService:
         note: Optional[str] = None,
         terminal_no: Optional[int] = None,
         transaction_no: Optional[int] = None,
+        cart_id: Optional[str] = None,
     ) -> StockUpdateDocument:
         """Update stock quantity and record the update with atomic operations to prevent race conditions.
 
@@ -100,6 +101,7 @@ class StockService:
             note=note,
             terminal_no=terminal_no,
             transaction_no=transaction_no,
+            cart_id=cart_id,
         )
 
         try:
@@ -118,16 +120,21 @@ class StockService:
             await self._stock_repository.update_quantity_atomic_async(
                 tenant_id, store_code, item_code, -quantity_change, reference_id
             )
-            existing = await self._stock_update_repository.get_one_async(
-                {
-                    "tenant_id": tenant_id,
-                    "store_code": store_code,
-                    "terminal_no": terminal_no,
-                    "transaction_no": transaction_no,
-                    "item_code": item_code,
-                    "update_type": update_type.value,
-                }
-            )
+            # Look up the already-applied record. Phase 2 (issue #156) keys on
+            # cart_id when present (the duplicate carries the same cart_id);
+            # otherwise the legacy (terminal_no, transaction_no) identity.
+            lookup = {
+                "tenant_id": tenant_id,
+                "store_code": store_code,
+                "item_code": item_code,
+                "update_type": update_type.value,
+            }
+            if cart_id is not None:
+                lookup["cart_id"] = cart_id
+            else:
+                lookup["terminal_no"] = terminal_no
+                lookup["transaction_no"] = transaction_no
+            existing = await self._stock_update_repository.get_one_async(lookup)
             return existing or update_record
 
         logger.info(
@@ -157,6 +164,7 @@ class StockService:
             store_code = transaction_data.get("store_code")
             terminal_no = transaction_data.get("terminal_no")
             transaction_no = transaction_data.get("transaction_no")
+            cart_id = transaction_data.get("cart_id")
             transaction_type = transaction_data.get("transaction_type")
             line_items = transaction_data.get("line_items", [])
 
@@ -164,28 +172,35 @@ class StockService:
             transaction_no_str = str(transaction_no) if transaction_no is not None else None
 
             logger.info(
-                f"Processing transaction {transaction_no} (type: {transaction_type}) for tenant {tenant_id} store {store_code}, terminal {terminal_no}"
+                f"Processing transaction {transaction_no} (cart_id: {cart_id}, type: {transaction_type}) for tenant {tenant_id} store {store_code}, terminal {terminal_no}"
             )
 
-            # Idempotency pre-check (issue #98): if any stock_update record
-            # exists for this tenant/store/terminal/transaction, the
-            # transaction was already processed (Dapr redelivery past a
-            # state-store miss). Skip the entire batch — re-applying $inc
-            # would double-decrement.
-            if terminal_no is not None and transaction_no is not None:
+            # Idempotency pre-check: if any stock_update already exists for this
+            # transaction, it was already processed — skip the whole batch
+            # (re-applying $inc would double-decrement). Client-carried cart
+            # phase 2 (issue #156 / #152) keys on cart_id when present (a
+            # duplicate finalize / lost-ACK retry to any backend carries the
+            # same cart_id); otherwise the legacy (terminal_no, transaction_no)
+            # identity (Dapr redelivery, issue #98).
+            existing = None
+            if cart_id is not None:
+                existing = await self._stock_update_repository.find_by_cart_id_async(
+                    tenant_id=tenant_id, store_code=store_code, cart_id=cart_id
+                )
+            elif terminal_no is not None and transaction_no is not None:
                 existing = await self._stock_update_repository.find_by_transaction_async(
                     tenant_id=tenant_id,
                     store_code=store_code,
                     terminal_no=terminal_no,
                     transaction_no=transaction_no,
                 )
-                if existing:
-                    logger.warning(
-                        f"Transaction {transaction_no} already processed for "
-                        f"tenant={tenant_id}, store={store_code}, terminal={terminal_no} "
-                        f"({len(existing)} existing stock_update records). Skipping."
-                    )
-                    return
+            if existing:
+                logger.warning(
+                    f"Transaction already processed (cart_id={cart_id}, transaction_no={transaction_no}) for "
+                    f"tenant={tenant_id}, store={store_code}, terminal={terminal_no} "
+                    f"({len(existing)} existing stock_update records). Skipping."
+                )
+                return
 
             # Check if transaction is cancelled
             is_cancelled = transaction_data.get("sales", {}).get("is_cancelled", False)
@@ -242,6 +257,7 @@ class StockService:
                         reference_id=transaction_no_str,
                         terminal_no=terminal_no,
                         transaction_no=transaction_no,
+                        cart_id=cart_id,
                     )
 
             logger.info(

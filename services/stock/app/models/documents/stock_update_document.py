@@ -24,6 +24,10 @@ class StockUpdateDocument(AbstractDocument):
     # because manual adjustments / migrations may have no transaction.
     terminal_no: Optional[int] = Field(None, description="Terminal number (only when driven by a POS transaction)")
     transaction_no: Optional[int] = Field(None, description="Transaction number (only when driven by a POS transaction)")
+    # Client-carried cart phase 2 (issue #156 / #152): the transaction identity.
+    # A duplicate finalize (lost-ACK retry to any backend) carries the same
+    # cart_id, so stock movements dedupe on it (skip — apply once).
+    cart_id: Optional[str] = Field(None, description="Cart/transaction identity (client-carried cart phase 2)")
 
     class Settings:
         name = "stock_updates"
@@ -32,21 +36,21 @@ class StockUpdateDocument(AbstractDocument):
             {"keys": [("update_type", 1)]},
             {"keys": [("timestamp", -1)]},
             {"keys": [("reference_id", 1)]},
-            # Unique on (tenant, store, terminal, transaction, item, type) to
-            # block duplicate writes when Dapr redelivers the same tranlog
-            # past the state-store check. Partial filter limits the
-            # constraint to transaction-driven updates so manual
-            # adjustments (transaction_no IS NULL) are unaffected.
+            # Unique on (tenant, store, cart_id, item, type): a duplicate
+            # finalize carries the same cart_id, so the second stock movement
+            # is blocked at the DB layer (issue #156). Partial filter limits it
+            # to transaction-driven updates (cart_id present); manual
+            # adjustments (cart_id NULL) are unaffected. transaction_no is the
+            # per-open seq in phase 2 and no longer unique on its own.
             {
                 "keys": [
                     ("tenant_id", 1),
                     ("store_code", 1),
-                    ("terminal_no", 1),
-                    ("transaction_no", 1),
+                    ("cart_id", 1),
                     ("item_code", 1),
                     ("update_type", 1),
                 ],
                 "unique": True,
-                "partialFilterExpression": {"transaction_no": {"$type": "number"}},
+                "partialFilterExpression": {"cart_id": {"$type": "string"}},
             },
         ]

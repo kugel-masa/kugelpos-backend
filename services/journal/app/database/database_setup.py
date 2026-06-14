@@ -24,8 +24,20 @@ async def create_some_collection(
 # create tran collection
 async def create_tran_collection(tenant_id: str):
     name = settings.DB_COLLECTION_NAME_TRAN
+    # Client-carried cart phase 2 (issue #156 / #152): cart_id is the dedupe
+    # identity (partial-unique). The numbering tuple includes business_counter
+    # because transaction_no is the per-open seq. NOTE: only applied to
+    # newly-created collections; existing collections need an index migration.
     index_keys_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}, "unique": True}
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "unique": True,
+        },
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "cart_id": 1},
+            "unique": True,
+            "partialFilterExpression": {"cart_id": {"$type": "string"}},
+        },
     ]
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_keys_list, index_name=name + "_index"
