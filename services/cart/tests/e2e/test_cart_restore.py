@@ -241,3 +241,93 @@ async def test_restore_rejections_e2e(http_client):
     # Cleanup: cancel the open cart so later suites start clean
     r = await http_client.post(f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}", headers=jwt_header)
     assert r.status_code == status.HTTP_200_OK, r.text
+
+
+@pytest.mark.asyncio
+async def test_per_request_snapshot_stateless_chain_e2e(http_client):
+    """Client-carried cart phase 2 (#156): drive a whole transaction through the
+    wrapped per-request path against the live stack. After wiping the cart from
+    Redis, every mutating request carries the last snapshot in
+    {signedSnapshot, payload}; the peel middleware + stateless path reconstruct
+    and apply without the cache, and bill uses a client-carried finalize context.
+    """
+    _snapshot_keys_or_skip()
+    terminal_id = os.environ.get("TERMINAL_ID")
+
+    token = await get_authentication_token()
+    await create_tenant(http_client, token)
+    await open_terminal()
+    jwt_token = await get_terminal_jwt()
+    jwt_header = {"Authorization": f"Bearer {jwt_token}", "Content-Type": "application/json"}
+
+    def wrapped(snapshot, payload=None):
+        body = {"signedSnapshot": snapshot}
+        if payload is not None:
+            body["payload"] = payload
+        return body
+
+    # Create + add an item the ordinary way, keep the snapshot.
+    r = await http_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}",
+        json={"transaction_type": 101, "user_id": "99", "user_name": "John Doe"},
+        headers=jwt_header,
+    )
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    cart_id = r.json()["data"]["cartId"]
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json=[{"itemCode": "49-01", "quantity": 2}],
+        headers=jwt_header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    snap = r.json()["data"]["signedSnapshot"]
+    assert snap is not None
+
+    # Wipe the cart from the live cache: from here only the carried snapshot exists.
+    delete_cart_from_redis(cart_id)
+
+    # Wrapped add item — reconstructed from the snapshot, no cache.
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json=wrapped(snap, [{"itemCode": "49-02", "quantity": 1}]),
+        headers=jwt_header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    data = r.json()["data"]
+    assert len(data["lineItems"]) == 2, data
+    snap = data["signedSnapshot"]
+    assert snap is not None
+
+    # Wrapped subtotal (body-less op: only the snapshot).
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json=wrapped(snap),
+        headers=jwt_header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    data = r.json()["data"]
+    balance = data["balanceAmount"]
+    snap = data["signedSnapshot"]
+
+    # Wrapped payment (array payload).
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json=wrapped(snap, [{"paymentCode": "01", "amount": int(balance), "detail": "Cash payment"}]),
+        headers=jwt_header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    snap = r.json()["data"]["signedSnapshot"]
+
+    # Wrapped bill with a client-carried finalize context (carried numbering).
+    finalize_ctx = {"seq": 4242, "receiptNo": 4243, "transactionDatetime": "2026-06-14T09:30:00"}
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
+        json=wrapped(snap, finalize_ctx),
+        headers=jwt_header,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    data = r.json()["data"]
+    assert data["cartStatus"] == CartStatus.Completed.value, data
+    # The client-carried finalize context drove the numbering.
+    assert data["transactionNo"] == 4242, data
+    assert data["receiptNo"] == 4243, data
