@@ -177,6 +177,96 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     assert r2.json()["data"]["transactionNo"] == 5151
 
 
+async def _bill_a_sale(http_client, terminal_id, headers):
+    """Create -> add item -> subtotal -> pay -> (legacy) bill. Returns
+    (transaction_no, paid_amount) for the committed sale."""
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    balance = int(r.json()["data"]["balanceAmount"])
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json=[{"paymentCode": "01", "amount": balance}],
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    return r.json()["data"]["transactionNo"], balance
+
+
+@pytest.mark.asyncio
+async def test_carried_void_uses_signed_finalize_context(http_client, snapshot_keys):
+    """Void carries a signed finalize-context envelope (issue #156, B案): the void
+    draws its per-open seq / receipt_no from the verified carried values (a stable
+    cart_id, not a server counter), routed through the same envelope middleware."""
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE", "5678")
+    terminal_no = 9
+    terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
+    headers = _api_headers()
+
+    transaction_no, paid = await _bill_a_sale(http_client, terminal_id, headers)
+
+    # Build the void's signed finalize-context envelope (the terminal would do this).
+    from types import SimpleNamespace
+
+    terminal_info = SimpleNamespace(tenant_id=tenant_id, store_code=store_code, terminal_no=terminal_no)
+    void_env = snapshot_service.build_finalize_context_envelope(
+        cart_id="void-cart-it-0001",
+        seq=6543,  # distinctive per-open seq a server counter would never produce
+        receipt_no=6544,
+        transaction_datetime="2026-06-14T07:08:09",
+        terminal_info=terminal_info,
+    )
+    assert void_env is not None
+
+    wrapped = {"signedSnapshot": void_env, "payload": [{"paymentCode": "01", "amount": paid}]}
+    r = await http_client.post(
+        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}"
+        f"/transactions/{transaction_no}/void?terminal_id={terminal_id}",
+        json=wrapped,
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    void_data = r.json()["data"]
+    assert void_data["transactionNo"] == 6543, void_data
+    assert void_data["receiptNo"] == 6544, void_data
+
+
+@pytest.mark.asyncio
+async def test_carried_void_rejects_tampered_seq(http_client, snapshot_keys):
+    """Forging the carried void numbering (re-writing seq after signing) is rejected."""
+    tenant_id = os.environ.get("TENANT_ID")
+    store_code = os.environ.get("STORE_CODE", "5678")
+    terminal_no = 9
+    terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
+    headers = _api_headers()
+
+    transaction_no, paid = await _bill_a_sale(http_client, terminal_id, headers)
+
+    from types import SimpleNamespace
+
+    terminal_info = SimpleNamespace(tenant_id=tenant_id, store_code=store_code, terminal_no=terminal_no)
+    void_env = snapshot_service.build_finalize_context_envelope(
+        cart_id="void-cart-it-0002",
+        seq=10,
+        receipt_no=11,
+        transaction_datetime="2026-06-14T07:08:09",
+        terminal_info=terminal_info,
+    )
+    void_env["finalize_context"]["seq"] = 999999  # tamper after signing
+
+    wrapped = {"signedSnapshot": void_env, "payload": [{"paymentCode": "01", "amount": paid}]}
+    r = await http_client.post(
+        f"/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}"
+        f"/transactions/{transaction_no}/void?terminal_id={terminal_id}",
+        json=wrapped,
+        headers=headers,
+    )
+    assert r.status_code != status.HTTP_200_OK, r.text
+
+
 @pytest.mark.asyncio
 async def test_required_mode_allows_get_rejects_snapshotless_mutation(http_client, snapshot_keys, monkeypatch):
     """B3: in REQUIRED mode a snapshot-less GET still reads the cart, while a

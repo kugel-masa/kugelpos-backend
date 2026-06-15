@@ -374,6 +374,7 @@ async def get_transaction_by_tranasction_no(
     },
 )
 async def void_transaction_by_transaction_no(
+    request: Request,
     payments: list[PaymentRequest],
     tenant_id: str = Path(...),
     store_code: str = Path(...),
@@ -426,7 +427,9 @@ async def void_transaction_by_transaction_no(
             transaction_no=transaction_no,
         )
         tranlog_voided = await tran_service.void_async(
-            tranlog, add_payment_list=[payment.model_dump() for payment in payments]
+            tranlog,
+            add_payment_list=[payment.model_dump() for payment in payments],
+            finalize_envelope=request.scope.get("cart_snapshot"),
         )
         return_tranlog = SchemasTransformerV1().transform_tran(tranlog_voided).model_dump()
     except Exception as e:
@@ -455,6 +458,7 @@ async def void_transaction_by_transaction_no(
     },
 )
 async def return_transaction_by_transaction_no(
+    request: Request,
     payments: list[PaymentRequest],
     tenant_id: str = Path(...),
     store_code: str = Path(...),
@@ -502,7 +506,9 @@ async def return_transaction_by_transaction_no(
             store_code=store_code, terminal_no=terminal_no, transaction_no=transaction_no
         )
         tranlog_returned = await tran_service.return_async(
-            tranlog, add_payment_list=[payment.model_dump() for payment in payments]
+            tranlog,
+            add_payment_list=[payment.model_dump() for payment in payments],
+            finalize_envelope=request.scope.get("cart_snapshot"),
         )
         return_tranlog = SchemasTransformerV1().transform_tran(tranlog_returned).model_dump()
     except Exception as e:

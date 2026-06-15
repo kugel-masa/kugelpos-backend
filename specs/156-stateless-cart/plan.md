@@ -80,14 +80,14 @@ services/cart/app/
 ├── models/documents/
 │   └── cart_document.py           # 変更: seq フィールド追加
 └── services/
-    ├── snapshot_service.py        # 変更: 毎リクエスト検証への一般化（restore と共通）
+    ├── snapshot_service.py        # 変更: 毎リクエスト検証への一般化（restore と共通）+ finalize-context 封筒の build/verify（void/return、R-011）
     ├── cart_service.py            # 変更: あり経路の再構成（キャッシュ非依存）・seq 採番・確定
-    └── tran_service.py            # 変更: 確定時 cart_id 引き継ぎ・(business_counter, seq) 反映
+    └── tran_service.py            # 変更: 確定時 cart_id 引き継ぎ・(business_counter, seq) 反映、void/return の carried 採番（finalize-context 封筒、R-011）
 
-services/report/app/   # 変更: tranlog 取り込みを cart_id 冪等へ、index 是正（#152）
-services/journal/app/  # 変更: 同上
+services/report/app/   # 変更: tranlog 取り込みを cart_id 冪等へ、index 是正（#152）、DailyInfo 検証指紋を (business_counter, transaction_no) 順へ（R-012）
+services/journal/app/  # 変更: 同上（index 是正）
 services/stock/app/    # 変更: stock_update 事前チェック/ index を cart_id 基準へ（$inc 保護温存）
-services/terminal/app/ # 変更（軽微）: seq 初期化コンテキストの提供（要否は tasks で確定）
+services/terminal/app/ # 変更: seq 初期化コンテキストの提供 + close ログ cart_transaction_last_no を (business_counter, transaction_no) 順へ（R-012）
 
 services/*/tests/      # unit / integration / e2e: あり/なし分岐・採番・交換・下流冪等・計測
 ```
@@ -109,9 +109,9 @@ services/*/tests/      # unit / integration / e2e: あり/なし分岐・採番�
 ## 実装フェーズの概要（tasks.md の入力）
 
 1. **基盤（commons）**: `BaseTransaction.cart_id` 追加、リクエスト展開ミドルウェア（サイズガード）— unit テスト先行。
-2. **採番再定義（cart）**: `CartDocument.seq`、確定時の `(business_counter, seq)` 反映 + `cart_id` 引き継ぎ（`tran_service`）。あり経路では `terminal_counter` 採番を使わない。なし経路は従来採番（デュアル一貫性）。
+2. **採番再定義（cart）**: `CartDocument.seq`、確定時の `(business_counter, seq)` 反映 + `cart_id` 引き継ぎ（`tran_service`）。あり経路では `terminal_counter` 採番を使わない。なし経路は従来採番（デュアル一貫性）。**void/return も署名付き finalize-context 封筒で carried 採番＋安定 cart_id 冪等化（R-011）**。
 3. **あり/なし分岐（cart）**: `get_cart_service` の DI 分岐、リクエストスキーマに `signed_snapshot`、`CART_REQUEST_SNAPSHOT_MODE`、`snapshot_service` の毎リクエスト検証一般化。あり経路はキャッシュ非依存・乖離検知（ベストエフォート）。
-4. **下流冪等化（report/journal/stock、#152）**: tranlog/stock_update の dedup を cart_id 基準へ、index 是正、$inc 保護温存。連番整合性の監査検知（R-010）。
+4. **下流冪等化（report/journal/stock、#152）**: tranlog/stock_update の dedup を cart_id 基準へ、index 是正、$inc 保護温存。連番整合性の監査検知（R-010）。**全量到達検証の指紋を (business_counter, transaction_no) 順へ決定論化（terminal close + report DailyInfo、R-012）**。
 5. **監査一般化 + エラーコード**: `log_cart_restore` を毎リクエスト検証へ拡張、なし経路拒否（REQUIRED）・連番異常コード。
 6. **e2e + 計測**: quickstart 6 シナリオ、サイズ/レイテンシ実測（SC-005/SC-006）、結果を issue #156 へ。
 

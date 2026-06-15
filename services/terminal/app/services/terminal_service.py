@@ -629,12 +629,17 @@ class TerminalService:
         )
 
         # get tran_log list
+        # Order by the canonical transaction identity (business_counter, transaction_no)
+        # — the unique key — NOT generate_date_time (client-stamped on the stateless
+        # path, issue #156, so it can tie and pick a non-deterministic last record).
+        # The report-side verification orders identically, so both sides agree on the
+        # same "last transaction" fingerprint (cart_transaction_last_no).
         paginated_result = await self.tran_log_repo.get_tran_log_list_async(
             business_date=terminal.business_date,
             open_counter=terminal.open_counter,
             limit=1,
             page=1,
-            sort=[("generate_date_time", -1)],
+            sort=[("business_counter", -1), ("transaction_no", -1)],
             include_cancelled=True,
         )
         logger.debug(f"paginated_result: {paginated_result}")

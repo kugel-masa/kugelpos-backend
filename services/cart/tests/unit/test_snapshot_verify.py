@@ -128,3 +128,82 @@ class TestVerifyEnvelope:
         snapshot_service.init_snapshot_signer(force=True)
         with pytest.raises(SnapshotUnknownKidException):
             snapshot_service.verify_envelope(envelope)
+
+
+@pytest.fixture
+def finalize_envelope(monkeypatch):
+    """A valid finalize-context envelope signed with v1 (issue #156, B案)."""
+    monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", KEY_V1)
+    snapshot_service.init_snapshot_signer(force=True)
+    env = snapshot_service.build_finalize_context_envelope(
+        cart_id="void-cart-0001",
+        seq=7,
+        receipt_no=42,
+        transaction_datetime="2026-06-14T09:30:00",
+        terminal_info=_make_terminal_info(),
+    )
+    assert env is not None
+    yield env
+    snapshot_service.init_snapshot_signer(force=True)
+
+
+class TestVerifyFinalizeContext:
+    """Void/return carried finalize-context envelope (issue #156, B案)."""
+
+    def test_valid_envelope_returns_context(self, finalize_envelope):
+        ctx = snapshot_service.verify_finalize_context(finalize_envelope)
+        assert ctx == {
+            "cart_id": "void-cart-0001",
+            "seq": 7,
+            "receipt_no": 42,
+            "transaction_datetime": "2026-06-14T09:30:00",
+        }
+
+    def test_no_keys_returns_none_on_build(self, monkeypatch):
+        monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", "")
+        snapshot_service.init_snapshot_signer(force=True)
+        try:
+            assert (
+                snapshot_service.build_finalize_context_envelope(
+                    cart_id="c1",
+                    seq=1,
+                    receipt_no=1,
+                    transaction_datetime="2026-06-14T09:30:00",
+                    terminal_info=_make_terminal_info(),
+                )
+                is None
+            )
+        finally:
+            snapshot_service.init_snapshot_signer(force=True)
+
+    def test_tampered_seq_raises_signature_mismatch(self, finalize_envelope):
+        # Forging the carried number must be detected (NFR-003).
+        finalize_envelope["finalize_context"]["seq"] = 9999
+        with pytest.raises(SnapshotSignatureMismatchException):
+            snapshot_service.verify_finalize_context(finalize_envelope)
+
+    def test_scope_tamper_raises_signature_mismatch(self, finalize_envelope):
+        finalize_envelope["terminal_no"] = 2
+        with pytest.raises(SnapshotSignatureMismatchException):
+            snapshot_service.verify_finalize_context(finalize_envelope)
+
+    def test_missing_signature_raises_invalid(self, finalize_envelope):
+        finalize_envelope.pop("signature")
+        with pytest.raises(SnapshotInvalidException):
+            snapshot_service.verify_finalize_context(finalize_envelope)
+
+    def test_missing_context_field_raises_invalid(self, finalize_envelope):
+        finalize_envelope.pop("finalize_context")
+        with pytest.raises(SnapshotInvalidException):
+            snapshot_service.verify_finalize_context(finalize_envelope)
+
+    def test_unknown_kid_raises(self, finalize_envelope, monkeypatch):
+        monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", KEY_V2)
+        snapshot_service.init_snapshot_signer(force=True)
+        with pytest.raises(SnapshotUnknownKidException):
+            snapshot_service.verify_finalize_context(finalize_envelope)
+
+    def test_unsupported_schema_version_raises(self, finalize_envelope):
+        finalize_envelope["schema_version"] = 99
+        with pytest.raises(SnapshotVersionUnsupportedException):
+            snapshot_service.verify_finalize_context(finalize_envelope)

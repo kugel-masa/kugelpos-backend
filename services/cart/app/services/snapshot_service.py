@@ -131,6 +131,98 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
         return None
 
 
+def build_finalize_context_envelope(
+    *,
+    cart_id: str,
+    seq: int,
+    receipt_no: int,
+    transaction_datetime: str,
+    terminal_info: TerminalInfoDocument,
+) -> Optional[dict]:
+    """
+    Build and sign a finalize-context envelope for a void/return (issue #156, B案).
+
+    Unlike the cart snapshot, a void/return has no in-flight cart to carry; the
+    terminal instead carries the new transaction's identity — a stable
+    ``cart_id`` (so a lost-ACK retry converges via downstream cart_id dedupe) and
+    the per-open ``(seq, receipt_no)`` / time it stamped — signed so the numbers
+    cannot be forged. Wire form is the canonical snake_case payload (the signed
+    bytes), transported as the ``signedSnapshot`` member of the request envelope.
+
+    Returns None when signing is degraded (no keys configured).
+    """
+    signer = get_snapshot_signer()
+    if signer is None:
+        return None
+    payload = {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "issued_at": get_app_time_str(),
+        "kid": signer.current_kid,
+        "tenant_id": terminal_info.tenant_id,
+        "store_code": terminal_info.store_code,
+        "terminal_no": terminal_info.terminal_no,
+        "finalize_context": {
+            "cart_id": cart_id,
+            "seq": seq,
+            "receipt_no": receipt_no,
+            "transaction_datetime": transaction_datetime,
+        },
+    }
+    return {**payload, "signature": signer.sign(payload)}
+
+
+def verify_finalize_context(envelope: dict) -> dict:
+    """
+    Verify a presented finalize-context envelope (issue #156, B案) and return its
+    ``finalize_context`` dict (``cart_id`` / ``seq`` / ``receipt_no`` /
+    ``transaction_datetime``).
+
+    Mirrors :func:`verify_envelope` (shape → schema version → kid → signature),
+    but carries a finalize context instead of a cart document. The caller is
+    responsible for checking the envelope scope (tenant/store/terminal) against
+    the authenticated terminal, exactly as the cart snapshot path does.
+
+    Raises the same family of exceptions as :func:`verify_envelope`.
+    """
+    if not isinstance(envelope, dict):
+        raise SnapshotInvalidException("Finalize-context envelope must be an object", logger)
+
+    payload = {k: v for k, v in envelope.items() if k != "signature"}
+    signature = envelope.get("signature")
+    required = {"schema_version", "issued_at", "kid", "tenant_id", "store_code", "terminal_no", "finalize_context"}
+    missing = required - payload.keys()
+    if missing or not signature or not isinstance(signature, str):
+        raise SnapshotInvalidException(
+            f"Finalize-context envelope is malformed (missing: {sorted(missing) if missing else 'signature'})", logger
+        )
+
+    if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
+        raise SnapshotVersionUnsupportedException(
+            f"Unsupported finalize-context schema_version: {payload['schema_version']}", logger
+        )
+
+    signer = get_snapshot_signer()
+    if signer is None:
+        logger.warning("Finalize-context rejected: no snapshot signing keys configured")
+        raise SnapshotUnknownKidException("No snapshot signing keys configured", logger)
+
+    kid = payload["kid"]
+    try:
+        valid = signer.verify(payload, kid, signature)
+    except KeyError:
+        logger.warning("Finalize-context rejected: unknown snapshot kid '%s'", kid)
+        raise SnapshotUnknownKidException(f"Unknown snapshot signing key id: {kid}", logger)
+    if not valid:
+        # Security event (NFR-003): tampered or forged numbering.
+        logger.warning("Finalize-context rejected: signature mismatch (kid=%s)", kid)
+        raise SnapshotSignatureMismatchException("Finalize-context signature mismatch", logger)
+
+    context = payload["finalize_context"]
+    if not isinstance(context, dict):
+        raise SnapshotInvalidException("Finalize-context payload is malformed", logger)
+    return context
+
+
 def verify_envelope(envelope: dict) -> CartDocument:
     """
     Verify a presented snapshot envelope and rebuild its cart document.

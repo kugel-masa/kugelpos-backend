@@ -581,6 +581,11 @@ class ReportService:
         )
 
         # get tran logs
+        # Order by the canonical transaction identity (business_counter, transaction_no)
+        # — the unique key — NOT generate_date_time (client-stamped on the stateless
+        # path, issue #156, so it can tie and pick a non-deterministic last record).
+        # The terminal close-log records its last_no with the SAME ordering, so both
+        # sides agree on the same record when comparing cart_transaction_last_no.
         tran_logs = await self.tran_repository.get_tranlog_list_by_query_async(
             store_code=store_code,
             terminal_no=terminal_no,
@@ -588,7 +593,7 @@ class ReportService:
             open_counter=open_counter,
             limit=1,
             page=1,
-            sort=[("generate_date_time", -1)],
+            sort=[("business_counter", -1), ("transaction_no", -1)],
             include_cancelled=True,
         )
         # check if transaction logs are received

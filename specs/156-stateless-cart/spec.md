@@ -39,6 +39,11 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 
 ## Clarifications
 
+### Session 2026-06-15
+
+- Q: void/return（既存取引への取消・返品）の採番は bill と揃えるか？ phase 2 の seq 持ち回り採番は bill だけを対象にしており、void/return は依然サーバ側 `terminal_counter`（連続・非リセット）で `transaction_no` を採番していた。これは carried sales の per-open seq（1,2,3…）と番号空間が異なり、同一開設セッション内で `(business_counter, transaction_no)` がユニークインデックス上で衝突しうる（採番空間が小さい新規端末ほど顕著）。 → A: **void/return も bill と同じく端末が per-open `seq` / `receipt_no` / 確定時刻を持ち回り、確定する**（採番空間を開設セッション内で1本に統一）。搬送は bill の payload 同梱（`FinalizeContext`）ではなく、**署名付き finalize-context エンベロープ**（`signedSnapshot` 封筒、B案）に載せる。理由: (1) void/return のボディは `list[PaymentRequest]`（裸配列）で payload に番号を足せない、(2) 署名により番号偽造を防げる（NFR-003）、(3) void/return が**自分の安定 `cart_id` を携行**することで lost-ACK リトライが下流 `cart_id` 先勝ち dedup で1件に収束＝冪等になり、現状の「呼ぶたび fresh uuid → リトライで二重 void／在庫二重戻し」を解消できる。封筒は cart スナップショット（カート状態）とは別物の「確定文脈」（`cart_id` / `seq` / `receipt_no` / `transaction_datetime`）で、検証経路も別（カート再構成はしない・scope を端末と突合）。封筒ワイヤ形式は署名正準形＝snake_case（cart スナップショットの camelCase 別名許容とは非対称）。スナップショットなし（legacy）の void/return は従来どおりサーバ採番＋fresh `cart_id`（デュアルモード）。
+- Q: 全量到達検証（`OpenCloseLog.cart_transaction_last_no` × `DailyInfo.verified`）が「最後の取引」を選ぶ順序は？ 従来は `generate_date_time` 降順の先頭だが、確定時刻が**クライアント打刻**（FR-012）になったため、同一開設内で時刻が tie すると terminal close 側と report 検証側の2本の独立クエリが別レコードを選び、誤検証失敗（実際は全量到達なのに `TransactionMissingException`）が起きうる。 → A: **両側とも `(business_counter, transaction_no)` 降順＝取引の正規一意キー順で先頭を選ぶ**（`generate_date_time` 依存を撤去）。ユニークインデックス順なので tie が原理的に発生せず、close 側と report 側が必ず同一レコードを指紋にする。これは FR-013 の連番整合性（per-open seq の一意全順序）に依存し、void/return の採番統一（上記 Q）が成立して初めて全取引種別で正しく機能する。なお件数照合は public（単一共有ストア＋`cart_id` ユニークインデックス）では生行数＝distinct `cart_id` のため現行のまま据え置く（distinct `cart_id` 照合はクロスストア非同期合流を持つ edge 層の課題）。
+
 ### Session 2026-06-14
 
 - Q: 端末が**オフラインのまま開設（open）**する運用は必要か？ open は terminal service との同期点（business_counter 払い出し・receipt_no シード）だが、オフライン時の規則が未定義だった。 → A: **オフライン開設を許す（案 B）**。よって `business_counter` も端末が所有・持ち回り、open のたびに端末がローカルで前進させる（receipt_no と同一モデル）。terminal service は耐久ホームとして open 時に `max(service値, 端末提示値)` で reconcile。seq は端末の business_counter エポックでリセットするためオフライン開設でも矛盾なく動く。代償: 端末交換＋オフライン未reconcile で business_counter / receipt_no が衝突しうる稀ケースは、tranlog 高水位照会 or 安全ジャンプ（欠番許容・**再利用禁止**）で防ぐ。open イベント自体（opencloselog 記録・business_date 設定）もオフライン時は端末側で確定し後で reconcile する（詳細は plan）。これにより bill だけでなく open もオフライン耐性を持ち、phase 2 の「障害中も取引を開始・継続できる」が完成する。
@@ -59,9 +64,9 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 
 | サービス名 | 変更の種類 | 変更の概要 |
 |---|---|---|
-| cart | 変更 | 変更系 API のリクエスト契約拡張（スナップショット受領・検証・再構成）、採番の持ち回り化（`terminal_counter` 撤去）、あり/なし経路の分岐（デュアルモード）、乖離検知と監査。サーバ側キャッシュの権威撤去は移行完了後 |
-| terminal | 変更 | オフライン開設対応（Clarifications 2026-06-14）: **`business_counter` と `receipt_no` を端末所有・持ち回りに変更**し、terminal service は耐久ホームとして open 時に `max(service値, 端末提示値)` で reconcile。open イベント（opencloselog / business_date）のオフライン確定・後 reconcile。seq は business_counter エポックで端末側リセット |
-| report / journal / stock | 変更 | 取引データ消費を `cart_id` キーの冪等 upsert（後勝ち）に統一。連番の一意・欠番の監査検知。`transaction_no` 単独キーの是正 |
+| cart | 変更 | 変更系 API のリクエスト契約拡張（スナップショット受領・検証・再構成）、採番の持ち回り化（`terminal_counter` 撤去）、**void/return も署名付き finalize-context エンベロープで持ち回り採番＋安定 `cart_id` 冪等化**（Clarifications 2026-06-15）、あり/なし経路の分岐（デュアルモード）、乖離検知と監査。サーバ側キャッシュの権威撤去は移行完了後 |
+| terminal | 変更 | オフライン開設対応（Clarifications 2026-06-14）: **`business_counter` と `receipt_no` を端末所有・持ち回りに変更**し、terminal service は耐久ホームとして open 時に `max(service値, 端末提示値)` で reconcile。open イベント（opencloselog / business_date）のオフライン確定・後 reconcile。seq は business_counter エポックで端末側リセット。**close ログの `cart_transaction_last_no` を `(business_counter, transaction_no)` 順で確定**（Clarifications 2026-06-15） |
+| report / journal / stock | 変更 | 取引データ消費を `cart_id` キーの冪等 upsert（後勝ち）に統一。連番の一意・欠番の監査検知。`transaction_no` 単独キーの是正。**report の全量到達検証（`DailyInfo`）の最終取引指紋を `(business_counter, transaction_no)` 順に決定論化**（Clarifications 2026-06-15） |
 | kugel_common（共通ライブラリ） | 変更 | 圧縮リクエストボディの受領（展開後サイズ上限ガード付き — phase 0 で意図的に保留した分）。署名・検証は phase 1 のユーティリティをそのまま使用 |
 
 **影響なしのサービス**: account, master-data。
@@ -74,6 +79,7 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 |---|---|---|
 | 既存カートに対する変更系 API（`lineItems`、`subtotal`、`discounts`、`payments`、`bill`、`cancel`、`resume-item-entry`、明細の cancel / unitPrice / quantity / discounts 等） | リクエストへのスナップショット同梱（任意フィールド追加） | **後方互換**（デュアルモード）。スナップショットなしは従来どおりサーバ側キャッシュ権威で処理、ありはステートレス経路で処理 |
 | カート作成 API（`POST /carts`） | 変更なし（新規カートに提示すべきスナップショットは存在しない。レスポンスへの初回スナップショット付加は phase 1 で実装済み） | 後方互換 |
+| void / return API（`.../transactions/{tno}/void`・`.../return`） | 署名付き finalize-context エンベロープの同梱（`signedSnapshot` 封筒・任意）。HTTP のボディ形（`list[PaymentRequest]`）・パス・レスポンスは不変 | **後方互換**（デュアルモード）。封筒なしは従来どおりサーバ採番＋fresh `cart_id`、ありは持ち回り採番＋安定 `cart_id` で冪等 |
 | restore API（phase 1 で新設） | 残置（毎リクエスト復元に機能上包含されるが、明示復元用途のため維持） | 後方互換 |
 | 取引連番（`transaction_no` / `receipt_no`）の意味 | 単一整数から `(business_counter, seq)` 複合へ | 破壊的（下流のキー是正が必要） |
 | リクエストボディの転送圧縮 | 受領能力の新設（クライアント側の圧縮は任意） | 後方互換（非圧縮リクエストは従来どおり） |
@@ -238,9 +244,13 @@ phase 1 の restore API は、明示的な復元用途のため残置する（MU
 
 **取引時刻はクライアント（端末）が確定（bill）時に打刻し、bill リクエストで供給する**（MUST）。バックエンドは現状のサーバ時刻スタンプ（`generate_date_time = get_app_time_str()`）ではなく、このクライアント供給値を tranlog の `generate_date_time` に用いる（MUST — サーバ時刻スタンプ禁止）。lost-ACK 時、クライアントは自分が打刻した確定時刻を保持しているため、レスポンスが返らなくても同じ値でリトライでき、どのバックエンドでも同一の取引時刻になる。確定後のレスポンスが返す新スナップショット（completed 状態）にはこの確定時刻が `transaction_datetime` として含まれ署名される。これにより確定が決定論的になり、先勝ちスキップ（FR-006）と台帳=レシートの一致が、バックエンド間のクロックずれに依存せず両立する（取引時刻の源は単一の端末時計）。端末が取引の同一性（cart_id）・連番（seq）・時刻を所有し、バックエンドはステートレスな処理機となる。
 
+**void/return も同じ持ち回り採番に従う**（MUST — Clarifications 2026-06-15）: 取消・返品も独立した取引であり、端末が per-open `seq` / `receipt_no` / 確定時刻と**自分の安定 `cart_id`** を**署名付き finalize-context エンベロープ**（`signedSnapshot` 封筒）で携行・確定する。これにより開設セッション内の `transaction_no` 採番空間が sales と void/return で1本に統一され（`(business_counter, transaction_no)` の一意性が保たれ）、lost-ACK リトライは `cart_id` 先勝ち dedup で1件に収束する（二重 void／二重在庫戻しの防止）。エンベロープは「確定文脈」のみを運び（カート状態のスナップショットではない）、検証時に scope（tenant/store/terminal）を端末と突合する（MUST）。legacy（スナップショットなし）経路はサーバ採番＋fresh `cart_id` を維持する（デュアルモード）。
+
 ### FR-013: 連番整合性の監査検知
 
 seq の単一権威は端末であり、ステートレスなバックエンドは連番の一意・欠番を強制できない。よって連番整合性は監査検知とする（MUST — #146 の許容+検知方針と一貫）。下流（report / journal）は `(terminal, business_counter, seq)` の重複・欠番を `cart_id` 基準で検知し、異常を記録しなければならない（MUST）。会計合計は `cart_id` 後勝ちで1件に収束するため、連番異常があっても合計を崩してはならない（MUST NOT）。
+
+**全量到達検証の指紋の決定論化**（MUST — Clarifications 2026-06-15）: terminal の close ログが記録する `cart_transaction_last_no` と、report の `DailyInfo` 検証が突合する「最後の取引」は、両側とも `(business_counter, transaction_no)` 降順（取引の正規一意キー順）で選ぶ（MUST — `generate_date_time` 順は使わない）。クライアント打刻時刻の tie で両側が別レコードを選び誤検証失敗（実際は全量到達なのに不足判定）になることを防ぐ。これは void/return の採番統一（FR-012）が前提。
 
 ---
 
@@ -257,7 +267,8 @@ seq の単一権威は端末であり、ステートレスなバックエンド�
 ## Key Entities
 
 - **スナップショットエンベロープ**: phase 1 で定義済み（スキーマバージョン・発行時刻・kid・帰属情報・カート文書全体・署名）。phase 2 では「レスポンスで受け取り、次のリクエストで返す」往復の単位になる。カート文書には持ち回り中の `seq`（および `business_counter`）が含まれる。スキーマ変更の要否は plan で確定。
-- **取引連番**: `(business_counter, seq)` の複合。`business_counter` は terminal service 払い出し（open ごと・単調増加）、`seq` は端末が持ち回るセッション内連番。
+- **finalize-context エンベロープ**（Clarifications 2026-06-15）: void/return が携行する**確定文脈専用**の署名付き封筒。同じスキーマバージョン・帰属（tenant/store/terminal）・kid・署名を持つが、`cart_document` の代わりに `finalize_context`（`cart_id` / `seq` / `receipt_no` / `transaction_datetime`）を運ぶ。カート状態を含まず、カート再構成もしない（採番と取引同一性のみを決定論化する）。署名・検証は cart スナップショットと同じ HMAC ユーティリティを用い、ワイヤ形式は署名正準形＝snake_case。
+- **取引連番**: `(business_counter, seq)` の複合。`business_counter` は terminal service 払い出し（open ごと・単調増加）、`seq` は端末が持ち回るセッション内連番。sales・void・return の全種別が同一開設セッション内で1本の `seq` 空間を共有する。
 - **乖離・拒否・連番異常の監査レコード**: phase 1 の restore 監査レコードを毎リクエスト検証に一般化したもの。記録対象は異常系のみ（FR-007）。
 
 ---

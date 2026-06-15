@@ -34,6 +34,7 @@ from app.models.receipt_types import validate_receipt_lines
 from app.enums.counter_type import CounterType
 from app.utils.settings import get_setting_value
 from app.services.cart_strategy_manager import CartStrategyManager
+from app.services import snapshot_service
 from app.exceptions import (
     DocumentNotFoundException,
     BadRequestBodyException,
@@ -43,6 +44,7 @@ from app.exceptions import (
     AlreadyVoidedException,
     AlreadyRefundedException,
     FinalizeConflictException,
+    SnapshotInvalidException,
 )
 from app.config.settings import settings
 from app.utils.pubsub_manager import PubsubManager
@@ -454,7 +456,59 @@ class TranService:
         transaction_list = await self.get_transaction_list_with_status_async([tran])
         return transaction_list[0] if transaction_list else tran
 
-    async def void_async(self, tran: BaseTransaction, add_payment_list: list[dict[str, any]]) -> BaseTransaction:
+    async def _resolve_carried_finalize(
+        self, finalize_envelope: dict | None
+    ) -> tuple[str, int, int, str]:
+        """
+        Resolve ``(cart_id, transaction_no, receipt_no, generate_date_time)`` for a
+        void/return.
+
+        Client-carried cart phase 2 (issue #156, B案): when the terminal presents a
+        signed finalize-context envelope, the void/return draws its **stable**
+        ``cart_id`` and its per-open ``seq`` / ``receipt_no`` / time from the
+        *verified* carried values. This keeps ``(business_counter, transaction_no)``
+        a clean per-open key (the whole open session shares one seq space — sales
+        AND void/return) and makes a lost-ACK retry converge on ``cart_id`` (the
+        downstream dedupe returns the already-persisted record instead of double
+        voiding). Without an envelope the server-side terminal counters assign the
+        numbers and a fresh ``cart_id`` is minted (legacy / dual-mode path).
+
+        The envelope scope (tenant/store/terminal) is checked against the
+        authenticated terminal, mirroring the cart snapshot path.
+        """
+        if finalize_envelope is None:
+            transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
+            receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
+            return str(uuid.uuid4()), transaction_no, receipt_no, get_app_time_str()
+
+        context = snapshot_service.verify_finalize_context(finalize_envelope)
+        if (
+            finalize_envelope.get("tenant_id") != self.terminal_info.tenant_id
+            or finalize_envelope.get("store_code") != self.terminal_info.store_code
+            or finalize_envelope.get("terminal_no") != self.terminal_info.terminal_no
+        ):
+            raise SnapshotInvalidException(
+                f"Finalize-context scope mismatch: "
+                f"envelope={finalize_envelope.get('tenant_id')}/{finalize_envelope.get('store_code')}/"
+                f"{finalize_envelope.get('terminal_no')}",
+                logger,
+            )
+        cart_id = context.get("cart_id")
+        seq = context.get("seq")
+        receipt_no = context.get("receipt_no")
+        transaction_datetime = context.get("transaction_datetime")
+        if cart_id is None or seq is None or receipt_no is None or transaction_datetime is None:
+            raise SnapshotInvalidException(
+                "Finalize-context must carry cart_id, seq, receipt_no and transaction_datetime", logger
+            )
+        return cart_id, seq, receipt_no, transaction_datetime
+
+    async def void_async(
+        self,
+        tran: BaseTransaction,
+        add_payment_list: list[dict[str, any]],
+        finalize_envelope: dict | None = None,
+    ) -> BaseTransaction:
         """
         Process a void transaction for an existing transaction.
 
@@ -552,14 +606,15 @@ class TranService:
             message = f"Invalid transaction type to void: transaction_type->{tran.transaction_type}"
             raise BadRequestBodyException(message, logger)
 
-        tran.transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
-        tran.receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
-        # The void is its own transaction: give it a fresh cart_id so it does NOT
-        # inherit the original sale's cart_id (issue #156). Downstream consumers
-        # dedupe on cart_id; reusing the original's would make them skip the void
-        # (the sale stays counted, inventory never reversed).
-        tran.cart_id = str(uuid.uuid4())
-        tran.generate_date_time = get_app_time_str()
+        # The void is its own transaction with its OWN cart_id (issue #156): never
+        # inherit the original sale's cart_id (downstream dedupe would skip the
+        # void, leaving the sale counted and inventory never reversed). On the
+        # stateless path the terminal carries a stable cart_id + per-open seq /
+        # receipt_no / time in a signed envelope (retry converges, numbering stays
+        # a clean per-open sequence); legacy mints a fresh cart_id + server numbers.
+        tran.cart_id, tran.transaction_no, tran.receipt_no, tran.generate_date_time = (
+            await self._resolve_carried_finalize(finalize_envelope)
+        )
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for void transaction
         tran.business_date = self.terminal_info.business_date
@@ -645,7 +700,12 @@ class TranService:
 
         return tran
 
-    async def return_async(self, tran: BaseTransaction, add_payment_list: list[dict[str, any]]) -> BaseTransaction:
+    async def return_async(
+        self,
+        tran: BaseTransaction,
+        add_payment_list: list[dict[str, any]],
+        finalize_envelope: dict | None = None,
+    ) -> BaseTransaction:
         """
         Process a return transaction for an existing transaction.
 
@@ -727,12 +787,13 @@ class TranService:
 
         # Set fields for return transaction
         tran.transaction_type = TransactionType.ReturnSales.value
-        tran.transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
-        tran.receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
-        # The return is its own transaction: fresh cart_id so it does not inherit
-        # the original sale's cart_id and get skipped by downstream dedupe (#156).
-        tran.cart_id = str(uuid.uuid4())
-        tran.generate_date_time = get_app_time_str()
+        # The return is its own transaction with its OWN cart_id (issue #156): on
+        # the stateless path the terminal carries a stable cart_id + per-open seq /
+        # receipt_no / time in a signed envelope (retry converges, numbering stays a
+        # clean per-open sequence); legacy mints a fresh cart_id + server numbers.
+        tran.cart_id, tran.transaction_no, tran.receipt_no, tran.generate_date_time = (
+            await self._resolve_carried_finalize(finalize_envelope)
+        )
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for return transaction
         tran.business_date = self.terminal_info.business_date

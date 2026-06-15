@@ -162,6 +162,7 @@ class TestTranlogRepository:
             tenant_id="T002",
             store_code="S005",
             terminal_no=3,
+            business_counter=8,
             transaction_no=999,
         )
         with (
@@ -169,10 +170,14 @@ class TestTranlogRepository:
             patch.object(repo, "create_async", new_callable=AsyncMock),
         ):
             await repo.create_tranlog_async(doc)
+            # Legacy (no cart_id) dedupe keys on the (business_counter, transaction_no)
+            # tuple — transaction_no alone is the per-open seq and is no longer unique
+            # across open sessions (issue #156).
             expected_filter = {
                 "tenant_id": "T002",
                 "store_code": "S005",
                 "terminal_no": 3,
+                "business_counter": 8,
                 "transaction_no": 999,
             }
             mock_get.assert_awaited_once_with(expected_filter)

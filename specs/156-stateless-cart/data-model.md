@@ -101,8 +101,42 @@ phase 1 の `log_cart_restore`（`cart_restore_log_document.py`）を一般化�
 
 ---
 
-## 7. 影響しないもの
+## 7. void/return の carried 採番と finalize-context エンベロープ（Clarifications 2026-06-15）
+
+void/return は完了済み取引への独立取引であり、進行中カートを持たない。よって cart スナップショット（カート状態）ではなく、**確定文脈だけを運ぶ署名付き finalize-context エンベロープ**を `signedSnapshot` 封筒で携行する。
+
+### finalize-context エンベロープ
+
+`SnapshotEnvelope` と同じ署名・帰属枠だが、`cart_document` の代わりに `finalize_context` を持つ:
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `schema_version` / `issued_at` / `kid` / `tenant_id` / `store_code` / `terminal_no` / `signature` | — | `SnapshotEnvelope` と同一（同じ HMAC・canonical JSON・snake_case） |
+| `finalize_context.cart_id` | `str` | void/return 自身の**安定** cart_id（クライアント生成）。下流 `cart_id` 先勝ち dedup でリトライ冪等化 |
+| `finalize_context.seq` | `int` | 開設セッション内 per-open seq（sales と同一空間）→ `transaction_no` |
+| `finalize_context.receipt_no` | `int` | 連続レシート番号 |
+| `finalize_context.transaction_datetime` | `str` | クライアント打刻（ISO-8601）→ `generate_date_time` |
+
+- 検証は cart スナップショットと別経路（カート再構成をしない）。署名検証後、scope（tenant/store/terminal）を端末と突合する（不一致は拒否）。`finalize_context` の4フィールドは all-or-none。
+- **採番空間の統一**: これにより sales（bill carried）と void/return が同一開設セッションで1本の `seq` 空間を共有し、`(business_counter, transaction_no)` のユニーク性が保たれる（従来 void/return はサーバ連続カウンタ採番で衝突しえた）。
+- **冪等化**: 従来 void/return は呼ぶたび fresh uuid の cart_id だったため lost-ACK リトライで二重 void（在庫二重戻し）になりえた。安定 cart_id 携行で下流 dedup が1件に収束。
+- legacy（封筒なし）経路はサーバ採番＋fresh cart_id を維持（デュアルモード）。
+
+---
+
+## 8. 全量到達検証の指紋順序（Clarifications 2026-06-15）
+
+terminal の close ログ（`OpenCloseLog.cart_transaction_last_no`）と report の `DailyInfo` 検証は、開設セッション内の「最後の取引」を `(business_counter, transaction_no)` 降順（取引の正規一意キー順）で選ぶ（従来の `generate_date_time` 降順を撤去）。
+
+- クライアント打刻時刻（FR-012）が tie すると、close 側と report 側の独立クエリが別レコードを指紋にして誤検証失敗（実際は全量到達なのに不足判定）になりうる。ユニークインデックス順は tie が無く、両側が必ず同一レコードを選ぶ。
+- 件数照合は public（単一共有ストア＋`cart_id` ユニークインデックス）では生行数＝distinct `cart_id` のため据え置き（distinct `cart_id` 照合は edge 層の課題）。
+- 本指紋順序は §7 の採番統一（全取引種別で per-open seq が一意全順序）を前提とする。
+
+---
+
+## 9. 影響しないもの
 
 - マスタ（`cart.masters`）の構造・同梱方針（#146 で確定、不変）。
 - 署名アルゴリズム・鍵管理（phase 1 FR-011 を継続）。
 - account / master-data のスキーマ。
+- void/return の HTTP ボディ形（`list[PaymentRequest]`）・パス・レスポンス（封筒は `signedSnapshot` で同梱・任意）。

@@ -136,6 +136,26 @@ spec「未解決事項」および Technical Context の不明点を確定する
 
 ---
 
+## R-011: void/return の carried 採番（署名付き finalize-context エンベロープ）
+
+**Decision**: void/return も bill と同じく端末が per-open `seq` / `receipt_no` / 確定時刻 ＋ **安定 `cart_id`** を持ち回り確定する。搬送は payload 同梱（`FinalizeContext`）ではなく**署名付き finalize-context エンベロープ**（`signedSnapshot` 封筒・B案、`snapshot_service.build_/verify_finalize_context`）。封筒は cart 状態を含まず確定文脈のみ運び、検証時に scope を端末と突合（カート再構成なし）。封筒なしは従来サーバ採番＋fresh `cart_id`（デュアル）。
+
+**Rationale**: (1) R-003 の seq 持ち回りが bill 限定だったため、void/return がサーバ連続カウンタ採番のままで `(business_counter, transaction_no)` ユニークインデックスと衝突しえた（採番空間の不統一）。(2) void/return のボディは `list[PaymentRequest]`（裸配列）で payload に番号を足せない → 封筒搬送が必要。封筒ミドルウェアは全 POST/PUT/PATCH(JSON) に適用済みで、HTTP 形を変えずに運べる。(3) 署名で番号偽造を防止（NFR-003）。(4) 安定 `cart_id` 携行で lost-ACK リトライが下流 `cart_id` 先勝ち dedup で1件に収束＝**二重 void／在庫二重戻しを解消**（従来は呼ぶたび fresh uuid で冪等性なし）。`__is_same_finalize`（transaction_type, is_cancelled）で逐次リトライを同一確定と判定し既存レコードを返す。
+
+**Alternatives considered**: (a) query パラメータで seq 搬送 → 署名なしで偽造可・冪等化なし・REST 的に不自然。(b) サーバが `max(open 内 transaction_no)+1` で void seq を継続 → クライアントが seq 権威（A-4）の carried モデルと矛盾し、次の sale seq と衝突しうる。(c) クライアントが完全な void-cart スナップショットを携行（A案）→ 元取引が手元に無い edge 層で初めて旨味が出る過剰実装。public（単一共有ストアで元取引は必ず読める）では確定文脈のみの B案で十分。
+
+---
+
+## R-012: 全量到達検証の指紋の決定論化
+
+**Decision**: terminal の close ログ（`OpenCloseLog.cart_transaction_last_no`）と report の `DailyInfo` 検証が突合する「最後の取引」を、両側とも `(business_counter, transaction_no)` 降順（取引の正規一意キー順）で選ぶ（従来の `generate_date_time` 降順を撤去）。
+
+**Rationale**: 確定時刻が R-003 でクライアント打刻になったため、同一開設内で時刻が tie すると close 側と report 側の独立クエリが別レコードを指紋にし、誤検証失敗（実際は全量到達なのに `TransactionMissingException`）が起きうる。`(business_counter, transaction_no)` はユニークインデックス（`database_setup.py`）で tie が原理的に無く、両側が必ず同一レコードを選ぶ。R-011 の採番統一（全取引種別が per-open seq の一意全順序）が前提。件数照合は public（単一共有ストア＋`cart_id` ユニーク）では生行数＝distinct `cart_id` のため据え置き（distinct `cart_id` 照合は edge 層の課題）。
+
+**Alternatives considered**: (a) `generate_date_time` に第2ソートキー `transaction_no` を追加 → tie は解けるが、正規一意キーが既にあるのに時刻を主キーに残す理由がなく、`(business_counter, transaction_no)` 単独の方が dedup タプル・ユニークインデックスと一貫。
+
+---
+
 ## 確定サマリ（spec「未解決事項」との対応）
 
 | spec 未解決事項 | 決定 |

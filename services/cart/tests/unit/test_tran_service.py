@@ -2,11 +2,17 @@
 Unit tests for TranService.
 Extends the existing test_tran_service_unit_simple.py with more method coverage.
 """
+import base64
+from types import SimpleNamespace
+
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
+from app.config.settings import settings
+from app.exceptions import SnapshotInvalidException
+from app.services import snapshot_service
 from app.services.tran_service import TranService
 from app.models.documents.transaction_status_document import TransactionStatusDocument
 from app.exceptions import (
@@ -177,6 +183,72 @@ class TestGetTranlogByQuery:
 
         result = await svc.get_tranlog_by_query_async("S0001", 1)
         assert result.data == []
+
+
+_SIGN_KEY = "v1:" + base64.b64encode(b"k" * 32).decode()
+
+
+@pytest.fixture
+def signer_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", _SIGN_KEY)
+    snapshot_service.init_snapshot_signer(force=True)
+    yield
+    snapshot_service.init_snapshot_signer(force=True)
+
+
+class TestResolveCarriedFinalize:
+    """void/return per-open numbering: server (legacy) vs carried (issue #156, B案)."""
+
+    @pytest.mark.asyncio
+    async def test_legacy_path_uses_server_counters_and_fresh_cart_id(self):
+        """No envelope -> server-side numbering + a fresh (random) cart_id."""
+        svc = _make_tran_service()
+        svc.terminal_counter_repository.numbering_count = AsyncMock(side_effect=[111, 222])
+
+        cart_id, transaction_no, receipt_no, gen_dt = await svc._resolve_carried_finalize(None)
+
+        assert transaction_no == 111
+        assert receipt_no == 222
+        assert isinstance(cart_id, str) and len(cart_id) == 36  # uuid4
+        assert isinstance(gen_dt, str) and gen_dt  # server-stamped
+        assert svc.terminal_counter_repository.numbering_count.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_carried_path_uses_signed_context_not_counters(self, signer_enabled):
+        """A valid signed envelope -> carried cart_id/seq/receipt_no/time; counters untouched."""
+        svc = _make_tran_service()
+        svc.terminal_counter_repository.numbering_count = AsyncMock()
+        terminal_info = SimpleNamespace(tenant_id="test_tenant", store_code="S0001", terminal_no=1)
+        envelope = snapshot_service.build_finalize_context_envelope(
+            cart_id="void-cart-77",
+            seq=8,
+            receipt_no=55,
+            transaction_datetime="2026-06-14T10:00:00",
+            terminal_info=terminal_info,
+        )
+
+        cart_id, transaction_no, receipt_no, gen_dt = await svc._resolve_carried_finalize(envelope)
+
+        assert cart_id == "void-cart-77"
+        assert transaction_no == 8  # per-open seq, NOT a server counter
+        assert receipt_no == 55
+        assert gen_dt == "2026-06-14T10:00:00"
+        svc.terminal_counter_repository.numbering_count.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_scope_mismatch_is_rejected(self, signer_enabled):
+        """An envelope signed for a different terminal must not be honored."""
+        svc = _make_tran_service()
+        other_terminal = SimpleNamespace(tenant_id="test_tenant", store_code="S0001", terminal_no=2)
+        envelope = snapshot_service.build_finalize_context_envelope(
+            cart_id="void-cart-77",
+            seq=8,
+            receipt_no=55,
+            transaction_datetime="2026-06-14T10:00:00",
+            terminal_info=other_terminal,
+        )
+        with pytest.raises(SnapshotInvalidException):
+            await svc._resolve_carried_finalize(envelope)
 
 
 class TestVoidAsync:
