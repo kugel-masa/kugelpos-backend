@@ -210,13 +210,8 @@ class BaseCart(BaseTran):
     subtotal_amount: float
     balance_amount: float
     # Signed snapshot of the cart after the mutation was applied (issue #148).
-    # None on query (GET) responses and when snapshot generation is degraded.
+    # None when snapshot generation is degraded.
     signed_snapshot: Optional[SnapshotEnvelope] = None
-    # Restore-only result flags: restored=False means an existing cart was
-    # returned instead (existing server-side cart wins); diverged=True means
-    # the presented snapshot differs from that existing cart.
-    restored: Optional[bool] = None
-    diverged: Optional[bool] = None
 
 
 # Store and User Related Schemas

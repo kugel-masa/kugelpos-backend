@@ -72,14 +72,6 @@ async def test_jwt_cart_operations(http_client):
     assert res.get("success") is True
     cart_id = res.get("data").get("cartId")
 
-    # Get cart
-    response = await http_client.get(f"/api/v1/carts/{cart_id}", headers=header)
-    assert response.status_code == status.HTTP_200_OK
-    cart = response.json().get("data")
-    assert cart.get("cartId") == cart_id
-    assert cart.get("cartStatus") == CartStatus.Idle.value
-    assert cart.get("tenantId") == tenant_id
-
     # Cancel cart
     response = await http_client.post(f"/api/v1/carts/{cart_id}/cancel", headers=header)
     assert response.status_code == status.HTTP_200_OK

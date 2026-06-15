@@ -114,6 +114,7 @@
 - [x] T040 [US4] void/return も carried 採番に: `tran_service.void_async`/`return_async` が**署名付き finalize-context エンベロープ**（`snapshot_service.build_/verify_finalize_context`）から安定 `cart_id` ＋ per-open `seq`/`receipt_no`/`transaction_datetime` を採用。封筒なしは従来サーバ採番＋fresh `cart_id`（デュアル）。`tran.py` の void/return が `request.scope["cart_snapshot"]` を渡す（FR-012、Clarifications 2026-06-15）
 - [x] T041 [US4] 全量到達検証の指紋を決定論化: `terminal_service` の close ログ tran クエリと `report_service` の検証 tran クエリの sort を `(business_counter, transaction_no)` 降順へ（`generate_date_time` 撤去）（FR-013、Clarifications 2026-06-15）
 - [x] T042 [P] [US4] テスト: `test_snapshot_verify.py`（finalize-context build/verify・改ざん/scope/欠落）、`test_tran_service.py`（`_resolve_carried_finalize` の legacy/carried/scope）、`test_request_snapshot_roundtrip.py`（封筒搬送 void の carried 採番・改ざん拒否）。report/journal の dedup フィルタ stale テストを `business_counter` 込みへ是正
+- [x] T043 restore API ＋ GET カート API の撤去（FR-010、Clarifications 2026-06-15）: `cart.py` の restore/GET エンドポイント、`cart_service.restore_cart_async`・`__comparable_cart_bytes`、`CartRestoreRequest`、レスポンス `restored`/`diverged` フラグを削除。**デュアルモード・キャッシュ・CB・`CART_REQUEST_SNAPSHOT_MODE` は残置**。テストは「撤去機能の subject テスト」削除（restore 各種・`test_restore_compare`・GET cart 系）＋ GET cart を使う他テストを直前レスポンス利用へ移行。phase-1 クライアント不在が前提
 
 **Checkpoint**: 確定の決定論性・cart_id 収束・端末交換が成立し、二重計上ゼロ。void/return も per-open seq で採番統一・リトライ冪等、全量到達検証の指紋が決定論的。
 

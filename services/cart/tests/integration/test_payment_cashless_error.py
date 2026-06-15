@@ -55,12 +55,8 @@ async def test_cashless_payment_with_detailed_receipt_info(http_client, api_key)
     
     assert response.status_code == status.HTTP_200_OK
     print("Added item to cart")
-    
-    # Get cart details to check balance
-    response = await http_client.get(
-        f"/api/v1/carts/{cart_id}?terminal_id={terminal_id}",
-        headers=headers
-    )
+
+    # Balance comes from the add-item response (no GET cart endpoint).
     cart_data = response.json()
     print(f"Cart balance before payment: {cart_data['data']['balanceAmount']}")
     
@@ -150,13 +146,6 @@ async def test_cashless_payment_with_detailed_receipt_info(http_client, api_key)
     if response.status_code == status.HTTP_406_NOT_ACCEPTABLE:
         print("Reproduced the 406 error!")
         print(f"Error details: {response.json()}")
-        
-        # For debugging, let's also check the cart status
-        status_response = await http_client.get(
-            f"/api/v1/carts/{cart_id}",
-            headers=headers
-        )
-        print(f"Cart status after error: {status_response.json()}")
     else:
         # If it doesn't fail, that's also useful information
         print(f"Unexpected status code: {response.status_code}")
@@ -211,12 +200,8 @@ async def test_cashless_payment_simple(http_client, api_key):
     )
     
     assert response.status_code == status.HTTP_200_OK
-    
-    # Get cart details to check balance
-    response = await http_client.get(
-        f"/api/v1/carts/{cart_id}?terminal_id={terminal_id}",
-        headers=headers
-    )
+
+    # Balance comes from the add-item response (no GET cart endpoint).
     cart_data = response.json()
     print(f"Cart balance before payment: {cart_data['data']['balanceAmount']}")
     

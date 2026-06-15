@@ -212,19 +212,6 @@ async def test_cancel_endpoint_attaches_snapshot(http_client, snapshot_keys):
 
 
 @pytest.mark.asyncio
-async def test_get_cart_has_no_snapshot(http_client, snapshot_keys):
-    """GET responses never carry a snapshot (R-005)."""
-    create_data = await _create_cart(http_client)
-    cart_id = create_data["cartId"]
-    r = await http_client.get(
-        f"/api/v1/carts/{cart_id}?terminal_id={_terminal_id()}",
-        headers=_api_headers(),
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    assert r.json()["data"].get("signedSnapshot") is None
-
-
-@pytest.mark.asyncio
 async def test_degraded_mode_mutation_succeeds_without_snapshot(http_client, snapshot_keys_unset):
     """With no keys configured the operation succeeds and the field is null."""
     create_data = await _create_cart(http_client)

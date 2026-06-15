@@ -43,6 +43,7 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 
 - Q: void/return（既存取引への取消・返品）の採番は bill と揃えるか？ phase 2 の seq 持ち回り採番は bill だけを対象にしており、void/return は依然サーバ側 `terminal_counter`（連続・非リセット）で `transaction_no` を採番していた。これは carried sales の per-open seq（1,2,3…）と番号空間が異なり、同一開設セッション内で `(business_counter, transaction_no)` がユニークインデックス上で衝突しうる（採番空間が小さい新規端末ほど顕著）。 → A: **void/return も bill と同じく端末が per-open `seq` / `receipt_no` / 確定時刻を持ち回り、確定する**（採番空間を開設セッション内で1本に統一）。搬送は bill の payload 同梱（`FinalizeContext`）ではなく、**署名付き finalize-context エンベロープ**（`signedSnapshot` 封筒、B案）に載せる。理由: (1) void/return のボディは `list[PaymentRequest]`（裸配列）で payload に番号を足せない、(2) 署名により番号偽造を防げる（NFR-003）、(3) void/return が**自分の安定 `cart_id` を携行**することで lost-ACK リトライが下流 `cart_id` 先勝ち dedup で1件に収束＝冪等になり、現状の「呼ぶたび fresh uuid → リトライで二重 void／在庫二重戻し」を解消できる。封筒は cart スナップショット（カート状態）とは別物の「確定文脈」（`cart_id` / `seq` / `receipt_no` / `transaction_datetime`）で、検証経路も別（カート再構成はしない・scope を端末と突合）。封筒ワイヤ形式は署名正準形＝snake_case（cart スナップショットの camelCase 別名許容とは非対称）。スナップショットなし（legacy）の void/return は従来どおりサーバ採番＋fresh `cart_id`（デュアルモード）。
 - Q: 全量到達検証（`OpenCloseLog.cart_transaction_last_no` × `DailyInfo.verified`）が「最後の取引」を選ぶ順序は？ 従来は `generate_date_time` 降順の先頭だが、確定時刻が**クライアント打刻**（FR-012）になったため、同一開設内で時刻が tie すると terminal close 側と report 検証側の2本の独立クエリが別レコードを選び、誤検証失敗（実際は全量到達なのに `TransactionMissingException`）が起きうる。 → A: **両側とも `(business_counter, transaction_no)` 降順＝取引の正規一意キー順で先頭を選ぶ**（`generate_date_time` 依存を撤去）。ユニークインデックス順なので tie が原理的に発生せず、close 側と report 側が必ず同一レコードを指紋にする。これは FR-013 の連番整合性（per-open seq の一意全順序）に依存し、void/return の採番統一（上記 Q）が成立して初めて全取引種別で正しく機能する。なお件数照合は public（単一共有ストア＋`cart_id` ユニークインデックス）では生行数＝distinct `cart_id` のため現行のまま据え置く（distinct `cart_id` 照合はクロスストア非同期合流を持つ edge 層の課題）。
+- Q: phase 2 完了後、phase 1 で新設した restore API と GET カート API は必要か？ → A: **どちらも撤去する**（デュアルモード・サーバ側キャッシュは残置）。理由: (1) restore の「別バックエンドへ明示復元」は、phase 2 で全変更系が毎回スナップショットを提示して再構成するため機能的に包含される。さらに **phase-1 クライアントが存在しない**ため明示復元の実需もない（移行元がない）。(2) GET カートはクライアントがスナップショットを権威として保持するため実需がなく、サーバ保持カートを読む照会経路が他にない。検証・監査は毎リクエスト経路（`prepare_stateless_from_snapshot`）に一本化。**残すもの**: デュアルモード（なし経路＝キャッシュ）・CB・フォールバック・`CART_REQUEST_SNAPSHOT_MODE`。サーバ側キャッシュ権威そのものの撤去は FR-004 のとおり後続フェーズ（本変更のスコープ外）。撤去に伴い `restore_cart_async`・`__comparable_cart_bytes`（乖離比較）・`CartRestoreRequest`・レスポンスの `restored`/`diverged` フラグも削除。
 
 ### Session 2026-06-14
 
@@ -80,7 +81,8 @@ phase 2 着手の判断材料だった phase 1 の実測（#148 T029）は予算
 | 既存カートに対する変更系 API（`lineItems`、`subtotal`、`discounts`、`payments`、`bill`、`cancel`、`resume-item-entry`、明細の cancel / unitPrice / quantity / discounts 等） | リクエストへのスナップショット同梱（任意フィールド追加） | **後方互換**（デュアルモード）。スナップショットなしは従来どおりサーバ側キャッシュ権威で処理、ありはステートレス経路で処理 |
 | カート作成 API（`POST /carts`） | 変更なし（新規カートに提示すべきスナップショットは存在しない。レスポンスへの初回スナップショット付加は phase 1 で実装済み） | 後方互換 |
 | void / return API（`.../transactions/{tno}/void`・`.../return`） | 署名付き finalize-context エンベロープの同梱（`signedSnapshot` 封筒・任意）。HTTP のボディ形（`list[PaymentRequest]`）・パス・レスポンスは不変 | **後方互換**（デュアルモード）。封筒なしは従来どおりサーバ採番＋fresh `cart_id`、ありは持ち回り採番＋安定 `cart_id` で冪等 |
-| restore API（phase 1 で新設） | 残置（毎リクエスト復元に機能上包含されるが、明示復元用途のため維持） | 後方互換 |
+| restore API（phase 1 で新設） | **撤去**（毎リクエスト復元が機能上包含・phase-1 クライアント不在で明示復元の実需なし、Clarifications 2026-06-15） | 破壊的（呼ぶクライアントは存在しない前提） |
+| GET カート API（`GET /carts/{cart_id}`） | **撤去**（クライアントがスナップショットを権威として保持・サーバ保持カートを読む実需なし） | 破壊的（同上） |
 | 取引連番（`transaction_no` / `receipt_no`）の意味 | 単一整数から `(business_counter, seq)` 複合へ | 破壊的（下流のキー是正が必要） |
 | リクエストボディの転送圧縮 | 受領能力の新設（クライアント側の圧縮は任意） | 後方互換（非圧縮リクエストは従来どおり） |
 
@@ -214,9 +216,9 @@ POS は商品スキャンのたびに変更系 API を呼ぶが、リクエス�
 
 スナップショット同梱によりリクエストが大きくなるため、圧縮されたリクエストボディを受領できなければならない（MUST）。展開後サイズに上限を設け、超過は資源を消費しきる前に明確なエラーで拒否すること（MUST — 偽装された巨大ボディによる資源枯渇の防止）。クライアント側の圧縮は任意とし、非圧縮リクエストは従来どおり受領する（MUST — 後方互換）。クライアントは .NET 8（`BrotliStream` / `GZipStream` 標準対応）を前提とする。
 
-### FR-010: restore API の残置
+### FR-010: restore API と GET カート API の撤去
 
-phase 1 の restore API は、明示的な復元用途のため残置する（MUST）。毎リクエスト復元と restore API の検証・監査規則は一致していなければならない（MUST — 同じ入力が経路によって異なる判定を受けてはならない）。
+phase 1 の restore API は撤去する（Clarifications 2026-06-15）。phase 2 では変更系リクエストが毎回スナップショットを提示して任意バックエンドで再構成するため、restore の「別バックエンドへ明示復元する」役割は機能的に包含される。さらに **phase-1 クライアントが存在しない**ため明示復元の実需もない。検証・監査規則は毎リクエスト経路（`prepare_stateless_from_snapshot`）に一本化する。GET カート API も撤去する（クライアントがスナップショットを権威として保持するため、サーバ保持カートを読む実需がない）。**デュアルモード（なし経路＝サーバ側キャッシュ）・サーキットブレーカー・フォールバック・`CART_REQUEST_SNAPSHOT_MODE` は残置する**（キャッシュ権威の撤去は FR-004 のとおり後続フェーズ）。
 
 ### FR-011: 署名鍵管理の継続とスナップショット相互運用性
 

@@ -11,7 +11,6 @@ from app.api.v1.schemas import (
     Cart,
     CartCreateRequest,
     CartCreateResponse,
-    CartRestoreRequest,
     FinalizeContext,
     Item,
     PaymentRequest,
@@ -102,55 +101,6 @@ async def create_cart(
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     logger.debug(f"create_cart_response: {response}")
-    return response
-
-
-@router.get(
-    "/carts/{cart_id}",
-    status_code=status.HTTP_200_OK,
-    response_model=ApiResponse[Cart],
-    responses={
-        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
-        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
-        status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
-        status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
-        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
-        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
-    },
-)
-async def get_cart(
-    cart_service: CartService = Depends(get_cart_service_with_cart_id_async),
-):
-    """
-    Retrieve a cart by its ID.
-
-    Fetches the cart with the specified ID and returns its full details.
-
-    Args:
-        cart_service: Injected cart service instance with cart_id
-
-    Returns:
-        API response with the cart data
-
-    Raises:
-        HTTPException: If the cart is not found
-    """
-    cart_id = cart_service.cart_id
-    logger.debug(f"Getting cart {cart_id}")
-    try:
-        cart_doc = await cart_service.get_cart_async()
-    except Exception as e:
-        raise e
-
-    response = ApiResponse(
-        success=True,
-        code=status.HTTP_200_OK,
-        message=f"Cart found. cart_id: {cart_id}",
-        # Query responses carry no snapshot (R-005): the restorable copy is
-        # guaranteed by mutating responses only.
-        data=SchemasTransformerV1().transform_cart(cart_doc=cart_doc).model_dump(),
-        operation=f"{inspect.currentframe().f_code.co_name}",
-    )
     return response
 
 
@@ -676,62 +626,6 @@ async def resume_item_entry(
         code=status.HTTP_200_OK,
         message=f"Item entry resumed. cart_id: {cart_id}",
         data=_cart_data_with_snapshot(cart_service, cart_doc),
-        operation=f"{inspect.currentframe().f_code.co_name}",
-    )
-    return response
-
-
-@router.post(
-    "/carts/restore",
-    status_code=status.HTTP_200_OK,
-    response_model=ApiResponse[Cart],
-    responses={
-        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
-        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
-        status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
-        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
-        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
-    },
-)
-async def restore_cart(
-    restore_req: CartRestoreRequest,
-    cart_service: CartService = Depends(get_cart_service_async),
-):
-    """
-    Restore a cart from a signed snapshot envelope (issue #148).
-
-    Verifies the snapshot signature and scope, then re-materializes the cart
-    on this backend. If a cart with the same cart_id already exists, the
-    existing server-side cart wins and is returned with restored=false
-    (diverged=true when the snapshot content differs). Every attempt is
-    recorded in the restore audit trail.
-
-    Args:
-        restore_req: The signed snapshot envelope previously issued in a
-            cart-mutating response
-        cart_service: Injected cart service instance
-
-    Returns:
-        API response with the cart data, restore result flags, and a fresh
-        signed snapshot of the cart as it now exists on this backend
-    """
-    # Signature verification re-serializes this dict canonically; the signed
-    # form is ALWAYS the snake_case field-name representation, so by_alias
-    # is pinned explicitly (a future by_alias=True here would break every
-    # signature even though the wire format looks fine).
-    envelope = restore_req.model_dump(mode="json", by_alias=False)
-    logger.debug(f"Restoring cart from snapshot (cart_id: {envelope.get('cart_document', {}).get('cart_id')})")
-    cart_doc, restored, diverged = await cart_service.restore_cart_async(envelope)
-
-    data = _cart_data_with_snapshot(cart_service, cart_doc)
-    data["restored"] = restored
-    data["diverged"] = diverged
-
-    response = ApiResponse(
-        success=True,
-        code=status.HTTP_200_OK,
-        message=f"Cart restored. cart_id: {cart_doc.cart_id}, restored: {restored}, diverged: {diverged}",
-        data=data,
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response

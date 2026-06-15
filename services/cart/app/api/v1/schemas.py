@@ -24,7 +24,6 @@ from app.api.common.schemas import (
     BaseStore,
     BaseUser,
     BaseSchemmaModel,
-    SnapshotEnvelope,
 )
 
 
@@ -161,16 +160,6 @@ class CartCreateResponse(BaseCartCreateResponse):
     """
     API v1 model for cart creation responses.
     Contains the identifier of the newly created cart.
-    """
-
-    pass
-
-
-class CartRestoreRequest(SnapshotEnvelope):
-    """
-    API v1 request body for the cart restore endpoint (issue #148).
-    The body is the signed snapshot envelope exactly as previously issued
-    in a cart-mutating response.
     """
 
     pass

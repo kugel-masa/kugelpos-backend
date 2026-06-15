@@ -268,9 +268,8 @@ async def test_carried_void_rejects_tampered_seq(http_client, snapshot_keys):
 
 
 @pytest.mark.asyncio
-async def test_required_mode_allows_get_rejects_snapshotless_mutation(http_client, snapshot_keys, monkeypatch):
-    """B3: in REQUIRED mode a snapshot-less GET still reads the cart, while a
-    snapshot-less mutating request is rejected."""
+async def test_required_mode_rejects_snapshotless_mutation(http_client, snapshot_keys, monkeypatch):
+    """B3: in REQUIRED mode a snapshot-less mutating request is rejected."""
     from app.config.settings import settings
 
     terminal_id = _terminal_id()
@@ -278,10 +277,6 @@ async def test_required_mode_allows_get_rejects_snapshotless_mutation(http_clien
     cart_id, _, _ = await _create_cart_with_items(http_client)
 
     monkeypatch.setattr(settings, "CART_REQUEST_SNAPSHOT_MODE", "REQUIRED")
-
-    # Read-only GET must still work (no snapshot required for a safe method).
-    r = await http_client.get(f"/api/v1/carts/{cart_id}?terminal_id={terminal_id}", headers=headers)
-    assert r.status_code == status.HTTP_200_OK, r.text
 
     # A snapshot-less mutating request is rejected.
     r = await http_client.post(
