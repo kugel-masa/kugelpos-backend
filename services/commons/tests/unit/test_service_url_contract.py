@@ -37,8 +37,9 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 SERVICES_DIR = REPO_ROOT / "services"
 COMMONS_SRC = SERVICES_DIR / "commons" / "src"
 
-# Services that own an app/ package. account is included deliberately: it calls
-# nobody, and the test asserts that stays true.
+# Services that own an app/ package. account is included even though its own
+# routes call nobody: its middleware does, which is exactly the case that slipped
+# through while attribution stopped at the first import hop.
 SERVICES = ["account", "terminal", "master-data", "cart", "report", "journal", "stock"]
 
 # Helpers that take a service name and resolve it through _get_service_url.
@@ -90,25 +91,44 @@ def _settings_used_in_file(path: Path) -> set[str]:
 
 def _commons_module_requirements() -> dict[str, set[str]]:
     """
-    Map a kugel_common module path to the BASE_URL_* it resolves.
+    Map a kugel_common module path to the BASE_URL_* it resolves, transitively.
 
     A service's own app/ never mentions BASE_URL_TERMINAL, yet every service
     doing X-API-KEY auth needs it: kugel_common.security calls
     get_pooled_client("terminal") on their behalf. Those inherited requirements
     have to be attributed to the importer, or the contract under-reports exactly
     the setting whose absence is hardest to diagnose.
+
+    Attribution must follow the import chain, not just the first hop.
+    kugel_common.middleware.log_requests resolves nothing itself but imports
+    kugel_common.security, so a service importing only the middleware still
+    resolves BASE_URL_TERMINAL at runtime. Stopping at one level let `account`
+    slip through: it imports the middleware and not security, declared nothing,
+    and answered 500 after three retries — plus a false "Invalid api_key attempt"
+    audit entry — for any request carrying an X-API-KEY header and a terminal_id.
     """
-    requirements: dict[str, set[str]] = {}
+    direct: dict[str, set[str]] = {}
+    imports: dict[str, set[str]] = {}
     for path in _python_files(COMMONS_SRC / "kugel_common"):
-        used = _settings_used_in_file(path)
-        if not used:
-            continue
         module = ".".join(path.relative_to(COMMONS_SRC).with_suffix("").parts)
-        requirements[module] = used
-    return requirements
+        direct[module] = _settings_used_in_file(path)
+        imports[module] = _imported_commons_modules(path)
 
+    # Fixpoint rather than recursion: the import graph may contain cycles.
+    requirements = {m: set(v) for m, v in direct.items()}
+    changed = True
+    while changed:
+        changed = False
+        for module, imported in imports.items():
+            grown = set(requirements[module])
+            for dep in imported:
+                grown |= requirements.get(dep, set())
+            if grown != requirements[module]:
+                requirements[module] = grown
+                changed = True
 
-COMMONS_REQUIREMENTS = _commons_module_requirements()
+    return {m: v for m, v in requirements.items() if v}
+
 
 
 def _imported_commons_modules(path: Path) -> set[str]:
@@ -123,6 +143,10 @@ def _imported_commons_modules(path: Path) -> set[str]:
                 if alias.name.startswith("kugel_common"):
                     modules.add(alias.name)
     return modules
+
+
+# Built after _imported_commons_modules, which the transitive walk above needs.
+COMMONS_REQUIREMENTS = _commons_module_requirements()
 
 
 def used_settings(service: str) -> set[str]:

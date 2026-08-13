@@ -17,6 +17,8 @@ services:
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_account
+      # Needed by the request-logging middleware, not by account's own routes.
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
     ports:
       - "8000:8000"
     depends_on:
