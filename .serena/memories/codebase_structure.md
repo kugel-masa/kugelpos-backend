@@ -26,7 +26,7 @@ services/
 ├── dapr/               # Dapr configuration
 ├── template/           # Service template
 ├── docker-compose.yaml
-└── docker-compose.override.yaml
+└── docker-compose.prod.yaml
 ```
 
 ## Service Internal Structure

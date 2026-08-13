@@ -8,9 +8,9 @@ Kugelposシステムでは、柔軟な設定管理を実現するため、複数
 
 ### 1. 環境変数（最高優先度）
 
-**Docker Compose override設定:**
+**Docker Compose設定:**
 ```yaml
-# docker-compose.override.yaml
+# docker-compose.yaml
 services:
   cart:
     environment:
@@ -64,10 +64,21 @@ class BaseSettings:
 **変更後:** .envファイルなしでもサービス起動可能
 
 **フォールバック順序:**
-1. 環境変数（docker-compose.override.yaml）
-2. 環境変数（docker-compose.yaml）
-3. .envファイル（存在する場合）
-4. 設定クラスのデフォルト値
+1. 環境変数（docker-compose.yaml / docker-compose.prod.yaml）
+2. .envファイル（存在する場合）
+3. 設定クラスのデフォルト値
+
+**例外: `BASE_URL_*`**
+
+サービスが実際に利用する`BASE_URL_*`は、デフォルト値へのフォールバックを許しません。
+各サービスは起動時に`REQUIRED_SERVICE_URLS`（`app/main.py`で宣言）を検証し、
+明示的に設定されていない場合は変数名を挙げて起動に失敗します。
+
+`settings_web.py`のデフォルト値は`http://localhost:800X/api/v1`であり、
+コンテナ内では到達先が存在しません。フォールバックを許すと、サービスは正常に起動した後、
+最初のサービス間呼び出しで原因の分かりにくいエラーを返すことになります。
+Docker Compose経由では両ファイルが全変数を設定済みです。ホスト上で直接起動する場合は
+`.env.sample`を`.env`にコピーしてください。
 
 ## サービス別設定例
 
@@ -142,7 +153,7 @@ except ValidationError as e:
 ### 開発環境
 
 ```yaml
-# docker-compose.override.yaml
+# docker-compose.yaml
 services:
   cart:
     environment:
@@ -179,7 +190,7 @@ JWT_SECRET_KEY: str = Field(..., env="JWT_SECRET_KEY")
 DATABASE_PASSWORD: str = Field(..., env="DB_PASSWORD")
 
 # .envファイルには含めない
-# docker-compose.override.yamlでも避ける
+# docker-compose.yamlでも避ける
 ```
 
 ### 2. 環境別設定の分離

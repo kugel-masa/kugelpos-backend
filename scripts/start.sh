@@ -15,7 +15,6 @@ NC='\033[0m' # No Color
 # Default mode is development
 MODE="development"
 COMPOSE_FILE="docker-compose.yaml"
-COMPOSE_OVERRIDE="-f $PROJECT_ROOT/services/docker-compose.override.yaml"
 
 # Function to show usage
 show_usage() {
@@ -35,7 +34,6 @@ while [[ $# -gt 0 ]]; do
         --prod|--production)
             MODE="production"
             COMPOSE_FILE="docker-compose.prod.yaml"
-            COMPOSE_OVERRIDE=""
             shift
             ;;
         --help|-h)
@@ -82,7 +80,7 @@ if [ "$MODE" == "production" ]; then
         "$SCRIPT_DIR/build.sh" --prod
     fi
 else
-    COMPOSE_CMD="$DOCKER_COMPOSE_BASE -f $PROJECT_ROOT/services/$COMPOSE_FILE $COMPOSE_OVERRIDE"
+    COMPOSE_CMD="$DOCKER_COMPOSE_BASE -f $PROJECT_ROOT/services/$COMPOSE_FILE"
 fi
 
 # Change to services directory
