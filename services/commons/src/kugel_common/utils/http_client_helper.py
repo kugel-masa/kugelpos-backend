@@ -24,6 +24,24 @@ class HttpClientError(Exception):
         super().__init__(self.message)
 
 
+class ServiceUrlNotConfiguredError(Exception):
+    """
+    Raised when a service name cannot be resolved to a BASE_URL_* setting.
+
+    Deliberately NOT a subclass of HttpClientError: a missing configuration is
+    not a transport failure, and callers that map HttpClientError onto an auth
+    rejection (see kugel_common.security.get_terminal_info_from_terminal_service)
+    would otherwise report a misconfiguration as an invalid API key.
+    """
+    def __init__(self, service_name: str, setting_name: str):
+        self.service_name = service_name
+        self.setting_name = setting_name
+        super().__init__(
+            f"No URL configured for service '{service_name}': "
+            f"setting '{setting_name}' is not defined"
+        )
+
+
 class HttpClientHelper:
     """Helper class for sending HTTP requests asynchronously"""
 
@@ -339,8 +357,8 @@ async def get_service_client(service_name: str, **kwargs) -> AsyncIterator[HttpC
         A configured HttpClientHelper that will be automatically closed
     
     Example:
-        async with get_service_client("inventory") as client:
-            data = await client.get("/api/items")
+        async with get_service_client("master-data") as client:
+            data = await client.get("/items")
     """
     client = create_service_client(service_name, **kwargs)
     try:
@@ -352,127 +370,22 @@ async def get_service_client(service_name: str, **kwargs) -> AsyncIterator[HttpC
 def _get_service_url(service_name: str) -> str:
     """
     Get the service URL for a given service name
-    
+
     Args:
-        service_name: Name of the service
-    
+        service_name: Name of the service (e.g. "cart", "master-data")
+
     Returns:
         Service URL string
+
+    Raises:
+        ServiceUrlNotConfiguredError: If no matching BASE_URL_* setting exists.
+            Failing here is deliberate: returning None yields an empty base_url,
+            which turns every request into a relative URL that httpx rejects with
+            UnsupportedProtocol. That is an httpx.RequestError, so _make_request
+            retries it three times before surfacing a generic message that names
+            neither the service nor the missing setting.
     """
-    # get all base_url settings
-    base_url_settings = [name for name in dir(settings) if name.startswith("BASE_URL_")]
-    logger.debug(f"Base URL settings: {base_url_settings}")
-
-    # get user settings base_url for service_name
-    service_name = service_name.replace("-", "_").upper()
-    for url_setting in base_url_settings:
-        if service_name in url_setting:
-            return getattr(settings, url_setting)
-    return None
-
-
-# Usage examples
-if __name__ == "__main__":
-    # Example of how to use async client with asyncio
-    async def main():
-        # Basic usage examples
-        client = HttpClientHelper(base_url="https://api.example.com")
-        
-        try:
-            # Using async with for proper cleanup
-            async with HttpClientHelper(base_url="https://api.example.com") as client:
-                # GET request
-                users = await client.get("/users")
-                print(f"User list: {users}")
-                
-                # POST request (JSON data)
-                new_user = await client.post("/users", json={"name": "John Doe", "email": "john@example.com"})
-                print(f"New user: {new_user}")
-                
-                # Example with API Key in header
-                api_key = "your-api-key-12345"
-                headers_with_api_key = {"X-API-KEY": api_key}
-                products = await client.get("/products", headers=headers_with_api_key)
-                print(f"Products retrieved with API Key: {products}")
-                
-                # Example with Bearer Token in header
-                token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
-                headers_with_token = {"Authorization": f"Bearer {token}"}
-                orders = await client.get("/orders", headers=headers_with_token)
-                print(f"Orders retrieved with Bearer token: {orders}")
-            
-            # Example creating a client with default headers including API Key
-            async with HttpClientHelper(
-                base_url="https://api.example.com", 
-                headers={"X-API-KEY": "default-api-key-67890"}
-            ) as secure_client:
-                customers = await secure_client.get("/customers")  # API Key is automatically included
-                print(f"Customers retrieved with default API Key: {customers}")
-              # Example creating a client for service-to-service communication with token
-            service_token = "internal-service-jwt-token-123456"
-            
-            # Method 1: Manual client management (requires explicit close)
-            inventory_service = create_service_client(
-                "inventory",
-                headers={"Authorization": f"Bearer {service_token}"}
-            )
-            try:
-                inventory = await inventory_service.get("/api/inventory/status")
-                print(f"Inventory status from service (method 1): {inventory}")
-            finally:
-                await inventory_service.close()
-                
-            # Method 2: Using async context manager (recommended)
-            async with get_service_client(
-                "inventory", 
-                headers={"Authorization": f"Bearer {service_token}"}
-            ) as client:
-                inventory = await client.get("/api/inventory/status")
-                print(f"Inventory status from service (method 2): {inventory}")            # Method 3: Using client pool (for high-performance scenarios)
-            # Pooled clients can be used to efficiently handle multiple requests
-            # This helps improve performance in high-load applications
-            print("\n--- Client Pool Demo ---")
-            
-            # Example of making concurrent requests to multiple endpoints
-            product_ids = ["P001", "P002", "P003", "P004", "P005"]
-            
-            pool_client = await get_pooled_client(
-                "inventory",
-                headers={"Authorization": f"Bearer {service_token}"}
-            )
-              # Example of a single request
-            inventory_status = await pool_client.get("/api/inventory/status")
-            print(f"General inventory status: {inventory_status}")
-            
-            # Example of concurrent requests
-            async def get_product_info(product_id):
-                # In real projects, you can reuse the same pooled client across multiple tasks
-                client = await get_pooled_client("inventory", headers={"Authorization": f"Bearer {service_token}"})
-                try:
-                    return await client.get(f"/api/inventory/products/{product_id}")
-                except HttpClientError as e:
-                    return {"error": str(e), "product_id": product_id}
-              # Example of concurrent processing
-            print(f"Fetching details for {len(product_ids)} products concurrently...")
-            tasks = [get_product_info(product_id) for product_id in product_ids]
-            results = await asyncio.gather(*tasks)
-            
-            for i, result in enumerate(results):
-                print(f"Product {product_ids[i]}: {result}")
-            
-            # Close all pooled clients when the application shuts down
-            # This is typically done in your application shutdown event
-            print("Closing all pooled clients")
-            await close_all_clients()
-                
-        except HttpClientError as e:
-            print(f"Error: {e.message}")
-            if e.status_code:
-                print(f"Status code: {e.status_code}")
-        finally:
-            # Make sure to close client if not using async with
-            if 'client' in locals() and not isinstance(client, type(None)):
-                await client.close()
-    
-    # Run the async main function
-    asyncio.run(main())
+    setting_name = f"BASE_URL_{service_name.replace('-', '_').upper()}"
+    if not hasattr(settings, setting_name):
+        raise ServiceUrlNotConfiguredError(service_name, setting_name)
+    return getattr(settings, setting_name)
