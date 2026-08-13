@@ -45,6 +45,7 @@ from kugel_common.utils.health_check import HealthChecker
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.middleware.log_requests import log_requests
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
+from kugel_common.config.service_urls import verify_service_urls
 
 # Import routers for different types of master data
 from app.api.v1.staff_master import router as v1_staff_master_router
@@ -64,8 +65,17 @@ from app.grpc.server import start_grpc_server, stop_grpc_server
 grpc_server = None
 
 # Create a FastAPI instance with API documentation URLs enabled
+# Inter-service URL settings this service actually reads. Verified during
+# startup so a deployment that omits one fails here instead of serving
+# traffic that dies on a localhost default three retries later (#159).
+REQUIRED_SERVICE_URLS = [
+    "BASE_URL_TERMINAL",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_service_urls("master-data", REQUIRED_SERVICE_URLS, advisory=["TOKEN_URL"])
     await startup_event()
     yield
     await close_event()

@@ -23,6 +23,7 @@ from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
 from kugel_common.utils.health_check import HealthChecker
 from kugel_common.exceptions import register_exception_handlers
+from kugel_common.config.service_urls import verify_service_urls
 from app.config.settings import settings
 from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.terminal import router as v1_terminal_router
@@ -34,8 +35,22 @@ from app.cron.republish_undelivery_message import (
 )
 
 # Create a FastAPI instance with API documentation URLs configured
+# Inter-service URL settings this service actually reads. Verified during
+# startup so a deployment that omits one fails here instead of serving
+# traffic that dies on a localhost default three retries later (#159).
+REQUIRED_SERVICE_URLS = [
+    "BASE_URL_MASTER_DATA",
+    "BASE_URL_CART",
+    "BASE_URL_REPORT",
+    "BASE_URL_JOURNAL",
+    "BASE_URL_STOCK",
+    "BASE_URL_TERMINAL",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_service_urls("terminal", REQUIRED_SERVICE_URLS, advisory=["TOKEN_URL"])
     await startup_event()
     yield
     await close_event()
