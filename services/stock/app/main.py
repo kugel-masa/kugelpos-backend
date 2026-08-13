@@ -43,7 +43,6 @@ from app.services.alert_service import AlertService
 # traffic that dies on a localhost default three retries later (#159).
 REQUIRED_SERVICE_URLS = [
     "BASE_URL_TERMINAL",
-    "BASE_URL_MASTER_DATA",
     "BASE_URL_CART",
 ]
 
