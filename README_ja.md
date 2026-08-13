@@ -149,6 +149,19 @@ docker-compose up -d mongodb redis rabbitmq
 cd cart
 pipenv install
 
+# .envを作成（必須）
+cp .env.sample .env
+```
+
+`.env`は必ず作成してください。各サービスは起動時に、自分が利用する`BASE_URL_*`が
+明示的に設定されているかを検証し、未設定の場合は変数名を挙げて起動に失敗します
+（`settings_web.py`の既定値のまま黙って起動し、最初のサービス間呼び出しで
+原因の分かりにくいエラーになるのを防ぐためです）。
+
+`.env.sample`の`BASE_URL_*`は、上記のポートマッピングに従ってホスト上の各サービスを
+指しています。他サービスを別ホストやコンテナで動かす場合は、その値を書き換えてください。
+
+```bash
 # 方法1: run.pyスクリプトを使用（最も簡単）
 pipenv run python run.py
 

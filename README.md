@@ -148,6 +148,21 @@ docker-compose up -d mongodb redis rabbitmq
 cd cart
 pipenv install
 
+# Create .env (required)
+cp .env.sample .env
+```
+
+Creating `.env` is required. At startup each service verifies that every
+`BASE_URL_*` it actually uses was explicitly configured, and refuses to start —
+naming the missing variables — if any was not. This prevents a service from
+coming up on the `settings_web.py` defaults and then failing on its first
+inter-service call with an error that names neither the service nor the setting.
+
+The `BASE_URL_*` values in `.env.sample` point at the services on the host
+following the port mapping below. Change them if you run a dependency
+elsewhere, such as in a container or on another host.
+
+```bash
 # Method 1: Using the run.py script (simplest)
 pipenv run python run.py
 

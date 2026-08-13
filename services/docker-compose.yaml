@@ -14,8 +14,16 @@ services:
     env_file:
       - path: ./account/.env
         required: false
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_account
+      # Needed by the request-logging middleware, not by account's own routes.
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
     ports:
       - "8000:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -36,16 +44,21 @@ services:
       - path: ./terminal/.env
         required: false
     environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_terminal
       - BASE_URL_DAPR=http://localhost:3500/v1.0
-      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
-      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
-      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
-      - BASE_URL_REPORT=http://localhost:3500/v1.0/invoke/report/method/api/v1
-      - BASE_URL_JOURNAL=http://localhost:3500/v1.0/invoke/journal/method/api/v1
-      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
-      - BASE_URL_STOCK=http://localhost:3500/v1.0/invoke/stock/method/api/v1
+      - TOKEN_URL=http://account:8000/api/v1/accounts/token
+      - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
+      - BASE_URL_CART=http://cart:8000/api/v1
+      - BASE_URL_REPORT=http://report:8000/api/v1
+      - BASE_URL_JOURNAL=http://journal:8000/api/v1
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
+      - BASE_URL_STOCK=http://stock:8000/api/v1
     ports:
       - "8001:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -66,11 +79,20 @@ services:
       - path: ./master-data/.env
         required: false
     environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_master
+      # gRPC server settings (default: disabled)
+      - USE_GRPC=${USE_GRPC:-false}
+      - GRPC_PORT=${GRPC_PORT:-50051}
       - BASE_URL_DAPR=http://localhost:3500/v1.0
-      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
-      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - TOKEN_URL=http://account:8000/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
     ports:
       - "8002:8000"
+      - "50051:50051"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -91,12 +113,21 @@ services:
       - path: ./cart/.env
         required: false
     environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_cart
+      # gRPC client settings (default: disabled)
+      - USE_GRPC=${USE_GRPC:-false}
+      - GRPC_TIMEOUT=${GRPC_TIMEOUT:-5.0}
+      - MASTER_DATA_GRPC_URL=${MASTER_DATA_GRPC_URL:-master-data:50051}
       - BASE_URL_DAPR=http://localhost:3500/v1.0
-      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
-      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
-      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
+      - TOKEN_URL=http://account:8000/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
+      - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
     ports:
       - "8003:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -117,13 +148,19 @@ services:
       - path: ./report/.env
         required: false
     environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_report
       - BASE_URL_DAPR=http://localhost:3500/v1.0
-      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
-      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
-      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
-      - BASE_URL_JOURNAL=http://localhost:3500/v1.0/invoke/journal/method/api/v1
+      - TOKEN_URL=http://account:8000/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
+      - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
+      - BASE_URL_CART=http://cart:8000/api/v1
+      - BASE_URL_JOURNAL=http://journal:8000/api/v1
     ports:
       - "8004:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -144,12 +181,17 @@ services:
       - path: ./journal/.env
         required: false
     environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_journal
       - BASE_URL_DAPR=http://localhost:3500/v1.0
-      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
-      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
-      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
+      - TOKEN_URL=http://account:8000/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
+      - BASE_URL_CART=http://cart:8000/api/v1
     ports:
       - "8005:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -170,13 +212,18 @@ services:
       - path: ./stock/.env
         required: false
     environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
+      - DB_NAME_PREFIX=db_stock
       - BASE_URL_DAPR=http://localhost:3500/v1.0
-      - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
-      - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
-      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
-      - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
+      - TOKEN_URL=http://account:8000/api/v1/accounts/token
+      - BASE_URL_TERMINAL=http://terminal:8000/api/v1
+      - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
+      - BASE_URL_CART=http://cart:8000/api/v1
     ports:
       - "8006:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - kugelpos_net
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -8,9 +8,9 @@ The Kugelpos system reads values from multiple configuration sources and determi
 
 ### 1. Environment Variables (Highest Priority)
 
-**Docker Compose Override Settings:**
+**Docker Compose Settings:**
 ```yaml
-# docker-compose.override.yaml
+# docker-compose.yaml
 services:
   cart:
     environment:
@@ -64,10 +64,23 @@ class BaseSettings:
 **After Change:** Services can start without .env files
 
 **Fallback Order:**
-1. Environment variables (docker-compose.override.yaml)
-2. Environment variables (docker-compose.yaml)
-3. .env files (if present)
-4. Configuration class default values
+1. Environment variables (docker-compose.yaml / docker-compose.prod.yaml)
+2. .env files (if present)
+3. Configuration class default values
+
+**Exception: `BASE_URL_*`**
+
+A `BASE_URL_*` that a service actually uses is not allowed to fall back to its
+default. Each service verifies `REQUIRED_SERVICE_URLS` (declared in its
+`app/main.py`) during startup and refuses to start, naming the variables, if any
+of them was not explicitly configured.
+
+The defaults in `settings_web.py` are `http://localhost:800X/api/v1`, which
+resolve to nothing inside a container. Allowing the fallback means the service
+starts healthy and then fails its first inter-service call with an error that
+names neither the service nor the setting. Both compose files set every variable,
+so this only affects running a service directly on the host: copy `.env.sample`
+to `.env` first.
 
 ## Service-specific Configuration Examples
 
@@ -142,7 +155,7 @@ except ValidationError as e:
 ### Development Environment
 
 ```yaml
-# docker-compose.override.yaml
+# docker-compose.yaml
 services:
   cart:
     environment:
@@ -179,7 +192,7 @@ JWT_SECRET_KEY: str = Field(..., env="JWT_SECRET_KEY")
 DATABASE_PASSWORD: str = Field(..., env="DB_PASSWORD")
 
 # Do not include in .env files
-# Also avoid in docker-compose.override.yaml
+# Also avoid in docker-compose.yaml
 ```
 
 ### 2. Environment-specific Configuration Separation

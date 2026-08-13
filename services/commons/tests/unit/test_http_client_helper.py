@@ -12,6 +12,7 @@ import respx
 from kugel_common.utils.http_client_helper import (
     HttpClientError,
     HttpClientHelper,
+    ServiceUrlNotConfiguredError,
     _get_service_url,
     close_all_clients,
     create_service_client,
@@ -210,13 +211,36 @@ class TestServiceClient:
         ):
             assert _get_service_url("master-data") == "http://master:8002"
 
-    def test_get_service_url_unknown_returns_none(self):
-        # No BASE_URL_* attrs that match
+    def test_get_service_url_unknown_raises(self):
+        # No BASE_URL_* attr matches. Raising here is deliberate: returning None
+        # produced an empty base_url, so every request became a relative URL that
+        # httpx rejects as UnsupportedProtocol -- an httpx.RequestError, which
+        # _make_request retries three times before surfacing a generic message.
         with patch(
             "kugel_common.utils.http_client_helper.settings",
             new=type("S", (), {"BASE_URL_KNOWN": "x"})(),
         ):
-            assert _get_service_url("unknown-service") is None
+            with pytest.raises(ServiceUrlNotConfiguredError) as excinfo:
+                _get_service_url("unknown-service")
+            assert excinfo.value.service_name == "unknown-service"
+            assert excinfo.value.setting_name == "BASE_URL_UNKNOWN_SERVICE"
+
+    def test_service_url_error_is_not_an_http_client_error(self):
+        # kugel_common.security.get_terminal_info_from_terminal_service maps
+        # HttpClientError with status_code None onto a 401 "Invalid API key"
+        # plus an audit-log entry. A missing configuration must not be reported
+        # that way, so the two exception types must stay unrelated.
+        assert not issubclass(ServiceUrlNotConfiguredError, HttpClientError)
+
+    def test_get_service_url_requires_exact_setting_name(self):
+        # Resolution is by exact BASE_URL_{NAME} match, not substring containment:
+        # a service name that merely appears inside another setting must not resolve.
+        with patch(
+            "kugel_common.utils.http_client_helper.settings",
+            new=type("S", (), {"BASE_URL_MASTER_DATA": "http://master:8002"})(),
+        ):
+            with pytest.raises(ServiceUrlNotConfiguredError):
+                _get_service_url("master")
 
     @pytest.mark.asyncio
     async def test_create_service_client_uses_lookup(self):

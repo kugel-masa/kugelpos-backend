@@ -11,16 +11,28 @@ autouse fixtures `cleanup_database_connection` and `mock_locale` continue
 to apply.
 """
 import os
-from datetime import datetime, timedelta, timezone
-from kugel_common.utils.misc import get_app_time
 
-import httpx
-import jwt
-import pytest
-import pytest_asyncio
-import respx
-from dotenv import load_dotenv
-from httpx import AsyncClient, ASGITransport
+# Module-level, because kugel_common's `settings` singleton freezes on first
+# import: anything assigned from a fixture lands too late to be seen. Declaring
+# the same set the service lists in REQUIRED_SERVICE_URLS keeps the run hermetic
+# and keeps it working if the tier ever starts driving the app's lifespan, which
+# verifies exactly this set at startup (#159).
+os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001/api/v1"
+os.environ["BASE_URL_MASTER_DATA"] = "http://localhost:8002/api/v1"
+os.environ["BASE_URL_CART"] = "http://localhost:8003/api/v1"
+os.environ["BASE_URL_JOURNAL"] = "http://localhost:8005/api/v1"
+os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from kugel_common.utils.misc import get_app_time  # noqa: E402
+
+import httpx  # noqa: E402
+import jwt  # noqa: E402
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+import respx  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from httpx import AsyncClient, ASGITransport  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -57,8 +69,15 @@ def mock_outbound():
     endpoint; respx still INTERCEPTS unmocked calls and raises, which is
     the contract that proves cross-service independence.
     """
-    base_terminal = os.environ.get("BASE_URL_TERMINAL", "http://localhost:8001/api/v1")
-    base_master = os.environ.get("BASE_URL_MASTER_DATA", "http://localhost:8002/api/v1")
+    # Read the same settings object the app resolves against
+    # (http_client_helper._get_service_url), so a route can never be registered
+    # at a URL the app will not request. Reading os.environ instead only agreed
+    # because the fallback literals happened to repeat the settings_web.py
+    # defaults verbatim.
+    from kugel_common.config.settings import settings
+
+    base_terminal = settings.BASE_URL_TERMINAL
+    base_master = settings.BASE_URL_MASTER_DATA
     tenant_id = os.environ.get("TENANT_ID")
 
     with respx.mock(assert_all_called=False) as respx_mock:

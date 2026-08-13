@@ -7,6 +7,14 @@ only mocks needed are for the optional API-key auth path which goes
 through kugel_common's terminal-service lookup.
 """
 import os
+
+# Module-level, because kugel_common's `settings` singleton freezes on first
+# import: anything assigned from a fixture lands too late to be seen. Declaring
+# the same set the service lists in REQUIRED_SERVICE_URLS keeps the run hermetic
+# and keeps it working if the tier ever starts driving the app's lifespan, which
+# verifies exactly this set at startup (#159).
+os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001/api/v1"
+os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -104,7 +112,12 @@ def mock_terminal_service(api_key):
     store_code = "5678"
     terminal_no = 9
     terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
-    base_terminal = os.environ.get("BASE_URL_TERMINAL")
+    # Resolve against the same settings object the app uses
+    # (http_client_helper._get_service_url), so a route can never be registered
+    # at a URL the app will not request.
+    from kugel_common.config.settings import settings
+
+    base_terminal = settings.BASE_URL_TERMINAL
 
     payload = {
         "success": True,

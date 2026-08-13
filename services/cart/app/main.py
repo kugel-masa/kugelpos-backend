@@ -22,6 +22,7 @@ from kugel_common.middleware.http_compression import add_gzip_response_middlewar
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
 from kugel_common.utils.health_check import HealthChecker
+from kugel_common.config.service_urls import verify_service_urls
 from app.config.settings import settings
 from app.api.v1.cart import router as v1_cart_router
 from app.api.v1.tran import router as v1_tran_router
@@ -34,8 +35,18 @@ from app.cron.republish_undelivery_message import (
 )
 
 # Create a FastAPI instance with documentation endpoints enabled
+# Inter-service URL settings this service actually reads. Verified during
+# startup so a deployment that omits one fails here instead of serving
+# traffic that dies on a localhost default three retries later (#159).
+REQUIRED_SERVICE_URLS = [
+    "BASE_URL_TERMINAL",
+    "BASE_URL_MASTER_DATA",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_service_urls("cart", REQUIRED_SERVICE_URLS, advisory=["TOKEN_URL"])
     await startup_event()
     # Build the master-data cache backend once and keep it on app.state so the
     # DI layer can share a single DaprClientHelper across all requests. When

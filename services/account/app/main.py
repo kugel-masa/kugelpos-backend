@@ -32,13 +32,26 @@ from kugel_common.schemas.health import HealthCheckResponse
 from kugel_common.utils.health_check import HealthChecker
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.middleware.log_requests import log_requests
+from kugel_common.config.service_urls import verify_service_urls
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
 from app.config.settings import settings
 from app.api.v1.account import router as v1_account_router
 
 # Create a FastAPI instance with API documentation URLs enabled
+# account calls no other service from its own routes, but the request-logging
+# middleware does: log_requests -> kugel_common.security.get_terminal_info ->
+# get_pooled_client("terminal"), fired for any request carrying an X-API-KEY
+# header together with a terminal_id. Left unset, that resolved the
+# settings_web.py localhost default and answered 500 after three retries, with
+# a false "Invalid api_key attempt" audit entry (#159).
+REQUIRED_SERVICE_URLS = [
+    "BASE_URL_TERMINAL",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_service_urls("account", REQUIRED_SERVICE_URLS, advisory=["TOKEN_URL"])
     await startup_event()
     yield
     await close_event()

@@ -15,7 +15,6 @@ NC='\033[0m' # No Color
 # Default mode is development
 MODE="development"
 COMPOSE_FILE="docker-compose.yaml"
-COMPOSE_OVERRIDE="-f docker-compose.override.yaml"
 CLEAN_FLAG=""
 
 # Function to show usage
@@ -39,7 +38,6 @@ while [[ $# -gt 0 ]]; do
         --prod|--production)
             MODE="production"
             COMPOSE_FILE="docker-compose.prod.yaml"
-            COMPOSE_OVERRIDE=""
             shift
             ;;
         --clean)
@@ -75,7 +73,7 @@ fi
 if [ "$MODE" == "production" ]; then
     COMPOSE_CMD="$DOCKER_COMPOSE -f $COMPOSE_FILE"
 else
-    COMPOSE_CMD="$DOCKER_COMPOSE -f $COMPOSE_FILE $COMPOSE_OVERRIDE"
+    COMPOSE_CMD="$DOCKER_COMPOSE -f $COMPOSE_FILE"
 fi
 
 # Check if any services are running
