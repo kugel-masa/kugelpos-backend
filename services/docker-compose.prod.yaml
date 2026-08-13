@@ -126,6 +126,7 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_terminal
+      TOKEN_URL: http://account:8000/api/v1/accounts/token
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
       BASE_URL_REPORT: http://report:8000/api/v1
@@ -184,6 +185,7 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_master
+      TOKEN_URL: http://account:8000/api/v1/accounts/token
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       USE_GRPC: ${USE_GRPC:-true}
       GRPC_PORT: 50051
@@ -238,6 +240,7 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_cart
+      TOKEN_URL: http://account:8000/api/v1/accounts/token
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       USE_GRPC: ${USE_GRPC:-true}
@@ -296,7 +299,9 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_report
+      TOKEN_URL: http://account:8000/api/v1/accounts/token
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
+      BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
       BASE_URL_JOURNAL: http://journal:8000/api/v1
       UVICORN_WORKERS: 1
@@ -350,6 +355,7 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_journal
+      TOKEN_URL: http://account:8000/api/v1/accounts/token
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1
       UVICORN_WORKERS: 1
@@ -403,6 +409,7 @@ services:
       DAPR_HTTP_PORT: 3500
       LOG_LEVEL: INFO
       DB_NAME_PREFIX: db_stock
+      TOKEN_URL: http://account:8000/api/v1/accounts/token
       BASE_URL_TERMINAL: http://terminal:8000/api/v1
       BASE_URL_MASTER_DATA: http://master-data:8000/api/v1
       BASE_URL_CART: http://cart:8000/api/v1

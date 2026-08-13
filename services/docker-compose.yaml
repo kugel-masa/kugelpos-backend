@@ -120,6 +120,7 @@ services:
       - BASE_URL_DAPR=http://localhost:3500/v1.0
       - TOKEN_URL=http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token
       - BASE_URL_TERMINAL=http://localhost:3500/v1.0/invoke/terminal/method/api/v1
+      - BASE_URL_MASTER_DATA=http://localhost:3500/v1.0/invoke/master-data/method/api/v1
       - BASE_URL_CART=http://localhost:3500/v1.0/invoke/cart/method/api/v1
       - BASE_URL_JOURNAL=http://localhost:3500/v1.0/invoke/journal/method/api/v1
     ports:
