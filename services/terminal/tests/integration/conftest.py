@@ -8,6 +8,19 @@ Drives the terminal FastAPI app in-process via httpx ASGITransport.
 - Admin JWTs are generated locally with the shared SECRET_KEY.
 """
 import os
+
+# Module-level, because kugel_common's `settings` singleton freezes on first
+# import: anything assigned from a fixture lands too late to be seen. Declaring
+# the same set the service lists in REQUIRED_SERVICE_URLS keeps the run hermetic
+# and keeps it working if the tier ever starts driving the app's lifespan, which
+# verifies exactly this set at startup (#159).
+os.environ["BASE_URL_MASTER_DATA"] = "http://localhost:8002/api/v1"
+os.environ["BASE_URL_CART"] = "http://localhost:8003/api/v1"
+os.environ["BASE_URL_REPORT"] = "http://localhost:8004/api/v1"
+os.environ["BASE_URL_JOURNAL"] = "http://localhost:8005/api/v1"
+os.environ["BASE_URL_STOCK"] = "http://localhost:8006/api/v1"
+os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001/api/v1"
+os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -139,14 +152,20 @@ def mock_outbound_services():
     )
 
     with respx.mock(assert_all_called=False) as respx_mock:
-        # Downstream tenants endpoints — terminal POSTs to each on tenant create
-        for url_pattern in [
-            r"http://localhost:8002/api/v1/tenants/?",  # master-data
-            r"http://localhost:8003/api/v1/tenants/?",  # cart
-            r"http://localhost:8004/api/v1/tenants/?",  # report
-            r"http://localhost:8005/api/v1/tenants/?",  # journal
-            r"http://localhost:8006/api/v1/tenants/?",  # stock
+        # Downstream tenants endpoints — terminal POSTs to each on tenant create.
+        # Built from the same settings object the app resolves against
+        # (http_client_helper._get_service_url) so a route can never be
+        # registered at a URL the app will not request.
+        from kugel_common.config.settings import settings
+
+        for base in [
+            settings.BASE_URL_MASTER_DATA,
+            settings.BASE_URL_CART,
+            settings.BASE_URL_REPORT,
+            settings.BASE_URL_JOURNAL,
+            settings.BASE_URL_STOCK,
         ]:
+            url_pattern = rf"{re.escape(base)}/tenants/?"
             respx_mock.post(re.compile(url_pattern)).mock(return_value=success_response)
 
         # Master-data staff lookup — fired by terminal sign-in

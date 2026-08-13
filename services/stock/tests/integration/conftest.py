@@ -6,6 +6,16 @@ Outbound HTTP includes Dapr sidecar (state store, pub/sub) — mocked via
 respx — and the kugel_common terminal-service lookup for X-API-KEY auth.
 """
 import os
+
+# Module-level, because kugel_common's `settings` singleton freezes on first
+# import: anything assigned from a fixture lands too late to be seen. Declaring
+# the same set the service lists in REQUIRED_SERVICE_URLS keeps the run hermetic
+# and keeps it working if the tier ever starts driving the app's lifespan, which
+# verifies exactly this set at startup (#159).
+os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001/api/v1"
+os.environ["BASE_URL_MASTER_DATA"] = "http://localhost:8002/api/v1"
+os.environ["BASE_URL_CART"] = "http://localhost:8003/api/v1"
+os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -104,8 +114,13 @@ def mock_dapr_sidecar(admin_token):
     """
     tenant_id = os.environ.get("TENANT_ID")
     terminal_id = f"{tenant_id}-5678-9"
-    base_terminal = os.environ.get("BASE_URL_TERMINAL")
-    token_url = os.environ.get("TOKEN_URL")
+    # Resolve against the same settings object the app uses
+    # (http_client_helper._get_service_url), so a route can never be registered
+    # at a URL the app will not request.
+    from kugel_common.config.settings import settings
+
+    base_terminal = settings.BASE_URL_TERMINAL
+    token_url = settings.TOKEN_URL
 
     with respx.mock(assert_all_called=False) as respx_mock:
         # Dapr sidecar (3500)

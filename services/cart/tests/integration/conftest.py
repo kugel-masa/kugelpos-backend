@@ -15,6 +15,15 @@ MongoDB needed:
   - Account TOKEN_URL — respx returns the locally-generated admin JWT.
 """
 import os
+
+# Module-level, because kugel_common's `settings` singleton freezes on first
+# import: anything assigned from a fixture lands too late to be seen. Declaring
+# the same set the service lists in REQUIRED_SERVICE_URLS keeps the run hermetic
+# and keeps it working if the tier ever starts driving the app's lifespan, which
+# verifies exactly this set at startup (#159).
+os.environ["BASE_URL_TERMINAL"] = "http://localhost:8001/api/v1"
+os.environ["BASE_URL_MASTER_DATA"] = "http://localhost:8002/api/v1"
+os.environ["TOKEN_URL"] = "http://localhost:8000/api/v1/accounts/token"
 import re
 from datetime import datetime, timedelta, timezone  # noqa: F401
 from kugel_common.utils.misc import get_app_time
@@ -216,9 +225,14 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
     tenant_id = os.environ.get("TENANT_ID")
     store_code = os.environ.get("STORE_CODE", "5678")
     terminal_id = f"{tenant_id}-5678-9"
-    base_master = os.environ.get("BASE_URL_MASTER_DATA", "http://localhost:8002/api/v1")
-    base_terminal = os.environ.get("BASE_URL_TERMINAL", "http://localhost:8001/api/v1")
-    token_url = os.environ.get("TOKEN_URL", "http://localhost:8000/api/v1/accounts/token")
+    # Resolve against the same settings object the app uses
+    # (http_client_helper._get_service_url), so a route can never be registered
+    # at a URL the app will not request.
+    from kugel_common.config.settings import settings
+
+    base_master = settings.BASE_URL_MASTER_DATA
+    base_terminal = settings.BASE_URL_TERMINAL
+    token_url = settings.TOKEN_URL
 
     with respx.mock(assert_all_called=False) as respx_mock:
         # Account TOKEN_URL — return the locally-generated admin JWT
