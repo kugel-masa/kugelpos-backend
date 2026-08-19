@@ -43,6 +43,18 @@ RESTORABLE_STATUSES = {
     CartStatus.Paying.value,
 }
 
+# Key material that ships in this repository for local development and tests, and
+# is therefore public. A deployment signing with one of these has no signature
+# protection at all: anyone reading the repo can mint a snapshot with any prices
+# in it and the server will accept it. Detected at startup and reported loudly —
+# this is more dangerous than having no key, where the feature merely degrades.
+PUBLICLY_KNOWN_KEY_MATERIAL = (
+    # services/docker-compose.yaml (development default)
+    "a3VnZWxwb3MtZGV2LXNuYXBzaG90LWtleS0zMmJ5dGU=",
+    # tests/integration/test_request_snapshot_roundtrip.py
+    "aW50ZWdyYXRpb24tdGVzdC1rZXktMzItYnl0ZXMhISE=",
+)
+
 _signer: Optional[HmacSigner] = None
 _initialized = False
 
@@ -54,6 +66,10 @@ def init_snapshot_signer(force: bool = False) -> Optional[HmacSigner]:
 
     An empty or malformed SNAPSHOT_HMAC_KEYS leaves the feature degraded:
     no snapshots are issued and the restore API rejects every envelope.
+
+    A key that ships publicly in this repository is reported as an error: it
+    loads and works, so nothing else would ever surface it, yet it leaves the
+    signature worthless.
     """
     global _signer, _initialized
     if _initialized and not force:
@@ -73,11 +89,38 @@ def init_snapshot_signer(force: bool = False) -> Optional[HmacSigner]:
                 _signer.kids,
                 _signer.current_kid,
             )
+            _warn_if_publicly_known(spec)
         except ValueError as e:
             _signer = None
             logger.error("SNAPSHOT_HMAC_KEYS is malformed; cart snapshot feature is degraded: %s", e)
     _initialized = True
     return _signer
+
+
+def _warn_if_publicly_known(spec: str) -> None:
+    """
+    Report a signing key that is published in this repository.
+
+    Unlike a missing key, this one works: snapshots are issued and verified, so
+    every other signal looks healthy while the signature protects nothing. Fine
+    for local development, catastrophic anywhere real — so say so at ERROR, where
+    a missing key only warrants a warning.
+
+    Args:
+        spec: The raw SNAPSHOT_HMAC_KEYS value
+
+    Returns:
+        None
+    """
+    if not any(known in spec for known in PUBLICLY_KNOWN_KEY_MATERIAL):
+        return
+    logger.error(
+        "SNAPSHOT_HMAC_KEYS contains key material published in this repository. "
+        "Cart snapshots are effectively UNSIGNED: anyone can forge one with arbitrary "
+        "prices and it will verify. This is acceptable ONLY for local development. "
+        "Generate a real key: "
+        "python -c \"import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())\""
+    )
 
 
 def get_snapshot_signer() -> Optional[HmacSigner]:

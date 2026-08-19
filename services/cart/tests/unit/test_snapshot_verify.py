@@ -207,3 +207,56 @@ class TestVerifyFinalizeContext:
         finalize_envelope["schema_version"] = 99
         with pytest.raises(SnapshotVersionUnsupportedException):
             snapshot_service.verify_finalize_context(finalize_envelope)
+
+
+# =========================================================================
+# Publicly-known key detection (issue #156)
+# =========================================================================
+
+
+def test_repository_key_material_is_reported_at_error(monkeypatch, caplog):
+    """A key committed to this repo works, so nothing else would surface it.
+
+    Snapshots are issued and verify normally, meaning every other signal looks
+    healthy while the signature protects nothing — anyone reading the repo can
+    forge a cart. That is worse than having no key (where the feature merely
+    degrades and says so), hence ERROR rather than WARNING.
+    """
+    import base64
+    import logging
+
+    from app.config.settings import settings
+    from app.services import snapshot_service
+
+    public_key = base64.b64encode(b"kugelpos-dev-snapshot-key-32byte").decode()
+    assert public_key in snapshot_service.PUBLICLY_KNOWN_KEY_MATERIAL
+
+    monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", f"dev-v1:{public_key}")
+    with caplog.at_level(logging.ERROR, logger=snapshot_service.__name__):
+        signer = snapshot_service.init_snapshot_signer(force=True)
+
+    # It still loads — the point is that it works and is worthless.
+    assert signer is not None
+    assert any("published in this repository" in record.message for record in caplog.records), caplog.text
+
+    snapshot_service.init_snapshot_signer(force=True)
+
+
+def test_a_private_key_is_not_reported(monkeypatch, caplog):
+    """A real key must not produce the alarm, or it becomes noise to ignore."""
+    import base64
+    import logging
+    import os
+
+    from app.config.settings import settings
+    from app.services import snapshot_service
+
+    private_key = base64.b64encode(os.urandom(32)).decode()
+    monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", f"v1:{private_key}")
+    with caplog.at_level(logging.ERROR, logger=snapshot_service.__name__):
+        signer = snapshot_service.init_snapshot_signer(force=True)
+
+    assert signer is not None
+    assert not any("published in this repository" in record.message for record in caplog.records), caplog.text
+
+    snapshot_service.init_snapshot_signer(force=True)

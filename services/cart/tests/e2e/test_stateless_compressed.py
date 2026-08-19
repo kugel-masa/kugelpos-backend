@@ -28,17 +28,6 @@ import os
 
 import pytest
 from fastapi import status
-from tests.e2e.test_cart import get_terminal_info, open_terminal
-
-
-async def _ensure_terminal_open():
-    """Reuse the terminal the earlier e2e tests set up, opening it if needed."""
-    terminal_info = await get_terminal_info()
-    if terminal_info.get("status") != "Opened":
-        await open_terminal()
-    return terminal_info["terminalId"]
-
-
 @pytest.fixture
 def api_header():
     return {"X-API-KEY": os.environ.get("API_KEY")}
@@ -65,14 +54,14 @@ async def _cart_with_one_item(http_client, terminal_id, header):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_is_issued_by_the_running_stack(http_client, api_header):
+async def test_snapshot_is_issued_by_the_running_stack(http_client, api_header, opened_terminal_id):
     """A deployed service must actually have signing keys configured.
 
     Without them the feature is degraded — no snapshot is issued and every
     carried one is rejected — and every phase 2 client silently falls back to the
     server-side cache. That failure is invisible in a response, so assert it here.
     """
-    terminal_id = await _ensure_terminal_open()
+    terminal_id = opened_terminal_id
 
     _, snapshot, _ = await _cart_with_one_item(http_client, terminal_id, api_header)
 
@@ -81,9 +70,9 @@ async def test_snapshot_is_issued_by_the_running_stack(http_client, api_header):
 
 
 @pytest.mark.asyncio
-async def test_gzipped_wrapped_request_takes_the_stateless_path(http_client, api_header):
+async def test_gzipped_wrapped_request_takes_the_stateless_path(http_client, api_header, opened_terminal_id):
     """A gzip-compressed wrapped request is expanded, peeled, and applied."""
-    terminal_id = await _ensure_terminal_open()
+    terminal_id = opened_terminal_id
 
     cart_id, snapshot, line_count = await _cart_with_one_item(http_client, terminal_id, api_header)
     assert snapshot is not None
@@ -106,19 +95,23 @@ async def test_gzipped_wrapped_request_takes_the_stateless_path(http_client, api
 
 
 @pytest.mark.asyncio
-async def test_large_gzipped_request_survives_chunked_delivery(http_client, api_header):
+async def test_large_gzipped_request_survives_chunked_delivery(http_client, api_header, opened_terminal_id):
     """A body big enough that uvicorn splits it must still be reassembled.
 
     Padding the wrapper takes the compressed body past the point where it arrives
     in one message; expanding only the first chunk would corrupt it.
     """
-    terminal_id = await _ensure_terminal_open()
+    terminal_id = opened_terminal_id
 
     cart_id, snapshot, line_count = await _cart_with_one_item(http_client, terminal_id, api_header)
     assert snapshot is not None
 
-    # Incompressible padding, so the body stays large after gzip too.
-    padding = os.urandom(256 * 1024).hex()
+    # Incompressible padding, so the body stays large after gzip too. Sized from
+    # the service's own ceiling — a fixed size would start failing with 413 the
+    # moment REQUEST_DECOMPRESS_MAX_BYTES is lowered.
+    from app.config.settings import settings
+
+    padding = os.urandom(settings.REQUEST_DECOMPRESS_MAX_BYTES // 4).hex()
     wrapped = {
         "signedSnapshot": snapshot,
         "payload": [{"itemCode": "49-01", "quantity": 1}],
@@ -138,9 +131,9 @@ async def test_large_gzipped_request_survives_chunked_delivery(http_client, api_
 
 
 @pytest.mark.asyncio
-async def test_zip_bomb_is_refused_over_the_wire(http_client, api_header):
+async def test_zip_bomb_is_refused_over_the_wire(http_client, api_header, opened_terminal_id):
     """A tiny body expanding past the ceiling is refused with 413."""
-    terminal_id = await _ensure_terminal_open()
+    terminal_id = opened_terminal_id
 
     bomb = gzip.compress(b"a" * (2 * 1024 * 1024))
     assert len(bomb) < 50 * 1024, "the point is that the compressed form is small"
@@ -156,9 +149,9 @@ async def test_zip_bomb_is_refused_over_the_wire(http_client, api_header):
 
 
 @pytest.mark.asyncio
-async def test_unsupported_encoding_is_refused_over_the_wire(http_client, api_header):
+async def test_unsupported_encoding_is_refused_over_the_wire(http_client, api_header, opened_terminal_id):
     """An encoding the service cannot expand must not reach the app compressed."""
-    terminal_id = await _ensure_terminal_open()
+    terminal_id = opened_terminal_id
 
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
@@ -170,9 +163,9 @@ async def test_unsupported_encoding_is_refused_over_the_wire(http_client, api_he
 
 
 @pytest.mark.asyncio
-async def test_uncompressed_requests_are_unaffected(http_client, api_header):
+async def test_uncompressed_requests_are_unaffected(http_client, api_header, opened_terminal_id):
     """Compression is optional; the plain path must keep working."""
-    terminal_id = await _ensure_terminal_open()
+    terminal_id = opened_terminal_id
 
     cart_id, snapshot, line_count = await _cart_with_one_item(http_client, terminal_id, api_header)
 
