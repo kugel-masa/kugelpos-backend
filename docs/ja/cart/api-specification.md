@@ -135,7 +135,7 @@
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -161,6 +161,7 @@
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `cartId` | string | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -173,7 +174,17 @@
     "message": "string"
   },
   "data": {
-    "cartId": "string"
+    "cartId": "string",
+    "signedSnapshot": {
+      "schemaVersion": 0,
+      "issuedAt": "string",
+      "kid": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "cartDocument": {},
+      "signature": "string"
+    }
   },
   "metadata": {
     "total": 0,
@@ -186,93 +197,7 @@
 }
 ```
 
-### 5. カート取得
-
-**GET** `/api/v1/carts/{cart_id}`
-
-カートを取得します。指定されたカートの詳細情報を返します。
-
-**パスパラメータ:**
-
-| パラメータ | 型 | 必須 | 説明 |
-|------------|------|------|------|
-| `cart_id` | string | Yes | - |
-
-**クエリパラメータ:**
-
-| パラメータ | 型 | 必須 | デフォルト | 説明 |
-|------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-
-**レスポンス:**
-
-**dataフィールド:** `Cart`
-
-| フィールド | 型 | 必須 | 説明 |
-|------------|------|------|------|
-| `tenantId` | string | Yes | - |
-| `storeCode` | string | Yes | - |
-| `storeName` | string | No | - |
-| `terminalNo` | integer | Yes | - |
-| `totalAmount` | number | Yes | - |
-| `totalAmountWithTax` | number | Yes | - |
-| `totalQuantity` | integer | Yes | - |
-| `totalDiscountAmount` | number | Yes | - |
-| `depositAmount` | number | Yes | - |
-| `changeAmount` | number | Yes | - |
-| `stampDutyAmount` | number | No | - |
-| `receiptNo` | integer | Yes | - |
-| `transactionNo` | integer | Yes | - |
-| `transactionType` | integer | Yes | - |
-| `businessDate` | string | No | - |
-| `generateDateTime` | string | No | - |
-| `lineItems` | array[BaseTranLineItem] | No | - |
-| `payments` | array[BaseTranPayment] | No | - |
-| `taxes` | array[BaseTranTax] | No | - |
-| `subtotalDiscounts` | array[BaseDiscount] | No | - |
-| `receiptText` | string | No | - |
-| `journalText` | string | No | - |
-| `staff` | BaseTranStaff | No | - |
-| `status` | BaseTranStatus | No | - |
-| `cartId` | string | Yes | - |
-| `cartStatus` | string | Yes | - |
-| `subtotalAmount` | number | Yes | - |
-| `balanceAmount` | number | Yes | - |
-
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "string",
-  "userError": {
-    "code": "string",
-    "message": "string"
-  },
-  "data": {
-    "tenantId": "string",
-    "storeCode": "string",
-    "storeName": "string",
-    "terminalNo": 0,
-    "totalAmount": 0.0,
-    "totalAmountWithTax": 0.0,
-    "totalQuantity": 0,
-    "totalDiscountAmount": 0.0,
-    "depositAmount": 0.0,
-    "changeAmount": 0.0
-  },
-  "metadata": {
-    "total": 0,
-    "page": 0,
-    "limit": 0,
-    "sort": "string",
-    "filter": {}
-  },
-  "operation": "string"
-}
-```
-
-### 6. 会計完了
+### 5. 会計完了
 
 **POST** `/api/v1/carts/{cart_id}/bill`
 
@@ -288,7 +213,18 @@
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
+```json
+{
+  "seq": 0,
+  "receiptNo": 0,
+  "transactionDatetime": "string"
+}
+```
 
 **レスポンス:**
 
@@ -324,6 +260,7 @@
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -358,7 +295,7 @@
 }
 ```
 
-### 7. 取引取消
+### 6. 取引取消
 
 **POST** `/api/v1/carts/{cart_id}/cancel`
 
@@ -374,7 +311,7 @@
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **レスポンス:**
 
@@ -410,6 +347,7 @@
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -444,7 +382,7 @@
 }
 ```
 
-### 8. カート値引追加
+### 7. カート値引追加
 
 **POST** `/api/v1/carts/{cart_id}/discounts`
 
@@ -462,7 +400,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -511,6 +449,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -545,7 +484,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 9. 商品追加
+### 8. 商品追加
 
 **POST** `/api/v1/carts/{cart_id}/lineItems`
 
@@ -561,7 +500,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -610,6 +549,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -644,7 +584,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 10. 明細取消
+### 9. 明細取消
 
 **POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`
 
@@ -661,7 +601,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **レスポンス:**
 
@@ -697,6 +637,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -731,7 +672,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 11. 明細値引追加
+### 10. 明細値引追加
 
 **POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`
 
@@ -748,7 +689,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -797,6 +738,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -831,7 +773,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 12. 数量変更
+### 11. 数量変更
 
 **PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`
 
@@ -848,7 +790,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -897,6 +839,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -931,7 +874,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 13. 単価変更
+### 12. 単価変更
 
 **PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`
 
@@ -948,7 +891,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -997,6 +940,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -1031,7 +975,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 14. 支払処理
+### 13. 支払処理
 
 **POST** `/api/v1/carts/{cart_id}/payments`
 
@@ -1049,7 +993,7 @@ Processes one or more payment methods against the cart.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -1098,6 +1042,7 @@ Processes one or more payment methods against the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -1132,7 +1077,7 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 15. 商品入力再開
+### 14. 商品入力再開
 
 **POST** `/api/v1/carts/{cart_id}/resume-item-entry`
 
@@ -1148,7 +1093,7 @@ Processes one or more payment methods against the cart.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **レスポンス:**
 
@@ -1184,6 +1129,7 @@ Processes one or more payment methods against the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -1218,7 +1164,7 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 16. 小計
+### 15. 小計
 
 **POST** `/api/v1/carts/{cart_id}/subtotal`
 
@@ -1234,7 +1180,7 @@ Processes one or more payment methods against the cart.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **レスポンス:**
 
@@ -1270,6 +1216,7 @@ Processes one or more payment methods against the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **レスポンス例:**
 ```json
@@ -1306,7 +1253,7 @@ Processes one or more payment methods against the cart.
 
 ### トランザクション
 
-### 17. 取引検索
+### 16. 取引検索
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
@@ -1332,8 +1279,7 @@ Processes one or more payment methods against the cart.
 | `page` | integer | No | 1 | - |
 | `include_cancelled` | boolean | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `terminal_id` | string | No | - | - |
 
 **レスポンス:**
 
@@ -1401,7 +1347,7 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 18. 取引番号で取得
+### 17. 取引番号で取得
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`
 
@@ -1420,8 +1366,8 @@ Processes one or more payment methods against the cart.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `business_counter` | integer | No | - | Open epoch of the transaction (issue #15 |
+| `terminal_id` | string | No | - | - |
 
 **レスポンス:**
 
@@ -1487,7 +1433,7 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 19. 配信状態通知
+### 18. 配信状態通知
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`
 
@@ -1558,11 +1504,15 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 20. 返品処理
+### 19. 返品処理
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`
 
-返品を処理します。元の取引に対する返品取引を作成します。
+Process a transaction return.
+
+Creates a return transaction based on an original transaction and processes any required refund payments.
+The original transaction may belong to any store or terminal of the same tenant (issue #156);
+the return itself is booked against the terminal performing it.
 
 **パスパラメータ:**
 
@@ -1577,8 +1527,8 @@ Processes one or more payment methods against the cart.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `business_counter` | integer | No | - | Open epoch of the transaction (issue #15 |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -1657,7 +1607,7 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 21. 取消処理
+### 20. 取消処理
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`
 
@@ -1676,8 +1626,8 @@ Processes one or more payment methods against the cart.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `business_counter` | integer | No | - | Open epoch of the transaction (issue #15 |
+| `terminal_id` | string | No | - | - |
 
 **リクエストボディ:**
 
@@ -1758,41 +1708,18 @@ Processes one or more payment methods against the cart.
 
 ### キャッシュ
 
-### 22. 端末キャッシュクリア
+### 21. Invalidate master-data cache
 
-**DELETE** `/api/v1/cache/terminal`
+**DELETE** `/api/v1/cache/master-data`
 
-端末キャッシュをクリアします。キャッシュされたデータを削除します。
+Invalidate the shared master-data cache for a namespace by bumping its generation counter. Used operationally after master-data changes that must be reflected before the namespace TTL expires.
 
-**レスポンス:**
+**クエリパラメータ:**
 
-**レスポンス例:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "string",
-  "userError": {
-    "code": "string",
-    "message": "string"
-  },
-  "data": {},
-  "metadata": {
-    "total": 0,
-    "page": 0,
-    "limit": 0,
-    "sort": "string",
-    "filter": {}
-  },
-  "operation": "string"
-}
-```
-
-### 23. 端末キャッシュ状態取得
-
-**GET** `/api/v1/cache/terminal/status`
-
-端末キャッシュの状態を取得します。キャッシュされたデータと最終更新時刻を返します。
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `namespace` | string | Yes | - | - |
+| `store_code` | string | No | - | - |
 
 **レスポンス:**
 

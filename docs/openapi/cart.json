@@ -13,15 +13,25 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -130,146 +140,6 @@
         }
       }
     },
-    "/api/v1/carts/{cart_id}": {
-      "get": {
-        "summary": "Get Cart",
-        "description": "Retrieve a cart by its ID.\n\nFetches the cart with the specified ID and returns its full details.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the cart data\n\nRaises:\n    HTTPException: If the cart is not found",
-        "operationId": "get_cart_api_v1_carts__cart_id__get",
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "cart_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Cart Id"
-            }
-          },
-          {
-            "name": "terminal_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Terminal Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_Cart_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": false,
-                  "code": 400,
-                  "message": "Bad request",
-                  "data": "400:Bad request"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": false,
-                  "code": 401,
-                  "message": "Unauthorized",
-                  "data": "401:Unauthorized"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": false,
-                  "code": 403,
-                  "message": "Forbidden",
-                  "data": "403:Forbidden"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Sample not found",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": false,
-                  "code": 404,
-                  "message": "Sample not found",
-                  "data": "404:Sample not found"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable entity",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": false,
-                  "code": 422,
-                  "message": "Unprocessable entity",
-                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": false,
-                  "code": 500,
-                  "message": "Internal server error",
-                  "data": "500:Internal server error"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/carts/{cart_id}/cancel": {
       "post": {
         "summary": "Cancel Transaction",
@@ -278,6 +148,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -293,9 +166,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -418,6 +298,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -433,9 +316,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -572,6 +462,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -596,9 +489,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -721,6 +621,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -745,9 +648,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -880,6 +790,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -904,9 +817,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -1039,6 +959,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -1063,9 +986,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -1202,6 +1132,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -1217,9 +1150,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -1342,6 +1282,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -1357,9 +1300,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -1496,6 +1446,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -1511,9 +1464,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -1645,11 +1605,14 @@
     "/api/v1/carts/{cart_id}/bill": {
       "post": {
         "summary": "Bill",
-        "description": "Finalize a cart into a billable transaction.\n\nCompletes the cart processing, finalizing the transaction and preparing\nit for receipt generation and storage.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the finalized cart/transaction data",
+        "description": "Finalize a cart into a billable transaction.\n\nCompletes the cart processing, finalizing the transaction and preparing\nit for receipt generation and storage.\n\nArgs:\n    finalize: Client-carried finalize context (issue #156). On the\n        stateless path the terminal stamps the transaction number, receipt\n        number, and time here so a retried finalize is deterministic.\n        Omitted on the cache-authoritative path (server assigns them).\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the finalized cart/transaction data",
         "operationId": "bill_api_v1_carts__cart_id__bill_post",
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -1665,13 +1628,37 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FinalizeContext"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Finalize"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1790,6 +1777,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -1805,9 +1795,16 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Terminal Id"
             }
           }
@@ -1930,6 +1927,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -2043,27 +2043,17 @@
           {
             "name": "terminal_id",
             "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Terminal Id"
-            }
-          },
-          {
-            "name": "is_terminal_service",
-            "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "boolean"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "default": false,
-              "title": "Is Terminal Service"
+              "title": "Terminal Id"
             }
           }
         ],
@@ -2153,6 +2143,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -2193,29 +2186,30 @@
             }
           },
           {
-            "name": "terminal_id",
+            "name": "business_counter",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "title": "Terminal Id"
-            }
+              "type": "integer",
+              "description": "Open epoch of the transaction (issue #156). transaction_no is the per-open seq and repeats every open session, so this pins down which one is meant. Omit only for transactions numbered by the server before phase 2; if the number then matches several sessions the request is rejected as ambiguous.",
+              "title": "Business Counter"
+            },
+            "description": "Open epoch of the transaction (issue #156). transaction_no is the per-open seq and repeats every open session, so this pins down which one is meant. Omit only for transactions numbered by the server before phase 2; if the number then matches several sessions the request is rejected as ambiguous."
           },
           {
-            "name": "is_terminal_service",
+            "name": "terminal_id",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "boolean"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "default": false,
-              "title": "Is Terminal Service"
+              "title": "Terminal Id"
             }
           }
         ],
@@ -2321,6 +2315,9 @@
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -2361,29 +2358,30 @@
             }
           },
           {
-            "name": "terminal_id",
+            "name": "business_counter",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "title": "Terminal Id"
-            }
+              "type": "integer",
+              "description": "Open epoch of the transaction (issue #156). transaction_no is the per-open seq and repeats every open session. A void is confined to this terminal's current session, so omitting this defaults to the current open epoch — the only one a void can reach.",
+              "title": "Business Counter"
+            },
+            "description": "Open epoch of the transaction (issue #156). transaction_no is the per-open seq and repeats every open session. A void is confined to this terminal's current session, so omitting this defaults to the current open epoch — the only one a void can reach."
           },
           {
-            "name": "is_terminal_service",
+            "name": "terminal_id",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "boolean"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "default": false,
-              "title": "Is Terminal Service"
+              "title": "Terminal Id"
             }
           }
         ],
@@ -2498,11 +2496,14 @@
     "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return": {
       "post": {
         "summary": "Return Transaction By Transaction No",
-        "description": "Process a transaction return.\n\nCreates a return transaction based on an original transaction and processes any required refund payments.\nThe terminal making this request must be in the same store as the original transaction.\n\nArgs:\n    payments: List of payment methods to use for refunding\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    transaction_no: The transaction number to process a return for\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the return transaction details\n\nRaises:\n    InvalidRequestDataException: If tenant_id or store_code don't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be returned",
+        "description": "Process a transaction return.\n\nCreates a return transaction based on an original transaction and processes any required refund payments.\nThe original transaction may belong to any store or terminal of the same tenant (issue #156);\nthe return itself is booked against the terminal performing it.\n\nArgs:\n    payments: List of payment methods to use for refunding\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    transaction_no: The transaction number to process a return for\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the return transaction details\n\nRaises:\n    InvalidRequestDataException: If tenant_id doesn't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be returned",
         "operationId": "return_transaction_by_transaction_no_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions__transaction_no__return_post",
         "security": [
           {
             "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
           }
         ],
         "parameters": [
@@ -2543,29 +2544,30 @@
             }
           },
           {
-            "name": "terminal_id",
+            "name": "business_counter",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "title": "Terminal Id"
-            }
+              "type": "integer",
+              "description": "Open epoch of the transaction (issue #156). transaction_no is the per-open seq and repeats every open session, so this pins down which one is meant. Omit only for transactions numbered by the server before phase 2; if the number then matches several sessions the request is rejected as ambiguous.",
+              "title": "Business Counter"
+            },
+            "description": "Open epoch of the transaction (issue #156). transaction_no is the per-open seq and repeats every open session, so this pins down which one is meant. Omit only for transactions numbered by the server before phase 2; if the number then matches several sessions the request is rejected as ambiguous."
           },
           {
-            "name": "is_terminal_service",
+            "name": "terminal_id",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "boolean"
+                  "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "default": false,
-              "title": "Is Terminal Service"
+              "title": "Terminal Id"
             }
           }
         ],
@@ -2680,7 +2682,7 @@
     "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status": {
       "post": {
         "summary": "Notify Delivery Status",
-        "description": "Notify the delivery status of a transaction.\n\nUpdates the delivery status of a specific transaction based on the provided information.\nThe terminal making this request must be in the same store as the original transaction.\n\nArgs:\n    delivery_status: Delivery status update request containing event ID, service, status, and optional message\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the updated delivery status\n\nRaises:\n    InvalidRequestDataException: If tenant_id or store_code don't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be updated",
+        "description": "Notify the delivery status of a transaction.\n\nUpdates the delivery status of a specific transaction based on the provided information.\nThe terminal making this request must be in the same store as the original transaction.\n\nArgs:\n    delivery_status: Delivery status update request containing event ID, service, status, and optional message\n    tenant_id: The tenant ID in the path\n    store_code: The store code of the transaction\n    terminal_no: The terminal number of the transaction\n    tran_service: Injected transaction service\n\nReturns:\n    API response with the updated delivery status\n\nRaises:\n    InvalidRequestDataException: If tenant_id doesn't match the authenticated terminal\n    HTTPException: If the transaction is not found or cannot be updated",
         "operationId": "notify_delivery_status_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__transactions__transaction_no__delivery_status_post",
         "security": [
           {
@@ -2886,35 +2888,43 @@
         }
       }
     },
-    "/api/v1/cache/terminal/status": {
-      "get": {
-        "summary": "Get terminal cache status",
-        "description": "Get current status of the terminal information cache",
-        "operationId": "get_cache_status_api_v1_cache_terminal_status_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_dict_"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/cache/terminal": {
+    "/api/v1/cache/master-data": {
       "delete": {
-        "summary": "Clear terminal cache",
-        "description": "Clear all entries from the terminal information cache",
-        "operationId": "clear_cache_api_v1_cache_terminal_delete",
+        "summary": "Invalidate master-data cache",
+        "description": "Invalidate the shared master-data cache for a namespace by bumping its generation counter. Used operationally after master-data changes that must be reflected before the namespace TTL expires.",
+        "operationId": "invalidate_master_data_cache_api_v1_cache_master_data_delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Namespace"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Code"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2925,13 +2935,18 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
+        }
       }
     },
     "/": {
@@ -3508,6 +3523,28 @@
             ],
             "title": "Discountdetail",
             "default": "no detail"
+          },
+          "promotionCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promotioncode"
+          },
+          "promotionType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promotiontype"
           }
         },
         "type": "object",
@@ -3532,6 +3569,17 @@
           "itemName": {
             "type": "string",
             "title": "Itemname"
+          },
+          "categoryCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categorycode"
           },
           "unitPrice": {
             "type": "number",
@@ -3577,6 +3625,18 @@
           "isCancelled": {
             "type": "boolean",
             "title": "Iscancelled"
+          },
+          "isDiscountRestricted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isdiscountrestricted",
+            "default": false
           }
         },
         "type": "object",
@@ -3928,6 +3988,16 @@
           "balanceAmount": {
             "type": "number",
             "title": "Balanceamount"
+          },
+          "signedSnapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotEnvelope"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3998,6 +4068,16 @@
           "cartId": {
             "type": "string",
             "title": "Cartid"
+          },
+          "signedSnapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotEnvelope"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4163,6 +4243,46 @@
         ],
         "title": "DiscountRequest",
         "description": "API v1 model for discount application requests.\nContains parameters needed to apply a discount to an item or cart."
+      },
+      "FinalizeContext": {
+        "properties": {
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "receiptNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiptno"
+          },
+          "transactionDatetime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transactiondatetime"
+          }
+        },
+        "type": "object",
+        "title": "FinalizeContext",
+        "description": "Client-carried finalize context for the bill endpoint (issue #156).\n\nOn the stateless (snapshot-present) path the terminal stamps the\ntransaction's number, receipt number, and time at bill and supplies them\nhere so a retried finalize on any backend yields the same values\n(deterministic finalize, FR-012). Absent on the cache-authoritative path,\nwhere the server assigns them. The three fields are all-or-nothing (a\npartial context would write a null transaction_no/receipt_no); accepts\ncamelCase (seq / receiptNo / transactionDatetime) via the alias generator."
       },
       "HTTPValidationError": {
         "properties": {
@@ -4361,6 +4481,56 @@
         ],
         "title": "PaymentRequest",
         "description": "API v1 model for payment processing requests.\nContains information needed to process a payment against a cart."
+      },
+      "SnapshotEnvelope": {
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "title": "Schemaversion"
+          },
+          "issuedAt": {
+            "type": "string",
+            "title": "Issuedat"
+          },
+          "kid": {
+            "type": "string",
+            "title": "Kid"
+          },
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "cartDocument": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cartdocument"
+          },
+          "signature": {
+            "type": "string",
+            "title": "Signature"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "issuedAt",
+          "kid",
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "cartDocument",
+          "signature"
+        ],
+        "title": "SnapshotEnvelope",
+        "description": "Signed cart snapshot envelope (client-carried cart phase 1, issue #148).\n\nCarries the full cart document (including reference masters) plus the\nmetadata needed to verify and restore it on a backend that has never\nseen the cart. The signature covers the canonical JSON of every field\nexcept `signature` itself, always computed over the snake_case\nmodel_dump(mode=\"json\") representation (wire-level camelCase aliasing\ndoes not affect verification)."
       },
       "TenantCreateRequest": {
         "properties": {
@@ -4639,6 +4809,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -4661,7 +4838,7 @@
         "flows": {
           "password": {
             "scopes": {},
-            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+            "tokenUrl": "http://account:8000/api/v1/accounts/token"
           }
         }
       }

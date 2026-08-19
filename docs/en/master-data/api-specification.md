@@ -539,7 +539,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -602,7 +602,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Input] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 
 **Request Example:**
 ```json
@@ -619,7 +619,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -684,7 +684,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -746,7 +746,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Input] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 
 **Request Example:**
 ```json
@@ -763,7 +763,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -883,7 +883,7 @@ the one in the security credentials.
 | `categoryNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `tabs` | array[BaseItemBookTab-Input] | No | - |
+| `tabs` | array[BaseItemBookTab] | No | - |
 
 **Request Example:**
 ```json
@@ -902,7 +902,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -950,7 +950,7 @@ the one in the security credentials.
 | Parameter | Type | Required | Description |
 |------------|------|------|------|
 | `item_book_id` | string | Yes | - |
-| `category_number` | string | Yes | - |
+| `category_number` | integer | Yes | - |
 | `tenant_id` | string | Yes | - |
 
 **Query Parameters:**
@@ -967,7 +967,7 @@ the one in the security credentials.
 | `categoryNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `tabs` | array[BaseItemBookTab-Input] | No | - |
+| `tabs` | array[BaseItemBookTab] | No | - |
 
 **Request Example:**
 ```json
@@ -986,7 +986,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -1034,7 +1034,7 @@ the one in the security credentials.
 | Parameter | Type | Required | Description |
 |------------|------|------|------|
 | `item_book_id` | string | Yes | - |
-| `category_number` | string | Yes | - |
+| `category_number` | integer | Yes | - |
 | `tenant_id` | string | Yes | - |
 
 **Query Parameters:**
@@ -1129,7 +1129,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -1214,7 +1214,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -1369,7 +1369,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -1464,7 +1464,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -1597,7 +1597,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory-Output] | No | - |
+| `categories` | array[BaseItemBookCategory] | No | - |
 | `itemBookId` | string | Yes | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
@@ -2507,7 +2507,551 @@ the one in the security credentials.
 }
 ```
 
-### 34. Get Settings Master Async
+### 34. Get Promotions
+
+**GET** `/api/v1/tenants/{tenant_id}/promotions`
+
+Retrieve all promotions for a tenant with pagination.
+
+This endpoint returns a paginated list of all promotions for the specified tenant.
+The results can be filtered by promotion type and active status.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `limit` | integer | No | 20 | - |
+| `page` | integer | No | 1 | - |
+| `promotionType` | string | No | - | - |
+| `isActive` | string | No | - | - |
+| `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `array[PromotionResponse]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+| `promotionType` | string | Yes | - |
+| `name` | string | Yes | - |
+| `description` | string | No | - |
+| `startDatetime` | string | Yes | - |
+| `endDatetime` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "promotionCode": "string",
+      "promotionType": "string",
+      "name": "string",
+      "description": "string",
+      "startDatetime": "string",
+      "endDatetime": "string",
+      "isActive": true,
+      "detail": {
+        "targetStoreCodes": [],
+        "targetCategoryCodes": [
+          "string"
+        ],
+        "discountRate": 0.0
+      },
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 35. Create Promotion
+
+**POST** `/api/v1/tenants/{tenant_id}/promotions`
+
+Create a new promotion record.
+
+This endpoint allows creating a new promotion with its code, type, name,
+datetime range, and type-specific details (e.g., category promotion details).
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+| `promotionType` | string | Yes | - |
+| `name` | string | Yes | - |
+| `description` | string | No | - |
+| `startDatetime` | string | Yes | - |
+| `endDatetime` | string | Yes | - |
+| `isActive` | boolean | No | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+
+**Request Example:**
+```json
+{
+  "promotionCode": "string",
+  "promotionType": "string",
+  "name": "string",
+  "description": "string",
+  "startDatetime": "string",
+  "endDatetime": "string",
+  "isActive": true,
+  "detail": {
+    "targetStoreCodes": [],
+    "targetCategoryCodes": [
+      "string"
+    ],
+    "discountRate": 0.0
+  }
+}
+```
+
+**Response:**
+
+**data Field:** `PromotionResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+| `promotionType` | string | Yes | - |
+| `name` | string | Yes | - |
+| `description` | string | No | - |
+| `startDatetime` | string | Yes | - |
+| `endDatetime` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "promotionCode": "string",
+    "promotionType": "string",
+    "name": "string",
+    "description": "string",
+    "startDatetime": "string",
+    "endDatetime": "string",
+    "isActive": true,
+    "detail": {
+      "targetStoreCodes": [],
+      "targetCategoryCodes": [
+        "string"
+      ],
+      "discountRate": 0.0
+    },
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 36. Get Active Promotions
+
+**GET** `/api/v1/tenants/{tenant_id}/promotions/active`
+
+Retrieve currently active promotions.
+
+This endpoint returns promotions that are currently active based on:
+- is_active = True
+- is_deleted = False
+- Current time is within start_datetime and end_datetime
+
+Optional filters:
+- storeCode: Filter by store (returns promotions targeting that store or all stores)
+- categoryCode: Filter by category
+- promotionType: Filter by promotion type
+
+Authentication is required via token or API key.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `storeCode` | string | No | - | - |
+| `categoryCode` | string | No | - | - |
+| `promotionType` | string | No | - | - |
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `array[PromotionResponse]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+| `promotionType` | string | Yes | - |
+| `name` | string | Yes | - |
+| `description` | string | No | - |
+| `startDatetime` | string | Yes | - |
+| `endDatetime` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "promotionCode": "string",
+      "promotionType": "string",
+      "name": "string",
+      "description": "string",
+      "startDatetime": "string",
+      "endDatetime": "string",
+      "isActive": true,
+      "detail": {
+        "targetStoreCodes": [],
+        "targetCategoryCodes": [
+          "string"
+        ],
+        "discountRate": 0.0
+      },
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 37. Get Promotion
+
+**GET** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
+
+Retrieve a specific promotion by its code.
+
+This endpoint retrieves the details of a promotion identified by its unique code.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `promotion_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PromotionResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+| `promotionType` | string | Yes | - |
+| `name` | string | Yes | - |
+| `description` | string | No | - |
+| `startDatetime` | string | Yes | - |
+| `endDatetime` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "promotionCode": "string",
+    "promotionType": "string",
+    "name": "string",
+    "description": "string",
+    "startDatetime": "string",
+    "endDatetime": "string",
+    "isActive": true,
+    "detail": {
+      "targetStoreCodes": [],
+      "targetCategoryCodes": [
+        "string"
+      ],
+      "discountRate": 0.0
+    },
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 38. Update Promotion
+
+**PUT** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
+
+Update an existing promotion.
+
+This endpoint allows updating the details of an existing promotion identified
+by its code. The promotion_code and promotion_type cannot be changed.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `promotion_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `name` | string | No | - |
+| `description` | string | No | - |
+| `startDatetime` | string | No | - |
+| `endDatetime` | string | No | - |
+| `isActive` | boolean | No | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+
+**Request Example:**
+```json
+{
+  "name": "string",
+  "description": "string",
+  "startDatetime": "string",
+  "endDatetime": "string",
+  "isActive": true,
+  "detail": {
+    "targetStoreCodes": [],
+    "targetCategoryCodes": [
+      "string"
+    ],
+    "discountRate": 0.0
+  }
+}
+```
+
+**Response:**
+
+**data Field:** `PromotionResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+| `promotionType` | string | Yes | - |
+| `name` | string | Yes | - |
+| `description` | string | No | - |
+| `startDatetime` | string | Yes | - |
+| `endDatetime` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `detail` | BaseCategoryPromoDetail | No | - |
+| `entryDatetime` | string | Yes | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "promotionCode": "string",
+    "promotionType": "string",
+    "name": "string",
+    "description": "string",
+    "startDatetime": "string",
+    "endDatetime": "string",
+    "isActive": true,
+    "detail": {
+      "targetStoreCodes": [],
+      "targetCategoryCodes": [
+        "string"
+      ],
+      "discountRate": 0.0
+    },
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 39. Delete Promotion
+
+**DELETE** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
+
+Delete a promotion (logical deletion).
+
+This endpoint performs a soft delete by setting is_deleted = True.
+The promotion will no longer appear in active or general listings.
+
+Authentication is required via token or API key. The tenant ID in the path must match
+the one in the security credentials.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `promotion_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PromotionDeleteResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `promotionCode` | string | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "promotionCode": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 40. Get Settings Master Async
 
 **GET** `/api/v1/tenants/{tenant_id}/settings`
 
@@ -2584,7 +3128,7 @@ the one in the security credentials.
 }
 ```
 
-### 35. Create Settings Master Async
+### 41. Create Settings Master Async
 
 **POST** `/api/v1/tenants/{tenant_id}/settings`
 
@@ -2682,7 +3226,7 @@ the one in the security credentials.
 }
 ```
 
-### 36. Get Settings Master By Name Async
+### 42. Get Settings Master By Name Async
 
 **GET** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -2755,7 +3299,7 @@ the one in the security credentials.
 }
 ```
 
-### 37. Update Settings Master Async
+### 43. Update Settings Master Async
 
 **PUT** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -2848,7 +3392,7 @@ the one in the security credentials.
 }
 ```
 
-### 38. Delete Settings Master Async
+### 44. Delete Settings Master Async
 
 **DELETE** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -2907,7 +3451,7 @@ the one in the security credentials.
 }
 ```
 
-### 39. Get Settings Value By Name Async
+### 45. Get Settings Value By Name Async
 
 **GET** `/api/v1/tenants/{tenant_id}/settings/{name}/value`
 
@@ -2972,7 +3516,7 @@ the one in the security credentials.
 }
 ```
 
-### 40. Get Taxes
+### 46. Get Taxes
 
 **GET** `/api/v1/tenants/{tenant_id}/taxes`
 
@@ -3049,7 +3593,7 @@ the one in the security credentials.
 }
 ```
 
-### 41. Get Tax
+### 47. Get Tax
 
 **GET** `/api/v1/tenants/{tenant_id}/taxes/{tax_code}`
 
@@ -3123,7 +3667,7 @@ the one in the security credentials.
 
 ### Store
 
-### 42. Get Item Store Master All Async
+### 48. Get Item Store Master All Async
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
@@ -3194,7 +3738,7 @@ the one in the security credentials.
 }
 ```
 
-### 43. Create Item Master Async
+### 49. Create Item Master Async
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
@@ -3277,7 +3821,7 @@ the one in the security credentials.
 }
 ```
 
-### 44. Get Item Store Master Async
+### 50. Get Item Store Master Async
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3343,7 +3887,7 @@ the one in the security credentials.
 }
 ```
 
-### 45. Update Item Store Master Async
+### 51. Update Item Store Master Async
 
 **PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3421,7 +3965,7 @@ the one in the security credentials.
 }
 ```
 
-### 46. Delete Item Store Master Async
+### 52. Delete Item Store Master Async
 
 **DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3482,7 +4026,7 @@ the one in the security credentials.
 }
 ```
 
-### 47. Get Item Store Master Detail Async
+### 53. Get Item Store Master Detail Async
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}/details`
 
@@ -3571,7 +4115,7 @@ the one in the security credentials.
 
 ### Staff
 
-### 48. Get Staff Master All Async
+### 54. Get Staff Master All Async
 
 **GET** `/api/v1/tenants/{tenant_id}/staff`
 
@@ -3644,7 +4188,7 @@ the one in the security credentials.
 }
 ```
 
-### 49. Create Staff Master Async
+### 55. Create Staff Master Async
 
 **POST** `/api/v1/tenants/{tenant_id}/staff`
 
@@ -3733,7 +4277,7 @@ the one in the security credentials.
 }
 ```
 
-### 50. Get Staff Master Async
+### 56. Get Staff Master Async
 
 **GET** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
@@ -3801,7 +4345,7 @@ the one in the security credentials.
 }
 ```
 
-### 51. Update Staff Master Async
+### 57. Update Staff Master Async
 
 **PUT** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
@@ -3889,7 +4433,7 @@ the one in the security credentials.
 }
 ```
 
-### 52. Delete Staff Master Async
+### 58. Delete Staff Master Async
 
 **DELETE** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 

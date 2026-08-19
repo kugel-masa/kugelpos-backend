@@ -3882,7 +3882,7 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
+              "type": "integer",
               "title": "Category Number"
             }
           },
@@ -4064,7 +4064,7 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
+              "type": "integer",
               "title": "Category Number"
             }
           },
@@ -8421,6 +8421,1046 @@
         }
       }
     },
+    "/api/v1/tenants/{tenant_id}/promotions": {
+      "post": {
+        "tags": [
+          "Promotion Master"
+        ],
+        "summary": "Create Promotion",
+        "description": "Create a new promotion record.\n\nThis endpoint allows creating a new promotion with its code, type, name,\ndatetime range, and type-specific details (e.g., category promotion details).\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.",
+        "operationId": "create_promotion_api_v1_tenants__tenant_id__promotions_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromotionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PromotionResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Promotion Master"
+        ],
+        "summary": "Get Promotions",
+        "description": "Retrieve all promotions for a tenant with pagination.\n\nThis endpoint returns a paginated list of all promotions for the specified tenant.\nThe results can be filtered by promotion type and active status.\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.",
+        "operationId": "get_promotions_api_v1_tenants__tenant_id__promotions_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "promotionType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promotiontype"
+            }
+          },
+          {
+            "name": "isActive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Isactive"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "?sort=field1:1,field2:-1",
+              "title": "Sort"
+            },
+            "description": "?sort=field1:1,field2:-1"
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_List_PromotionResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/promotions/active": {
+      "get": {
+        "tags": [
+          "Promotion Master"
+        ],
+        "summary": "Get Active Promotions",
+        "description": "Retrieve currently active promotions.\n\nThis endpoint returns promotions that are currently active based on:\n- is_active = True\n- is_deleted = False\n- Current time is within start_datetime and end_datetime\n\nOptional filters:\n- storeCode: Filter by store (returns promotions targeting that store or all stores)\n- categoryCode: Filter by category\n- promotionType: Filter by promotion type\n\nAuthentication is required via token or API key.",
+        "operationId": "get_active_promotions_api_v1_tenants__tenant_id__promotions_active_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "storeCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storecode"
+            }
+          },
+          {
+            "name": "categoryCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Categorycode"
+            }
+          },
+          {
+            "name": "promotionType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promotiontype"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_List_PromotionResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/promotions/{promotion_code}": {
+      "get": {
+        "tags": [
+          "Promotion Master"
+        ],
+        "summary": "Get Promotion",
+        "description": "Retrieve a specific promotion by its code.\n\nThis endpoint retrieves the details of a promotion identified by its unique code.\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.",
+        "operationId": "get_promotion_api_v1_tenants__tenant_id__promotions__promotion_code__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "promotion_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Promotion Code"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PromotionResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Promotion Master"
+        ],
+        "summary": "Update Promotion",
+        "description": "Update an existing promotion.\n\nThis endpoint allows updating the details of an existing promotion identified\nby its code. The promotion_code and promotion_type cannot be changed.\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.",
+        "operationId": "update_promotion_api_v1_tenants__tenant_id__promotions__promotion_code__put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "promotion_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Promotion Code"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromotionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PromotionResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Promotion Master"
+        ],
+        "summary": "Delete Promotion",
+        "description": "Delete a promotion (logical deletion).\n\nThis endpoint performs a soft delete by setting is_deleted = True.\nThe promotion will no longer appear in active or general listings.\n\nAuthentication is required via token or API key. The tenant ID in the path must match\nthe one in the security credentials.",
+        "operationId": "delete_promotion_api_v1_tenants__tenant_id__promotions__promotion_code__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "promotion_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Promotion Code"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "terminal_id should be provided by query parameter optional",
+              "title": "Terminal Id"
+            },
+            "description": "terminal_id should be provided by query parameter optional"
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PromotionDeleteResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "tags": [
@@ -9478,6 +10518,82 @@
         ],
         "title": "ApiResponse[List[CategoryMasterResponse]]"
       },
+      "ApiResponse_List_PromotionResponse__": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PromotionResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[List[PromotionResponse]]"
+      },
       "ApiResponse_List_TaxMasterResponse__": {
         "properties": {
           "success": {
@@ -9697,6 +10813,150 @@
           "data"
         ],
         "title": "ApiResponse[PaymentResponse]"
+      },
+      "ApiResponse_PromotionDeleteResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromotionDeleteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[PromotionDeleteResponse]"
+      },
+      "ApiResponse_PromotionResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromotionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[PromotionResponse]"
       },
       "ApiResponse_SettingsMasterDeleteResponse_": {
         "properties": {
@@ -10586,6 +11846,43 @@
         ],
         "title": "ApiResponse[list[StaffResponse]]"
       },
+      "BaseCategoryPromoDetail": {
+        "properties": {
+          "targetStoreCodes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetstorecodes",
+            "default": []
+          },
+          "targetCategoryCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Targetcategorycodes"
+          },
+          "discountRate": {
+            "type": "number",
+            "title": "Discountrate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetCategoryCodes",
+          "discountRate"
+        ],
+        "title": "BaseCategoryPromoDetail",
+        "description": "Base Category Promotion Detail Schema\n\nDefines fields for category-specific promotion configuration.\nIncludes target store codes, target category codes, and discount rate."
+      },
       "BaseItemBookButton": {
         "properties": {
           "posX": {
@@ -10646,7 +11943,7 @@
         "title": "BaseItemBookButton",
         "description": "Base Item Book Button Schema\n\nDefines fields for button placement and display attributes within an item book.\nIncludes position (X,Y), size, image URL, text color, item code,\nunit price (optional), and description (optional)."
       },
-      "BaseItemBookCategory-Input": {
+      "BaseItemBookCategory": {
         "properties": {
           "categoryNumber": {
             "type": "integer",
@@ -10664,7 +11961,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookTab-Input"
+                  "$ref": "#/components/schemas/BaseItemBookTab"
                 },
                 "type": "array"
               },
@@ -10685,85 +11982,7 @@
         "title": "BaseItemBookCategory",
         "description": "Base Item Book Category Schema\n\nDefines fields for category information within an item book.\nIncludes category number, title, color, and an array of tabs contained within."
       },
-      "BaseItemBookCategory-Output": {
-        "properties": {
-          "categoryNumber": {
-            "type": "integer",
-            "title": "Categorynumber"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "color": {
-            "type": "string",
-            "title": "Color"
-          },
-          "tabs": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/BaseItemBookTab-Output"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tabs",
-            "default": []
-          }
-        },
-        "type": "object",
-        "required": [
-          "categoryNumber",
-          "title",
-          "color"
-        ],
-        "title": "BaseItemBookCategory",
-        "description": "Base Item Book Category Schema\n\nDefines fields for category information within an item book.\nIncludes category number, title, color, and an array of tabs contained within."
-      },
-      "BaseItemBookTab-Input": {
-        "properties": {
-          "tabNumber": {
-            "type": "integer",
-            "title": "Tabnumber"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "color": {
-            "type": "string",
-            "title": "Color"
-          },
-          "buttons": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/BaseItemBookButton"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Buttons",
-            "default": []
-          }
-        },
-        "type": "object",
-        "required": [
-          "tabNumber",
-          "title",
-          "color"
-        ],
-        "title": "BaseItemBookTab",
-        "description": "Base Item Book Tab Schema\n\nDefines fields for tab information within an item book.\nIncludes tab number, title, color, and an array of buttons contained within."
-      },
-      "BaseItemBookTab-Output": {
+      "BaseItemBookTab": {
         "properties": {
           "tabNumber": {
             "type": "integer",
@@ -11189,7 +12408,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookTab-Input"
+                  "$ref": "#/components/schemas/BaseItemBookTab"
                 },
                 "type": "array"
               },
@@ -11239,7 +12458,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookCategory-Input"
+                  "$ref": "#/components/schemas/BaseItemBookCategory"
                 },
                 "type": "array"
               },
@@ -11282,7 +12501,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookCategory-Output"
+                  "$ref": "#/components/schemas/BaseItemBookCategory"
                 },
                 "type": "array"
               },
@@ -11395,7 +12614,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookCategory-Input"
+                  "$ref": "#/components/schemas/BaseItemBookCategory"
                 },
                 "type": "array"
               },
@@ -12023,6 +13242,235 @@
         "title": "PaymentUpdateRequest",
         "description": "Payment Method Update Request Schema\n\nUsed to update an existing payment method record.\nContains description, limit amount, refund capability flags, and other information."
       },
+      "PromotionCreateRequest": {
+        "properties": {
+          "promotionCode": {
+            "type": "string",
+            "title": "Promotioncode"
+          },
+          "promotionType": {
+            "type": "string",
+            "title": "Promotiontype"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "startDatetime": {
+            "type": "string",
+            "title": "Startdatetime"
+          },
+          "endDatetime": {
+            "type": "string",
+            "title": "Enddatetime"
+          },
+          "isActive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isactive",
+            "default": true
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseCategoryPromoDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "promotionCode",
+          "promotionType",
+          "name",
+          "startDatetime",
+          "endDatetime"
+        ],
+        "title": "PromotionCreateRequest",
+        "description": "Promotion Creation Request Schema\n\nContains promotion code, type, name, description, datetime range,\nactive flag, and category promo detail used to create a new promotion record."
+      },
+      "PromotionDeleteResponse": {
+        "properties": {
+          "promotionCode": {
+            "type": "string",
+            "title": "Promotioncode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "promotionCode"
+        ],
+        "title": "PromotionDeleteResponse",
+        "description": "Promotion Delete Response Schema\n\nUsed to return the result of a promotion deletion operation.\nContains the code of the deleted promotion."
+      },
+      "PromotionResponse": {
+        "properties": {
+          "promotionCode": {
+            "type": "string",
+            "title": "Promotioncode"
+          },
+          "promotionType": {
+            "type": "string",
+            "title": "Promotiontype"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "startDatetime": {
+            "type": "string",
+            "title": "Startdatetime"
+          },
+          "endDatetime": {
+            "type": "string",
+            "title": "Enddatetime"
+          },
+          "isActive": {
+            "type": "boolean",
+            "title": "Isactive"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseCategoryPromoDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entryDatetime": {
+            "type": "string",
+            "title": "Entrydatetime"
+          },
+          "lastUpdateDatetime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastupdatedatetime"
+          }
+        },
+        "type": "object",
+        "required": [
+          "promotionCode",
+          "promotionType",
+          "name",
+          "startDatetime",
+          "endDatetime",
+          "isActive",
+          "entryDatetime"
+        ],
+        "title": "PromotionResponse",
+        "description": "Promotion Response Schema\n\nDefines the response format for promotion data from the API.\nContains detailed promotion information along with creation and last update timestamps."
+      },
+      "PromotionUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "startDatetime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startdatetime"
+          },
+          "endDatetime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enddatetime"
+          },
+          "isActive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isactive"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseCategoryPromoDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PromotionUpdateRequest",
+        "description": "Promotion Update Request Schema\n\nUsed to update an existing promotion record.\nContains name, description, datetime range, active flag, and category promo detail."
+      },
       "SettingsMasterCreateRequest": {
         "properties": {
           "name": {
@@ -12404,6 +13852,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -12426,7 +13881,7 @@
         "flows": {
           "password": {
             "scopes": {},
-            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+            "tokenUrl": "http://account:8000/api/v1/accounts/token"
           }
         }
       }

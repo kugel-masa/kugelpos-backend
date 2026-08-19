@@ -28,9 +28,9 @@ Documentation about the overall system architecture and design.
 
 - [**Architecture Specification**](general/architecture.md) - System architecture overview
 - [**Configuration Priority**](general/configuration-priority.md) - Environment variables and configuration file priorities
-- [**Design Patterns**](general/design-patterns.md) - Design patterns used in the system
+- [**Design Patterns**](general/design_patterns.md) - Design patterns used in the system
 - [**Error Code Specification**](general/error_code_spec.md) - Error code system and list
-- [**HTTP Communication**](general/http-communication.md) - Inter-service HTTP communication conventions
+- [**HTTP Communication**](general/http_communication.md) - Inter-service HTTP communication conventions
 
 ## Common Functions
 
@@ -55,6 +55,7 @@ Service managing shopping carts and transaction processing.
 
 - [**API Specification**](cart/api-specification.md) - REST API endpoint specification
 - [**Model Specification**](cart/model-specification.md) - Data models and state machine specification
+- [**Client-Carried Cart**](cart/client-carried-cart.md) - Carried signed snapshots, transaction numbering, and the reach of void and return (issue #156)
 
 ### Journal Service
 

@@ -3441,6 +3441,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -3463,7 +3470,7 @@
         "flows": {
           "password": {
             "scopes": {},
-            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+            "tokenUrl": "http://account:8000/api/v1/accounts/token"
           }
         }
       }

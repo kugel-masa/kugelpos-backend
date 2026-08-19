@@ -141,7 +141,7 @@ and transaction type.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -167,6 +167,7 @@ and transaction type.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `cartId` | string | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -179,7 +180,17 @@ and transaction type.
     "message": "string"
   },
   "data": {
-    "cartId": "string"
+    "cartId": "string",
+    "signedSnapshot": {
+      "schemaVersion": 0,
+      "issuedAt": "string",
+      "kid": "string",
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "cartDocument": {},
+      "signature": "string"
+    }
   },
   "metadata": {
     "total": 0,
@@ -192,95 +203,7 @@ and transaction type.
 }
 ```
 
-### 5. Get Cart
-
-**GET** `/api/v1/carts/{cart_id}`
-
-Retrieve a cart by its ID.
-
-Fetches the cart with the specified ID and returns its full details.
-
-**Path Parameters:**
-
-| Parameter | Type | Required | Description |
-|------------|------|------|------|
-| `cart_id` | string | Yes | - |
-
-**Query Parameters:**
-
-| Parameter | Type | Required | Default | Description |
-|------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-
-**Response:**
-
-**data Field:** `Cart`
-
-| Field | Type | Required | Description |
-|------------|------|------|------|
-| `tenantId` | string | Yes | - |
-| `storeCode` | string | Yes | - |
-| `storeName` | string | No | - |
-| `terminalNo` | integer | Yes | - |
-| `totalAmount` | number | Yes | - |
-| `totalAmountWithTax` | number | Yes | - |
-| `totalQuantity` | integer | Yes | - |
-| `totalDiscountAmount` | number | Yes | - |
-| `depositAmount` | number | Yes | - |
-| `changeAmount` | number | Yes | - |
-| `stampDutyAmount` | number | No | - |
-| `receiptNo` | integer | Yes | - |
-| `transactionNo` | integer | Yes | - |
-| `transactionType` | integer | Yes | - |
-| `businessDate` | string | No | - |
-| `generateDateTime` | string | No | - |
-| `lineItems` | array[BaseTranLineItem] | No | - |
-| `payments` | array[BaseTranPayment] | No | - |
-| `taxes` | array[BaseTranTax] | No | - |
-| `subtotalDiscounts` | array[BaseDiscount] | No | - |
-| `receiptText` | string | No | - |
-| `journalText` | string | No | - |
-| `staff` | BaseTranStaff | No | - |
-| `status` | BaseTranStatus | No | - |
-| `cartId` | string | Yes | - |
-| `cartStatus` | string | Yes | - |
-| `subtotalAmount` | number | Yes | - |
-| `balanceAmount` | number | Yes | - |
-
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "string",
-  "userError": {
-    "code": "string",
-    "message": "string"
-  },
-  "data": {
-    "tenantId": "string",
-    "storeCode": "string",
-    "storeName": "string",
-    "terminalNo": 0,
-    "totalAmount": 0.0,
-    "totalAmountWithTax": 0.0,
-    "totalQuantity": 0,
-    "totalDiscountAmount": 0.0,
-    "depositAmount": 0.0,
-    "changeAmount": 0.0
-  },
-  "metadata": {
-    "total": 0,
-    "page": 0,
-    "limit": 0,
-    "sort": "string",
-    "filter": {}
-  },
-  "operation": "string"
-}
-```
-
-### 6. Bill
+### 5. Bill
 
 **POST** `/api/v1/carts/{cart_id}/bill`
 
@@ -299,7 +222,18 @@ it for receipt generation and storage.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
+
+**Request Body:**
+
+**Request Example:**
+```json
+{
+  "seq": 0,
+  "receiptNo": 0,
+  "transactionDatetime": "string"
+}
+```
 
 **Response:**
 
@@ -335,6 +269,7 @@ it for receipt generation and storage.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -369,7 +304,7 @@ it for receipt generation and storage.
 }
 ```
 
-### 7. Cancel Transaction
+### 6. Cancel Transaction
 
 **POST** `/api/v1/carts/{cart_id}/cancel`
 
@@ -387,7 +322,7 @@ Marks the cart as cancelled, preventing further modifications or processing.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Response:**
 
@@ -423,6 +358,7 @@ Marks the cart as cancelled, preventing further modifications or processing.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -457,7 +393,7 @@ Marks the cart as cancelled, preventing further modifications or processing.
 }
 ```
 
-### 8. Discount To Cart
+### 7. Discount To Cart
 
 **POST** `/api/v1/carts/{cart_id}/discounts`
 
@@ -475,7 +411,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -524,6 +460,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -558,7 +495,7 @@ Applies one or more discounts at the cart level, affecting the total price.
 }
 ```
 
-### 9. Add Items
+### 8. Add Items
 
 **POST** `/api/v1/carts/{cart_id}/lineItems`
 
@@ -576,7 +513,7 @@ Adds one or more items to the specified cart.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -625,6 +562,7 @@ Adds one or more items to the specified cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -659,7 +597,7 @@ Adds one or more items to the specified cart.
 }
 ```
 
-### 10. Cancel Line Item
+### 9. Cancel Line Item
 
 **POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/cancel`
 
@@ -678,7 +616,7 @@ Marks the specified line item as cancelled without removing it from the cart.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Response:**
 
@@ -714,6 +652,7 @@ Marks the specified line item as cancelled without removing it from the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -748,7 +687,7 @@ Marks the specified line item as cancelled without removing it from the cart.
 }
 ```
 
-### 11. Add Discount To Line Item
+### 10. Add Discount To Line Item
 
 **POST** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/discounts`
 
@@ -767,7 +706,7 @@ Applies one or more discounts to the specified item in the cart.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -816,6 +755,7 @@ Applies one or more discounts to the specified item in the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -850,7 +790,7 @@ Applies one or more discounts to the specified item in the cart.
 }
 ```
 
-### 12. Update Item Quantity
+### 11. Update Item Quantity
 
 **PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/quantity`
 
@@ -869,7 +809,7 @@ Changes the quantity of the specified item in the cart.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -918,6 +858,7 @@ Changes the quantity of the specified item in the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -952,7 +893,7 @@ Changes the quantity of the specified item in the cart.
 }
 ```
 
-### 13. Update Item Unit Price
+### 12. Update Item Unit Price
 
 **PATCH** `/api/v1/carts/{cart_id}/lineItems/{lineNo}/unitPrice`
 
@@ -971,7 +912,7 @@ Changes the unit price of the specified item in the cart.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -1020,6 +961,7 @@ Changes the unit price of the specified item in the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -1054,7 +996,7 @@ Changes the unit price of the specified item in the cart.
 }
 ```
 
-### 14. Payments
+### 13. Payments
 
 **POST** `/api/v1/carts/{cart_id}/payments`
 
@@ -1072,7 +1014,7 @@ Processes one or more payment methods against the cart.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -1121,6 +1063,7 @@ Processes one or more payment methods against the cart.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -1155,7 +1098,7 @@ Processes one or more payment methods against the cart.
 }
 ```
 
-### 15. Resume Item Entry
+### 14. Resume Item Entry
 
 **POST** `/api/v1/carts/{cart_id}/resume-item-entry`
 
@@ -1174,7 +1117,7 @@ clearing any payment information and allowing additional items to be added.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Response:**
 
@@ -1210,6 +1153,7 @@ clearing any payment information and allowing additional items to be added.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -1244,7 +1188,7 @@ clearing any payment information and allowing additional items to be added.
 }
 ```
 
-### 16. Subtotal
+### 15. Subtotal
 
 **POST** `/api/v1/carts/{cart_id}/subtotal`
 
@@ -1262,7 +1206,7 @@ Updates the cart with calculated subtotals and tax information.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
+| `terminal_id` | string | No | - | - |
 
 **Response:**
 
@@ -1298,6 +1242,7 @@ Updates the cart with calculated subtotals and tax information.
 | `cartStatus` | string | Yes | - |
 | `subtotalAmount` | number | Yes | - |
 | `balanceAmount` | number | Yes | - |
+| `signedSnapshot` | SnapshotEnvelope | No | - |
 
 **Response Example:**
 ```json
@@ -1334,7 +1279,7 @@ Updates the cart with calculated subtotals and tax information.
 
 ### Transaction
 
-### 17. Get Transactions By Query
+### 16. Get Transactions By Query
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
@@ -1363,8 +1308,7 @@ The tenant ID in the path must match the tenant ID from the authentication token
 | `page` | integer | No | 1 | - |
 | `include_cancelled` | boolean | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `terminal_id` | string | No | - | - |
 
 **Response:**
 
@@ -1432,7 +1376,7 @@ The tenant ID in the path must match the tenant ID from the authentication token
 }
 ```
 
-### 18. Get Transaction By Tranasction No
+### 17. Get Transaction By Tranasction No
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}`
 
@@ -1454,8 +1398,8 @@ The tenant ID in the path must match the tenant ID from the authentication token
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `business_counter` | integer | No | - | Open epoch of the transaction (issue #15 |
+| `terminal_id` | string | No | - | - |
 
 **Response:**
 
@@ -1521,7 +1465,7 @@ The tenant ID in the path must match the tenant ID from the authentication token
 }
 ```
 
-### 19. Notify Delivery Status
+### 18. Notify Delivery Status
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/delivery-status`
 
@@ -1595,14 +1539,15 @@ The terminal making this request must be in the same store as the original trans
 }
 ```
 
-### 20. Return Transaction By Transaction No
+### 19. Return Transaction By Transaction No
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/return`
 
 Process a transaction return.
 
 Creates a return transaction based on an original transaction and processes any required refund payments.
-The terminal making this request must be in the same store as the original transaction.
+The original transaction may belong to any store or terminal of the same tenant (issue #156);
+the return itself is booked against the terminal performing it.
 
 **Path Parameters:**
 
@@ -1617,8 +1562,8 @@ The terminal making this request must be in the same store as the original trans
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `business_counter` | integer | No | - | Open epoch of the transaction (issue #15 |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -1697,7 +1642,7 @@ The terminal making this request must be in the same store as the original trans
 }
 ```
 
-### 21. Void Transaction By Transaction No
+### 20. Void Transaction By Transaction No
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void`
 
@@ -1719,8 +1664,8 @@ The terminal making this request must match the terminal that created the transa
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `terminal_id` | string | Yes | - | - |
-| `is_terminal_service` | string | No | False | - |
+| `business_counter` | integer | No | - | Open epoch of the transaction (issue #15 |
+| `terminal_id` | string | No | - | - |
 
 **Request Body:**
 
@@ -1801,41 +1746,18 @@ The terminal making this request must match the terminal that created the transa
 
 ### Cache
 
-### 22. Clear terminal cache
+### 21. Invalidate master-data cache
 
-**DELETE** `/api/v1/cache/terminal`
+**DELETE** `/api/v1/cache/master-data`
 
-Clear all entries from the terminal information cache
+Invalidate the shared master-data cache for a namespace by bumping its generation counter. Used operationally after master-data changes that must be reflected before the namespace TTL expires.
 
-**Response:**
+**Query Parameters:**
 
-**Response Example:**
-```json
-{
-  "success": true,
-  "code": 200,
-  "message": "string",
-  "userError": {
-    "code": "string",
-    "message": "string"
-  },
-  "data": {},
-  "metadata": {
-    "total": 0,
-    "page": 0,
-    "limit": 0,
-    "sort": "string",
-    "filter": {}
-  },
-  "operation": "string"
-}
-```
-
-### 23. Get terminal cache status
-
-**GET** `/api/v1/cache/terminal/status`
-
-Get current status of the terminal information cache
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `namespace` | string | Yes | - | - |
+| `store_code` | string | No | - | - |
 
 **Response:**
 
