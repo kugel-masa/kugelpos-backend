@@ -58,6 +58,7 @@ class CartErrorCode:
     FINALIZE_CONFLICT = "401511"  # cart_id already finalized as a different transaction
     SNAPSHOT_CART_ID_MISMATCH = "401512"  # Carried snapshot addresses a different cart than the URL
     TRANSACTION_AMBIGUOUS = "401513"  # transaction_no matches several open sessions; business_counter needed
+    VOID_OUT_OF_SESSION = "401514"  # void is limited to the terminal's current business date and open session
 
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
@@ -107,6 +108,7 @@ class CartErrorMessage:
             CartErrorCode.FINALIZE_CONFLICT: "このカートは別の取引として既に確定済みです",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
             CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回に該当します。business_counter を指定してください",
+            CartErrorCode.VOID_OUT_OF_SESSION: "取消は当日かつ現在の営業回の取引のみ可能です。過去の取引は返品で処理してください",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "端末の状態を確認してください",
             CartErrorCode.SIGN_IN_OUT_ERROR: "担当者の登録状況を確認してください",
@@ -147,6 +149,7 @@ class CartErrorMessage:
             CartErrorCode.FINALIZE_CONFLICT: "This cart was already finalized as a different transaction",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "Carried snapshot addresses a different cart than the URL",
             CartErrorCode.TRANSACTION_AMBIGUOUS: "transaction_no matches more than one open session",
+            CartErrorCode.VOID_OUT_OF_SESSION: "Void is limited to the current business date and open session",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "Check terminal status",
             CartErrorCode.SIGN_IN_OUT_ERROR: "Check sign-in/out status",

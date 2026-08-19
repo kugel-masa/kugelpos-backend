@@ -61,4 +61,5 @@ from .cart_exceptions import (
     FinalizeConflictException,
     SnapshotCartIdMismatchException,
     TransactionAmbiguousException,
+    VoidOutOfSessionException,
 )

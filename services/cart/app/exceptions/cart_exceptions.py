@@ -436,6 +436,25 @@ class SnapshotCartIdMismatchException(ServiceException):
         )
 
 
+class VoidOutOfSessionException(ServiceException):
+    """Raised when voiding a transaction from another business date or open session.
+
+    A void reverses a sale at the register while the drawer and the day's totals
+    are still open; once the session is settled the correct instrument is a return,
+    which books its own transaction instead of retroactively editing a closed
+    day's figures."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.VOID_OUT_OF_SESSION,
+            CartErrorMessage.get_message(CartErrorCode.VOID_OUT_OF_SESSION),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
 class TransactionAmbiguousException(ServiceException):
     """Raised when a transaction_no alone matches more than one transaction (issue #156).
 

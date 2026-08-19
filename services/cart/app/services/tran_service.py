@@ -46,6 +46,7 @@ from app.exceptions import (
     AlreadyRefundedException,
     FinalizeConflictException,
     SnapshotInvalidException,
+    VoidOutOfSessionException,
 )
 from app.config.settings import settings
 from app.utils.pubsub_manager import PubsubManager
@@ -545,6 +546,25 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
             AlreadyVoidedException: If the transaction has already been voided
         """
+        # A void reverses a sale at the register while the drawer and the day's
+        # totals are still open. Once the session is settled the correct instrument
+        # is a return, which books its own transaction rather than retroactively
+        # editing a closed day's figures — so a void is confined to the terminal's
+        # current business date AND open session (issue #156). Without this the
+        # only thing standing between a caller and an old sale is whether its
+        # number happens to be ambiguous, which is not a rule.
+        if (
+            tran.business_date != self.terminal_info.business_date
+            or tran.business_counter != self.terminal_info.business_counter
+        ):
+            message = (
+                f"Void is limited to the current business date and open session: "
+                f"transaction business_date={tran.business_date} business_counter={tran.business_counter}, "
+                f"terminal business_date={self.terminal_info.business_date} "
+                f"business_counter={self.terminal_info.business_counter}. Use a return instead."
+            )
+            raise VoidOutOfSessionException(message, logger)
+
         # Check if the transaction has already been voided from history. The epoch
         # is part of the identity (issue #156): transaction_no is the per-open seq,
         # so without it another session's same-numbered sale would be consulted.

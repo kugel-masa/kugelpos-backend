@@ -150,6 +150,10 @@ async def test_void_async_checks_status_history(tran_service, mock_repositories)
         tenant_id="test_tenant",
         store_code="S0001",
         terminal_no=1,
+        # Void is confined to the terminal's current business date and open
+        # session (issue #156), so match the fixture's terminal.
+        business_date="20240101",
+        business_counter=1,
         transaction_no=1001,
         transaction_type=101,
         sales=BaseTransaction.SalesInfo(),
@@ -286,3 +290,62 @@ async def test_get_tranlog_by_query_merges_status(tran_service, mock_repositorie
     assert result.data[0].is_refunded is False
     assert result.data[1].is_voided is False
     assert result.data[1].is_refunded is False
+
+
+# =========================================================================
+# Void is confined to the current business date and open session (issue #156)
+# =========================================================================
+
+
+def _sale(business_date="20240101", business_counter=1, transaction_no=1001):
+    return BaseTransaction(
+        tenant_id="test_tenant",
+        store_code="S0001",
+        terminal_no=1,
+        business_date=business_date,
+        business_counter=business_counter,
+        transaction_no=transaction_no,
+        transaction_type=101,
+        sales=BaseTransaction.SalesInfo(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_void_rejects_a_previous_business_date(tran_service, mock_repositories):
+    """Yesterday's sale is settled; reversing it would edit a closed day's totals.
+
+    The correct instrument there is a return, which books its own transaction.
+    """
+    from app.exceptions import VoidOutOfSessionException
+
+    mock_repositories["transaction_status_repo"].get_status_by_transaction_async.return_value = None
+
+    with pytest.raises(VoidOutOfSessionException):
+        await tran_service.void_async(_sale(business_date="20231231"), [])
+
+
+@pytest.mark.asyncio
+async def test_void_rejects_a_previous_open_session_on_the_same_day(tran_service, mock_repositories):
+    """Same day, earlier session: the drawer it belongs to has already been closed."""
+    from app.exceptions import VoidOutOfSessionException
+
+    mock_repositories["transaction_status_repo"].get_status_by_transaction_async.return_value = None
+
+    with pytest.raises(VoidOutOfSessionException):
+        await tran_service.void_async(_sale(business_counter=0), [])
+
+
+@pytest.mark.asyncio
+async def test_void_accepts_the_current_session(tran_service, mock_repositories):
+    """The permitted side of the same boundary: today, this open session.
+
+    Asserted by getting past the session check to the status lookup — the void
+    itself needs repositories this fixture does not stand up.
+    """
+    mock_repositories["transaction_status_repo"].get_status_by_transaction_async.return_value = None
+
+    with pytest.raises(Exception) as exc_info:
+        await tran_service.void_async(_sale(), [])
+
+    assert "VoidOutOfSession" not in type(exc_info.value).__name__
+    mock_repositories["transaction_status_repo"].get_status_by_transaction_async.assert_awaited()
