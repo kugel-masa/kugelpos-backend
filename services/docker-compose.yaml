@@ -123,6 +123,12 @@ services:
       - TOKEN_URL=http://account:8000/api/v1/accounts/token
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
+      # Signed cart snapshots (issues #148 / #156). Without a key the feature runs
+      # degraded — no snapshot is issued and every carried one is rejected — so the
+      # stateless path would never be exercised locally. This DEVELOPMENT default
+      # is not a secret; production supplies its own via the environment (see
+      # docker-compose.prod.yaml, which deliberately has no default).
+      - SNAPSHOT_HMAC_KEYS=${SNAPSHOT_HMAC_KEYS:-dev-v1:a3VnZWxwb3MtZGV2LXNuYXBzaG90LWtleS0zMmJ5dGU=}
     ports:
       - "8003:8000"
     depends_on:
