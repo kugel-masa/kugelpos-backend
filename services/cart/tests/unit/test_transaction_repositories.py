@@ -7,6 +7,7 @@ each file under ~700 lines and lets pytest-xdist parallelise faster.
 import time
 import sys
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 import pytest
@@ -21,6 +22,7 @@ from kugel_common.exceptions import (
     CannotCreateException,
 )
 
+from app.exceptions import TransactionAmbiguousException
 from app.enums.cart_status import CartStatus
 from app.models.documents.cart_document import CartDocument
 from app.models.documents.tax_master_document import TaxMasterDocument
@@ -855,10 +857,11 @@ class TestTranlogRepository:
 
     @pytest.mark.asyncio
     async def test_get_tranlog_by_transaction_no_builds_correct_query(self):
+        """With the open epoch supplied the lookup is an exact match (issue #156)."""
         repo = self._make_repo()
         repo.get_one_async = AsyncMock(return_value=None)
 
-        await repo.get_tranlog_by_transaction_no_async("S001", 1, 100)
+        await repo.get_tranlog_by_transaction_no_async("S001", 1, 100, business_counter=7)
 
         query = repo.get_one_async.call_args[0][0]
         assert query == {
@@ -866,7 +869,43 @@ class TestTranlogRepository:
             "store_code": "S001",
             "terminal_no": 1,
             "transaction_no": 100,
+            "business_counter": 7,
         }
+
+    @pytest.mark.asyncio
+    async def test_get_tranlog_by_transaction_no_without_epoch_falls_back(self):
+        """Without the epoch the legacy key is used and a single match is returned."""
+        repo = self._make_repo()
+        only = SimpleNamespace(business_counter=7, transaction_no=100)
+        repo.get_list_async = AsyncMock(return_value=[only])
+
+        result = await repo.get_tranlog_by_transaction_no_async("S001", 1, 100)
+
+        assert result is only
+        query = repo.get_list_async.call_args.kwargs["filter"]
+        assert "business_counter" not in query
+        assert query["transaction_no"] == 100
+
+    @pytest.mark.asyncio
+    async def test_get_tranlog_by_transaction_no_without_epoch_rejects_ambiguity(self):
+        """transaction_no repeats across open sessions; guessing would void the wrong sale."""
+        repo = self._make_repo()
+        repo.get_list_async = AsyncMock(
+            return_value=[
+                SimpleNamespace(business_counter=7, transaction_no=100),
+                SimpleNamespace(business_counter=8, transaction_no=100),
+            ]
+        )
+
+        with pytest.raises(TransactionAmbiguousException):
+            await repo.get_tranlog_by_transaction_no_async("S001", 1, 100)
+
+    @pytest.mark.asyncio
+    async def test_get_tranlog_by_transaction_no_without_epoch_returns_none_when_absent(self):
+        repo = self._make_repo()
+        repo.get_list_async = AsyncMock(return_value=[])
+
+        assert await repo.get_tranlog_by_transaction_no_async("S001", 1, 100) is None
 
 
 # =========================================================================

@@ -133,6 +133,11 @@ class BaseTransaction(AbstractDocument):
         store_code: Optional[str] = None
         store_name: Optional[str] = None
         terminal_no: Optional[int] = None
+        # Client-carried cart phase 2 (issue #156): transaction_no is the per-open
+        # seq, so the original transaction is only identified together with the
+        # open epoch it belongs to. Without this a return/void cannot name which
+        # of several same-numbered originals it refers to.
+        business_counter: Optional[int] = None
         transaction_no: Optional[int] = None
         transaction_type: Optional[int] = None
         receipt_no: Optional[int] = None

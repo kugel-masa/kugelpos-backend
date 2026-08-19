@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 logger = getLogger(__name__)
 
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
@@ -71,6 +72,7 @@ class TranService:
         settings_master_repo: SettingsMasterWebRepository,
         payment_master_repo: PaymentMasterWebRepository,
         transaction_status_repo: TransactionStatusRepository,
+        store_info_repo: StoreInfoWebRepository = None,
     ):
         """
         Initialize the transaction service with required repositories and information.
@@ -88,6 +90,10 @@ class TranService:
         self.tranlog_delivery_status_repo = tranlog_delivery_status_repo
         self.settings_master_repo = settings_master_repo
         self.payment_master_repo = payment_master_repo
+        # Used to name the store a return is booked into: a return may reference an
+        # original from another store (issue #156), so the new transaction must be
+        # attributed to the terminal performing it, not to the original's store.
+        self.store_info_repo = store_info_repo
         self.transaction_status_repo = transaction_status_repo
 
         # Initialize pubsub manager for publishing messages with circuit breaker
@@ -428,28 +434,38 @@ class TranService:
 
         return paginated_result
 
-    async def get_tranlog_by_transaction_no_async(self, store_code: str, terminal_no: int, transaction_no: int):
+    async def get_tranlog_by_transaction_no_async(
+        self, store_code: str, terminal_no: int, transaction_no: int, business_counter: int = None
+    ):
         """
         Retrieve a specific transaction log by its transaction number.
 
         Args:
             store_code: Store code where the transaction occurred
             terminal_no: Terminal number where the transaction occurred
-            transaction_no: Unique transaction number to retrieve
+            transaction_no: Transaction number (per-open seq in phase 2)
+            business_counter: Open epoch of the transaction (issue #156). Together
+                with transaction_no this is the transaction's identity; omitted, the
+                lookup falls back to the legacy key and raises if it is ambiguous.
 
         Returns:
             BaseTransaction: The retrieved transaction log
 
         Raises:
             DocumentNotFoundException: If the transaction is not found
+            TransactionAmbiguousException: If transaction_no alone matches several
         """
         tran = await self.tranlog_repository.get_tranlog_by_transaction_no_async(
             store_code=store_code,
             terminal_no=terminal_no,
             transaction_no=transaction_no,
+            business_counter=business_counter,
         )
         if tran is None:
-            message = f"Transaction not found: transaction_no->{transaction_no}"
+            message = (
+                f"Transaction not found: transaction_no->{transaction_no} "
+                f"business_counter->{business_counter} store_code->{store_code} terminal_no->{terminal_no}"
+            )
             raise DocumentNotFoundException(message, logger)
 
         # Merge void/return status from history for single transaction
@@ -529,9 +545,11 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
             AlreadyVoidedException: If the transaction has already been voided
         """
-        # Check if the transaction has already been voided from history
+        # Check if the transaction has already been voided from history. The epoch
+        # is part of the identity (issue #156): transaction_no is the per-open seq,
+        # so without it another session's same-numbered sale would be consulted.
         status = await self.transaction_status_repo.get_status_by_transaction_async(
-            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no
+            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no, tran.business_counter
         )
 
         if status and status.is_voided:
@@ -551,6 +569,9 @@ class TranService:
         tran.origin.store_code = tran.store_code
         tran.origin.store_name = tran.store_name
         tran.origin.terminal_no = tran.terminal_no
+        # The original's open epoch: transaction_no is the per-open seq (issue
+        # #156), so the origin only names one transaction together with this.
+        tran.origin.business_counter = tran.business_counter
         tran.origin.transaction_no = tran.transaction_no
         tran.origin.transaction_type = tran.transaction_type
         tran.origin.receipt_no = tran.receipt_no
@@ -674,6 +695,7 @@ class TranService:
             store_code=tran.origin.store_code,
             terminal_no=tran.origin.terminal_no,
             transaction_no=tran.origin.transaction_no,
+            business_counter=tran.origin.business_counter,
             void_transaction_no=tran.transaction_no,
             staff_id=tran.staff.id,
         )
@@ -696,9 +718,34 @@ class TranService:
                     store_code=return_tran.origin.store_code,
                     terminal_no=return_tran.origin.terminal_no,
                     transaction_no=return_tran.origin.transaction_no,
+                    business_counter=return_tran.origin.business_counter,
                 )
 
         return tran
+
+    async def __get_own_store_name_async(self, fallback: str = None) -> str:
+        """
+        Resolve the name of the store this terminal belongs to.
+
+        Used when a return is attributed to the performing terminal rather than to
+        the original transaction's store (issue #156). Falls back to the supplied
+        value when the store repository is unavailable or the lookup fails —
+        naming the store is presentation detail and must not fail the return.
+
+        Args:
+            fallback: Value to use when the lookup cannot be performed
+
+        Returns:
+            str: The store name, or the fallback
+        """
+        if self.store_info_repo is None:
+            return fallback
+        try:
+            store_info = await self.store_info_repo.get_store_info_async()
+            return store_info.store_name if store_info else fallback
+        except Exception as e:
+            logger.warning(f"Failed to resolve own store name; keeping {fallback}: {e}")
+            return fallback
 
     async def return_async(
         self,
@@ -726,9 +773,10 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
             AlreadyRefundedException: If the transaction has already been refunded
         """
-        # Check if the transaction has already been refunded or voided from history
+        # Check if the transaction has already been refunded or voided from history.
+        # The epoch is part of the identity (issue #156) — see void_async.
         status = await self.transaction_status_repo.get_status_by_transaction_async(
-            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no
+            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no, tran.business_counter
         )
 
         if status and status.is_refunded:
@@ -746,6 +794,9 @@ class TranService:
         tran.origin.store_code = tran.store_code
         tran.origin.store_name = tran.store_name
         tran.origin.terminal_no = tran.terminal_no
+        # The original's open epoch: transaction_no is the per-open seq (issue
+        # #156), so the origin only names one transaction together with this.
+        tran.origin.business_counter = tran.business_counter
         tran.origin.transaction_no = tran.transaction_no
         tran.origin.transaction_type = tran.transaction_type
         tran.origin.receipt_no = tran.receipt_no
@@ -796,6 +847,16 @@ class TranService:
         )
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for return transaction
+        # The return belongs to the terminal performing it, not to the original's
+        # store/terminal (issue #156): a return may reference an original from
+        # another terminal or another store, and `tran` here is the ORIGINAL
+        # document being rewritten in place. Without this the return would be
+        # booked against the original's store/terminal while carrying this
+        # terminal's business_counter/seq — a numbering tuple that belongs to
+        # neither, colliding with the other terminal's own sequence.
+        tran.store_code = self.terminal_info.store_code
+        tran.store_name = await self.__get_own_store_name_async(fallback=tran.store_name)
+        tran.terminal_no = self.terminal_info.terminal_no
         tran.business_date = self.terminal_info.business_date
         tran.business_counter = self.terminal_info.business_counter
         tran.open_counter = self.terminal_info.open_counter
@@ -849,6 +910,7 @@ class TranService:
             store_code=tran.origin.store_code,
             terminal_no=tran.origin.terminal_no,
             transaction_no=tran.origin.transaction_no,
+            business_counter=tran.origin.business_counter,
             return_transaction_no=tran.transaction_no,
             staff_id=tran.staff.id,
         )
@@ -1105,21 +1167,35 @@ class TranService:
         if not transaction_list:
             return transaction_list
 
-        # Extract transaction numbers
-        transaction_nos = [tran.transaction_no for tran in transaction_list]
+        # A status record is identified by (store, terminal, open epoch,
+        # transaction_no) — issue #156. The list is normally one terminal's own
+        # transactions, but a single-transaction lookup may name another store's
+        # (a return can reference an original rung up anywhere in the tenant), so
+        # group by the owning identity instead of assuming this terminal's.
+        groups: dict[tuple, list[int]] = {}
+        for tran in transaction_list:
+            groups.setdefault((tran.store_code, tran.terminal_no, tran.business_counter), []).append(
+                tran.transaction_no
+            )
 
-        # Get status for all transactions in one query
-        status_dict = await self.transaction_status_repo.get_status_for_transactions_async(
-            tenant_id=self.terminal_info.tenant_id,
-            store_code=self.terminal_info.store_code,
-            terminal_no=self.terminal_info.terminal_no,
-            transaction_nos=transaction_nos,
-        )
+        status_by_identity = {}
+        for (store_code, terminal_no, business_counter), transaction_nos in groups.items():
+            status_dict = await self.transaction_status_repo.get_status_for_transactions_async(
+                tenant_id=self.terminal_info.tenant_id,
+                store_code=store_code,
+                terminal_no=terminal_no,
+                transaction_nos=transaction_nos,
+                business_counter=business_counter,
+            )
+            for transaction_no, status in status_dict.items():
+                status_by_identity[(store_code, terminal_no, business_counter, transaction_no)] = status
 
         # Merge status into transaction list
         for tran in transaction_list:
-            if tran.transaction_no in status_dict:
-                status = status_dict[tran.transaction_no]
+            status = status_by_identity.get(
+                (tran.store_code, tran.terminal_no, tran.business_counter, tran.transaction_no)
+            )
+            if status is not None:
                 # Update flags in memory only (not in database)
                 tran.is_voided = status.is_voided
                 tran.is_refunded = status.is_refunded

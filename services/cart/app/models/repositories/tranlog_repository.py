@@ -8,7 +8,7 @@ from kugel_common.models.documents.terminal_info_document import TerminalInfoDoc
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.config.settings import settings
-from app.exceptions import FinalizeConflictException
+from app.exceptions import FinalizeConflictException, TransactionAmbiguousException
 
 logger = getLogger(__name__)
 
@@ -105,18 +105,35 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             raise CannotCreateException(message, logger, e) from e
 
     async def get_tranlog_by_transaction_no_async(
-        self, store_code: str, terminal_no: int, transaction_no: int
+        self, store_code: str, terminal_no: int, transaction_no: int, business_counter: int = None
     ) -> BaseTransaction:
         """
         Retrieve a specific transaction log by its transaction number.
 
+        Client-carried cart phase 2 (issue #156): transaction_no is the per-open
+        seq and repeats every open session, so the transaction is only pinned down
+        together with ``business_counter`` — the same tuple the unique index uses.
+        Callers that supply it get an exact match.
+
+        When it is omitted (legacy clients, and transactions numbered by the
+        server before phase 2) the lookup falls back to the old key. That key can
+        now match several documents, and picking one arbitrarily would void or
+        refund a different sale than the one on the receipt — so an ambiguous
+        match raises instead of guessing.
+
         Args:
             store_code: Store code where the transaction occurred
             terminal_no: Terminal number where the transaction occurred
-            transaction_no: Unique transaction number to retrieve
+            transaction_no: Transaction number (per-open seq in phase 2)
+            business_counter: Open epoch of the transaction; None falls back to
+                the legacy key with an ambiguity guard
 
         Returns:
             BaseTransaction: The retrieved transaction log, or None if not found
+
+        Raises:
+            TransactionAmbiguousException: The legacy key matched more than one
+                transaction, so business_counter is required to disambiguate.
         """
         query = {
             "tenant_id": self.terminal_info.tenant_id,
@@ -124,8 +141,26 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             "terminal_no": terminal_no,
             "transaction_no": transaction_no,
         }
-        logger.debug(f"TranlogRepository.get_tranlog_by_transaction_no_async: query->{query}")
-        return await self.get_one_async(query)
+        if business_counter is not None:
+            query["business_counter"] = business_counter
+            logger.debug(f"TranlogRepository.get_tranlog_by_transaction_no_async: query->{query}")
+            return await self.get_one_async(query)
+
+        logger.debug(f"TranlogRepository.get_tranlog_by_transaction_no_async (no epoch): query->{query}")
+        # Read two: one row is unambiguous, two means the caller must say which
+        # open session it meant.
+        matches = await self.get_list_async(filter=query, max=2)
+        if not matches:
+            return None
+        if len(matches) > 1:
+            message = (
+                f"transaction_no={transaction_no} matches {len(matches)}+ transactions on "
+                f"store_code={store_code} terminal_no={terminal_no} "
+                f"(business_counters include {[m.business_counter for m in matches]}). "
+                "Specify business_counter to identify the transaction."
+            )
+            raise TransactionAmbiguousException(message, logger)
+        return matches[0]
 
     # get tranlog list by query parameters
     async def get_tranlog_list_by_query_async(

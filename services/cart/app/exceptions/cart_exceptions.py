@@ -436,6 +436,25 @@ class SnapshotCartIdMismatchException(ServiceException):
         )
 
 
+class TransactionAmbiguousException(ServiceException):
+    """Raised when a transaction_no alone matches more than one transaction (issue #156).
+
+    transaction_no is the per-open seq and repeats every open session, so the
+    original transaction is only pinned down together with its business_counter.
+    Rather than pick one arbitrarily — the caller could void or refund a different
+    sale than the one on the receipt — ask for the epoch."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.TRANSACTION_AMBIGUOUS,
+            CartErrorMessage.get_message(CartErrorCode.TRANSACTION_AMBIGUOUS),
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
 class FinalizeConflictException(ServiceException):
     """Raised when a cart_id is reused for a DIFFERENT finalize than the one already
     persisted (issue #156 / bug_008): e.g. a stale-snapshot cancel replayed over a

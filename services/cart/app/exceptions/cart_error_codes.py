@@ -57,6 +57,7 @@ class CartErrorCode:
     SEQUENCE_ANOMALY = "401510"  # Transaction sequence duplicate/gap detected (audit)
     FINALIZE_CONFLICT = "401511"  # cart_id already finalized as a different transaction
     SNAPSHOT_CART_ID_MISMATCH = "401512"  # Carried snapshot addresses a different cart than the URL
+    TRANSACTION_AMBIGUOUS = "401513"  # transaction_no matches several open sessions; business_counter needed
 
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
@@ -105,6 +106,7 @@ class CartErrorMessage:
             CartErrorCode.SEQUENCE_ANOMALY: "取引連番の重複または欠番を検出しました",
             CartErrorCode.FINALIZE_CONFLICT: "このカートは別の取引として既に確定済みです",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
+            CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回に該当します。business_counter を指定してください",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "端末の状態を確認してください",
             CartErrorCode.SIGN_IN_OUT_ERROR: "担当者の登録状況を確認してください",
@@ -144,6 +146,7 @@ class CartErrorMessage:
             CartErrorCode.SEQUENCE_ANOMALY: "Transaction sequence duplicate or gap detected",
             CartErrorCode.FINALIZE_CONFLICT: "This cart was already finalized as a different transaction",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "Carried snapshot addresses a different cart than the URL",
+            CartErrorCode.TRANSACTION_AMBIGUOUS: "transaction_no matches more than one open session",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "Check terminal status",
             CartErrorCode.SIGN_IN_OUT_ERROR: "Check sign-in/out status",

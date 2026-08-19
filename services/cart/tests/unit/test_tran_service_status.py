@@ -62,6 +62,7 @@ async def test_get_transaction_list_with_status_merges_correctly(tran_service, m
     tran1.tenant_id = "test_tenant"
     tran1.store_code = "S0001"
     tran1.terminal_no = 1
+    tran1.business_counter = 1
     tran1.transaction_no = 1001
     tran1.is_voided = False
     tran1.is_refunded = False
@@ -70,6 +71,7 @@ async def test_get_transaction_list_with_status_merges_correctly(tran_service, m
     tran2.tenant_id = "test_tenant"
     tran2.store_code = "S0001"
     tran2.terminal_no = 1
+    tran2.business_counter = 1
     tran2.transaction_no = 1002
     tran2.is_voided = False
     tran2.is_refunded = False
@@ -78,6 +80,7 @@ async def test_get_transaction_list_with_status_merges_correctly(tran_service, m
     tran3.tenant_id = "test_tenant"
     tran3.store_code = "S0001"
     tran3.terminal_no = 1
+    tran3.business_counter = 1
     tran3.transaction_no = 1003
     tran3.is_voided = False
     tran3.is_refunded = False
@@ -90,6 +93,7 @@ async def test_get_transaction_list_with_status_merges_correctly(tran_service, m
             tenant_id="test_tenant",
             store_code="S0001",
             terminal_no=1,
+            business_counter=1,
             transaction_no=1001,
             is_voided=True,
             is_refunded=False,
@@ -99,6 +103,7 @@ async def test_get_transaction_list_with_status_merges_correctly(tran_service, m
             tenant_id="test_tenant",
             store_code="S0001",
             terminal_no=1,
+            business_counter=1,
             transaction_no=1002,
             is_voided=False,
             is_refunded=True,
@@ -129,7 +134,11 @@ async def test_get_transaction_list_with_status_merges_correctly(tran_service, m
 
     # Verify the repository was called correctly
     mock_repositories["transaction_status_repo"].get_status_for_transactions_async.assert_called_once_with(
-        tenant_id="test_tenant", store_code="S0001", terminal_no=1, transaction_nos=[1001, 1002, 1003]
+        tenant_id="test_tenant",
+        store_code="S0001",
+        terminal_no=1,
+        transaction_nos=[1001, 1002, 1003],
+        business_counter=1,
     )
 
 
@@ -234,11 +243,17 @@ async def test_get_tranlog_by_query_merges_status(tran_service, mock_repositorie
     from kugel_common.schemas.base_schemas import Metadata
 
     tran1 = MagicMock(spec=BaseTransaction)
+    tran1.store_code = "S0001"
+    tran1.terminal_no = 1
+    tran1.business_counter = 1
     tran1.transaction_no = 1001
     tran1.is_voided = False
     tran1.is_refunded = False
 
     tran2 = MagicMock(spec=BaseTransaction)
+    tran2.store_code = "S0001"
+    tran2.terminal_no = 1
+    tran2.business_counter = 1
     tran2.transaction_no = 1002
     tran2.is_voided = False
     tran2.is_refunded = False
@@ -255,6 +270,7 @@ async def test_get_tranlog_by_query_merges_status(tran_service, mock_repositorie
             tenant_id="test_tenant",
             store_code="S0001",
             terminal_no=1,
+            business_counter=1,
             transaction_no=1001,
             is_voided=True,
             is_refunded=False,

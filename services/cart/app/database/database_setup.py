@@ -196,11 +196,25 @@ async def create_status_tran_collection(tenant_id: str):
         None
     """
     name = settings.DB_COLLECTION_NAME_STATUS_TRAN
+    # Client-carried cart phase 2 (issue #156): transaction_no is the per-open seq
+    # and repeats every open session, so the status identity must include
+    # business_counter — otherwise one session's void/refund status collides with
+    # the same-numbered transaction of another session (a daily open resets seq to
+    # 1, so day 2's first sale would read day 1's status). Mirrors the tranlog
+    # numbering tuple.
     index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}, "unique": True}
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "unique": True,
+        }
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Issue #156 migration: retire the unique index that lacked business_counter.
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}],
     )
 
 

@@ -201,6 +201,7 @@ async def __get_cart_service_async(
         settings_master_repo=settings_master_repo,
         payment_master_repo=payment_master_repo,
         transaction_status_repo=transaction_status_repo,
+        store_info_repo=store_info_repo,
     )
 
     return CartService(

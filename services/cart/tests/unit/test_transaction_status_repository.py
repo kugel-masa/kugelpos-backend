@@ -392,3 +392,80 @@ class TestTransactionStatusRepository:
         assert result.void_transaction_no == 3001
         assert result.is_refunded is False
         assert result.return_transaction_no is None
+
+    # =====================================================================
+    # Open-epoch identity (issue #156)
+    # =====================================================================
+
+    def test_identity_filter_includes_epoch(self, repository):
+        """With an epoch the filter pins the transaction to one open session.
+
+        transaction_no is the per-open seq, so a daily open resets it to 1 —
+        without the epoch, day 2's first sale would read day 1's status.
+        """
+        query = repository._identity_filter("test_tenant", "S0001", 1, 7, 100)
+
+        assert query["transaction_no"] == 100
+        # Pre-migration records carry no epoch, so null still matches: erring
+        # toward finding a status refuses a double void rather than allowing one.
+        assert query["business_counter"] == {"$in": [7, None]}
+
+    def test_identity_filter_without_epoch_is_legacy_key(self, repository):
+        """Legacy callers keep the old key so pre-migration records stay reachable."""
+        query = repository._identity_filter("test_tenant", "S0001", 1, None, 100)
+
+        assert "business_counter" not in query
+        assert query == {
+            "tenant_id": "test_tenant",
+            "store_code": "S0001",
+            "terminal_no": 1,
+            "transaction_no": 100,
+        }
+
+    @pytest.mark.asyncio
+    async def test_mark_as_voided_stores_epoch_on_new_document(self, repository):
+        """A newly created status record carries the epoch it belongs to."""
+        repository.get_status_by_transaction_async = AsyncMock(return_value=None)
+        repository.create_async = AsyncMock(return_value=True)
+
+        result = await repository.mark_as_voided_async(
+            tenant_id="test_tenant",
+            store_code="S0001",
+            terminal_no=1,
+            transaction_no=100,
+            void_transaction_no=200,
+            staff_id="S001",
+            business_counter=7,
+        )
+
+        assert result.business_counter == 7
+        created = repository.create_async.call_args[0][0]
+        assert created.business_counter == 7
+
+    @pytest.mark.asyncio
+    async def test_mark_as_voided_backfills_epoch_on_legacy_document(self, repository):
+        """A pre-migration record gets its epoch stamped so it stops matching others."""
+        existing = TransactionStatusDocument(
+            tenant_id="test_tenant",
+            store_code="S0001",
+            terminal_no=1,
+            transaction_no=100,
+            is_voided=False,
+            is_refunded=False,
+        )
+        assert existing.business_counter is None
+        repository.get_status_by_transaction_async = AsyncMock(return_value=existing)
+        repository.update_one_async = AsyncMock(return_value=True)
+
+        await repository.mark_as_voided_async(
+            tenant_id="test_tenant",
+            store_code="S0001",
+            terminal_no=1,
+            transaction_no=100,
+            void_transaction_no=200,
+            staff_id="S001",
+            business_counter=7,
+        )
+
+        update_values = repository.update_one_async.call_args[0][1]
+        assert update_values["business_counter"] == 7

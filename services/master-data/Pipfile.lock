@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "0d08dd881fcb1fb92ec98b96a3811ea43725ef44babbc2854395c56e5232b354"
+            "sha256": "c82898569fc46d8f48c067d7f04db84693e5872931d395c22320a764cc2df224"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -258,9 +258,9 @@
             "version": "==3.19"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.59-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.60-py3-none-any.whl",
             "hashes": [
-                "sha256:2342073a0266396bbb9ed8c88cac7af1103af1c8ed496a13e320273e67ec3c90"
+                "sha256:4f6031cba4201f6bc7ad4b2557c82396afc2e39bd51a35d8b50b6a85b4af6c29"
             ]
         },
         "motor": {
@@ -567,12 +567,12 @@
         },
         "uvicorn": {
             "hashes": [
-                "sha256:116af2710dbf47c80f463cd20ee4884b6662f4c9f227d797ddc7279d2fcc2c7c",
-                "sha256:18857b9e6579300be55c91c0a1cfd37d9a2cf0cabea33b88275f199eb73b8b58"
+                "sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86",
+                "sha256:f86e41a149d7d05a9969337e3946a9c171c06a5d42680896daaba624aeac8da1"
             ],
             "index": "pypi",
             "markers": "python_version >= '3.10'",
-            "version": "==0.52.3"
+            "version": "==0.52.4"
         },
         "wcwidth": {
             "hashes": [

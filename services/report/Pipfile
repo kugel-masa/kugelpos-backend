@@ -14,7 +14,7 @@ pytz = "*"
 pyjwt = "*"
 httpx = "*"
 aiohttp = "*"
-kugel_common = {file = "commons/dist/kugel_common-0.1.59-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.60-py3-none-any.whl"}
 wcwidth = "*"
 debugpy = "*"
 requests = "*"
