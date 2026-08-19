@@ -84,6 +84,35 @@ async def two_epochs():
     await collection.delete_many({"transaction_no": TRANSACTION_NO})
 
 
+OTHER_STORE_TX_NO = 8811
+OTHER_STORE_EPOCH = 55
+OTHER_STORE_TERMINAL = 3
+
+
+@pytest_asyncio.fixture
+async def original_in_another_store():
+    """An original sale rung up on a different store's terminal."""
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"db_cart_{_tenant_id()}")
+    collection = db[settings.DB_COLLECTION_NAME_TRAN_LOG]
+    tranlog = _tranlog(OTHER_STORE_EPOCH, 330.0, store_code=OTHER_STORE)
+    tranlog.update(
+        {
+            "terminal_no": OTHER_STORE_TERMINAL,
+            "transaction_no": OTHER_STORE_TX_NO,
+            "store_name": "Other Store",
+            "cart_id": "cross-store-original",
+        }
+    )
+    await collection.delete_many({"transaction_no": OTHER_STORE_TX_NO})
+    await collection.insert_one(tranlog)
+    yield
+    await collection.delete_many({"transaction_no": OTHER_STORE_TX_NO})
+    await collection.delete_many({"origin.transaction_no": OTHER_STORE_TX_NO})
+    await db[settings.DB_COLLECTION_NAME_STATUS_TRAN].delete_many({"store_code": OTHER_STORE})
+
+
 def _transaction_url(store_code: str = "5678", suffix: str = "") -> str:
     return (
         f"/api/v1/tenants/{_tenant_id()}/stores/{store_code}/terminals/9"
@@ -131,21 +160,60 @@ async def test_missing_epoch_is_fine_when_unambiguous(http_client):
 
 
 @pytest.mark.asyncio
-async def test_return_accepts_an_original_from_another_store(http_client):
+async def test_return_of_an_original_from_another_store(http_client, original_in_another_store):
     """A return may name an original rung up in a different store of the tenant.
 
-    The path store_code names where the ORIGINAL was rung up, so it is no longer
-    required to match the authenticated terminal's store. Reaching "transaction
-    not found" proves the store restriction is gone — the request got as far as
-    the lookup instead of being rejected up front.
+    The customer brings the receipt to whichever store they choose, so the path
+    store_code/terminal_no name where the ORIGINAL was rung up and need not match
+    the authenticated terminal. The return itself must still be booked against the
+    terminal performing it — if it inherited the original's store/terminal while
+    carrying this terminal's counters, the numbering tuple would belong to neither.
     """
+    from kugel_common.database import database as db_helper
+
+    url = (
+        f"/api/v1/tenants/{_tenant_id()}/stores/{OTHER_STORE}/terminals/{OTHER_STORE_TERMINAL}"
+        f"/transactions/{OTHER_STORE_TX_NO}/return"
+        f"?terminal_id={_terminal_id()}&business_counter={OTHER_STORE_EPOCH}"
+    )
+    r = await http_client.post(url, json=[{"paymentCode": "01", "amount": 330.0}], headers=_api_headers())
+
+    assert r.status_code == status.HTTP_200_OK, r.text
+    data = r.json()["data"]
+    # Booked against the performing terminal, not the original's store.
+    assert data["storeCode"] == "5678", data
+    assert data["terminalNo"] == 9, data
+
+    db = await db_helper.get_db_async(f"db_cart_{_tenant_id()}")
+    saved = await db[settings.DB_COLLECTION_NAME_TRAN_LOG].find_one(
+        {"origin.transaction_no": OTHER_STORE_TX_NO}
+    )
+    assert saved is not None, "the return should be persisted"
+    # The origin pins the original down: store + terminal + epoch + number.
+    assert saved["origin"]["store_code"] == OTHER_STORE
+    assert saved["origin"]["terminal_no"] == OTHER_STORE_TERMINAL
+    assert saved["origin"]["business_counter"] == OTHER_STORE_EPOCH
+    # ...while the return carries this terminal's own identity.
+    assert saved["store_code"] == "5678"
+    assert saved["terminal_no"] == 9
+
+    # The refund is recorded against the ORIGINAL's identity, epoch included.
+    recorded = await db[settings.DB_COLLECTION_NAME_STATUS_TRAN].find_one(
+        {"store_code": OTHER_STORE, "transaction_no": OTHER_STORE_TX_NO}
+    )
+    assert recorded is not None, "the original should be marked refunded"
+    assert recorded["business_counter"] == OTHER_STORE_EPOCH
+    assert recorded["is_refunded"] is True
+
+
+@pytest.mark.asyncio
+async def test_return_still_rejects_another_tenant(http_client):
+    """Dropping the store guard must not have widened the tenant boundary."""
     r = await http_client.post(
-        _transaction_url(store_code=OTHER_STORE, suffix="/return"),
+        f"/api/v1/tenants/T0000/stores/{OTHER_STORE}/terminals/9"
+        f"/transactions/{TRANSACTION_NO}/return?terminal_id={_terminal_id()}",
         json=[{"paymentCode": "01", "amount": 100.0}],
         headers=_api_headers(),
     )
 
-    assert r.status_code != status.HTTP_400_BAD_REQUEST, (
-        f"the cross-store guard should be gone, got: {r.text}"
-    )
-    assert r.status_code == status.HTTP_404_NOT_FOUND, r.text
+    assert r.status_code != status.HTTP_200_OK, r.text

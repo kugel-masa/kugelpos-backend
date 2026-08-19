@@ -43,10 +43,14 @@ class TransactionStatusRepository(AbstractRepository[TransactionStatusDocument])
         it day 2's first sale would read (and overwrite) day 1's void/refund
         status.
 
-        Records written before the migration carry no business_counter, so the
-        match accepts null as well. That errs toward finding a status rather than
-        missing one: a stale match refuses an operation that is already recorded,
-        whereas a miss would let the same transaction be voided or refunded twice.
+        The match on business_counter is exact. Accepting null alongside it (to
+        also reach records written before the migration) is NOT safe: legacy
+        transaction_no came from a 1-based per-terminal counter and seq is 1-based
+        per open session, so the number ranges overlap completely — a lookup for
+        this session's seq=1 would find the terminal's very first sale from years
+        ago and report its void/refund status as this transaction's. Pre-migration
+        records get their epoch filled in by backfill_status_tran_business_counter
+        at startup instead.
 
         Args:
             tenant_id: Tenant identifier
@@ -66,7 +70,7 @@ class TransactionStatusRepository(AbstractRepository[TransactionStatusDocument])
             "transaction_no": transaction_no,
         }
         if business_counter is not None:
-            query["business_counter"] = {"$in": [business_counter, None]}
+            query["business_counter"] = business_counter
         return query
 
     async def get_status_by_transaction_async(
@@ -121,11 +125,6 @@ class TransactionStatusRepository(AbstractRepository[TransactionStatusDocument])
                     update_values["return_date_time"] = existing.return_date_time
                 if existing.return_staff_id is not None:
                     update_values["return_staff_id"] = existing.return_staff_id
-
-            # Backfill the epoch on a pre-migration record so it stops matching
-            # other sessions' same-numbered transactions from here on.
-            if business_counter is not None and existing.business_counter is None:
-                update_values["business_counter"] = business_counter
 
             # Update the document using the same filter as get_status_by_transaction_async
             filter_dict = self._identity_filter(
@@ -193,10 +192,6 @@ class TransactionStatusRepository(AbstractRepository[TransactionStatusDocument])
                 if existing.void_staff_id is not None:
                     update_values["void_staff_id"] = existing.void_staff_id
 
-            # Backfill the epoch on a pre-migration record (see mark_as_voided_async).
-            if business_counter is not None and existing.business_counter is None:
-                update_values["business_counter"] = business_counter
-
             # Update the document using the same filter as get_status_by_transaction_async
             filter_dict = self._identity_filter(
                 tenant_id, store_code, terminal_no, business_counter, transaction_no
@@ -247,7 +242,7 @@ class TransactionStatusRepository(AbstractRepository[TransactionStatusDocument])
             "transaction_no": {"$in": transaction_nos},
         }
         if business_counter is not None:
-            query["business_counter"] = {"$in": [business_counter, None]}
+            query["business_counter"] = business_counter
 
         status_list = await self.get_list_async(query)
 

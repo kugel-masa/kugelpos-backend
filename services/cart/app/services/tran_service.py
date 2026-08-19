@@ -728,9 +728,12 @@ class TranService:
         Resolve the name of the store this terminal belongs to.
 
         Used when a return is attributed to the performing terminal rather than to
-        the original transaction's store (issue #156). Falls back to the supplied
-        value when the store repository is unavailable or the lookup fails —
-        naming the store is presentation detail and must not fail the return.
+        the original transaction's store (issue #156). Returns the fallback when
+        the store repository is unavailable or the lookup fails — naming the store
+        is presentation detail and must not fail the return. Callers on the return
+        path pass no fallback on purpose: the only other name available is the
+        original transaction's, and pairing it with this terminal's store_code
+        would misattribute the receipt.
 
         Args:
             fallback: Value to use when the lookup cannot be performed
@@ -855,7 +858,10 @@ class TranService:
         # terminal's business_counter/seq — a numbering tuple that belongs to
         # neither, colliding with the other terminal's own sequence.
         tran.store_code = self.terminal_info.store_code
-        tran.store_name = await self.__get_own_store_name_async(fallback=tran.store_name)
+        # Deliberately no fallback to the original's name: keeping it would pair
+        # this terminal's store_code with another store's store_name and print
+        # that on the receipt. An empty name is the lesser wrong.
+        tran.store_name = await self.__get_own_store_name_async()
         tran.terminal_no = self.terminal_info.terminal_no
         tran.business_date = self.terminal_info.business_date
         tran.business_counter = self.terminal_info.business_counter

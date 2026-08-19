@@ -397,18 +397,20 @@ class TestTransactionStatusRepository:
     # Open-epoch identity (issue #156)
     # =====================================================================
 
-    def test_identity_filter_includes_epoch(self, repository):
+    def test_identity_filter_matches_the_epoch_exactly(self, repository):
         """With an epoch the filter pins the transaction to one open session.
 
-        transaction_no is the per-open seq, so a daily open resets it to 1 —
-        without the epoch, day 2's first sale would read day 1's status.
+        The match must be exact. Also accepting null (to reach pre-migration
+        records) would be wrong: legacy transaction_no was a 1-based per-terminal
+        counter and seq is 1-based per open session, so a lookup for this
+        session's seq=1 would find the terminal's very first sale and report its
+        void/refund status as this transaction's. Pre-migration records get their
+        epoch filled in by the startup backfill instead.
         """
         query = repository._identity_filter("test_tenant", "S0001", 1, 7, 100)
 
         assert query["transaction_no"] == 100
-        # Pre-migration records carry no epoch, so null still matches: erring
-        # toward finding a status refuses a double void rather than allowing one.
-        assert query["business_counter"] == {"$in": [7, None]}
+        assert query["business_counter"] == 7
 
     def test_identity_filter_without_epoch_is_legacy_key(self, repository):
         """Legacy callers keep the old key so pre-migration records stay reachable."""
@@ -443,29 +445,24 @@ class TestTransactionStatusRepository:
         assert created.business_counter == 7
 
     @pytest.mark.asyncio
-    async def test_mark_as_voided_backfills_epoch_on_legacy_document(self, repository):
-        """A pre-migration record gets its epoch stamped so it stops matching others."""
-        existing = TransactionStatusDocument(
-            tenant_id="test_tenant",
-            store_code="S0001",
-            terminal_no=1,
-            transaction_no=100,
-            is_voided=False,
-            is_refunded=False,
-        )
-        assert existing.business_counter is None
-        repository.get_status_by_transaction_async = AsyncMock(return_value=existing)
-        repository.update_one_async = AsyncMock(return_value=True)
+    async def test_mark_as_voided_does_not_touch_a_foreign_epoch(self):
+        """The exact-match identity keeps another session's record out of reach."""
+        repo = TransactionStatusRepository(AsyncMock(), MagicMock(spec=TerminalInfoDocument))
+        repo.dbcollection = AsyncMock()
+        repo.get_one_async = AsyncMock(return_value=None)
+        repo.create_async = AsyncMock(return_value=True)
 
-        await repository.mark_as_voided_async(
+        await repo.mark_as_voided_async(
             tenant_id="test_tenant",
             store_code="S0001",
             terminal_no=1,
-            transaction_no=100,
+            transaction_no=1,
             void_transaction_no=200,
             staff_id="S001",
             business_counter=7,
         )
 
-        update_values = repository.update_one_async.call_args[0][1]
-        assert update_values["business_counter"] == 7
+        # The lookup that decided "no existing status" was epoch-scoped, so a
+        # same-numbered transaction from another session cannot be consulted.
+        query = repo.get_one_async.call_args[0][0]
+        assert query["business_counter"] == 7
