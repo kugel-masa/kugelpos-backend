@@ -1,6 +1,8 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+
+from kugel_common.utils.misc import get_app_time
 from pydantic import BaseModel, field_validator, model_validator
 from app.api.common.schemas import (
     BaseCart,
@@ -165,6 +167,13 @@ class CartCreateResponse(BaseCartCreateResponse):
     pass
 
 
+# How far a client-stamped finalize time may sit from server time (issue #156).
+# Generous on purpose: terminal clocks drift and an offline session may be
+# settled long after the sale. These bounds only reject a plainly wrong clock.
+MAX_BACKDATED_FINALIZE = timedelta(days=90)
+MAX_FUTUREDATED_FINALIZE = timedelta(days=1)
+
+
 class FinalizeContext(BaseSchemmaModel):
     """
     Client-carried finalize context for the bill endpoint (issue #156).
@@ -191,11 +200,24 @@ class FinalizeContext(BaseSchemmaModel):
         if v is None:
             return v
         try:
-            datetime.fromisoformat(v)
+            stamped = datetime.fromisoformat(v)
         except (ValueError, TypeError):
             raise ValueError("transaction_datetime must be an ISO-8601 datetime string")
         if "T" not in v:
             raise ValueError("transaction_datetime must include a 'T' date/time separator")
+        # A well-formed but absurd time is just as corrupting as a malformed one:
+        # it lands the sale in a business-date bucket that reports will never
+        # reconcile. The window is deliberately wide — a terminal's clock may
+        # drift, and an offline session can be settled well after the fact — so
+        # this only catches a clock that is plainly wrong, not a late upload.
+        now = get_app_time()
+        if stamped.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        if not (now - MAX_BACKDATED_FINALIZE) <= stamped <= (now + MAX_FUTUREDATED_FINALIZE):
+            raise ValueError(
+                f"transaction_datetime {v} is outside the accepted window "
+                f"(-{MAX_BACKDATED_FINALIZE.days}d / +{MAX_FUTUREDATED_FINALIZE.days}d from server time)"
+            )
         return v
 
     @model_validator(mode="after")

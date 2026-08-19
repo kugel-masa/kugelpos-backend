@@ -12,12 +12,15 @@ pydantic-settings = "*"
 motor = "*"
 pytz = "*"
 pyjwt = "*"
-kugel_common = {file = "commons/dist/kugel_common-0.1.60-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.61-py3-none-any.whl"}
 httpx = "*"
 aiohttp = "*"
 wcwidth = "*"
 debugpy = "*"
 apscheduler = "*"
+# Request-body decompression for carried snapshots (issue #156, FR-009);
+# .NET 8 clients send Content-Encoding: br by default.
+brotli = "*"
 
 [dev-packages]
 pytest = "*"

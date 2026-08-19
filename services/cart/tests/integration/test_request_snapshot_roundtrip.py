@@ -395,3 +395,54 @@ async def test_snapshot_for_a_different_cart_is_rejected(http_client, snapshot_k
         )
     ]
     assert logs, "expected a rejected audit record for the cross-cart request"
+
+
+@pytest.mark.asyncio
+async def test_gzip_compressed_wrapped_request_is_accepted(http_client, snapshot_keys):
+    """A gzip-compressed wrapped request takes the stateless path (issue #156, FR-009).
+
+    Without request decompression the peel middleware would fail to JSON-parse
+    the compressed bytes and silently treat it as a legacy, snapshot-less request
+    — taking the cache-authoritative path instead of the stateless one. So this
+    also wipes the server-side copy: succeeding proves the snapshot was read.
+    """
+    import gzip as gzip_module
+    import json as json_module
+
+    terminal_id = _terminal_id()
+    cart_id, snapshot, line_count_before = await _create_cart_with_items(http_client)
+    await _delete_cart_everywhere(cart_id)
+
+    wrapped = {"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]}
+    body = gzip_module.compress(json_module.dumps(wrapped).encode())
+
+    headers = {**_api_headers(), "Content-Encoding": "gzip"}
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        content=body,
+        headers=headers,
+    )
+
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert len(r.json()["data"]["lineItems"]) == line_count_before + 1
+
+
+@pytest.mark.asyncio
+async def test_oversized_compressed_request_is_refused(http_client, snapshot_keys):
+    """A body that expands past the ceiling is refused before it is fully expanded."""
+    import gzip as gzip_module
+
+    terminal_id = _terminal_id()
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+
+    # Small on the wire, far past the guard once expanded.
+    bomb = gzip_module.compress(b"a" * (settings.REQUEST_DECOMPRESS_MAX_BYTES + 1024))
+    headers = {**_api_headers(), "Content-Encoding": "gzip"}
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        content=bomb,
+        headers=headers,
+    )
+
+    assert r.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, r.text
+    assert "401509" in r.text, r.text

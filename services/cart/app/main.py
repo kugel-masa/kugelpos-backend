@@ -18,8 +18,12 @@ logger_request = getLogger("requestLogger")
 # Import the required application modules after the logger is configured
 from kugel_common.database import database as db_helper
 from kugel_common.middleware.log_requests import log_requests
-from kugel_common.middleware.http_compression import add_gzip_response_middleware
+from kugel_common.middleware.http_compression import (
+    add_gzip_response_middleware,
+    add_request_decompression_middleware,
+)
 from app.middleware.snapshot_envelope import SnapshotEnvelopePeelMiddleware
+from app.exceptions.cart_error_codes import CartErrorCode
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
 from kugel_common.utils.health_check import HealthChecker
@@ -120,6 +124,16 @@ app.middleware("http")(log_requests("cart"))
 # after log_requests so it runs OUTSIDE it — the request log observes only the
 # peeled payload, not the (large) carried snapshot (NFR-005 / issue #155).
 app.add_middleware(SnapshotEnvelopePeelMiddleware)
+
+# Accept compressed request bodies (issue #156, FR-009). Registered after the
+# peel middleware so it runs OUTSIDE it: the peel JSON-parses the body, and a
+# still-compressed body would not parse — it would look like a legacy request
+# with no snapshot and silently take the cache-authoritative path.
+add_request_decompression_middleware(
+    app,
+    max_bytes=settings.REQUEST_DECOMPRESS_MAX_BYTES,
+    error_code=CartErrorCode.REQUEST_BODY_TOO_LARGE,
+)
 
 # Compress responses for clients that send Accept-Encoding: gzip.
 # Registered after log_requests so compression runs outermost and the

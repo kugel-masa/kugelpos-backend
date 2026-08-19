@@ -33,6 +33,8 @@ only the peeled payload.
 from logging import getLogger
 import json
 
+from kugel_common.middleware.http_compression import replace_body_headers, replay_body
+
 logger = getLogger(__name__)
 
 SNAPSHOT_KEY = "signedSnapshot"
@@ -107,8 +109,9 @@ class SnapshotEnvelopePeelMiddleware:
                 if not message.get("more_body", False):
                     break
             elif message["type"] == "http.disconnect":
-                # Forward the disconnect; nothing to peel.
-                await self.app(scope, receive, send)
+                # The client is gone mid-body. Do not hand the app a receive
+                # channel we have already drained past the disconnect — it would
+                # wait on a message that never comes. There is nothing to serve.
                 return
 
         snapshot, new_body = peel_snapshot_envelope(body)
@@ -117,15 +120,13 @@ class SnapshotEnvelopePeelMiddleware:
         # scope key (read with request.scope.get("cart_snapshot")). A top-level
         # scope key is robust across Starlette versions, unlike scope["state"]
         # which the framework may initialize/replace.
+        scope = dict(scope)
         scope["cart_snapshot"] = snapshot
+        # Peeling changes the body length, so content-length must follow it:
+        # the value the client sent describes the wrapper, not the payload now
+        # being delivered, and anything downstream that trusts the header would
+        # read the wrong size.
+        if new_body != body:
+            scope["headers"] = replace_body_headers(scope["headers"], len(new_body))
 
-        sent = False
-
-        async def replay_receive():
-            nonlocal sent
-            if not sent:
-                sent = True
-                return {"type": "http.request", "body": new_body, "more_body": False}
-            return {"type": "http.disconnect"}
-
-        await self.app(scope, replay_receive, send)
+        await self.app(scope, replay_body(new_body), send)
