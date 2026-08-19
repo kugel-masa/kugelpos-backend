@@ -136,9 +136,7 @@ async def test_zip_bomb_is_refused_before_it_is_fully_expanded():
     app = _Recorder()
     middleware = RequestDecompressionMiddleware(app, max_bytes=1024, error_code="401509")
 
-    messages = await _collect_response(
-        middleware, _scope([(b"content-encoding", b"gzip")]), _receive_for(bomb)
-    )
+    messages = await _collect_response(middleware, _scope([(b"content-encoding", b"gzip")]), _receive_for(bomb))
 
     assert messages[0]["status"] == 413
     assert b"401509" in messages[1]["body"]
@@ -227,9 +225,7 @@ async def test_unsupported_encoding_is_refused_not_passed_through():
     app = _Recorder()
     middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000, error_code="401509")
 
-    messages = await _collect_response(
-        middleware, _scope([(b"content-encoding", b"zstd")]), _receive_for(b"whatever")
-    )
+    messages = await _collect_response(middleware, _scope([(b"content-encoding", b"zstd")]), _receive_for(b"whatever"))
 
     assert messages[0]["status"] == 415
     assert app.body is None
@@ -237,7 +233,7 @@ async def test_unsupported_encoding_is_refused_not_passed_through():
 
 @pytest.mark.asyncio
 async def test_chained_encoding_is_refused():
-    """"gzip, br" is legal HTTP but we expand a single encoding only."""
+    """ "gzip, br" is legal HTTP but we expand a single encoding only."""
     app = _Recorder()
     middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
 
@@ -251,7 +247,7 @@ async def test_chained_encoding_is_refused():
 
 @pytest.mark.asyncio
 async def test_identity_encoding_passes_through():
-    """"identity" explicitly means no encoding, so it is not an error."""
+    """ "identity" explicitly means no encoding, so it is not an error."""
     payload = b'{"payload": []}'
     app = _Recorder()
     middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)

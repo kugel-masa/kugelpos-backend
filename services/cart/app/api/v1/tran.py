@@ -397,9 +397,9 @@ async def void_transaction_by_transaction_no(
         default=None,
         description=(
             "Open epoch of the transaction (issue #156). transaction_no is the per-open "
-            "seq and repeats every open session, so this pins down which one is meant. "
-            "Omit only for transactions numbered by the server before phase 2; if the "
-            "number then matches several sessions the request is rejected as ambiguous."
+            "seq and repeats every open session. A void is confined to this terminal's "
+            "current session, so omitting this defaults to the current open epoch — the "
+            "only one a void can reach."
         ),
     ),
     tran_service: TranService = Depends(get_tran_service),
@@ -441,6 +441,15 @@ async def void_transaction_by_transaction_no(
     if terminal_no != tran_service.terminal_info.terminal_no:
         message = f"terminal_no in request does not match the terminal_no in the URL : req.terminal_no->{terminal_no}, terminal_no->{tran_service.terminal_info.terminal_no}"
         raise InvalidRequestDataException(message=message, logger=logger, original_exception=None)
+
+    # A void only ever reaches this terminal's current open session, so when the
+    # caller names no epoch there is exactly one it could mean. Defaulting to it
+    # keeps clients that predate the parameter working: without it they would start
+    # getting 409s from the second open session onward, as soon as an older sale
+    # shared the seq. void_async rejects anything outside this session regardless,
+    # so the default cannot widen what a void is able to touch.
+    if business_counter is None:
+        business_counter = tran_service.terminal_info.business_counter
 
     try:
         tranlog = await tran_service.get_tranlog_by_transaction_no_async(

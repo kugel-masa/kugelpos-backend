@@ -23,7 +23,9 @@ mutating request makes the upload large enough to be worth compressing. It
 enforces a decompressed-size ceiling so a small forged body cannot expand into
 an out-of-memory condition.
 """
-import gzip
+
+# zlib with wbits=47 auto-detects gzip and zlib framing, so the gzip module
+# itself is not needed here.
 import zlib
 from logging import getLogger
 

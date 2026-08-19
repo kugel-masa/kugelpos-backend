@@ -91,8 +91,7 @@ async def _insert_sale(
             # A void/return reverses the original's tender, so the payment code
             # presented must exist on the original.
             "payments": [
-                {"payment_no": 1, "payment_code": "01", "description": "Cash", "amount": 550.0,
-                 "deposit_amount": 550.0}
+                {"payment_no": 1, "payment_code": "01", "description": "Cash", "amount": 550.0, "deposit_amount": 550.0}
             ],
             "taxes": [],
             "subtotal_discounts": [],
@@ -148,8 +147,9 @@ async def test_void_rejects_a_past_open_session(http_client, opened_terminal_id)
     )
     try:
         response = await http_client.post(
-            _url(store_code, terminal_no, transaction_no, "void",
-                 business_counter=business_counter - PAST_EPOCH_OFFSET),
+            _url(
+                store_code, terminal_no, transaction_no, "void", business_counter=business_counter - PAST_EPOCH_OFFSET
+            ),
             json=[{"paymentCode": "01", "amount": 550.0}],
             headers=_api_header(),
         )
@@ -244,6 +244,59 @@ async def test_void_accepts_the_current_session_with_a_carried_epoch(http_client
         await _cleanup(transaction_no, store_code, cart_id)
 
 
+@pytest.mark.asyncio
+async def test_void_without_an_epoch_still_works(http_client, opened_terminal_id):
+    """A client that predates the business_counter parameter keeps working.
+
+    Void reaches only this terminal's current session, so omitting the epoch has
+    exactly one meaning and the server fills it in. Without that default, such a
+    client would start seeing 409s from the second open session onward, the moment
+    an older sale happened to share the seq.
+    """
+    business_date, business_counter = await _terminal_state()
+    store_code = os.environ.get("STORE_CODE")
+    terminal_no = int(os.environ.get("TERMINAL_ID").split("-")[-1])
+    transaction_no = 7105
+    cart_id = "e2e-scope-no-epoch"
+
+    # A same-numbered sale from an older session, which is what would otherwise
+    # make the number ambiguous.
+    await _insert_sale(
+        store_code=store_code,
+        terminal_no=terminal_no,
+        business_date="20200101",
+        business_counter=8899,
+        transaction_no=transaction_no,
+        cart_id="e2e-scope-no-epoch-old",
+    )
+    await _insert_sale(
+        store_code=store_code,
+        terminal_no=terminal_no,
+        business_date=business_date,
+        business_counter=business_counter,
+        transaction_no=transaction_no,
+        cart_id=cart_id,
+        purge_first=False,
+    )
+    try:
+        response = await http_client.post(
+            _url(store_code, terminal_no, transaction_no, "void"),
+            json=[{"paymentCode": "01", "amount": 550.0}],
+            headers=_api_header(),
+        )
+        assert response.status_code == status.HTTP_200_OK, response.text
+
+        # It voided THIS session's sale, not the older same-numbered one.
+        db = await _cart_db()
+        voided = await db[settings.DB_COLLECTION_NAME_STATUS_TRAN].find_one(
+            {"store_code": store_code, "transaction_no": transaction_no, "is_voided": True}
+        )
+        assert voided is not None
+        assert voided["business_counter"] == business_counter, voided
+    finally:
+        await _cleanup(transaction_no, store_code, cart_id)
+
+
 # =========================================================================
 # return: any store, any terminal, any past session
 # =========================================================================
@@ -283,9 +336,7 @@ async def test_return_accepts_another_store_and_a_past_session(http_client, open
         assert data["terminalNo"] == int(os.environ.get("TERMINAL_ID").split("-")[-1]), data
 
         db = await _cart_db()
-        saved = await db[settings.DB_COLLECTION_NAME_TRAN_LOG].find_one(
-            {"origin.transaction_no": transaction_no}
-        )
+        saved = await db[settings.DB_COLLECTION_NAME_TRAN_LOG].find_one({"origin.transaction_no": transaction_no})
         assert saved is not None
         # The origin pins the original by store + terminal + epoch + number.
         assert saved["origin"]["store_code"] == OTHER_STORE
@@ -307,9 +358,7 @@ async def test_return_accepts_another_store_and_a_past_session(http_client, open
 async def test_return_still_refuses_another_tenant(http_client, opened_terminal_id):
     """Widening the store scope must not have widened the tenant boundary."""
     response = await http_client.post(
-        _url(OTHER_STORE, OTHER_TERMINAL, 7202, "return").replace(
-            f"/tenants/{_tenant_id()}/", "/tenants/T0000/"
-        ),
+        _url(OTHER_STORE, OTHER_TERMINAL, 7202, "return").replace(f"/tenants/{_tenant_id()}/", "/tenants/T0000/"),
         json=[{"paymentCode": "01", "amount": 550.0}],
         headers=_api_header(),
     )

@@ -185,9 +185,7 @@ async def test_return_of_an_original_from_another_store(http_client, original_in
     assert data["terminalNo"] == 9, data
 
     db = await db_helper.get_db_async(f"db_cart_{_tenant_id()}")
-    saved = await db[settings.DB_COLLECTION_NAME_TRAN_LOG].find_one(
-        {"origin.transaction_no": OTHER_STORE_TX_NO}
-    )
+    saved = await db[settings.DB_COLLECTION_NAME_TRAN_LOG].find_one({"origin.transaction_no": OTHER_STORE_TX_NO})
     assert saved is not None, "the return should be persisted"
     # The origin pins the original down: store + terminal + epoch + number.
     assert saved["origin"]["store_code"] == OTHER_STORE

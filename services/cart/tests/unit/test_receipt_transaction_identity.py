@@ -14,8 +14,6 @@ alone points at many sales — store, register and open epoch have to be printed
 with it or the sale cannot be found again.
 """
 
-import pytest
-
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.services.strategies.receipt_data.receipt_data_sample import ReceiptDataSample
 

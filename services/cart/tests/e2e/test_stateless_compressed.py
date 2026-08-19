@@ -28,6 +28,8 @@ import os
 
 import pytest
 from fastapi import status
+
+
 @pytest.fixture
 def api_header():
     return {"X-API-KEY": os.environ.get("API_KEY")}
