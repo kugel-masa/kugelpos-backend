@@ -29,6 +29,19 @@ def _scope(headers):
     return {"type": "http", "method": "POST", "headers": headers}
 
 
+def _receive_chunks(chunks):
+    """Deliver the body across several http.request messages, as uvicorn does."""
+    remaining = list(chunks)
+
+    async def receive():
+        if remaining:
+            chunk = remaining.pop(0)
+            return {"type": "http.request", "body": chunk, "more_body": bool(remaining)}
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
 def _receive_for(body: bytes):
     sent = False
 
@@ -178,3 +191,116 @@ def test_replace_body_headers_replaces_rather_than_appends():
     assert rewritten.count((b"content-length", b"12")) == 1
     assert not any(name == b"content-length" and value == b"999" for name, value in rewritten)
     assert (b"content-type", b"application/json") in rewritten
+
+
+@pytest.mark.asyncio
+async def test_body_split_across_chunks_is_reassembled():
+    """uvicorn hands a large body over in several messages, not one.
+
+    A 50-line cart snapshot is ~50KB raw, well into the range where the body
+    arrives split — expanding only the first chunk would corrupt every large
+    request.
+    """
+    payload = json.dumps({"payload": [{"i": n} for n in range(500)]}).encode()
+    compressed = gzip.compress(payload)
+    midpoint = len(compressed) // 2
+    app = _Recorder()
+    middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
+
+    await middleware(
+        _scope([(b"content-encoding", b"gzip")]),
+        _receive_chunks([compressed[:midpoint], compressed[midpoint:]]),
+        None,
+    )
+
+    assert app.body == payload
+
+
+@pytest.mark.asyncio
+async def test_unsupported_encoding_is_refused_not_passed_through():
+    """An encoding we cannot expand must not reach the app still compressed.
+
+    Passing it through would leave a JSON-parsing middleware downstream reading
+    it as "not a wrapped request" and silently taking the legacy path — the exact
+    failure this middleware exists to prevent.
+    """
+    app = _Recorder()
+    middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000, error_code="401509")
+
+    messages = await _collect_response(
+        middleware, _scope([(b"content-encoding", b"zstd")]), _receive_for(b"whatever")
+    )
+
+    assert messages[0]["status"] == 415
+    assert app.body is None
+
+
+@pytest.mark.asyncio
+async def test_chained_encoding_is_refused():
+    """"gzip, br" is legal HTTP but we expand a single encoding only."""
+    app = _Recorder()
+    middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
+
+    messages = await _collect_response(
+        middleware, _scope([(b"content-encoding", b"gzip, br")]), _receive_for(b"whatever")
+    )
+
+    assert messages[0]["status"] == 415
+    assert app.body is None
+
+
+@pytest.mark.asyncio
+async def test_identity_encoding_passes_through():
+    """"identity" explicitly means no encoding, so it is not an error."""
+    payload = b'{"payload": []}'
+    app = _Recorder()
+    middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
+
+    await middleware(_scope([(b"content-encoding", b"identity")]), _receive_for(payload), None)
+
+    assert app.body == payload
+
+
+@pytest.mark.asyncio
+async def test_encoding_header_is_matched_case_insensitively():
+    """Header values are not case-sensitive; a client may send "GZIP"."""
+    payload = b'{"payload": []}'
+    app = _Recorder()
+    middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
+
+    await middleware(_scope([(b"content-encoding", b"  GZIP ")]), _receive_for(gzip.compress(payload)), None)
+
+    assert app.body == payload
+
+
+@pytest.mark.asyncio
+async def test_brotli_body_is_refused_when_the_library_is_absent():
+    """Degrade to a clear refusal, never to a silently mis-read body."""
+    import kugel_common.middleware.http_compression as module
+
+    original = module.brotli
+    module.brotli = None
+    try:
+        app = _Recorder()
+        middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
+        messages = await _collect_response(
+            middleware, _scope([(b"content-encoding", b"br")]), _receive_for(b"anything")
+        )
+        assert messages[0]["status"] == 413
+        assert app.body is None
+    finally:
+        module.brotli = original
+
+
+@pytest.mark.asyncio
+async def test_disconnect_mid_body_does_not_invoke_the_app():
+    """The client vanished; there is no complete body to act on."""
+    app = _Recorder()
+    middleware = RequestDecompressionMiddleware(app, max_bytes=1_000_000)
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    await middleware(_scope([(b"content-encoding", b"gzip")]), receive, None)
+
+    assert app.body is None

@@ -14,7 +14,12 @@
 """Unit tests for the phase 2 request snapshot envelope peel (issue #156)."""
 import json
 
-from app.middleware.snapshot_envelope import peel_snapshot_envelope
+import pytest
+
+from app.middleware.snapshot_envelope import (
+    SnapshotEnvelopePeelMiddleware,
+    peel_snapshot_envelope,
+)
 
 
 def test_wrapped_array_payload_is_peeled():
@@ -80,3 +85,156 @@ def test_null_snapshot_value_is_returned_as_none_path():
     snapshot, new_body = peel_snapshot_envelope(body)
     assert snapshot is None
     assert json.loads(new_body) == [{"a": 1}]
+
+
+# =========================================================================
+# ASGI behaviour of the middleware itself (issue #156)
+# =========================================================================
+
+
+class _Recorder:
+    """Stands in for the downstream app, capturing what it was handed."""
+
+    def __init__(self):
+        self.body = None
+        self.headers = None
+        self.snapshot = "<not called>"
+
+    async def __call__(self, scope, receive, send):
+        self.headers = scope["headers"]
+        self.snapshot = scope.get("cart_snapshot")
+        message = await receive()
+        self.body = message.get("body", b"")
+
+
+def _json_scope(headers=None):
+    return {
+        "type": "http",
+        "method": "POST",
+        "headers": [(b"content-type", b"application/json")] + (headers or []),
+    }
+
+
+def _receive_for(body: bytes):
+    sent = False
+
+    async def receive():
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
+@pytest.mark.asyncio
+async def test_peel_corrects_content_length_to_the_payload():
+    """The client measured the wrapper; the app receives only the payload.
+
+    Leaving the original length behind would misinform anything downstream that
+    trusts the header — a body-size guard, or a proxy — about a body that is now
+    several kilobytes smaller.
+    """
+    payload = [{"itemCode": "49-01", "quantity": 1}]
+    wrapped = json.dumps({"signedSnapshot": {"kid": "k1", "big": "x" * 5000}, "payload": payload}).encode()
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app)
+
+    await middleware(
+        _json_scope([(b"content-length", str(len(wrapped)).encode())]),
+        _receive_for(wrapped),
+        None,
+    )
+
+    assert json.loads(app.body) == payload
+    assert dict(app.headers)[b"content-length"] == str(len(app.body)).encode()
+    # The wrapper's length must not survive anywhere in the header list.
+    assert [v for n, v in app.headers if n == b"content-length"] == [str(len(app.body)).encode()]
+
+
+@pytest.mark.asyncio
+async def test_peel_leaves_a_legacy_body_and_its_length_alone():
+    """A bare array is forwarded untouched, so its length is still correct."""
+    body = json.dumps([{"itemCode": "49-01", "quantity": 1}]).encode()
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app)
+
+    await middleware(
+        _json_scope([(b"content-length", str(len(body)).encode())]),
+        _receive_for(body),
+        None,
+    )
+
+    assert app.body == body
+    assert app.snapshot is None
+    assert dict(app.headers)[b"content-length"] == str(len(body)).encode()
+
+
+@pytest.mark.asyncio
+async def test_peel_exposes_the_snapshot_on_the_scope():
+    snapshot = {"kid": "k1", "signature": "sig"}
+    wrapped = json.dumps({"signedSnapshot": snapshot, "payload": []}).encode()
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app)
+
+    await middleware(_json_scope(), _receive_for(wrapped), None)
+
+    assert app.snapshot == snapshot
+
+
+@pytest.mark.asyncio
+async def test_peel_reassembles_a_body_split_across_chunks():
+    """uvicorn delivers a large body in several messages, not one."""
+    payload = [{"i": n} for n in range(500)]
+    wrapped = json.dumps({"signedSnapshot": {"kid": "k1"}, "payload": payload}).encode()
+    midpoint = len(wrapped) // 2
+    remaining = [wrapped[:midpoint], wrapped[midpoint:]]
+
+    async def receive():
+        if remaining:
+            chunk = remaining.pop(0)
+            return {"type": "http.request", "body": chunk, "more_body": bool(remaining)}
+        return {"type": "http.disconnect"}
+
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app)
+
+    await middleware(_json_scope(), receive, None)
+
+    assert json.loads(app.body) == payload
+
+
+@pytest.mark.asyncio
+async def test_peel_on_disconnect_does_not_invoke_the_app():
+    """The client vanished mid-body.
+
+    The app must not be handed a receive channel already drained past the
+    disconnect: it would wait on a message that never arrives.
+    """
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app)
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    await middleware(_json_scope(), receive, None)
+
+    assert app.snapshot == "<not called>", "the app should never have run"
+
+
+@pytest.mark.asyncio
+async def test_peel_skips_non_json_content_types():
+    """Only JSON bodies can carry the envelope; others pass through untouched."""
+    body = b"raw bytes"
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app)
+
+    await middleware(
+        {"type": "http", "method": "POST", "headers": [(b"content-type", b"text/plain")]},
+        _receive_for(body),
+        None,
+    )
+
+    assert app.body == body
+    assert app.snapshot is None

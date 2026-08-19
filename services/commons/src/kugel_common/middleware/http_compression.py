@@ -150,8 +150,22 @@ class RequestDecompressionMiddleware:
             if name == b"content-encoding":
                 encoding = value.strip().lower()
                 break
-        if encoding not in _DECOMPRESSORS:
+        if encoding is None or encoding == b"identity":
             await self.app(scope, receive, send)
+            return
+        if encoding not in _DECOMPRESSORS:
+            # Refuse rather than pass an encoding we cannot expand through: the
+            # body would reach the app still compressed, and a JSON-parsing
+            # middleware downstream would read that as "not a wrapped request"
+            # and silently take the legacy path. That includes a comma-separated
+            # chain such as "gzip, br", which we deliberately do not support.
+            logger.warning("Rejected unsupported Content-Encoding: %s", encoding.decode(errors="replace"))
+            await _send_json_error(
+                send,
+                415,
+                f"Unsupported Content-Encoding: {encoding.decode(errors='replace')}",
+                self.error_code,
+            )
             return
 
         body = b""
