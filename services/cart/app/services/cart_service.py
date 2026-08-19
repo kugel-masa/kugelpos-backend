@@ -27,6 +27,7 @@ from app.exceptions import (
     SnapshotInvalidException,
     SnapshotScopeViolationException,
     SnapshotTerminalStateException,
+    SnapshotCartIdMismatchException,
 )
 from app.models.repositories.cart_repository import CartRepository
 from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
@@ -863,6 +864,20 @@ class CartService(ICartService):
             if snapshot_cart.status not in snapshot_service.RESTORABLE_STATUSES or not snapshot_cart.cart_id:
                 raise SnapshotInvalidException(
                     f"Snapshot cart is not operable: status={snapshot_cart.status} cart_id={snapshot_cart.cart_id}",
+                    logger,
+                )
+
+            # The URL path names the cart the client addressed; the snapshot must
+            # agree. Below, the reconstructed cart replaces the cached one and
+            # __get_cached_cart_async ignores its cart_id argument, so a mismatch
+            # would silently operate on (and return) a different cart than the one
+            # requested — invisible to the client and to the audit trail, which
+            # records the snapshot's cart_id. Reject rather than let the snapshot
+            # override the request target.
+            if self.cart_id is not None and snapshot_cart.cart_id != self.cart_id:
+                raise SnapshotCartIdMismatchException(
+                    f"Snapshot cart_id does not match the requested cart: "
+                    f"snapshot={snapshot_cart.cart_id} requested={self.cart_id}",
                     logger,
                 )
         except ServiceException as e:

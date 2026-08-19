@@ -56,6 +56,7 @@ class CartErrorCode:
     REQUEST_BODY_TOO_LARGE = "401509"  # Decompressed request body exceeds the size guard
     SEQUENCE_ANOMALY = "401510"  # Transaction sequence duplicate/gap detected (audit)
     FINALIZE_CONFLICT = "401511"  # cart_id already finalized as a different transaction
+    SNAPSHOT_CART_ID_MISMATCH = "401512"  # Carried snapshot addresses a different cart than the URL
 
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
@@ -103,6 +104,7 @@ class CartErrorMessage:
             CartErrorCode.REQUEST_BODY_TOO_LARGE: "リクエストボディが大きすぎます",
             CartErrorCode.SEQUENCE_ANOMALY: "取引連番の重複または欠番を検出しました",
             CartErrorCode.FINALIZE_CONFLICT: "このカートは別の取引として既に確定済みです",
+            CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "端末の状態を確認してください",
             CartErrorCode.SIGN_IN_OUT_ERROR: "担当者の登録状況を確認してください",
@@ -141,6 +143,7 @@ class CartErrorMessage:
             CartErrorCode.REQUEST_BODY_TOO_LARGE: "Request body too large",
             CartErrorCode.SEQUENCE_ANOMALY: "Transaction sequence duplicate or gap detected",
             CartErrorCode.FINALIZE_CONFLICT: "This cart was already finalized as a different transaction",
+            CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "Carried snapshot addresses a different cart than the URL",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "Check terminal status",
             CartErrorCode.SIGN_IN_OUT_ERROR: "Check sign-in/out status",

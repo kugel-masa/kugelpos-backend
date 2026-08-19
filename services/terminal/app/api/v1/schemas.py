@@ -16,7 +16,15 @@ Each class represents a specific data structure used in the API endpoints for:
 
 from typing import Optional
 
+from pydantic import Field
+
 from app.api.common.schemas import *
+
+# Absolute ceiling for a client-carried counter (issue #156). The open-time
+# reconcile is a monotonic max(), so any accepted value is permanent — this
+# bounds the damage a malformed client can do to the counter space while
+# staying far above any realistic terminal lifetime.
+MAX_CARRIED_COUNTER = 100_000_000
 
 
 # Store-related schemas
@@ -113,11 +121,17 @@ class TerminalOpenRequest(BaseTerminalOpenRequest):
     - initial_amount: The initial cash amount in the terminal drawer
     - business_counter / receipt_no: client-carried counter values (issue #156).
       The terminal owns these and may have advanced them offline; the service
-      reconciles via max() so an offline-used value is never reused.
+      reconciles via max() so an offline-used value is never reused. Because
+      that reconcile is monotonic and therefore irreversible, the values are
+      bounded here: negatives are rejected outright and the absolute ceiling
+      keeps a malformed client from permanently burning the counter space.
+      A value that is merely ahead of the stored one is still accepted — that
+      is the offline case this exists for — but see the per-open jump guard in
+      TerminalService.open_terminal_async.
     """
 
-    business_counter: Optional[int] = None
-    receipt_no: Optional[int] = None
+    business_counter: Optional[int] = Field(default=None, ge=0, le=MAX_CARRIED_COUNTER)
+    receipt_no: Optional[int] = Field(default=None, ge=0, le=MAX_CARRIED_COUNTER)
 
 
 class TerminalCloseRequest(BaseTerminalCloseRequest):

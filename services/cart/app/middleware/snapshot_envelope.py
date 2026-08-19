@@ -29,6 +29,7 @@ The peel runs OUTSIDE the request-logging middleware so the large snapshot is
 not duplicated into the request log (NFR-005 / issue #155): the log observes
 only the peeled payload.
 """
+
 from logging import getLogger
 import json
 

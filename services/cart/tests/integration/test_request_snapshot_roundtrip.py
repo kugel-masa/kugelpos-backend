@@ -353,3 +353,45 @@ async def test_tampered_wrapped_request_is_rejected(http_client, snapshot_keys):
     ]
     assert logs, "expected a rejected audit record for the tampered request"
     assert any((log.get("api_path") or "").endswith("/lineItems") for log in logs), logs
+
+
+@pytest.mark.asyncio
+async def test_snapshot_for_a_different_cart_is_rejected(http_client, snapshot_keys):
+    """A validly-signed snapshot of cart B may not be used against cart A's URL.
+
+    On the stateless path the reconstructed cart replaces the cached one, so
+    without this check the operation would silently be applied to — and the
+    response returned for — a cart the client never addressed (issue #156).
+    """
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_a, _, _ = await _create_cart_with_items(http_client)
+    cart_b, snapshot_b, _ = await _create_cart_with_items(http_client)
+    assert cart_a != cart_b
+    assert snapshot_b is not None
+
+    # Address cart A but carry cart B's (genuine, untampered) snapshot.
+    wrapped = {"signedSnapshot": snapshot_b, "payload": [{"itemCode": "49-01", "quantity": 1}]}
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_a}/lineItems?terminal_id={terminal_id}",
+        json=wrapped,
+        headers=headers,
+    )
+
+    assert r.status_code == status.HTTP_400_BAD_REQUEST, r.text
+    assert r.json()["code"] == status.HTTP_400_BAD_REQUEST
+    # Dedicated error code so the mismatch is distinguishable from a tamper.
+    assert "401512" in r.text, r.text
+
+    # The rejection is audited under the snapshot's cart_id (cart B).
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"db_cart_{os.environ.get('TENANT_ID')}")
+    logs = [
+        doc
+        async for doc in db[settings.DB_COLLECTION_NAME_LOG_CART_RESTORE].find(
+            {"cart_id": cart_b, "result": "rejected"}
+        )
+    ]
+    assert logs, "expected a rejected audit record for the cross-cart request"

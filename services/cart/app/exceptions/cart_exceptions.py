@@ -419,6 +419,23 @@ class SnapshotRequiredException(ServiceException):
         )
 
 
+class SnapshotCartIdMismatchException(ServiceException):
+    """Raised when the carried snapshot addresses a different cart than the URL path
+    (issue #156). On the stateless path the reconstructed cart replaces the cached one,
+    so a mismatch would silently operate on — and return — a cart the client never
+    addressed. Reject it instead of letting the snapshot override the request target."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_CART_ID_MISMATCH,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_CART_ID_MISMATCH),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
 class FinalizeConflictException(ServiceException):
     """Raised when a cart_id is reused for a DIFFERENT finalize than the one already
     persisted (issue #156 / bug_008): e.g. a stale-snapshot cancel replayed over a

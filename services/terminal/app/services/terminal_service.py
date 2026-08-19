@@ -55,6 +55,12 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
+# Largest jump a client-carried counter may make above the stored value at open
+# (issue #156). Generous enough to cover any real offline session's opens/bills,
+# small enough that a malformed client cannot permanently burn the number space
+# through the irreversible max() reconcile.
+MAX_COUNTER_JUMP = 100_000
+
 
 class TerminalService:
     """
@@ -394,6 +400,35 @@ class TerminalService:
 
     # Terminal open/close methods
 
+    def __check_carried_counter_jump(self, field: str, stored: int, carried: int) -> None:
+        """
+        Reject a client-carried counter that is implausibly far ahead of the stored
+        value (issue #156).
+
+        The open-time reconcile is max()-based and therefore irreversible: once a
+        value is accepted the terminal can never issue a number at or below it
+        again. An offline session legitimately advances the counter by at most a
+        session's worth of opens (business_counter) or bills (receipt_no), so a
+        jump beyond MAX_COUNTER_JUMP indicates a malformed or corrupted client,
+        not an offline gap. Reject rather than silently burn the number space.
+
+        Args:
+            field: Counter name, for the error message.
+            stored: Currently persisted counter value.
+            carried: Client-carried value (None when nothing was carried).
+
+        Raises:
+            TerminalOpenException: The carried value exceeds the allowed jump.
+        """
+        if carried is None:
+            return
+        if carried > stored + MAX_COUNTER_JUMP:
+            message = (
+                f"Client-carried {field} is implausibly far ahead: carried={carried} stored={stored} "
+                f"(max jump {MAX_COUNTER_JUMP}). Terminal: {self.terminal_id}"
+            )
+            raise TerminalOpenException(message=message, logger=logger)
+
     async def open_terminal_async(
         self,
         initial_amout: float,
@@ -437,6 +472,18 @@ class TerminalService:
         # reused (terminal service is the durable home; gaps allowed, no reuse).
         # getattr-guarded reads: an existing terminal loaded from storage may
         # have been model_construct'd without the new receipt_no field.
+        # The reconcile is monotonic, so an accepted value can never be walked
+        # back: a client that carries a wildly-ahead counter would permanently
+        # burn the number space. A legitimate offline session advances by at most
+        # a session's worth of opens/bills, so anything beyond MAX_COUNTER_JUMP
+        # above the stored value is a malformed client, not an offline gap —
+        # reject it and let the operator reconcile deliberately.
+        self.__check_carried_counter_jump(
+            "business_counter", getattr(terminal, "business_counter", None) or 0, client_business_counter
+        )
+        self.__check_carried_counter_jump(
+            "receipt_no", getattr(terminal, "receipt_no", None) or 0, client_receipt_no
+        )
         if client_business_counter is not None:
             terminal.business_counter = max(getattr(terminal, "business_counter", None) or 0, client_business_counter)
         if client_receipt_no is not None:
