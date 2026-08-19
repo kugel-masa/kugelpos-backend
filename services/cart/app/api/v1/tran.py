@@ -452,7 +452,10 @@ async def void_transaction_by_transaction_no(
         business_counter = tran_service.terminal_info.business_counter
 
     try:
-        tranlog = await tran_service.get_tranlog_by_transaction_no_async(
+        # Scoped to the session, but reporting "not found" for a number that exists
+        # in an earlier one would send the operator back to re-read the receipt
+        # instead of switching to a return.
+        tranlog = await tran_service.get_tranlog_for_void_async(
             store_code=store_code,
             terminal_no=terminal_no,
             transaction_no=transaction_no,

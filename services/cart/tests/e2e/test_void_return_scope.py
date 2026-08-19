@@ -101,11 +101,17 @@ async def _insert_sale(
 
 
 async def _cleanup(transaction_no, store_code, cart_id):
+    """Remove what a test staged, scoped so it cannot reach another test's rows."""
     db = await _cart_db()
-    await db[settings.DB_COLLECTION_NAME_TRAN_LOG].delete_many({"transaction_no": transaction_no})
-    await db[settings.DB_COLLECTION_NAME_TRAN_LOG].delete_many({"origin.cart_id": cart_id})
-    await db[settings.DB_COLLECTION_NAME_TRAN_LOG].delete_many({"origin.transaction_no": transaction_no})
-    await db[settings.DB_COLLECTION_NAME_STATUS_TRAN].delete_many({"store_code": store_code})
+    tranlogs = db[settings.DB_COLLECTION_NAME_TRAN_LOG]
+    # The staged original, keyed the way it was inserted.
+    await tranlogs.delete_many({"transaction_no": transaction_no, "store_code": store_code})
+    # ...and the void/return produced from it, which belongs to THIS terminal
+    # rather than the original's store, so it is reachable only via its origin.
+    await tranlogs.delete_many({"origin.transaction_no": transaction_no, "origin.store_code": store_code})
+    await db[settings.DB_COLLECTION_NAME_STATUS_TRAN].delete_many(
+        {"store_code": store_code, "transaction_no": transaction_no}
+    )
 
 
 def _url(store_code, terminal_no, transaction_no, action, business_counter=None):
@@ -157,6 +163,58 @@ async def test_void_rejects_a_past_open_session(http_client, opened_terminal_id)
         assert "401514" in response.text, response.text
     finally:
         await _cleanup(transaction_no, store_code, cart_id)
+
+
+@pytest.mark.asyncio
+async def test_void_of_a_past_session_explains_itself_without_an_epoch(http_client, opened_terminal_id):
+    """Omitting the epoch must not turn "use a return" into "no such transaction".
+
+    Without an epoch the lookup is scoped to the current session, so an older sale
+    is simply absent from it. Reporting 404 would tell the operator the receipt
+    number is wrong; they would retype it instead of switching to a return. The
+    number IS right — the sale is just out of a void's reach.
+    """
+    store_code = os.environ.get("STORE_CODE")
+    terminal_no = int(os.environ.get("TERMINAL_ID").split("-")[-1])
+    transaction_no = 7106
+    cart_id = "e2e-scope-past-no-epoch"
+
+    await _insert_sale(
+        store_code=store_code,
+        terminal_no=terminal_no,
+        business_date="20200101",
+        business_counter=7799,
+        transaction_no=transaction_no,
+        cart_id=cart_id,
+    )
+    try:
+        response = await http_client.post(
+            _url(store_code, terminal_no, transaction_no, "void"),
+            json=[{"paymentCode": "01", "amount": 550.0}],
+            headers=_api_header(),
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+        assert "401514" in response.text, response.text
+    finally:
+        await _cleanup(transaction_no, store_code, cart_id)
+
+
+@pytest.mark.asyncio
+async def test_void_of_an_unknown_number_is_still_not_found(http_client, opened_terminal_id):
+    """A number that exists nowhere must keep reporting 404, not the session error.
+
+    Otherwise the fix above would mask a genuine mistyped receipt.
+    """
+    store_code = os.environ.get("STORE_CODE")
+    terminal_no = int(os.environ.get("TERMINAL_ID").split("-")[-1])
+
+    response = await http_client.post(
+        _url(store_code, terminal_no, 7999, "void"),
+        json=[{"paymentCode": "01", "amount": 550.0}],
+        headers=_api_header(),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND, response.text
 
 
 @pytest.mark.asyncio
@@ -358,7 +416,8 @@ async def test_return_accepts_another_store_and_a_past_session(http_client, open
 async def test_return_still_refuses_another_tenant(http_client, opened_terminal_id):
     """Widening the store scope must not have widened the tenant boundary."""
     response = await http_client.post(
-        _url(OTHER_STORE, OTHER_TERMINAL, 7202, "return").replace(f"/tenants/{_tenant_id()}/", "/tenants/T0000/"),
+        f"/api/v1/tenants/T0000/stores/{OTHER_STORE}/terminals/{OTHER_TERMINAL}"
+        f"/transactions/7202/return?terminal_id={os.environ.get('TERMINAL_ID')}",
         json=[{"paymentCode": "01", "amount": 550.0}],
         headers=_api_header(),
     )

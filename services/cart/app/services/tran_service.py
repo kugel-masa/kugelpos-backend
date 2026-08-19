@@ -473,6 +473,49 @@ class TranService:
         transaction_list = await self.get_transaction_list_with_status_async([tran])
         return transaction_list[0] if transaction_list else tran
 
+    async def get_tranlog_for_void_async(
+        self, store_code: str, terminal_no: int, transaction_no: int, business_counter: int
+    ):
+        """
+        Resolve the transaction a void is aimed at.
+
+        A void reaches only this terminal's current open session, so the lookup is
+        scoped to it. When nothing is found there, "not found" would be a
+        misdiagnosis if the number does exist in an earlier session: at the
+        register that reads as "you mistyped the receipt", and the operator
+        retypes instead of switching to a return. So check, and say which it is.
+
+        Args:
+            store_code: Store code of the transaction
+            terminal_no: Terminal number of the transaction
+            transaction_no: Transaction number (per-open seq in phase 2)
+            business_counter: Open epoch to look in
+
+        Returns:
+            BaseTransaction: The transaction to void
+
+        Raises:
+            VoidOutOfSessionException: The number belongs to another session.
+            DocumentNotFoundException: No such transaction anywhere.
+        """
+        try:
+            return await self.get_tranlog_by_transaction_no_async(
+                store_code=store_code,
+                terminal_no=terminal_no,
+                transaction_no=transaction_no,
+                business_counter=business_counter,
+            )
+        except DocumentNotFoundException:
+            if not await self.tranlog_repository.exists_in_any_session_async(
+                store_code=store_code, terminal_no=terminal_no, transaction_no=transaction_no
+            ):
+                raise
+            message = (
+                f"Void is limited to the current open session (business_counter={business_counter}), "
+                f"but transaction_no={transaction_no} belongs to an earlier one. Use a return instead."
+            )
+            raise VoidOutOfSessionException(message, logger)
+
     async def _resolve_carried_finalize(
         self, finalize_envelope: dict | None
     ) -> tuple[str, int, int, str]:

@@ -1,8 +1,8 @@
 [tool.ruff]
-# Match the black configuration below. CLAUDE.md tells contributors to run
-# `ruff check` / `ruff format`, but ruff defaults to 88 columns, so without this
-# it reported almost every file in the repository as needing reformatting and the
-# instruction could not be followed.
+# Match the black configuration below. CLAUDE.md tells contributors to run ruff,
+# but ruff defaults to 88 columns, so without this it reported almost every file
+# in the repository as needing reformatting and the instruction could not be
+# followed.
 line-length = 120
 target-version = "py312"
 

@@ -162,6 +162,31 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             raise TransactionAmbiguousException(message, logger)
         return matches[0]
 
+    async def exists_in_any_session_async(self, store_code: str, terminal_no: int, transaction_no: int) -> bool:
+        """
+        Whether a transaction with this number exists in ANY open session.
+
+        Used to tell "the number is wrong" apart from "the number is right but the
+        sale belongs to a session this operation cannot reach" (issue #156). The
+        two need different answers at the register: one means re-read the receipt,
+        the other means use a return instead.
+
+        Args:
+            store_code: Store code where the transaction occurred
+            terminal_no: Terminal number where the transaction occurred
+            transaction_no: Transaction number (per-open seq in phase 2)
+
+        Returns:
+            bool: True if at least one transaction carries this number
+        """
+        query = {
+            "tenant_id": self.terminal_info.tenant_id,
+            "store_code": store_code,
+            "terminal_no": terminal_no,
+            "transaction_no": transaction_no,
+        }
+        return await self.get_one_async(query) is not None
+
     # get tranlog list by query parameters
     async def get_tranlog_list_by_query_async(
         self,
