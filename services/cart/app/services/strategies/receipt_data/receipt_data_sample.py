@@ -176,7 +176,7 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
         # which is why the store code is here and not left implicit.
         page.lines.append(self.line_split("店舗コード", f"{tran.store_code}"))
         page.lines.append(self.line_split("レジNo.", f"{tran.terminal_no}"))
-        page.lines.append(self.line_split("営業回", f"{tran.business_counter}"))
+        page.lines.append(self.line_split("営業回数", f"{tran.business_counter}"))
         page.lines.append(self.line_split("取引通番", f"{tran.transaction_no}"))
 
         # stamp duty
@@ -595,11 +595,11 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
         receipt_no_str = str(tran.origin.receipt_no) if tran.origin.receipt_no is not None else ""
         return_lines.append(self.line_split("レシートNo.", receipt_no_str))
 
-        # 営業回 — 取引通番は営業回ごとに振り直されるため、対で初めて元取引を特定できる
+        # 営業回数 — 取引通番は営業回数ごとに振り直されるため、対で初めて元取引を特定できる
         business_counter_str = (
             str(tran.origin.business_counter) if tran.origin.business_counter is not None else ""
         )
-        return_lines.append(self.line_split("営業回", business_counter_str))
+        return_lines.append(self.line_split("営業回数", business_counter_str))
 
         # 取引通番
         tran_no_str = str(tran.origin.transaction_no) if tran.origin.transaction_no is not None else ""

@@ -107,8 +107,8 @@ class CartErrorMessage:
             CartErrorCode.SEQUENCE_ANOMALY: "取引連番の重複または欠番を検出しました",
             CartErrorCode.FINALIZE_CONFLICT: "このカートは別の取引として既に確定済みです",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
-            CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回に該当します。business_counter を指定してください",
-            CartErrorCode.VOID_OUT_OF_SESSION: "取消は当日かつ現在の営業回の取引のみ可能です。過去の取引は返品で処理してください",
+            CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回数に該当します。business_counter を指定してください",
+            CartErrorCode.VOID_OUT_OF_SESSION: "取消は当日かつ現在の営業回数の取引のみ可能です。過去の取引は返品で処理してください",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "端末の状態を確認してください",
             CartErrorCode.SIGN_IN_OUT_ERROR: "担当者の登録状況を確認してください",

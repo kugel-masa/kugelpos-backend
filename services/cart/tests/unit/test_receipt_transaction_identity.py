@@ -71,7 +71,7 @@ def test_sales_receipt_labels_the_open_epoch():
     """A bare number is useless to an operator; it needs a label to key on."""
     text = _receipt_text(_sale())
 
-    assert "営業回" in text, text
+    assert "営業回数" in text, text
     assert "取引通番" in text, text
     assert "店舗コード" in text, text
 
@@ -100,4 +100,4 @@ def test_return_receipt_names_the_original_epoch():
     assert "9999" in text, text
     assert "17" in text, text
     assert "55" in text, text
-    assert "営業回" in text, text
+    assert "営業回数" in text, text
