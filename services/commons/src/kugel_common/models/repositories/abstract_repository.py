@@ -128,22 +128,42 @@ class AbstractRepository(ABC, Generic[Tdocument]):
     async def abort_transaction(self):
         """
         Abort the current transaction
-        
+
         Cancels all operations performed within the transaction and
         rolls back any changes made.
-        
+
+        Callers abort from an exception handler, so this must not raise an
+        exception of its own: doing so replaces the failure being handled with
+        a cleanup error and loses the reason (issue #172). A commit that fails
+        leaves the session set but past the point where it can be aborted -
+        the driver answers "Cannot call abortTransaction after calling
+        commitTransaction" - so the abort is attempted only while the session
+        is still in a transaction, and any failure is logged rather than
+        propagated. The session is released either way.
+
         Raises:
             RepositoryException: If no transaction is in progress
         """
         logger.debug(f"Aborting transaction for collection: {self.collection_name}")
-        if self.session is not None:
-            await self.session.abort_transaction()
-            await self.session.end_session()
-            self.session = None
-        else:
+        if self.session is None:
             raise RepositoryException(
                 "No transaction started", self.collection_name, logger
             )
+        try:
+            if getattr(self.session, "in_transaction", True):
+                await self.session.abort_transaction()
+        except Exception as e:
+            logger.warning(
+                f"Transaction abort skipped for collection {self.collection_name}: {e}"
+            )
+        finally:
+            try:
+                await self.session.end_session()
+            except Exception as e:
+                logger.warning(
+                    f"Session close failed for collection {self.collection_name}: {e}"
+                )
+            self.session = None
 
     def set_session(self, session: AsyncIOMotorClientSession):
         """
