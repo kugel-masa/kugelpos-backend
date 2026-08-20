@@ -32,8 +32,11 @@ from app.models.documents.cart_document import CartDocument
 
 logger = getLogger(__name__)
 
-SNAPSHOT_SCHEMA_VERSION = 1
-SUPPORTED_SCHEMA_VERSIONS = {1}
+# Version 2 adds the cart document's monotonic `revision` (issue #165). Version 1
+# envelopes are still accepted: a client that has not migrated presents one, and
+# rejecting it would break the very failover the snapshot exists for.
+SNAPSHOT_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {1, 2}
 
 # Cart statuses a snapshot may be restored into. Terminal states (Completed /
 # Cancelled) are rejected idempotently by the caller; anything else is invalid.
@@ -142,6 +145,11 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
     if signer is None:
         return None
     try:
+        # One snapshot is issued per mutating response, so bumping here is
+        # "once per cart mutation" (issue #165). The envelope the terminal is
+        # handed therefore always carries a higher revision than the one it
+        # presented; replaying an older one is visible as a lower number.
+        cart_doc.revision = (cart_doc.revision or 0) + 1
         payload = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "issued_at": get_app_time_str(),
@@ -351,15 +359,70 @@ def extract_audit_meta(envelope: dict) -> dict:
         "snapshot_terminal_no": _as(envelope.get("terminal_no"), int),
         "snapshot_kid": _as(envelope.get("kid"), str),
         "snapshot_schema_version": _as(envelope.get("schema_version"), int),
+        "snapshot_revision": (extract_snapshot_marks(envelope) or {}).get("revision"),
     }
 
 
+def extract_snapshot_marks(envelope: dict) -> Optional[dict]:
+    """
+    The few scalars worth carrying into the request log (issue #165).
+
+    Best-effort and never raising: this runs on the request path for every
+    carried snapshot, including malformed ones, and its only job is to leave
+    behind enough to spot a rollback afterwards - a `revision` sequence for a
+    cart_id that is not increasing.
+
+    Args:
+        envelope: The presented snapshot envelope, in whatever shape it arrived
+
+    Returns:
+        Dict with cart_id / revision / schema_version / kid, or None when the
+        envelope carries nothing recognisable
+    """
+    if not isinstance(envelope, dict):
+        return None
+
+    def pick(*names):
+        """Accept both spellings: this runs before the envelope is normalised.
+
+        The signing canonical form is snake_case, but a terminal presents the
+        envelope exactly as it received it - camelCase, per the response alias
+        generator - and the peel middleware sees that wire form.
+        """
+        for name in names:
+            if name in envelope:
+                return envelope[name]
+        return None
+
+    cart_document = pick("cart_document", "cartDocument")
+    revision = None
+    if isinstance(cart_document, dict):
+        revision = cart_document.get("revision")
+    schema_version = pick("schema_version", "schemaVersion")
+    kid = envelope.get("kid")
+
+    marks = {
+        "cart_id": _safe_cart_id(envelope),
+        "revision": revision if isinstance(revision, int) else None,
+        "schema_version": schema_version if isinstance(schema_version, int) else None,
+        "kid": kid if isinstance(kid, str) else None,
+    }
+    return marks if any(v is not None for v in marks.values()) else None
+
+
 def _safe_cart_id(envelope: dict) -> Optional[str]:
-    """Best-effort cart_id extraction for logging; never raises."""
+    """Best-effort cart_id extraction for logging; never raises.
+
+    Accepts the wire form as well as the signing canonical form: an envelope
+    reaches the peel middleware exactly as the terminal received it, which is
+    camelCase (issue #165).
+    """
     try:
         cart_document = envelope.get("cart_document")
+        if not isinstance(cart_document, dict):
+            cart_document = envelope.get("cartDocument")
         if isinstance(cart_document, dict):
-            return cart_document.get("cart_id")
+            return cart_document.get("cart_id") or cart_document.get("cartId")
     except Exception:
         pass
     return None

@@ -49,6 +49,12 @@ class CartDocument(BaseTransaction):
     # Client-carried cart phase 2 (issue #156). Carried in the snapshot so that
     # transaction numbering and time are deterministic across retries/backends.
     seq: Optional[int] = 0  # Per-open-session transaction sequence; 0 until first finalize
+    # Monotonic revision of this cart (issue #165), incremented once per issued
+    # snapshot. The signature covers it, so a replayed older envelope carries a
+    # lower number than one the terminal has already been handed - which is what
+    # makes a rollback visible after the fact. Detection only: a stateless
+    # backend cannot know the high-water mark without a per-request write.
+    revision: Optional[int] = 0
     # Running receipt counter (issue #166): the terminal's count of finalized
     # transactions, seeded at open and advanced with seq. The printed receipt_no
     # is derived from it and the configured range, so the wrap lives in the

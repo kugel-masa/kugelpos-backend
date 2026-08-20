@@ -44,6 +44,7 @@ class CartRestoreLogRepository(AbstractRepository[CartRestoreLogDocument]):
         snapshot_terminal_no: Optional[int] = None,
         snapshot_kid: Optional[str] = None,
         snapshot_schema_version: Optional[int] = None,
+        snapshot_revision: Optional[int] = None,
     ) -> CartRestoreLogDocument:
         """
         Append one restore/snapshot-event audit record for the terminal.
@@ -69,6 +70,7 @@ class CartRestoreLogRepository(AbstractRepository[CartRestoreLogDocument]):
             snapshot_terminal_no=snapshot_terminal_no,
             snapshot_kid=snapshot_kid,
             snapshot_schema_version=snapshot_schema_version,
+            snapshot_revision=snapshot_revision,
             event_datetime=get_app_time_str(),
         )
         await self.create_async(record)
