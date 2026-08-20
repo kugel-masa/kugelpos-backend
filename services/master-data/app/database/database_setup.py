@@ -196,11 +196,13 @@ async def seed_terminal_facing_settings(tenant_id: str):
     repository = SettingsMasterRepository(db, tenant_id)
 
     for name in TERMINAL_FACING_SETTING_NAMES:
-        default_value = _shared_default(name)
-        if not default_value:
-            logger.warning(f"No shared default for setting {name}; not seeding it")
-            continue
         try:
+            # Inside the try: resolving the value reads the environment, and a
+            # tenant that cannot be seeded must still be created.
+            default_value = _shared_default(name)
+            if not default_value:
+                logger.warning(f"No shared default for setting {name}; not seeding it")
+                continue
             if await repository.get_settings_by_name_async(name) is not None:
                 continue
             await repository.create_settings_async(

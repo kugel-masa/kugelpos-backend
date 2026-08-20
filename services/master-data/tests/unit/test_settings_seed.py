@@ -131,6 +131,19 @@ class TestSeeding:
 
 class TestFailureIsNotFatal:
     @pytest.mark.asyncio
+    async def test_a_failing_resolver_does_not_fail_tenant_setup(self):
+        # Resolving the value reads the environment, so it can fail too - and a
+        # tenant that cannot be seeded must still be created.
+        repository = _repository()
+        with (
+            _patch_db(repository),
+            patch("app.database.database_setup._shared_default", side_effect=RuntimeError("bad .env")),
+        ):
+            await seed_terminal_facing_settings("T0001")  # must not raise
+
+        repository.created.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_a_failed_seed_does_not_fail_tenant_setup(self):
         # A tenant without its defaults still works: services fall back to their
         # own configuration. Failing setup over it would be worse.
