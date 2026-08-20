@@ -2,7 +2,11 @@
 from app.config.settings import settings
 from logging import getLogger
 
+from kugel_common.config.settings_app import AppSettings
 from kugel_common.database import database as db_helper
+
+from app.models.documents.settings_master_document import SettingsMasterDocument
+from app.models.repositories.settings_master_repository import SettingsMasterRepository
 
 # setup logger
 logger = getLogger(__name__)
@@ -132,8 +136,75 @@ async def create_collections(tenant_id: str):
     # add more collections here
 
 
+# Settings a POS terminal must be able to read, seeded so the documented lookup
+# (GET /tenants/{tenant_id}/settings/{name}/value) can answer for them (issue
+# #174). Services resolve a missing setting from their own configuration, but
+# that fallback is invisible over the API - and since #166 the terminal derives
+# the printed receipt number from this range itself, so it has to be able to
+# read the same values the backend uses.
+# Read from commons rather than restated here: this service does not inherit
+# AppSettings, and a second copy of the value would drift from the one the
+# services actually number with.
+TERMINAL_FACING_SETTING_NAMES = ("RECEIPT_NO_START_VALUE", "RECEIPT_NO_END_VALUE")
+
+
+def _shared_default(name: str) -> str:
+    """
+    The default a service would fall back to for `name`, as a string.
+
+    Args:
+        name: Setting name defined on kugel_common's AppSettings
+
+    Returns:
+        The default value rendered as the string the settings master stores
+    """
+    field = AppSettings.model_fields.get(name)
+    return str(field.default) if field is not None else ""
+
+
+async def seed_terminal_facing_settings(tenant_id: str):
+    """
+    Insert the terminal-facing settings a tenant does not already have.
+
+    Insert-if-absent: tenant setup is re-runnable (it is how index migrations
+    reach existing tenants), and an operator's own value must never be
+    overwritten by a default.
+
+    Args:
+        tenant_id: Tenant to seed
+
+    Returns:
+        None
+    """
+    db_name = f"{settings.DB_NAME_PREFIX}_{tenant_id}"
+    db = await db_helper.get_db_async(db_name)
+    # Through the repository, not a raw insert: it stamps the fields the rest of
+    # the service expects (created_at, which the response schema renders as
+    # entry_datetime, and the shard key). A hand-built document listed fine in
+    # Mongo and then failed the settings-list endpoint's response validation.
+    repository = SettingsMasterRepository(db, tenant_id)
+
+    for name in TERMINAL_FACING_SETTING_NAMES:
+        default_value = _shared_default(name)
+        if not default_value:
+            logger.warning(f"No shared default for setting {name}; not seeding it")
+            continue
+        try:
+            if await repository.get_settings_by_name_async(name) is not None:
+                continue
+            await repository.create_settings_async(
+                SettingsMasterDocument(name=name, default_value=default_value, values=[])
+            )
+            logger.info(f"Seeded setting {name}={default_value} for tenant_id:{tenant_id}")
+        except Exception as e:
+            # A tenant without its defaults still works (services fall back to
+            # their own configuration); failing setup over it would be worse.
+            logger.warning(f"Could not seed setting {name} for tenant_id:{tenant_id}: {e}")
+
+
 # setup database
 async def execute(tenant_id: str):
     logger.info(f"Setting up database for tenant_id:{tenant_id} execution started...")
     await create_collections(tenant_id)
+    await seed_terminal_facing_settings(tenant_id)
     # add more setup tasks here

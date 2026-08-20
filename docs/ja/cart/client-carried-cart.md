@@ -146,7 +146,7 @@ receipt_no = RECEIPT_NO_START_VALUE + ((receipt_counter - 1) mod レンジ幅)
 | `receipt_no` | 導出値（端末には保存しない） | カウンタに従い、レンジ内で巻く |
 | レンジ（`RECEIPT_NO_START_VALUE` / `RECEIPT_NO_END_VALUE`） | master-data 設定 | 運用者が変更したとき |
 
-クライアントはレンジを他の端末設定と同様に master-data から取得し（`GET /tenants/{tenant_id}/settings/{name}/value`）、カウンタは open 時に端末トークンの `receipt_counter` クレームで受け取る。次の open で自分の高水位を提示し、`max()` で突合されるため、オフラインセッション中に使った番号が再発行されることはない。
+クライアントはレンジを他の端末設定と同様に master-data から取得し（`GET /tenants/{tenant_id}/settings/{name}/value`）、カウンタは open 時に端末トークンの `receipt_counter` クレームで受け取る。テナント初期化時に `RECEIPT_NO_START_VALUE` / `RECEIPT_NO_END_VALUE` を既定値でシードするため、この取得は必ず応答する（#174）。設定が無い場合サービスは自身の設定にフォールバックするが、その値は API からは見えず、クライアントはバックエンドが採番に使うのと同じレンジを見る必要があるため。次の open で自分の高水位を提示し、`max()` で突合されるため、オフラインセッション中に使った番号が再発行されることはない。
 
 **carried 経路での不変条件**: `1 tranlog = 1 seq = 1 receipt_counter = 1 印字番号`。カートを放棄した場合は番号を消費しない。
 
