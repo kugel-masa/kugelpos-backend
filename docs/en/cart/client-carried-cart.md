@@ -151,7 +151,11 @@ printed number cycles, and `max(999999, 111111)` would undo a wrap permanently.
 
 A client reads the range from master-data like any other terminal setting
 (`GET /tenants/{tenant_id}/settings/{name}/value`) and receives the counter in
-its terminal token (`receipt_counter` claim) at open. It sends its own high-water
+its terminal token (`receipt_counter` claim) at open. Tenant setup seeds
+`RECEIPT_NO_START_VALUE` / `RECEIPT_NO_END_VALUE` with the shipped defaults so
+that lookup always answers (#174) - a service falls back to its own
+configuration when a setting is missing, but that fallback is invisible over
+the API, and the client has to see the same range the backend numbers with. It sends its own high-water
 counter back at the next open, where `max()` reconciles it — so a number used
 during an offline session is never reissued.
 

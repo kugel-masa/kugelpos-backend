@@ -2,7 +2,11 @@
 from app.config.settings import settings
 from logging import getLogger
 
+from kugel_common.config.settings_app import AppSettings
 from kugel_common.database import database as db_helper
+
+from app.models.documents.settings_master_document import SettingsMasterDocument
+from app.models.repositories.settings_master_repository import SettingsMasterRepository
 
 # setup logger
 logger = getLogger(__name__)
@@ -132,8 +136,103 @@ async def create_collections(tenant_id: str):
     # add more collections here
 
 
+# Settings a POS terminal must be able to read, seeded so the documented lookup
+# (GET /tenants/{tenant_id}/settings/{name}/value) can answer for them (issue
+# #174). Services resolve a missing setting from their own configuration, but
+# that fallback is invisible over the API - and since #166 the terminal derives
+# the printed receipt number from this range itself, so it has to be able to
+# read the same values the backend uses.
+# Read from commons rather than restated here: this service does not inherit
+# AppSettings, and a second copy of the value would drift from the one the
+# services actually number with.
+TERMINAL_FACING_SETTING_NAMES = ("RECEIPT_NO_START_VALUE", "RECEIPT_NO_END_VALUE")
+
+
+def _shared_default(name: str, resolved: AppSettings = None) -> str:
+    """
+    The value a service would fall back to for `name`, as a string.
+
+    Resolved the way a service resolves its own configuration - environment
+    first, then `.env` - not from the class default. A deployment that raises
+    the receipt range by environment would otherwise be silently reverted: the
+    seeded record outranks a service's own setting, so seeding the shipped
+    default would take precedence over the configured one. Set the variable for
+    this service too, or configure the tenant setting directly.
+
+    Args:
+        name: Setting name defined on kugel_common's AppSettings
+        resolved: An already-resolved AppSettings, so a caller seeding several
+            names does not rebuild it for each one
+
+    Returns:
+        The resolved value rendered as the string the settings master stores,
+        or "" when the name is not an AppSettings field
+    """
+    if name not in AppSettings.model_fields:
+        return ""
+    if resolved is None:
+        resolved = AppSettings(_env_file=".env")
+    value = getattr(resolved, name, None)
+    return "" if value is None else str(value)
+
+
+async def seed_terminal_facing_settings(tenant_id: str):
+    """
+    Insert the terminal-facing settings a tenant does not already have.
+
+    Insert-if-absent: tenant setup is re-runnable (it is how index migrations
+    reach existing tenants), and an operator's own value must never be
+    overwritten by a default.
+
+    Args:
+        tenant_id: Tenant to seed
+
+    Returns:
+        None
+    """
+    db_name = f"{settings.DB_NAME_PREFIX}_{tenant_id}"
+    db = await db_helper.get_db_async(db_name)
+    # Through the repository, not a raw insert: it stamps the fields the rest of
+    # the service expects (created_at, which the response schema renders as
+    # entry_datetime, and the shard key). A hand-built document listed fine in
+    # Mongo and then failed the settings-list endpoint's response validation.
+    repository = SettingsMasterRepository(db, tenant_id)
+
+    try:
+        # Resolved once for the whole run; reading the environment can fail, and
+        # a tenant that cannot be seeded must still be created.
+        resolved = AppSettings(_env_file=".env")
+    except Exception as e:
+        logger.warning(f"Could not resolve shared settings for tenant_id:{tenant_id}: {e}")
+        return
+
+    for name in TERMINAL_FACING_SETTING_NAMES:
+        try:
+            default_value = _shared_default(name, resolved)
+            if not default_value:
+                logger.warning(f"No shared default for setting {name}; not seeding it")
+                continue
+            if await repository.get_settings_by_name_async(name) is not None:
+                continue
+            await repository.create_settings_async(
+                SettingsMasterDocument(name=name, default_value=default_value, values=[])
+            )
+            # Say where the value came from: a deployment that overrides the range
+            # for one service and not this one gets the shipped default seeded, and
+            # the seeded record then outranks the service's own setting.
+            source = (
+                "environment" if default_value != str(AppSettings.model_fields[name].default) else "shipped default"
+            )
+            logger.info(f"Seeded setting {name}={default_value} ({source}) for tenant_id:{tenant_id}")
+        except Exception as e:
+            # A tenant without its defaults still works (services fall back to
+            # their own configuration); failing setup over it would be worse.
+            logger.warning(f"Could not seed setting {name} for tenant_id:{tenant_id}: {e}")
+
+
 # setup database
 async def execute(tenant_id: str):
     logger.info(f"Setting up database for tenant_id:{tenant_id} execution started...")
     await create_collections(tenant_id)
+    await seed_terminal_facing_settings(tenant_id)
     # add more setup tasks here

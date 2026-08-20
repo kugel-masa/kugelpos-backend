@@ -189,6 +189,23 @@ Document managing hierarchical system settings.
 1. Terminal level (highest priority)
 2. Store level
 3. Global (default value)
+4. The consuming service's own configuration, when no record exists at all
+
+Step 4 is invisible over the API — the endpoint answers 404 rather than the
+value the service would use. Tenant setup therefore **seeds the settings a POS
+terminal must be able to read** (`RECEIPT_NO_START_VALUE` /
+`RECEIPT_NO_END_VALUE`, issue #174) with the shipped defaults, so those lookups
+always answer. Seeding is insert-if-absent: re-running tenant setup never
+overwrites a value an operator has set. Note that once seeded the value is an
+explicit record, so a later change to a service's shipped default reaches new
+tenants only.
+
+The seeded value is resolved from master-data's own environment (`.env` /
+environment variables), not from the shipped constant — a seeded record
+outranks a service's own configuration, so a deployment that raises the range
+by environment must set the same variable for master-data, or configure the
+tenant setting directly. Otherwise seeding would quietly put the shipped
+default above the configured one.
 
 **Indexes:**
 - Unique: (tenant_id, name)
