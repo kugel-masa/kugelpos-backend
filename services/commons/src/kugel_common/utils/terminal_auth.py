@@ -55,6 +55,11 @@ def create_terminal_token(
     # fixtures) that may not have the field set.
     if getattr(terminal_info, "receipt_no", None) is not None:
         claims["receipt_no"] = terminal_info.receipt_no
+    # Running receipt counter (issue #166). The client advances this per finalize
+    # and derives the printed receipt_no from it and the configured range, which
+    # it reads from master-data like any other terminal setting.
+    if getattr(terminal_info, "receipt_counter", None) is not None:
+        claims["receipt_counter"] = terminal_info.receipt_counter
 
     # Staff claims (only present when signed in)
     if terminal_info.staff and terminal_info.staff.id:

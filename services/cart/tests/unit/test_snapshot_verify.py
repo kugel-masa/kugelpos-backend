@@ -156,6 +156,9 @@ class TestVerifyFinalizeContext:
             "cart_id": "void-cart-0001",
             "seq": 7,
             "receipt_no": 42,
+            # Optional pre-#166 compatibility: absent from the caller, present
+            # in the signed payload as null (issue #166).
+            "receipt_counter": None,
             "transaction_datetime": "2026-06-14T09:30:00",
         }
 

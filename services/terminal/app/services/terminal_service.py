@@ -429,11 +429,32 @@ class TerminalService:
             )
             raise TerminalOpenException(message=message, logger=logger)
 
+    def __stored_receipt_counter(self, terminal) -> int:
+        """
+        Read the terminal's stored running receipt counter (issue #166).
+
+        Accepts the pre-#166 `receipt_no` spelling: existing stored values are
+        already running counts (clients counted 1, 2, 3 with no wrap), so the
+        migration is a read, not a conversion. getattr-guarded because a terminal
+        loaded from storage may predate either field.
+
+        Args:
+            terminal: Terminal info document
+
+        Returns:
+            The stored counter, or 0 when the terminal has never counted one
+        """
+        counter = getattr(terminal, "receipt_counter", None)
+        if counter is None:
+            counter = getattr(terminal, "receipt_no", None)
+        return counter or 0
+
     async def open_terminal_async(
         self,
         initial_amout: float,
         client_business_counter: int = None,
         client_receipt_no: int = None,
+        client_receipt_counter: int = None,
     ) -> OpenCloseLog:
         """
         Open a terminal for business operations
@@ -444,8 +465,15 @@ class TerminalService:
                 The terminal owns these counters and may have advanced them during
                 an offline session; reconcile via max() so a value used offline is
                 never reused. None when the client carries nothing (first open).
-            client_receipt_no: Client-carried receipt_no (issue #156); reconciled
-                via max() and seeded into the token for the new session.
+            client_receipt_no: Pre-#166 spelling of client_receipt_counter, kept
+                for clients that have not migrated. Numerically the same value:
+                those clients count 1, 2, 3 with no wrap, which is exactly a
+                running counter.
+            client_receipt_counter: Client-carried running receipt counter
+                (issue #166); reconciled via max() and seeded into the token for
+                the new session. The client derives the printed receipt_no from
+                it and the configured range, so the counter itself never wraps
+                and max() remains a valid comparison.
 
         Returns:
             OpenCloseLog: Log entry for the terminal opening
@@ -481,18 +509,22 @@ class TerminalService:
         self.__check_carried_counter_jump(
             "business_counter", getattr(terminal, "business_counter", None) or 0, client_business_counter
         )
-        self.__check_carried_counter_jump(
-            "receipt_no", getattr(terminal, "receipt_no", None) or 0, client_receipt_no
-        )
+        # receipt_counter (issue #166) is the running count of finalized
+        # transactions. A pre-#166 client sends the same value under the old
+        # receipt_no name, so both spellings feed one reconcile.
+        carried_counter = client_receipt_counter if client_receipt_counter is not None else client_receipt_no
+        stored_counter = self.__stored_receipt_counter(terminal)
+        self.__check_carried_counter_jump("receipt_counter", stored_counter, carried_counter)
         if client_business_counter is not None:
             terminal.business_counter = max(getattr(terminal, "business_counter", None) or 0, client_business_counter)
-        if client_receipt_no is not None:
-            terminal.receipt_no = max(getattr(terminal, "receipt_no", None) or 0, client_receipt_no)
-        # Initialize the receipt counter on first open so the token always seeds
-        # one (the client advances it per bill; first receipt becomes 1). A
-        # configurable start value / rollover is a follow-up.
-        if getattr(terminal, "receipt_no", None) is None:
-            terminal.receipt_no = 0
+        if carried_counter is not None:
+            stored_counter = max(stored_counter, carried_counter)
+        # Seed on first open so the token always carries one (the client advances
+        # it per finalize; the first transaction becomes 1, which the client maps
+        # to RECEIPT_NO_START_VALUE).
+        terminal.receipt_counter = stored_counter
+        # Keep the pre-#166 field in step until every client reads receipt_counter.
+        terminal.receipt_no = stored_counter
 
         if terminal.business_date == get_app_time().strftime("%Y%m%d"):
             terminal.open_counter += 1

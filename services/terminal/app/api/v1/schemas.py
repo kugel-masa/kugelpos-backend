@@ -119,7 +119,13 @@ class TerminalOpenRequest(BaseTerminalOpenRequest):
 
     Contains information required to open a terminal:
     - initial_amount: The initial cash amount in the terminal drawer
-    - business_counter / receipt_no: client-carried counter values (issue #156).
+    - business_counter / receipt_counter: client-carried counter values
+      (issue #156, #166). `receipt_counter` is the running count of finalized
+      transactions; the printed receipt number is derived from it and the
+      configured range, so the counter never wraps and the max() reconcile below
+      stays a valid comparison. `receipt_no` is the pre-#166 spelling of the same
+      value and is still accepted - those clients counted 1, 2, 3 with no wrap,
+      which is exactly a running counter.
       The terminal owns these and may have advanced them offline; the service
       reconciles via max() so an offline-used value is never reused. Because
       that reconcile is monotonic and therefore irreversible, the values are
@@ -132,6 +138,7 @@ class TerminalOpenRequest(BaseTerminalOpenRequest):
 
     business_counter: Optional[int] = Field(default=None, ge=0, le=MAX_CARRIED_COUNTER)
     receipt_no: Optional[int] = Field(default=None, ge=0, le=MAX_CARRIED_COUNTER)
+    receipt_counter: Optional[int] = Field(default=None, ge=0, le=MAX_CARRIED_COUNTER)
 
 
 class TerminalCloseRequest(BaseTerminalCloseRequest):

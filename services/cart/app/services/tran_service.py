@@ -13,6 +13,7 @@ logger = getLogger(__name__)
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.models.documents.base_tranlog import BaseTransaction
+from kugel_common.utils.receipt_numbering import derive_receipt_no
 from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
 from kugel_common.enums import TransactionType
@@ -188,22 +189,20 @@ class TranService:
             # (business_counter, seq) composite: transaction_no carries seq.
             tranlog.transaction_no = cart.seq
             tranlog.generate_date_time = cart.transaction_datetime
-            tranlog.receipt_no = cart.receipt_no
+            tranlog.receipt_counter = cart.receipt_counter
+            tranlog.receipt_no = await self._carried_receipt_no_async(cart.receipt_counter, cart.receipt_no)
         else:
             tranlog.transaction_no = await self.terminal_counter_repository.numbering_count(
                 countType=CounterType.Transaction.value
             )
             tranlog.generate_date_time = get_app_time_str()
-            # Settings come back as strings (master-data /settings/{name}/value
-            # returns the value as-is). The counter increment uses MongoDB's
-            # $add aggregation which fails with TypeMismatch on non-numeric
-            # operands, so cast here.
-            receipt_start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
-            receipt_end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
+            # The server-side counter is a different series from the terminal's
+            # carried one (issue #168), so no receipt_counter is recorded here.
+            receipt_start, receipt_end = await self._receipt_range_async()
             tranlog.receipt_no = await self.terminal_counter_repository.numbering_count(
                 countType=CounterType.Receipt.value,
-                start_value=int(receipt_start_raw) if receipt_start_raw is not None else 1,
-                end_value=int(receipt_end_raw) if receipt_end_raw is not None else sys.maxsize,
+                start_value=receipt_start,
+                end_value=receipt_end,
             )
         tranlog.user = cart.user
         tranlog.sales = cart.sales
@@ -520,7 +519,8 @@ class TranService:
         self, finalize_envelope: dict | None
     ) -> tuple[str, int, int, str]:
         """
-        Resolve ``(cart_id, transaction_no, receipt_no, generate_date_time)`` for a
+        Resolve ``(cart_id, transaction_no, receipt_no, generate_date_time,
+        receipt_counter)`` for a
         void/return.
 
         Client-carried cart phase 2 (issue #156, B案): when the terminal presents a
@@ -538,8 +538,12 @@ class TranService:
         """
         if finalize_envelope is None:
             transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
-            receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
-            return str(uuid.uuid4()), transaction_no, receipt_no, get_app_time_str()
+            receipt_start, receipt_end = await self._receipt_range_async()
+            receipt_no = await self.terminal_counter_repository.numbering_count(
+                CounterType.Receipt.value, start_value=receipt_start, end_value=receipt_end
+            )
+            # Server-side series: no carried counter to record (issue #168).
+            return str(uuid.uuid4()), transaction_no, receipt_no, get_app_time_str(), None
 
         context = snapshot_service.verify_finalize_context(finalize_envelope)
         if (
@@ -556,12 +560,19 @@ class TranService:
         cart_id = context.get("cart_id")
         seq = context.get("seq")
         receipt_no = context.get("receipt_no")
+        receipt_counter = context.get("receipt_counter")
         transaction_datetime = context.get("transaction_datetime")
         if cart_id is None or seq is None or receipt_no is None or transaction_datetime is None:
             raise SnapshotInvalidException(
                 "Finalize-context must carry cart_id, seq, receipt_no and transaction_datetime", logger
             )
-        return cart_id, seq, receipt_no, transaction_datetime
+        return (
+            cart_id,
+            seq,
+            await self._carried_receipt_no_async(receipt_counter, receipt_no),
+            transaction_datetime,
+            receipt_counter,
+        )
 
     async def void_async(
         self,
@@ -696,9 +707,13 @@ class TranService:
         # stateless path the terminal carries a stable cart_id + per-open seq /
         # receipt_no / time in a signed envelope (retry converges, numbering stays
         # a clean per-open sequence); legacy mints a fresh cart_id + server numbers.
-        tran.cart_id, tran.transaction_no, tran.receipt_no, tran.generate_date_time = (
-            await self._resolve_carried_finalize(finalize_envelope)
-        )
+        (
+            tran.cart_id,
+            tran.transaction_no,
+            tran.receipt_no,
+            tran.generate_date_time,
+            tran.receipt_counter,
+        ) = await self._resolve_carried_finalize(finalize_envelope)
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for void transaction
         tran.business_date = self.terminal_info.business_date
@@ -908,9 +923,13 @@ class TranService:
         # the stateless path the terminal carries a stable cart_id + per-open seq /
         # receipt_no / time in a signed envelope (retry converges, numbering stays a
         # clean per-open sequence); legacy mints a fresh cart_id + server numbers.
-        tran.cart_id, tran.transaction_no, tran.receipt_no, tran.generate_date_time = (
-            await self._resolve_carried_finalize(finalize_envelope)
-        )
+        (
+            tran.cart_id,
+            tran.transaction_no,
+            tran.receipt_no,
+            tran.generate_date_time,
+            tran.receipt_counter,
+        ) = await self._resolve_carried_finalize(finalize_envelope)
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for return transaction
         # The return belongs to the terminal performing it, not to the original's
@@ -985,6 +1004,71 @@ class TranService:
         )
 
         return tran
+
+    async def _receipt_range_async(self) -> tuple:
+        """
+        Resolve the configured printed receipt-number range for this terminal.
+
+        Settings come back as strings (master-data /settings/{name}/value returns
+        the value as-is), and the server-side counter increment uses MongoDB's
+        $add aggregation which fails with TypeMismatch on non-numeric operands,
+        so both ends are cast here.
+
+        Returns:
+            Tuple of (start_value, end_value)
+        """
+        start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
+        end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
+        start = int(start_raw) if start_raw is not None else 1
+        end = int(end_raw) if end_raw is not None else sys.maxsize
+        return start, end
+
+    async def _carried_receipt_no_async(self, receipt_counter: int, carried_receipt_no: int) -> int:
+        """
+        Printed receipt number for a client-carried finalize (issue #166).
+
+        Derived from the carried running counter and the configured range, so a
+        terminal that wraps prints inside the range instead of counting 1, 2, 3.
+
+        The client printed its own number on paper before the backend ever saw
+        the transaction, so a carried number wins over the derived one; a
+        mismatch means the two disagree about the range (a setting changed
+        mid-session) and is reported rather than silently corrected.
+
+        A pre-#166 client carries no counter at all; its number is taken as-is,
+        which is the phase 2 behaviour this issue is fixing.
+
+        Args:
+            receipt_counter: Carried running receipt counter, None for pre-#166 clients
+            carried_receipt_no: Receipt number the client printed, if any
+
+        Returns:
+            The receipt number to record on the transaction log
+        """
+        if receipt_counter is None:
+            return carried_receipt_no
+
+        start, end = await self._receipt_range_async()
+        try:
+            derived = derive_receipt_no(receipt_counter, start, end)
+        except ValueError as e:
+            # Misconfigured range: keep the number the customer holds.
+            logger.error("Cannot derive receipt_no (counter=%s): %s", receipt_counter, e)
+            return carried_receipt_no
+
+        if carried_receipt_no is not None and carried_receipt_no != derived:
+            logger.warning(
+                "Carried receipt_no %s does not match the configured range "
+                "(counter=%s range=%s..%s derives %s); recording the carried value, "
+                "which is what the customer received",
+                carried_receipt_no,
+                receipt_counter,
+                start,
+                end,
+                derived,
+            )
+            return carried_receipt_no
+        return derived
 
     async def _get_setting_value_async(self, name: str) -> Any:
         """

@@ -49,5 +49,10 @@ class CartDocument(BaseTransaction):
     # Client-carried cart phase 2 (issue #156). Carried in the snapshot so that
     # transaction numbering and time are deterministic across retries/backends.
     seq: Optional[int] = 0  # Per-open-session transaction sequence; 0 until first finalize
+    # Running receipt counter (issue #166): the terminal's count of finalized
+    # transactions, seeded at open and advanced with seq. The printed receipt_no
+    # is derived from it and the configured range, so the wrap lives in the
+    # derivation and the counter itself stays monotonic.
+    receipt_counter: Optional[int] = None
     # Client-stamped transaction time (set at bill), source of tranlog.generate_date_time
     transaction_datetime: Optional[str] = None

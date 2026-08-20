@@ -31,6 +31,11 @@ class TerminalInfoDocument(AbstractDocument):
     # Client-carried cart phase 2 (issue #156): continuous receipt number counter.
     # Terminal service is the durable home; reconciled via max() at open.
     receipt_no: Optional[int] = None
+    # Durable home of the running receipt counter (issue #166). receipt_no above
+    # is the pre-#166 spelling of the same value, kept in step until clients have
+    # migrated; the printed receipt number is derived from this counter and the
+    # configured range rather than stored.
+    receipt_counter: Optional[int] = None
     staff: Optional[StaffMasterDocument] = None  # Staff member currently signed in to the terminal
     initial_amount: Optional[float] = None  # Initial cash amount when the terminal was opened
     physical_amount: Optional[float] = None  # Physical cash amount counted at terminal close
