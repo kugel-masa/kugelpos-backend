@@ -22,10 +22,9 @@ import pytest
 import pytest_asyncio
 from fastapi import status
 
-# Fallback only. The fixture below prefers the range master-data actually
-# reports, so these tests check that cart numbers with the same range a client
-# can read (#166 / #174) rather than that both happen to match a constant
-# written here.
+# What a tenant gets when nobody overrides the range. Asserted as the expected
+# seeding, not used as a fallback: a lookup that does not answer is the very
+# regression #174 fixed, so it has to fail the suite rather than be papered over.
 SHIPPED_START, SHIPPED_END = 111111, 999999
 # Per-open seq values these tests carry; kept above the suite's own numbering and
 # removed afterwards (see _remove_synthetic_transactions).
@@ -51,21 +50,27 @@ def receipt_range():
     tenant_id = os.environ.get("TENANT_ID")
     header = {"X-API-KEY": os.environ.get("API_KEY")}
 
-    def value(name, fallback):
-        try:
-            response = httpx.get(
-                f"{base}/tenants/{tenant_id}/settings/{name}/value?store_code=5678&terminal_no=9",
-                headers=header,
-                timeout=10.0,
-            )
-            if response.status_code == status.HTTP_200_OK:
-                return int(response.json()["data"]["value"])
-        except Exception:
-            pass
-        return fallback
+    terminal_id = os.environ.get("TERMINAL_ID")
 
-    start = value("RECEIPT_NO_START_VALUE", SHIPPED_START)
-    end = value("RECEIPT_NO_END_VALUE", SHIPPED_END)
+    def value(name):
+        # terminal_id is what the API-key credential is checked against; without
+        # it the endpoint answers 401 rather than the value.
+        response = httpx.get(
+            f"{base}/tenants/{tenant_id}/settings/{name}/value?store_code=5678&terminal_no=9&terminal_id={terminal_id}",
+            headers=header,
+            timeout=10.0,
+        )
+        assert response.status_code == status.HTTP_200_OK, (
+            f"{name} is not readable from master-data ({response.status_code}). "
+            "A client derives the printed receipt number from this range, so a lookup "
+            "that does not answer is the defect #174 fixed - not a reason to fall back."
+        )
+        return int(response.json()["data"]["value"])
+
+    start, end = value("RECEIPT_NO_START_VALUE"), value("RECEIPT_NO_END_VALUE")
+    # The e2e tenant does not override the range; a deployment that does will see
+    # these tests follow its values.
+    assert (start, end) == (SHIPPED_START, SHIPPED_END) or start < end
     return start, end, end - start + 1
 
 
