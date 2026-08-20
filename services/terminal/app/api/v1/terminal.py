@@ -548,6 +548,7 @@ async def terminal_open(
             terminal_open.initial_amount,
             client_business_counter=terminal_open.business_counter,
             client_receipt_no=terminal_open.receipt_no,
+            client_receipt_counter=terminal_open.receipt_counter,
         )
         return_json = SchemasTransformerV1().transform_open_log(open_log).model_dump()
     except Exception as e:

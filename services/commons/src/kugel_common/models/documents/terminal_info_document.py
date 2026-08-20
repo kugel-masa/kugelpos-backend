@@ -40,6 +40,11 @@ class TerminalInfoDocument(AbstractDocument):
     # current value at open and the terminal carries/advances it during the
     # session (see FR-012). Carried in the terminal token claims.
     receipt_no: Optional[int] = None
+    # Durable home of the terminal's running receipt counter (issue #166). The
+    # terminal advances it offline and presents it at open, where max() picks the
+    # higher value so a number is never reused. receipt_no above is the pre-#166
+    # spelling of the same value and is kept until clients have migrated.
+    receipt_counter: Optional[int] = None
     staff: Optional[StaffMasterDocument] = None
     initial_amount: Optional[float] = None
     physical_amount: Optional[float] = None

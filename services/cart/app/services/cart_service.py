@@ -706,6 +706,7 @@ class CartService(ICartService):
         seq: int = None,
         receipt_no: int = None,
         transaction_datetime: str = None,
+        receipt_counter: int = None,
     ) -> CartDocument:
         """
         Complete the transaction and finalize the cart.
@@ -718,7 +719,11 @@ class CartService(ICartService):
                 stateless path the terminal supplies the finalize context so
                 the transaction number/receipt/time are deterministic across
                 retries; create_tranlog uses them instead of server counters.
-            receipt_no: Client-carried receipt number (issue #156).
+            receipt_no: Client-carried receipt number (issue #156). The number
+                the terminal printed.
+            receipt_counter: Client-carried running receipt counter (issue #166),
+                from which the printed number is derived. None for pre-#166
+                terminals, whose receipt_no is then recorded as sent.
             transaction_datetime: Client-stamped transaction time (issue #156).
                 Its presence is the signal that turns on carried numbering.
 
@@ -769,6 +774,7 @@ class CartService(ICartService):
         if transaction_datetime is not None and self._stateless:
             cart_doc.seq = seq
             cart_doc.receipt_no = receipt_no
+            cart_doc.receipt_counter = receipt_counter
             cart_doc.transaction_datetime = transaction_datetime
 
         # Create transaction log

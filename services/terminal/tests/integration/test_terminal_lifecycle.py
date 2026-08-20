@@ -190,6 +190,90 @@ async def test_open_reconciles_client_carried_counters(http_client, admin_header
     assert claims["business_counter"] >= 501, claims
     # receipt_no reconciled to the client's higher value and seeded into the token.
     assert claims["receipt_no"] == 7000, claims
+    # Issue #166: the same value is the running receipt counter, and a pre-#166
+    # client that sends it under the old name still seeds it.
+    assert claims["receipt_counter"] == 7000, claims
+
+
+@pytest.mark.asyncio
+async def test_open_reconciles_the_running_receipt_counter(http_client, admin_header, mock_outbound_services):
+    """A wrapped receipt series survives the open reconcile (issue #166).
+
+    The terminal carries a running counter, not the printed number: counter 6
+    prints the first number of the second cycle, and reconciling counters keeps
+    it. Reconciling printed numbers would have compared 111111 against 111115
+    and thrown the wrap away.
+    """
+    import jwt
+    from kugel_common.config.settings import settings as common_settings
+
+    terminal_id, _ = await _create_terminal(http_client, admin_header)
+    await _signin(http_client, admin_header, terminal_id)
+
+    # First open: the terminal has finalized 5 transactions.
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 10000.0, "receipt_counter": 5},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/close",
+        json={"physical_amount": 10000.0},
+        headers=admin_header,
+    )
+
+    # Second open: one more transaction happened, which wrapped the printed
+    # series back to the start of the range.
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 10000.0, "receipt_counter": 6},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+    claims = jwt.decode(
+        response.headers["x-new-token"],
+        common_settings.SECRET_KEY,
+        algorithms=[common_settings.ALGORITHM],
+    )
+    assert claims["receipt_counter"] == 6, claims
+
+
+@pytest.mark.asyncio
+async def test_open_does_not_walk_the_receipt_counter_back(http_client, admin_header, mock_outbound_services):
+    """A stale carried counter must not reissue numbers already printed (issue #166)."""
+    import jwt
+    from kugel_common.config.settings import settings as common_settings
+
+    terminal_id, _ = await _create_terminal(http_client, admin_header)
+    await _signin(http_client, admin_header, terminal_id)
+
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 10000.0, "receipt_counter": 900},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/close",
+        json={"physical_amount": 10000.0},
+        headers=admin_header,
+    )
+
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 10000.0, "receipt_counter": 100},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+    claims = jwt.decode(
+        response.headers["x-new-token"],
+        common_settings.SECRET_KEY,
+        algorithms=[common_settings.ALGORITHM],
+    )
+    assert claims["receipt_counter"] == 900, claims
 
 
 @pytest.mark.asyncio

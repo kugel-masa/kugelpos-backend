@@ -124,6 +124,15 @@ async def create_tran_log_collection(tenant_id: str):
             "unique": True,
             "partialFilterExpression": {"cart_id": {"$type": "string"}},
         },
+        # Receipt counter high-water (issue #166): what a replacement terminal is
+        # reseeded from, and what an audit query walks to find holes. Explicitly
+        # NOT unique — the counter is client-owned, the backend cannot enforce it
+        # (spec 156 Q58), and gaps are expected where a terminal was replaced or
+        # an offline-finalized transaction never arrived.
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "receipt_counter": 1},
+            "unique": False,
+        },
     ]
     await create_some_collection(
         tenant_id=tenant_id,

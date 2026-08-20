@@ -181,6 +181,7 @@ def build_finalize_context_envelope(
     receipt_no: int,
     transaction_datetime: str,
     terminal_info: TerminalInfoDocument,
+    receipt_counter: Optional[int] = None,
 ) -> Optional[dict]:
     """
     Build and sign a finalize-context envelope for a void/return (issue #156, B案).
@@ -188,8 +189,8 @@ def build_finalize_context_envelope(
     Unlike the cart snapshot, a void/return has no in-flight cart to carry; the
     terminal instead carries the new transaction's identity — a stable
     ``cart_id`` (so a lost-ACK retry converges via downstream cart_id dedupe) and
-    the per-open ``(seq, receipt_no)`` / time it stamped — signed so the numbers
-    cannot be forged. Wire form is the canonical snake_case payload (the signed
+    the per-open ``(seq, receipt_no, receipt_counter)`` / time it stamped —
+    signed so the numbers cannot be forged. Wire form is the canonical snake_case payload (the signed
     bytes), transported as the ``signedSnapshot`` member of the request envelope.
 
     Returns None when signing is degraded (no keys configured).
@@ -208,6 +209,10 @@ def build_finalize_context_envelope(
             "cart_id": cart_id,
             "seq": seq,
             "receipt_no": receipt_no,
+            # Running receipt counter (issue #166). Optional so a pre-#166
+            # terminal's envelope still verifies; when present the server derives
+            # the printed number from it and reports a disagreement.
+            "receipt_counter": receipt_counter,
             "transaction_datetime": transaction_datetime,
         },
     }

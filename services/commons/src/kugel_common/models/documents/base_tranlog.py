@@ -154,6 +154,20 @@ class BaseTransaction(AbstractDocument):
     business_counter: Optional[int] = None
     generate_date_time: Optional[str] = None
     receipt_no: Optional[int] = None
+    # Running counter behind receipt_no (issue #166): the number of transactions
+    # this terminal has finalized on the carried path, from which receipt_no is
+    # derived by mapping it onto the configured range. Null on the server-numbered
+    # path, which includes cancellation — the cancel endpoint takes no finalize
+    # context, so a cancelled sale still draws its numbers from the server-side
+    # series (see #170). Stored because a printed receipt_no cannot be
+    # ordered once the range wraps - 111115 says nothing about which cycle it
+    # belonged to - so this is what a terminal-replacement high-water query reads.
+    #
+    # NOT unique and NOT a transaction identity. The terminal owns it and the
+    # backend cannot enforce it (spec 156 Q58: audit detection, not enforcement);
+    # gaps are expected where a terminal was replaced or an offline-finalized
+    # transaction never arrived. Deduplicate on cart_id, never on this.
+    receipt_counter: Optional[int] = None
     # Transaction identity for client-carried cart phase 2 (issue #156 / #152).
     # Carried from the cart at finalize; downstream consumers (report/journal/
     # stock) dedupe on cart_id so a duplicate finalize (lost-ACK retry to any

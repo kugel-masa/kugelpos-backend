@@ -204,11 +204,15 @@ class TestResolveCarriedFinalize:
         """No envelope -> server-side numbering + a fresh (random) cart_id."""
         svc = _make_tran_service()
         svc.terminal_counter_repository.numbering_count = AsyncMock(side_effect=[111, 222])
+        svc._get_setting_value_async = AsyncMock(return_value=None)
 
-        cart_id, transaction_no, receipt_no, gen_dt = await svc._resolve_carried_finalize(None)
+        cart_id, transaction_no, receipt_no, gen_dt, receipt_counter = await svc._resolve_carried_finalize(None)
 
         assert transaction_no == 111
         assert receipt_no == 222
+        # The server-side series is a different counter from the terminal's
+        # carried one (issue #168), so nothing is recorded for it.
+        assert receipt_counter is None
         assert isinstance(cart_id, str) and len(cart_id) == 36  # uuid4
         assert isinstance(gen_dt, str) and gen_dt  # server-stamped
         assert svc.terminal_counter_repository.numbering_count.await_count == 2
@@ -227,12 +231,35 @@ class TestResolveCarriedFinalize:
             terminal_info=terminal_info,
         )
 
-        cart_id, transaction_no, receipt_no, gen_dt = await svc._resolve_carried_finalize(envelope)
+        cart_id, transaction_no, receipt_no, gen_dt, receipt_counter = await svc._resolve_carried_finalize(envelope)
 
         assert cart_id == "void-cart-77"
         assert transaction_no == 8  # per-open seq, NOT a server counter
-        assert receipt_no == 55
+        assert receipt_no == 55  # pre-#166 envelope: carried number taken as-is
+        assert receipt_counter is None
         assert gen_dt == "2026-06-14T10:00:00"
+        svc.terminal_counter_repository.numbering_count.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_carried_path_derives_receipt_no_from_the_counter(self, signer_enabled):
+        """A carried receipt_counter is mapped onto the configured range (issue #166)."""
+        svc = _make_tran_service()
+        svc.terminal_counter_repository.numbering_count = AsyncMock()
+        svc._get_setting_value_async = AsyncMock(side_effect=["111111", "111115"])
+        terminal_info = SimpleNamespace(tenant_id="test_tenant", store_code="S0001", terminal_no=1)
+        envelope = snapshot_service.build_finalize_context_envelope(
+            cart_id="void-cart-78",
+            seq=3,
+            receipt_no=111111,  # counter 6 wrapped back to the start of the range
+            transaction_datetime="2026-06-14T10:00:00",
+            terminal_info=terminal_info,
+            receipt_counter=6,
+        )
+
+        _, _, receipt_no, _, receipt_counter = await svc._resolve_carried_finalize(envelope)
+
+        assert receipt_no == 111111
+        assert receipt_counter == 6
         svc.terminal_counter_repository.numbering_count.assert_not_awaited()
 
     @pytest.mark.asyncio

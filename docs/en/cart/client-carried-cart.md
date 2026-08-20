@@ -130,6 +130,55 @@ A silently skipped step fails open — a stale unique index blocking finalize in
 
 For `status_tran`, a **data migration** runs before the new unique key is enforced: existing records take their epoch from the transaction they refer to. Matching them with "epoch or null" is not viable, because legacy `transaction_no` and `seq` are both 1-based and their ranges overlap completely, so a lookup for this session's `seq=1` would find the terminal's first-ever sale.
 
+## Receipt numbering (issue #166)
+
+The terminal carries **one running counter**, `receipt_counter` — the number of
+transactions it has finalized — and the printed receipt number is derived from it:
+
+```
+receipt_no = RECEIPT_NO_START_VALUE + ((receipt_counter - 1) mod range_width)
+```
+
+Keeping the wrap in the derivation is what lets the open-time reconcile work. A
+counter only ever increases, so `max(stored, carried)` is a valid comparison; a
+printed number cycles, and `max(999999, 111111)` would undo a wrap permanently.
+
+| Value | Owner | When it moves |
+|---|---|---|
+| `receipt_counter` | the terminal (durable home: terminal service) | once per finalized transaction |
+| `receipt_no` | derived, not stored on the terminal | with the counter, wrapping inside the range |
+| range (`RECEIPT_NO_START_VALUE` / `RECEIPT_NO_END_VALUE`) | master-data settings | when an operator changes it |
+
+A client reads the range from master-data like any other terminal setting
+(`GET /tenants/{tenant_id}/settings/{name}/value`) and receives the counter in
+its terminal token (`receipt_counter` claim) at open. It sends its own high-water
+counter back at the next open, where `max()` reconciles it — so a number used
+during an offline session is never reissued.
+
+**Invariant on the carried path**: `1 tranlog = 1 seq = 1 receipt_counter =
+1 printed receipt_no`. Abandoning a cart consumes nothing.
+
+**Cancellation is currently outside it.** `POST /carts/{cart_id}/cancel` takes no
+finalize context, so a cancelled sale produces a tranlog whose numbers come from
+the *server-side* series and whose `receipt_counter` is null — two series
+interleaving in normal operation, not only in the degraded case #168 describes.
+Tracked in #170.
+
+**Gaps** are possible and permitted, but only from: a safe jump when a terminal
+is replaced, an offline-finalized transaction that never arrived, a reconcile
+where the stored counter was higher, or a cancellation (which does not advance
+the counter — see above). Nothing in normal operation produces one, so
+a hole in `receipt_counter` is a signal worth investigating.
+
+`receipt_counter` is recorded on the transaction log (non-unique index) because a
+printed number cannot be ordered once the range wraps — `111115` says nothing
+about which cycle it belonged to. It is **not** a transaction identity: dedupe on
+`cart_id`.
+
+Pre-#166 clients keep working: they carry no counter, send their number under the
+old `receipt_no` name at open (numerically the same value — they counted 1, 2, 3
+with no wrap), and their receipt numbers are recorded as sent.
+
 ## Configuration
 
 | Variable | Default | Purpose |

@@ -182,13 +182,20 @@ class FinalizeContext(BaseSchemmaModel):
     transaction's number, receipt number, and time at bill and supplies them
     here so a retried finalize on any backend yields the same values
     (deterministic finalize, FR-012). Absent on the cache-authoritative path,
-    where the server assigns them. The three fields are all-or-nothing (a
-    partial context would write a null transaction_no/receipt_no); accepts
-    camelCase (seq / receiptNo / transactionDatetime) via the alias generator.
+    where the server assigns them. The context is all-or-nothing (a partial one
+    would write a null transaction_no/receipt_no), where the receipt number may
+    be the printed value, the running counter it derives from, or both; accepts
+    camelCase (seq / receiptNo / receiptCounter / transactionDatetime) via the
+    alias generator.
     """
 
     seq: Optional[int] = None
     receipt_no: Optional[int] = None
+    # Running receipt counter (issue #166). Optional: a pre-#166 terminal sends
+    # only receipt_no and its number is recorded as sent. When present the server
+    # derives the printed number from it and the configured range, so a terminal
+    # that wraps prints inside the range.
+    receipt_counter: Optional[int] = None
     transaction_datetime: Optional[str] = None
 
     @field_validator("transaction_datetime")
@@ -222,9 +229,17 @@ class FinalizeContext(BaseSchemmaModel):
 
     @model_validator(mode="after")
     def _all_or_none(self):
-        provided = [self.seq is not None, self.receipt_no is not None, self.transaction_datetime is not None]
+        # A partial context would write a null transaction_no or receipt_no, so
+        # the context is all-or-nothing. The receipt number may arrive as the
+        # printed value, as the running counter it is derived from (issue #166),
+        # or both — but at least one of them has to be there.
+        receipt = self.receipt_no is not None or self.receipt_counter is not None
+        provided = [self.seq is not None, receipt, self.transaction_datetime is not None]
         if any(provided) and not all(provided):
-            raise ValueError("seq, receipt_no and transaction_datetime must all be provided together")
+            raise ValueError(
+                "seq, transaction_datetime and a receipt number "
+                "(receipt_no and/or receipt_counter) must all be provided together"
+            )
         return self
 
 
