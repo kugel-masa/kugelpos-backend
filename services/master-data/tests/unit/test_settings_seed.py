@@ -60,11 +60,28 @@ class TestSharedDefault:
         assert _shared_default("RECEIPT_NO_START_VALUE") == "111111"
         assert _shared_default("RECEIPT_NO_END_VALUE") == "999999"
 
+    def test_follows_an_environment_override(self, monkeypatch):
+        # A seeded record outranks a service's own setting, so seeding the
+        # shipped default would silently revert a deployment that raised the
+        # range by environment.
+        monkeypatch.setenv("RECEIPT_NO_START_VALUE", "200000")
+        assert _shared_default("RECEIPT_NO_START_VALUE") == "200000"
+
     def test_unknown_name_yields_nothing(self):
         assert _shared_default("NOT_A_SETTING") == ""
 
 
 class TestSeeding:
+    @pytest.mark.asyncio
+    async def test_seeds_what_the_deployment_configured(self, monkeypatch):
+        monkeypatch.setenv("RECEIPT_NO_END_VALUE", "300000")
+        repository = _repository()
+        with _patch_db(repository):
+            await seed_terminal_facing_settings("T0001")
+
+        seeded = {c.args[0].name: c.args[0].default_value for c in repository.created.call_args_list}
+        assert seeded["RECEIPT_NO_END_VALUE"] == "300000"
+
     @pytest.mark.asyncio
     async def test_seeds_both_ends_of_the_range(self):
         repository = _repository()

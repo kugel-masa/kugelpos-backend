@@ -150,16 +150,27 @@ TERMINAL_FACING_SETTING_NAMES = ("RECEIPT_NO_START_VALUE", "RECEIPT_NO_END_VALUE
 
 def _shared_default(name: str) -> str:
     """
-    The default a service would fall back to for `name`, as a string.
+    The value a service would fall back to for `name`, as a string.
+
+    Resolved the way a service resolves its own configuration - environment
+    first, then `.env` - not from the class default. A deployment that raises
+    the receipt range by environment would otherwise be silently reverted: the
+    seeded record outranks a service's own setting, so seeding the shipped
+    default would take precedence over the configured one. Set the variable for
+    this service too, or configure the tenant setting directly.
 
     Args:
         name: Setting name defined on kugel_common's AppSettings
 
     Returns:
-        The default value rendered as the string the settings master stores
+        The resolved value rendered as the string the settings master stores,
+        or "" when the name is not an AppSettings field
     """
-    field = AppSettings.model_fields.get(name)
-    return str(field.default) if field is not None else ""
+    if name not in AppSettings.model_fields:
+        return ""
+    resolved = AppSettings(_env_file=".env")
+    value = getattr(resolved, name, None)
+    return "" if value is None else str(value)
 
 
 async def seed_terminal_facing_settings(tenant_id: str):

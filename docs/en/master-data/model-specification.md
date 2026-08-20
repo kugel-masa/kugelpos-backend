@@ -200,6 +200,13 @@ overwrites a value an operator has set. Note that once seeded the value is an
 explicit record, so a later change to a service's shipped default reaches new
 tenants only.
 
+The seeded value is resolved from master-data's own environment (`.env` /
+environment variables), not from the shipped constant — a seeded record
+outranks a service's own configuration, so a deployment that raises the range
+by environment must set the same variable for master-data, or configure the
+tenant setting directly. Otherwise seeding would quietly put the shipped
+default above the configured one.
+
 **Indexes:**
 - Unique: (tenant_id, name)
 
