@@ -400,7 +400,7 @@ class RequestLogMiddleware:
 
 | 環境変数 | 既定値 | 用途 |
 |---|---|---|
-| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | マーカーに置き換えるボディフィールド（カンマ区切り）。空で除去無効 |
+| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | マーカーに置き換えるボディフィールド（カンマ区切り）。除去を無効化するには空白1文字を設定する。**空文字は無視され**既定値が適用される（`Settings` は `env_ignore_empty=True`） |
 | `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | ログに残すボディのサイズ上限。`0` で上限無効 |
 
 なお gzip (#147) はこの量を抑えない。ログにはパース済みの非圧縮ボディが

@@ -371,7 +371,7 @@ body. Sanitization never raises: a body that cannot be processed is stored as
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Comma-separated body fields replaced by a metadata marker; empty disables stripping |
+| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Comma-separated body fields replaced by a metadata marker. To turn stripping off, set it to a single space - an **empty** value is ignored (`Settings` runs with `env_ignore_empty=True`) and the default applies |
 | `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | Size ceiling for a logged body; `0` disables the backstop |
 
 Note that gzip (#147) does not bound any of this: the log stores the parsed,

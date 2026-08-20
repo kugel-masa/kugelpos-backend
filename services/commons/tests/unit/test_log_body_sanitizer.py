@@ -238,9 +238,21 @@ class TestDepthCap:
             node = node["next"]
         assert node["signedSnapshot"]["_stripped"] == "signedSnapshot"
 
-    def test_snapshot_deeper_than_the_cap_falls_to_the_size_backstop(self):
-        # Documented limit: the walk stops at _MAX_STRIP_DEPTH (32). Anything
-        # nested deeper keeps its snapshot and is bounded by the size backstop.
+    def test_snapshot_deeper_than_the_cap_is_left_in_place(self):
+        # Documented limit: the walk stops at _MAX_STRIP_DEPTH (32), so a
+        # snapshot nested deeper keeps its cart document...
+        body = current = {}
+        for _ in range(40):
+            current["next"] = {}
+            current = current["next"]
+        current["signedSnapshot"] = _envelope()
+        node = sanitize_log_body(body, max_bytes=0)
+        for _ in range(40):
+            node = node["next"]
+        assert "cart_document" in node["signedSnapshot"]
+
+    def test_snapshot_deeper_than_the_cap_is_caught_by_the_size_backstop(self):
+        # ...and is bounded by the size backstop instead.
         body = current = {}
         for _ in range(40):
             current["next"] = {}

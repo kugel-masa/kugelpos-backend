@@ -21,7 +21,9 @@ class AppSettings(BaseSettings):
         RECEIPT_NO_END_VALUE: Ending value for receipt number sequences (cycles back to start)
         SLACK_WEBHOOK_URL: URL for Slack webhook notifications
         REQUEST_LOG_STRIP_FIELDS: Comma-separated body fields the request-log
-            middleware replaces with a metadata marker
+            middleware replaces with a metadata marker. Set it to a single
+            space to turn stripping off: an empty value is dropped by
+            env_ignore_empty and leaves the default in place
         REQUEST_LOG_MAX_BODY_BYTES: Size ceiling for a logged request/response
             body; larger bodies are stored as a truncation marker (0 disables)
     """
