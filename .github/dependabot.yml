@@ -1,0 +1,35 @@
+# Dependabot configuration.
+#
+# Security alerts are raised for every Pipfile.lock in the repository, but
+# without this file no update PRs are opened, so each advisory has to be
+# resolved by hand. Listing all nine pipenv projects keeps the service locks,
+# the shared commons lock and the cross-service e2e harness lock in step.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directories:
+      - "/services/account"
+      - "/services/cart"
+      - "/services/commons"
+      - "/services/journal"
+      - "/services/master-data"
+      - "/services/report"
+      - "/services/stock"
+      - "/services/terminal"
+      - "/tests/e2e"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      # One PR per project per week for routine bumps; security advisories
+      # still get their own dedicated PRs.
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
