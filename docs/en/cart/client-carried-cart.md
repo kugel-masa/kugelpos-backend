@@ -183,6 +183,40 @@ Pre-#166 clients keep working: they carry no counter, send their number under th
 old `receipt_no` name at open (numerically the same value — they counted 1, 2, 3
 with no wrap), and their receipt numbers are recorded as sent.
 
+## Two numbering series while DUAL mode is on (#168)
+
+The finalize path branches per **transaction**, not per terminal:
+
+| request | numbers come from |
+|---|---|
+| carries a finalize context | the terminal's running `receipt_counter` |
+| carries none | cart's own `terminal_counter` collection |
+
+A phase 2 terminal whose snapshot signing has degraded — `SNAPSHOT_HMAC_KEYS`
+unset, malformed, or mid-rotation — is issued no snapshot, so it cannot carry
+anything and its next sale is numbered from the *other* series. That series knows
+nothing about how far the terminal has advanced, so it can print a receipt number
+the terminal has already issued.
+
+This is **detected, not blocked**: refusing the finalize would stop a store
+selling over a key misconfiguration, and the posture for numbering integrity here
+is audit detection rather than enforcement (spec 156 Q58). A finalize that falls
+into the server-side series while the terminal has one of its own logs at ERROR
+
+```
+Finalize numbered from the server-side series while the terminal has its own
+(issue #168): cart_id=… reason=signing_degraded terminal_receipt_counter=…
+```
+
+and writes a `numbering_fallback` record to the restore audit trail
+(`log_cart_restore`), with `reject_reason` naming which condition fired
+(`signing_degraded` / `no_carried_context`).
+
+`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` removes the window entirely — a
+snapshot-less mutating request is rejected, so there is no second series to fall
+into. Until then, a degraded signing key is an incident to fix, and now one that
+is visible per transaction rather than only in the startup log.
+
 ## Configuration
 
 | Variable | Default | Purpose |

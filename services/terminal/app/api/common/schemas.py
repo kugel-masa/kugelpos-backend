@@ -162,6 +162,11 @@ class BaseTerminal(BaseSchemmaModel):
     business_date: Optional[str] = None
     open_counter: int
     business_counter: int
+    # The terminal's running receipt counter (issue #166). Exposed so a service
+    # reached with an API key - which has no JWT claims to read - can tell a
+    # terminal that numbers its own receipts from one that relies on server-side
+    # numbering (issue #168).
+    receipt_counter: Optional[int] = None
     initial_amount: Optional[float] = None
     physical_amount: Optional[float] = None
     staff: Optional[BaseStaff] = None

@@ -112,15 +112,19 @@ class TestFallback:
         assert doc.receipt_counter is None
 
     @pytest.mark.asyncio
-    async def test_stateless_cancel_without_a_context_is_reported(self, caplog):
+    async def test_a_terminal_with_its_own_series_is_reported(self, caplog):
+        # #168: the finalize will be numbered from the server-side series while
+        # this terminal numbers its own, so the two can collide.
         doc = _cart_doc()
         svc = _arm(_make_cart_service(stateless=True), doc)
+        svc.terminal_info.receipt_counter = 42
+        svc.cart_restore_log_repo = None  # audit unavailable; the log still has to say it
 
-        with caplog.at_level("WARNING"):
+        with caplog.at_level("ERROR"):
             await svc.cancel_transaction_async()
 
-        assert "carried no finalize context" in caplog.text
-        assert "collide" in caplog.text
+        assert "server-side series" in caplog.text
+        assert "issue #168" in caplog.text
 
 
 class TestGuard:

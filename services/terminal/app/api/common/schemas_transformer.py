@@ -31,6 +31,7 @@ class SchemasTransformer:
             business_date=terminal_info.business_date,
             open_counter=terminal_info.open_counter,
             business_counter=terminal_info.business_counter,
+            receipt_counter=getattr(terminal_info, "receipt_counter", None),
             initial_amount=terminal_info.initial_amount,
             physical_amount=terminal_info.physical_amount,
             api_key=terminal_info.api_key if include_api_key else mask_api_key(terminal_info.api_key),

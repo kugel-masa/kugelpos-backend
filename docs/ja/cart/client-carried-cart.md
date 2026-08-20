@@ -158,6 +158,28 @@ receipt_no = RECEIPT_NO_START_VALUE + ((receipt_counter - 1) mod レンジ幅)
 
 #166 以前のクライアントもそのまま動作する。カウンタを持たず、open では旧来の `receipt_no` 名で同じ値を送り（1, 2, 3 と巻かずに数えていた＝通算値そのもの）、レシート番号は送られた値のまま記録される。
 
+## DUAL モード中は採番系列が 2 本ある (#168)
+
+確定経路の分岐は**端末単位ではなく取引単位**である。
+
+| リクエスト | 採番元 |
+|---|---|
+| finalize context を運ぶ | 端末の通算カウンタ `receipt_counter` |
+| 運ばない | cart 自身の `terminal_counter` コレクション |
+
+スナップショット署名が縮退した phase 2 端末（`SNAPSHOT_HMAC_KEYS` の未設定・不正・ローテーション途中）にはスナップショットが発行されないため、何も運べず、次の売上が**もう一方の系列**で採番される。その系列は端末がどこまで進んでいるかを知らないため、**端末が既に発行したレシート番号を再び印字しうる**。
+
+これは**遮断せず検知する**。鍵の設定ミスで店舗の販売を止める方が有害であり、採番の整合性に対する本システムの姿勢は「強制ではなく監査検知」だからである（spec 156 Q58）。端末が自前の系列を持っているのにサーバー系列で採番された確定は ERROR ログを出し、
+
+```
+Finalize numbered from the server-side series while the terminal has its own
+(issue #168): cart_id=… reason=signing_degraded terminal_receipt_counter=…
+```
+
+リストア監査証跡（`log_cart_restore`）に `numbering_fallback` レコードを書く（`reject_reason` はどちらの条件で発火したか——`signing_degraded` / `no_carried_context`——を示す）。
+
+`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` にすればこの窓は完全に消える（スナップショットなしの更新系リクエストが拒否されるため、落ちる先の系列が存在しない）。それまでは、署名鍵の縮退は修正すべきインシデントであり、起動ログだけでなく**取引単位で可視化される**ようになった。
+
 ## 設定
 
 | 環境変数 | 既定値 | 内容 |

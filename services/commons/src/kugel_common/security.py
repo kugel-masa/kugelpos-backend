@@ -184,6 +184,10 @@ def terminal_claims_to_terminal_info(claims: dict) -> TerminalInfoDocument:
         open_counter=claims.get("open_counter"),
         business_counter=claims.get("business_counter"),
         receipt_no=claims.get("receipt_no"),
+        # Issue #166: the terminal's running receipt counter. Carried back so a
+        # service can tell a terminal that numbers its own receipts from one that
+        # relies on server-side numbering (issue #168).
+        receipt_counter=claims.get("receipt_counter"),
     )
 
     # Reconstruct staff if present in claims

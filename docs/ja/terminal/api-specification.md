@@ -744,6 +744,7 @@ Delete Storeを削除します。対象をシステムから削除します。
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -825,6 +826,7 @@ Delete Storeを削除します。対象をシステムから削除します。
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -905,6 +907,7 @@ or X-API-KEY), the api_key is always masked even if the flag is set.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1324,6 +1327,7 @@ Represents termin |
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1405,6 +1409,7 @@ Represents termin |
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1585,6 +1590,7 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1657,6 +1663,7 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |

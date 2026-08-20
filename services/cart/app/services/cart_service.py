@@ -350,15 +350,11 @@ class CartService(ICartService):
             cart_doc.receipt_no = receipt_no
             cart_doc.receipt_counter = receipt_counter
             cart_doc.transaction_datetime = transaction_datetime
-        elif self._stateless:
-            # A phase 2 terminal that cancels without a context falls back to the
-            # server-side counters, which is the collision this issue is about.
-            logger.warning(
-                "Cancel on the stateless path carried no finalize context "
-                "(cart_id=%s); numbering falls back to the server-side counters, "
-                "which can collide with a carried transaction in this open session",
-                self.cart_id,
-            )
+        else:
+            # No carried context: the numbers come from the server-side series
+            # (issue #170 gave cancel a carried path; issue #168 is about the two
+            # series coexisting while DUAL mode is on).
+            await self.__audit_numbering_fallback_async(self.cart_id, "cancel")
 
         # Create transaction log
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)
@@ -822,6 +818,8 @@ class CartService(ICartService):
             cart_doc.receipt_no = receipt_no
             cart_doc.receipt_counter = receipt_counter
             cart_doc.transaction_datetime = transaction_datetime
+        else:
+            await self.__audit_numbering_fallback_async(self.cart_id, "bill")
 
         # Create transaction log
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)
@@ -946,6 +944,56 @@ class CartService(ICartService):
         self.item_master_repo.set_item_master_documents(snapshot_cart.masters.items)
         self.tax_master_repo.set_tax_master_documents(snapshot_cart.masters.taxes)
         self.state_manager.set_state(snapshot_cart.status)
+
+    async def __audit_numbering_fallback_async(self, cart_id: str, api_path: str) -> None:
+        """
+        Record a finalize that will be numbered from the server-side series when
+        the terminal has a series of its own (issue #168).
+
+        DUAL mode keeps two independent receipt-number sources: a carried
+        finalize numbers from the terminal's running counter, a snapshot-less one
+        from cart's `terminal_counter`. The branch is per *transaction*, so a
+        phase 2 terminal whose snapshot signing has degraded - an unset,
+        malformed or mid-rotation SNAPSHOT_HMAC_KEYS - silently falls into the
+        other series and can print a receipt number it has already issued.
+
+        Detected, not blocked: refusing the finalize would stop a store selling
+        over a key misconfiguration, and this codebase's posture for numbering
+        integrity is audit detection rather than enforcement (spec 156 Q58).
+        `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` is what removes the window.
+
+        Args:
+            cart_id: The cart being finalized
+            api_path: API path of the finalize, for the audit trail
+
+        Returns:
+            None
+        """
+        signing_degraded = snapshot_service.get_snapshot_signer() is None
+        terminal_counter = getattr(self.terminal_info, "receipt_counter", None)
+        terminal_numbers_its_own = bool(terminal_counter)
+        if not (signing_degraded or terminal_numbers_its_own):
+            # A phase 1 terminal with no series of its own: the server-side
+            # numbering is simply how it works, and nothing can collide.
+            return
+
+        reason = "signing_degraded" if signing_degraded else "no_carried_context"
+        logger.error(
+            "Finalize numbered from the server-side series while the terminal has "
+            "its own (issue #168): cart_id=%s reason=%s terminal_receipt_counter=%s "
+            "stateless=%s. Receipt numbers from the two series can collide; fix the "
+            "snapshot signing key, or move to CART_REQUEST_SNAPSHOT_MODE=REQUIRED.",
+            cart_id,
+            reason,
+            terminal_counter,
+            self._stateless,
+        )
+        await self.__add_restore_audit_async(
+            result="numbering_fallback",
+            audit_meta={"cart_id": cart_id},
+            reject_reason=reason,
+            api_path=api_path,
+        )
 
     async def __add_restore_audit_async(
         self, result: str, audit_meta: dict, reject_reason: str = None, diverged: bool = False, api_path: str = None
