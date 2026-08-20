@@ -114,22 +114,44 @@ class TestCompatibilityAndFailure:
         assert await svc._carried_receipt_no_async(3, 77) == 77
 
     @pytest.mark.asyncio
-    async def test_missing_settings_fall_back_to_an_unbounded_range(self):
+    async def test_unavailable_range_keeps_the_number_the_terminal_printed(self):
+        # The settings read is a cached master-data call; when it degrades the
+        # derived number would leave the configured range, so the carried number
+        # wins - which is why a client should send both.
         svc = _make_tran_service()
         svc._get_setting_value_async = AsyncMock(return_value=None)
-        assert await svc._carried_receipt_no_async(3, None) == 3
+        assert await svc._carried_receipt_no_async(3, 111113) == 111113
+
+    @pytest.mark.asyncio
+    async def test_unavailable_range_with_no_carried_number_is_reported(self, caplog):
+        svc = _make_tran_service()
+        svc._get_setting_value_async = AsyncMock(return_value=None)
+        with caplog.at_level("ERROR"):
+            assert await svc._carried_receipt_no_async(3, None) == 3
+        assert "Receipt number range unavailable" in caplog.text
+        assert "outside the configured range" in caplog.text
 
 
 class TestRangeResolution:
     @pytest.mark.asyncio
     async def test_reads_both_ends_from_settings(self):
         svc = _with_range(_make_tran_service())
-        assert await svc._receipt_range_async() == (111111, 111115)
+        assert await svc._receipt_range_async() == (111111, 111115, True)
 
     @pytest.mark.asyncio
-    async def test_defaults_when_unset(self):
+    async def test_unresolved_range_is_reported_as_such(self):
         import sys
 
         svc = _make_tran_service()
         svc._get_setting_value_async = AsyncMock(return_value=None)
-        assert await svc._receipt_range_async() == (1, sys.maxsize)
+        # The fallback is unbounded, and the caller is told it is a fallback.
+        assert await svc._receipt_range_async() == (1, sys.maxsize, False)
+
+    @pytest.mark.asyncio
+    async def test_a_half_configured_range_counts_as_unresolved(self):
+        svc = _make_tran_service()
+        svc._get_setting_value_async = AsyncMock(
+            side_effect=lambda name: "111111" if name == "RECEIPT_NO_START_VALUE" else None
+        )
+        _, _, resolved = await svc._receipt_range_async()
+        assert resolved is False

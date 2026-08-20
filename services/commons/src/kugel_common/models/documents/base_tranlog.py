@@ -155,8 +155,11 @@ class BaseTransaction(AbstractDocument):
     generate_date_time: Optional[str] = None
     receipt_no: Optional[int] = None
     # Running counter behind receipt_no (issue #166): the number of transactions
-    # this terminal has finalized, from which receipt_no is derived by mapping it
-    # onto the configured range. Stored because a printed receipt_no cannot be
+    # this terminal has finalized on the carried path, from which receipt_no is
+    # derived by mapping it onto the configured range. Null on the server-numbered
+    # path, which includes cancellation — the cancel endpoint takes no finalize
+    # context, so a cancelled sale still draws its numbers from the server-side
+    # series (see #170). Stored because a printed receipt_no cannot be
     # ordered once the range wraps - 111115 says nothing about which cycle it
     # belonged to - so this is what a terminal-replacement high-water query reads.
     #

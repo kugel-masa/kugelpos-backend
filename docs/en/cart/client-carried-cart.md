@@ -155,13 +155,19 @@ its terminal token (`receipt_counter` claim) at open. It sends its own high-wate
 counter back at the next open, where `max()` reconciles it — so a number used
 during an offline session is never reissued.
 
-**Invariant**: `1 tranlog = 1 seq = 1 receipt_counter = 1 printed receipt_no`.
-A cancellation is a finalize like any other and consumes a number; abandoning a
-cart consumes nothing.
+**Invariant on the carried path**: `1 tranlog = 1 seq = 1 receipt_counter =
+1 printed receipt_no`. Abandoning a cart consumes nothing.
+
+**Cancellation is currently outside it.** `POST /carts/{cart_id}/cancel` takes no
+finalize context, so a cancelled sale produces a tranlog whose numbers come from
+the *server-side* series and whose `receipt_counter` is null — two series
+interleaving in normal operation, not only in the degraded case #168 describes.
+Tracked in #170.
 
 **Gaps** are possible and permitted, but only from: a safe jump when a terminal
-is replaced, an offline-finalized transaction that never arrived, or a reconcile
-where the stored counter was higher. Nothing in normal operation produces one, so
+is replaced, an offline-finalized transaction that never arrived, a reconcile
+where the stored counter was higher, or a cancellation (which does not advance
+the counter — see above). Nothing in normal operation produces one, so
 a hole in `receipt_counter` is a signal worth investigating.
 
 `receipt_counter` is recorded on the transaction log (non-unique index) because a
