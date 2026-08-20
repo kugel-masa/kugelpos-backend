@@ -296,15 +296,46 @@ class CartService(ICartService):
         return return_cart
 
     # Cancel a transaction for a cart
-    async def cancel_transaction_async(self) -> CartDocument:
+    async def cancel_transaction_async(
+        self,
+        seq: int = None,
+        receipt_no: int = None,
+        transaction_datetime: str = None,
+        receipt_counter: int = None,
+    ) -> CartDocument:
         """
         Cancel the current transaction.
 
         Marks the cart as cancelled and creates a transaction log entry.
 
+        A cancellation is a finalize: it writes a transaction log and prints a
+        receipt, so it consumes a number like any other transaction the terminal
+        produces (issue #170). On the stateless path the terminal therefore
+        stamps the same finalize context it stamps at bill; without it the
+        transaction would be numbered from the server-side counters, whose
+        transaction_no shares the (business_counter, transaction_no) key space
+        with the carried per-open seq and can collide with a sale in the same
+        open session.
+
+        Args:
+            seq: Client-carried transaction sequence (issue #156).
+            receipt_no: Client-carried receipt number - the number the terminal
+                printed on the cancellation receipt.
+            transaction_datetime: Client-stamped transaction time (issue #156).
+            receipt_counter: Client-carried running receipt counter (issue #166).
+
         Returns:
             CartDocument: The updated cart document with cancelled status
         """
+        # A carried context without a snapshot has no signature behind it: the
+        # numbers would be whatever the caller typed. Same rule as bill.
+        if transaction_datetime is not None and not self._stateless:
+            message = (
+                f"Finalize context supplied without a signed snapshot, cart_id: {self.cart_id}. "
+                "Carried numbering requires the stateless (snapshot) path."
+            )
+            raise SnapshotInvalidException(message, logger)
+
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
 
@@ -313,6 +344,21 @@ class CartService(ICartService):
 
         # Process cancellation
         cart_doc.sales.is_cancelled = True
+
+        if transaction_datetime is not None and self._stateless:
+            cart_doc.seq = seq
+            cart_doc.receipt_no = receipt_no
+            cart_doc.receipt_counter = receipt_counter
+            cart_doc.transaction_datetime = transaction_datetime
+        elif self._stateless:
+            # A phase 2 terminal that cancels without a context falls back to the
+            # server-side counters, which is the collision this issue is about.
+            logger.warning(
+                "Cancel on the stateless path carried no finalize context "
+                "(cart_id=%s); numbering falls back to the server-side counters, "
+                "which can collide with a carried transaction in this open session",
+                self.cart_id,
+            )
 
         # Create transaction log
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)

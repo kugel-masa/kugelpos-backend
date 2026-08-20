@@ -19,10 +19,14 @@ inert.
 import os
 
 import pytest
+import pytest_asyncio
 from fastapi import status
 
 # The shipped defaults, which the e2e tenant does not override.
 RECEIPT_NO_START = 111111
+# Per-open seq values these tests carry; kept above the suite's own numbering and
+# removed afterwards (see _remove_synthetic_transactions).
+SYNTHETIC_SEQ_BASE = 9000
 RECEIPT_NO_END = 999999
 RANGE_WIDTH = RECEIPT_NO_END - RECEIPT_NO_START + 1
 
@@ -30,6 +34,24 @@ RANGE_WIDTH = RECEIPT_NO_END - RECEIPT_NO_START + 1
 @pytest.fixture
 def api_header():
     return {"X-API-KEY": os.environ.get("API_KEY")}
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _remove_synthetic_transactions(http_client):
+    """Take the synthetic numbering rows back out of the shared terminal.
+
+    These tests deliberately carry per-open seq values far above the ones the
+    rest of the suite produces, because a carried seq has to be unique inside the
+    open session. The transaction list defaults to `sort=transaction_no:-1`
+    (`api/v1/tran.py:207`), so leaving them behind pushes other tests' rows off
+    page 1 — a test that asserts on `limit=10` then fails for no reason of its
+    own. Cleaning up keeps the shared session as we found it.
+    """
+    yield
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}")
+    await db["log_tran"].delete_many({"transaction_no": {"$gte": SYNTHETIC_SEQ_BASE}})
 
 
 async def _cart_ready_to_bill(http_client, terminal_id, header):
