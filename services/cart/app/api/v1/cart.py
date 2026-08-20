@@ -118,6 +118,7 @@ async def create_cart(
     },
 )
 async def cancel_transaction(
+    finalize: Optional[FinalizeContext] = None,
     cart_service: CartService = Depends(get_cart_service_with_cart_id_async),
 ):
     """
@@ -126,6 +127,11 @@ async def cancel_transaction(
     Marks the cart as cancelled, preventing further modifications or processing.
 
     Args:
+        finalize: Client-carried finalize context (issue #170). A cancellation
+            writes a transaction log and prints a receipt, so on the stateless
+            path the terminal stamps its number, receipt number, and time here
+            exactly as it does at bill. Omitted on the cache-authoritative path,
+            where the server assigns them.
         cart_service: Injected cart service instance with cart_id
 
     Returns:
@@ -134,7 +140,12 @@ async def cancel_transaction(
     cart_id = cart_service.cart_id
     logger.debug(f"Canceling cart {cart_id}")
     try:
-        cart_doc = await cart_service.cancel_transaction_async()
+        cart_doc = await cart_service.cancel_transaction_async(
+            seq=finalize.seq if finalize else None,
+            receipt_no=finalize.receipt_no if finalize else None,
+            receipt_counter=finalize.receipt_counter if finalize else None,
+            transaction_datetime=finalize.transaction_datetime if finalize else None,
+        )
     except Exception as e:
         raise e
 

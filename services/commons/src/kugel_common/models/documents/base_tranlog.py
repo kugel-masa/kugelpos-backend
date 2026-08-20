@@ -157,9 +157,9 @@ class BaseTransaction(AbstractDocument):
     # Running counter behind receipt_no (issue #166): the number of transactions
     # this terminal has finalized on the carried path, from which receipt_no is
     # derived by mapping it onto the configured range. Null on the server-numbered
-    # path, which includes cancellation — the cancel endpoint takes no finalize
-    # context, so a cancelled sale still draws its numbers from the server-side
-    # series (see #170). Stored because a printed receipt_no cannot be
+    # path (a phase 1 client, or a phase 2 one whose snapshot signing is degraded
+    # - see #168). Every carried transaction advances it, cancellations included
+    # (issue #170). Stored because a printed receipt_no cannot be
     # ordered once the range wraps - 111115 says nothing about which cycle it
     # belonged to - so this is what a terminal-replacement high-water query reads.
     #
