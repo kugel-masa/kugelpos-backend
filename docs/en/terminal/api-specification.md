@@ -785,6 +785,7 @@ Optional filtering by store code is supported.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -869,6 +870,7 @@ Requires token authentication (no terminal ID/API key needed since the terminal 
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -949,6 +951,7 @@ or X-API-KEY), the api_key is always masked even if the flag is set.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1382,6 +1385,7 @@ This endpoint updates the description of a specific terminal.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1466,6 +1470,7 @@ The function mode determines what operations are available on the terminal.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1646,6 +1651,7 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
@@ -1718,6 +1724,7 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 | `businessDate` | string | No | - |
 | `openCounter` | integer | Yes | - |
 | `businessCounter` | integer | Yes | - |
+| `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |

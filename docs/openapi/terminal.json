@@ -4101,6 +4101,17 @@
             "type": "integer",
             "title": "Businesscounter"
           },
+          "receiptCounter": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiptcounter"
+          },
           "initialAmount": {
             "anyOf": [
               {
@@ -4824,6 +4835,17 @@
           "businessCounter": {
             "type": "integer",
             "title": "Businesscounter"
+          },
+          "receiptCounter": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiptcounter"
           },
           "initialAmount": {
             "anyOf": [
