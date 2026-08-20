@@ -18,6 +18,12 @@ This module provides middleware to log all incoming API requests and their respo
 for auditing and debugging purposes. It captures request details, response information,
 user context, terminal information and authentication details, storing them both in
 log files and in the database.
+
+Logged bodies are bounded (issue #155): fields named in
+``REQUEST_LOG_STRIP_FIELDS`` - the signed cart snapshot by default, which
+carries a whole cart document on every mutating call - are replaced by a
+metadata marker, and a body still above ``REQUEST_LOG_MAX_BODY_BYTES`` is
+stored as a truncation marker instead.
 """
 from fastapi import Request, Response
 from logging import getLogger
@@ -33,11 +39,43 @@ from kugel_common.models.repositories.request_log_repository import RequestLogRe
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.config.settings import settings
 from kugel_common.utils.misc import get_app_time_str
-from kugel_common.utils.log_utils import mask_api_key
+from kugel_common.utils.log_utils import mask_api_key, parse_log_strip_fields, sanitize_log_body
 from kugel_common.middleware.request_log_buffer import get_request_log_buffer
 
 logger = getLogger(__name__)
 logger_request = getLogger("requestLogger")
+
+# Parsed form of settings.REQUEST_LOG_STRIP_FIELDS, recomputed when the setting
+# changes so tests (and a live reconfiguration) are not stuck with the first
+# value seen.
+_strip_fields_spec: str | None = None
+_strip_fields: tuple = ()
+
+
+def _log_strip_fields() -> tuple:
+    """
+    Field names the logged request/response bodies are stripped of (issue #155).
+
+    Returns:
+        Tuple of field names parsed from settings.REQUEST_LOG_STRIP_FIELDS
+    """
+    global _strip_fields_spec, _strip_fields
+    spec = getattr(settings, "REQUEST_LOG_STRIP_FIELDS", "") or ""
+    if spec != _strip_fields_spec:
+        _strip_fields_spec = spec
+        _strip_fields = parse_log_strip_fields(spec)
+    return _strip_fields
+
+
+def _log_max_body_bytes() -> int:
+    """
+    Size ceiling for a logged request/response body; 0 disables the backstop.
+
+    Returns:
+        Maximum body size in bytes from settings.REQUEST_LOG_MAX_BODY_BYTES
+    """
+    return getattr(settings, "REQUEST_LOG_MAX_BODY_BYTES", 0) or 0
+
 
 def log_requests(service_name: str = "NO_SERVICE_NAME"):
     """
@@ -297,24 +335,27 @@ async def _parse_response_body(response_body: bytes):
     except Exception:
         return None
 
-async def _get_request_body(request: Request):
+async def _get_request_body(request: Request) -> tuple:
     """
     Extract and parse request body as JSON
-    
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
-        Parsed JSON object or None if parsing fails
+        Tuple of (parsed JSON object or None if parsing fails, raw body bytes)
+        - the raw bytes let the log sanitizer skip work whose outcome they
+        already determine (see sanitize_log_body)
     """
+    body = b""
     try:
         body = await request.body()
         json_body = json.loads(body)
         logger.debug(f"request body: {json_body}")
-        return json_body
+        return json_body, body
     except Exception:
         logger.debug("Failed to get request body")
-        return None
+        return None, body
 
 async def _make_tenant_id(terminal_info: TerminalInfoDocument, user_dict: dict) -> str:
     """
@@ -353,7 +394,11 @@ async def _make_client_info(request: Request) -> RequestLog.ClientInfo:
 async def _make_request_info(request: Request, accept_time: str) -> RequestLog.RequestInfo:
     """
     Create request information object from request
-    
+
+    The body is sanitized before it is stored: bulky fields (the signed cart
+    snapshot by default) are replaced by a metadata marker and anything still
+    over the size budget is truncated - see issue #155.
+
     Args:
         request: FastAPI request object
         accept_time: Timestamp when the request was accepted
@@ -361,17 +406,25 @@ async def _make_request_info(request: Request, accept_time: str) -> RequestLog.R
     Returns:
         RequestLog.RequestInfo object with request details
     """
+    body, raw = await _get_request_body(request)
     return RequestLog.RequestInfo(
-        method=request.method, 
-        url=str(request.url), 
-        body=await _get_request_body(request),
+        method=request.method,
+        url=str(request.url),
+        body=sanitize_log_body(
+            body,
+            strip_fields=_log_strip_fields(),
+            max_bytes=_log_max_body_bytes(),
+            raw=raw,
+        ),
         accept_time=accept_time
     )
 
 async def _make_response_info(response: Response, process_time_ms: int) -> RequestLog.ResponseInfo:
     """
     Create response information object from response
-    
+
+    The body is sanitized the same way the request body is (issue #155).
+
     Args:
         response: FastAPI response object
         process_time_ms: Request processing time in milliseconds
@@ -391,7 +444,12 @@ async def _make_response_info(response: Response, process_time_ms: int) -> Reque
     return RequestLog.ResponseInfo(
         status_code=response.status_code,
         process_time_ms=process_time_ms,
-        body=json_body
+        body=sanitize_log_body(
+            json_body,
+            strip_fields=_log_strip_fields(),
+            max_bytes=_log_max_body_bytes(),
+            raw=response_body,
+        )
     )
 
 async def _make_staff_info(terminal_info: TerminalInfoDocument) -> RequestLog.StaffInfo:
