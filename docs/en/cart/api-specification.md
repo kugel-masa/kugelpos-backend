@@ -231,6 +231,7 @@ it for receipt generation and storage.
 {
   "seq": 0,
   "receiptNo": 0,
+  "receiptCounter": 0,
   "transactionDatetime": "string"
 }
 ```
@@ -323,6 +324,18 @@ Marks the cart as cancelled, preventing further modifications or processing.
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | - |
+
+**Request Body:**
+
+**Request Example:**
+```json
+{
+  "seq": 0,
+  "receiptNo": 0,
+  "receiptCounter": 0,
+  "transactionDatetime": "string"
+}
+```
 
 **Response:**
 

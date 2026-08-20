@@ -5059,11 +5059,24 @@
               }
             ],
             "title": "Receiptno"
+          },
+          "receiptCounter": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiptcounter"
           }
         },
         "type": "object",
         "title": "TerminalOpenRequest",
-        "description": "Schema for terminal open request\n\nContains information required to open a terminal:\n- initial_amount: The initial cash amount in the terminal drawer\n- business_counter / receipt_no: client-carried counter values (issue #156).\n  The terminal owns these and may have advanced them offline; the service\n  reconciles via max() so an offline-used value is never reused. Because\n  that reconcile is monotonic and therefore irreversible, the values are\n  bounded here: negatives are rejected outright and the absolute ceiling\n  keeps a malformed client from permanently burning the counter space.\n  A value that is merely ahead of the stored one is still accepted — that\n  is the offline case this exists for — but see the per-open jump guard in\n  TerminalService.open_terminal_async."
+        "description": "Schema for terminal open request\n\nContains information required to open a terminal:\n- initial_amount: The initial cash amount in the terminal drawer\n- business_counter / receipt_counter: client-carried counter values\n  (issue #156, #166). `receipt_counter` is the running count of finalized\n  transactions; the printed receipt number is derived from it and the\n  configured range, so the counter never wraps and the max() reconcile below\n  stays a valid comparison. `receipt_no` is the pre-#166 spelling of the same\n  value and is still accepted - those clients counted 1, 2, 3 with no wrap,\n  which is exactly a running counter.\n  The terminal owns these and may have advanced them offline; the service\n  reconciles via max() so an offline-used value is never reused. Because\n  that reconcile is monotonic and therefore irreversible, the values are\n  bounded here: negatives are rejected outright and the absolute ceiling\n  keeps a malformed client from permanently burning the counter space.\n  A value that is merely ahead of the stored one is still accepted — that\n  is the offline case this exists for — but see the per-open jump guard in\n  TerminalService.open_terminal_async."
       },
       "TerminalOpenResponse": {
         "properties": {

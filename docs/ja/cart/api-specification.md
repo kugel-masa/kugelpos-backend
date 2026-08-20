@@ -222,6 +222,7 @@
 {
   "seq": 0,
   "receiptNo": 0,
+  "receiptCounter": 0,
   "transactionDatetime": "string"
 }
 ```
@@ -312,6 +313,18 @@
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | - |
+
+**リクエストボディ:**
+
+**リクエスト例:**
+```json
+{
+  "seq": 0,
+  "receiptNo": 0,
+  "receiptCounter": 0,
+  "transactionDatetime": "string"
+}
+```
 
 **レスポンス:**
 

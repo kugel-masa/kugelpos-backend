@@ -143,7 +143,7 @@
     "/api/v1/carts/{cart_id}/cancel": {
       "post": {
         "summary": "Cancel Transaction",
-        "description": "Cancel a transaction/cart.\n\nMarks the cart as cancelled, preventing further modifications or processing.\n\nArgs:\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
+        "description": "Cancel a transaction/cart.\n\nMarks the cart as cancelled, preventing further modifications or processing.\n\nArgs:\n    finalize: Client-carried finalize context (issue #170). A cancellation\n        writes a transaction log and prints a receipt, so on the stateless\n        path the terminal stamps its number, receipt number, and time here\n        exactly as it does at bill. Omitted on the cache-authoritative path,\n        where the server assigns them.\n    cart_service: Injected cart service instance with cart_id\n\nReturns:\n    API response with the updated cart data",
         "operationId": "cancel_transaction_api_v1_carts__cart_id__cancel_post",
         "security": [
           {
@@ -180,6 +180,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FinalizeContext"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Finalize"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4268,6 +4285,17 @@
             ],
             "title": "Receiptno"
           },
+          "receiptCounter": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiptcounter"
+          },
           "transactionDatetime": {
             "anyOf": [
               {
@@ -4282,7 +4310,7 @@
         },
         "type": "object",
         "title": "FinalizeContext",
-        "description": "Client-carried finalize context for the bill endpoint (issue #156).\n\nOn the stateless (snapshot-present) path the terminal stamps the\ntransaction's number, receipt number, and time at bill and supplies them\nhere so a retried finalize on any backend yields the same values\n(deterministic finalize, FR-012). Absent on the cache-authoritative path,\nwhere the server assigns them. The three fields are all-or-nothing (a\npartial context would write a null transaction_no/receipt_no); accepts\ncamelCase (seq / receiptNo / transactionDatetime) via the alias generator."
+        "description": "Client-carried finalize context for the bill endpoint (issue #156).\n\nOn the stateless (snapshot-present) path the terminal stamps the\ntransaction's number, receipt number, and time at bill and supplies them\nhere so a retried finalize on any backend yields the same values\n(deterministic finalize, FR-012). Absent on the cache-authoritative path,\nwhere the server assigns them. The context is all-or-nothing (a partial one\nwould write a null transaction_no/receipt_no), where the receipt number may\nbe the printed value, the running counter it derives from, or both; accepts\ncamelCase (seq / receiptNo / receiptCounter / transactionDatetime) via the\nalias generator."
       },
       "HTTPValidationError": {
         "properties": {
