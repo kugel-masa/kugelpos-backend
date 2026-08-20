@@ -145,6 +145,53 @@ async def test_carried_finalize_context_drives_numbering(http_client, snapshot_k
 
 
 @pytest.mark.asyncio
+async def test_carried_cancel_is_numbered_from_the_carried_context(http_client, snapshot_keys):
+    """A cancellation writes a tranlog, so it is a finalize and takes the carried
+    numbering too (issue #170). Without this it drew from the server counters,
+    whose transaction_no shares the (business_counter, transaction_no) key space
+    with the carried per-open seq."""
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    snapshot = r.json()["data"]["signedSnapshot"]
+    assert snapshot is not None
+
+    # Distinctive carried values a server counter would never produce.
+    wrapped = {
+        "signedSnapshot": snapshot,
+        "payload": {"seq": 7801, "receiptNo": 7802, "transactionDatetime": "2026-06-14T04:05:06"},
+    }
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
+        json=wrapped,
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    data = r.json()["data"]
+    assert data["cartStatus"] == "Cancelled"
+    assert data["transactionNo"] == 7801, data
+    assert data["receiptNo"] == 7802, data
+
+
+@pytest.mark.asyncio
+async def test_carried_cancel_rejects_a_context_without_a_snapshot(http_client, snapshot_keys):
+    """Unsigned numbers are whatever the caller typed; same rule the bill path has."""
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
+        json={"seq": 7811, "receiptNo": 7812, "transactionDatetime": "2026-06-14T04:06:07"},
+        headers=headers,
+    )
+    assert r.status_code >= status.HTTP_400_BAD_REQUEST, r.text
+
+
+@pytest.mark.asyncio
 async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys):
     """B2: a retried finalize (same snapshot + finalize context) returns the same
     result, not a 500 — the duplicate insert is handled idempotently."""
@@ -166,13 +213,17 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     ctx = {"seq": 5151, "receiptNo": 5152, "transactionDatetime": "2026-06-14T02:03:04"}
     wrapped = {"signedSnapshot": paying_snapshot, "payload": ctx}
 
-    r1 = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", json=wrapped, headers=headers)
+    r1 = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", json=wrapped, headers=headers
+    )
     assert r1.status_code == status.HTTP_200_OK, r1.text
     assert r1.json()["data"]["transactionNo"] == 5151
 
     # Retry the exact same finalize: reconstructs from the same paying snapshot,
     # produces the same (cart_id, seq) -> idempotent, same result, no 500.
-    r2 = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", json=wrapped, headers=headers)
+    r2 = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", json=wrapped, headers=headers
+    )
     assert r2.status_code == status.HTTP_200_OK, r2.text
     assert r2.json()["data"]["transactionNo"] == 5151
 
@@ -349,7 +400,9 @@ async def test_tampered_wrapped_request_is_rejected(http_client, snapshot_keys):
     db = await db_helper.get_db_async(f"db_cart_{os.environ.get('TENANT_ID')}")
     logs = [
         doc
-        async for doc in db[settings.DB_COLLECTION_NAME_LOG_CART_RESTORE].find({"cart_id": cart_id, "result": "rejected"})
+        async for doc in db[settings.DB_COLLECTION_NAME_LOG_CART_RESTORE].find(
+            {"cart_id": cart_id, "result": "rejected"}
+        )
     ]
     assert logs, "expected a rejected audit record for the tampered request"
     assert any((log.get("api_path") or "").endswith("/lineItems") for log in logs), logs

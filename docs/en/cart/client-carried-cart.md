@@ -158,16 +158,16 @@ during an offline session is never reissued.
 **Invariant on the carried path**: `1 tranlog = 1 seq = 1 receipt_counter =
 1 printed receipt_no`. Abandoning a cart consumes nothing.
 
-**Cancellation is currently outside it.** `POST /carts/{cart_id}/cancel` takes no
-finalize context, so a cancelled sale produces a tranlog whose numbers come from
-the *server-side* series and whose `receipt_counter` is null — two series
-interleaving in normal operation, not only in the degraded case #168 describes.
-Tracked in #170.
+A **cancellation is a finalize** and follows the same rule (#170): it writes a
+transaction log and prints a receipt, so `POST /carts/{cart_id}/cancel` carries
+the same finalize context `bill` does and consumes a number from the terminal's
+series. Without it a cancelled sale would be numbered from the server-side
+counters, whose `transaction_no` shares the `(business_counter, transaction_no)`
+key space with the carried per-open `seq`.
 
 **Gaps** are possible and permitted, but only from: a safe jump when a terminal
 is replaced, an offline-finalized transaction that never arrived, a reconcile
-where the stored counter was higher, or a cancellation (which does not advance
-the counter — see above). Nothing in normal operation produces one, so
+or where the stored counter was higher. Nothing in normal operation produces one, so
 a hole in `receipt_counter` is a signal worth investigating.
 
 `receipt_counter` is recorded on the transaction log (non-unique index) because a
