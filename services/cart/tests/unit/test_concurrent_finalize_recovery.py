@@ -14,9 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.exceptions import FinalizeConflictException
+from app.exceptions import FinalizeConflictException, InternalErrorException
+from app.models.documents.cart_document import CartDocument
 from app.services.tran_service import TranService
-from kugel_common.exceptions import DuplicateKeyException
+from kugel_common.enums import TransactionType
+from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
+from kugel_common.models.documents.base_tranlog import BaseTransaction
 
 
 def _make_service():
@@ -24,6 +27,7 @@ def _make_service():
     terminal_info.tenant_id = "test_tenant"
     terminal_info.store_code = "S0001"
     terminal_info.terminal_no = 1
+    terminal_info.staff = SimpleNamespace(id="S001", name="Staff1")
 
     with (
         patch("app.services.tran_service.CartStrategyManager") as strategy_mgr,
@@ -53,6 +57,35 @@ def _make_service():
 
 def _tranlog(cart_id="cart-172"):
     return SimpleNamespace(cart_id=cart_id, tenant_id="test_tenant", store_code="S0001")
+
+
+def _cart(cart_id="cart-172"):
+    """A cart carrying its finalize context, i.e. on the stateless path."""
+    cart = CartDocument()
+    cart.cart_id = cart_id
+    cart.transaction_type = TransactionType.NormalSales.value
+    cart.business_date = "20260820"
+    cart.seq = 7
+    cart.receipt_counter = 7
+    cart.receipt_no = 111117
+    cart.transaction_datetime = "2026-08-20T10:00:00"
+    cart.sales = CartDocument.SalesInfo()
+    cart.sales.total_amount_with_tax = 110.0
+    cart.user = None
+    return cart
+
+
+def _persisted_winner(cart_id="cart-172"):
+    """What a concurrent request already committed for the same finalize."""
+    winner = BaseTransaction()
+    winner.cart_id = cart_id
+    winner.tenant_id = "test_tenant"
+    winner.store_code = "S0001"
+    winner.transaction_no = 7
+    winner.receipt_no = 111117
+    winner.receipt_text = "R"
+    winner.journal_text = "J"
+    return winner
 
 
 async def _recover(svc, tranlog):
@@ -102,29 +135,58 @@ class TestRecovery:
 
 
 class TestReachedFromBothFailureShapes:
-    """The race can surface at the insert or at the commit; both recover."""
+    """The race can surface at the insert or at the commit; both must recover.
 
-    def _armed(self, failure):
+    These drive create_tranlog_async itself rather than the private helper: what
+    is being checked is that the exception handlers route to recovery at all, so
+    a test that calls the helper directly would pass with the routing broken.
+    """
+
+    def _armed(self, failure, winner):
+        """A service whose finalize fails with `failure` while `winner` is persisted."""
         svc = _make_service()
         svc.tranlog_delivery_status_repo.create_status_async = AsyncMock()
         svc.tranlog_repository.start_transaction = AsyncMock(return_value=MagicMock())
         svc.tranlog_repository.create_tranlog_async = AsyncMock(side_effect=failure)
+        svc.tranlog_repository.commit_transaction = AsyncMock()
+        svc.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
+        svc._get_setting_value_async = AsyncMock(return_value=None)
+        svc._publish_tranlog_async = AsyncMock()
+        svc.receipt_data_strategy = MagicMock()
+        svc.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
         return svc
 
     @pytest.mark.asyncio
     async def test_duplicate_at_insert(self):
-        svc = self._armed(DuplicateKeyException("dup", "log_tran", {}, None))
-        winner = _tranlog()
-        svc.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
+        winner = _persisted_winner()
+        svc = self._armed(DuplicateKeyException("dup", "log_tran", {}, None), winner)
+        cart = _cart()
 
-        assert await _recover(svc, _tranlog()) is winner
+        result = await svc.create_tranlog_async(cart)
+
+        assert result is winner
+        assert cart.receipt_no == winner.receipt_no  # the response is built from the cart
+        svc._publish_tranlog_async.assert_not_awaited()  # the winner already published
 
     @pytest.mark.asyncio
     async def test_failure_at_commit(self):
-        # A commit-time rejection is not a DuplicateKeyException, which is why it
-        # used to fall through to the generic handler and become a 500.
-        svc = self._armed(RuntimeError("E11000 duplicate key error at commit"))
-        winner = _tranlog()
-        svc.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
+        # The duplicate arrives wrapped (CannotCreateException, "Failed to save
+        # document to database"), which is why it used to reach the generic
+        # handler and become a 500.
+        winner = _persisted_winner()
+        svc = self._armed(CannotCreateException("wrapped duplicate", "log_tran", {}, None), winner)
+        cart = _cart()
 
-        assert await _recover(svc, _tranlog()) is winner
+        result = await svc.create_tranlog_async(cart)
+
+        assert result is winner
+        assert cart.receipt_no == winner.receipt_no
+        svc._publish_tranlog_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failure_with_nothing_persisted_still_fails(self):
+        # Recovery must not turn an unrelated failure into a success.
+        svc = self._armed(RuntimeError("disk on fire"), winner=None)
+
+        with pytest.raises(InternalErrorException):
+            await svc.create_tranlog_async(_cart())
