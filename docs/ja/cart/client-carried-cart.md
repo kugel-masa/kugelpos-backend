@@ -138,6 +138,8 @@ phase 2 で **`transaction_no` は営業回数ごとの連番（seq）** にな�
 | `CART_REQUEST_SNAPSHOT_MODE` | `DUAL` | 移行モード（上述） |
 | `REQUEST_DECOMPRESS_MAX_BYTES` | `1048576` | 展開後のリクエストボディ上限 |
 | `SNAPSHOT_SIZE_WARN_BYTES` | `262144` | スナップショットのサイズ警告閾値 |
+| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | 共通（commons）設定。リクエストログでマーカーに置き換えるボディフィールド。運ばれるスナップショットを毎リクエスト保存しないための措置（#155） |
+| `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | 共通（commons）設定。ログに残すボディのサイズ上限 |
 
 ## 撤去された API
 

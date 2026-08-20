@@ -138,6 +138,8 @@ For `status_tran`, a **data migration** runs before the new unique key is enforc
 | `CART_REQUEST_SNAPSHOT_MODE` | `DUAL` | Migration mode (above) |
 | `REQUEST_DECOMPRESS_MAX_BYTES` | `1048576` | Decompressed request body ceiling |
 | `SNAPSHOT_SIZE_WARN_BYTES` | `262144` | Snapshot size warning threshold |
+| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Shared (commons) setting: body fields the request log replaces with a metadata marker, so the carried snapshot is not stored on every request (#155) |
+| `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | Shared (commons) setting: size ceiling for a logged body |
 
 ## Removed APIs
 

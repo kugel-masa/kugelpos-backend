@@ -348,6 +348,35 @@ class RequestLogMiddleware:
 - **Error Handling**: Graceful handling of logging failures
 - **Privacy**: Sanitization of sensitive information
 
+#### Logged Body Budget (issue #155)
+
+Every body is stored twice - in the request log file and in the per-tenant
+`request_log` collection - so an unbounded body is paid for twice. Both the
+request and the response body are sanitized before they are stored:
+
+1. **Field stripping**: fields named in `REQUEST_LOG_STRIP_FIELDS` are replaced
+   by a marker (`{"_stripped": "<field>", ...}`) that keeps only the field's
+   short scalar members, so the signing key id, schema version and issue time
+   of a stripped envelope stay queryable while the bulk is dropped. The default
+   targets the signed cart snapshot (`signedSnapshot` / `signed_snapshot`),
+   which carries a whole cart document - embedded masters included - on every
+   cart-mutating call. It is reconstructible (it is exactly what the server
+   issued) and the forensic trail for restores lives in `log_cart_restore`.
+2. **Size backstop**: a body still larger than `REQUEST_LOG_MAX_BODY_BYTES` is
+   replaced by `{"_truncated": true, "_encoded_bytes": N, "_preview": "..."}` (the preview is clamped to the budget).
+
+Both steps affect only what is logged - the client always receives the full
+body. Sanitization never raises: a body that cannot be processed is stored as
+`{"_sanitize_failed": true}` rather than failing the request.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Comma-separated body fields replaced by a metadata marker. To turn stripping off, set it to a single space - an **empty** value is ignored (`Settings` runs with `env_ignore_empty=True`) and the default applies |
+| `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | Size ceiling for a logged body; `0` disables the backstop |
+
+Note that gzip (#147) does not bound any of this: the log stores the parsed,
+uncompressed body, so transport compression never reaches it.
+
 ## 8. Business Logic Support
 
 ### Transaction Types (`enums.py`)
