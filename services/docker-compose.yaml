@@ -123,6 +123,19 @@ services:
       - TOKEN_URL=http://account:8000/api/v1/accounts/token
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
       - BASE_URL_MASTER_DATA=http://master-data:8000/api/v1
+      # Signed cart snapshots (issues #148 / #156). Without a key the feature runs
+      # degraded — no snapshot is issued and every carried one is rejected — so the
+      # stateless path would never be exercised locally.
+      #
+      # The default below is PUBLIC: it is committed here, so anyone can sign a
+      # snapshot with any prices and this service will accept it. That is fine for
+      # a local stack and unacceptable anywhere else. The cart service detects this
+      # exact key material and logs an ERROR at startup, so a deployment that
+      # inherits it is not silent. Production supplies its own via the environment
+      # (docker-compose.prod.yaml deliberately has no default), and .env.sample
+      # ships no key at all — generate one:
+      #   python -c "import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())"
+      - SNAPSHOT_HMAC_KEYS=${SNAPSHOT_HMAC_KEYS:-dev-v1:a3VnZWxwb3MtZGV2LXNuYXBzaG90LWtleS0zMmJ5dGU=}
     ports:
       - "8003:8000"
     depends_on:

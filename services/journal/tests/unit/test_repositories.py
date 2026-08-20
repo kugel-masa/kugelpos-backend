@@ -479,16 +479,22 @@ class TestTranlogRepositoryCreate:
     @pytest.mark.asyncio
     async def test_duplicate_check_filter(self, repo):
         """Verify the duplicate check uses the correct filter keys."""
-        doc = _make_tranlog(tenant_id="TX", store_code="SX", terminal_no=7, transaction_no=42)
+        doc = _make_tranlog(
+            tenant_id="TX", store_code="SX", terminal_no=7, business_counter=3, transaction_no=42
+        )
         with (
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get,
             patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
         ):
             await repo.create_tranlog_async(doc)
+            # Legacy (no cart_id) dedupe keys on the (business_counter, transaction_no)
+            # tuple — transaction_no alone is the per-open seq and is no longer unique
+            # across open sessions (issue #156).
             expected_filter = {
                 "tenant_id": "TX",
                 "store_code": "SX",
                 "terminal_no": 7,
+                "business_counter": 3,
                 "transaction_no": 42,
             }
             mock_get.assert_called_once_with(expected_filter)

@@ -164,6 +164,68 @@ async def test_open(http_client, admin_header, mock_outbound_services):
 
 
 @pytest.mark.asyncio
+async def test_open_reconciles_client_carried_counters(http_client, admin_header, mock_outbound_services):
+    """Open with client-carried counters reconciles via max (issue #156, T027)."""
+    import jwt
+    from kugel_common.config.settings import settings as common_settings
+
+    terminal_id, _ = await _create_terminal(http_client, admin_header)
+    await _signin(http_client, admin_header, terminal_id)
+
+    # The terminal "advanced these offline" and presents them at open.
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 50000.0, "business_counter": 500, "receipt_no": 7000},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+    claims = jwt.decode(
+        response.headers["x-new-token"],
+        common_settings.SECRET_KEY,
+        algorithms=[common_settings.ALGORITHM],
+    )
+    # business_counter reconciled to >= the client value, then advanced for this
+    # open epoch (so strictly above any offline-used value).
+    assert claims["business_counter"] >= 501, claims
+    # receipt_no reconciled to the client's higher value and seeded into the token.
+    assert claims["receipt_no"] == 7000, claims
+
+
+@pytest.mark.asyncio
+async def test_open_rejects_implausible_carried_counters(http_client, admin_header, mock_outbound_services):
+    """A wildly-ahead carried counter is rejected, not silently absorbed (issue #156).
+
+    The open-time reconcile is a monotonic max(), so an accepted value can never
+    be walked back — a malformed client must not be able to permanently burn the
+    terminal's number space.
+    """
+    terminal_id, _ = await _create_terminal(http_client, admin_header)
+    await _signin(http_client, admin_header, terminal_id)
+
+    # Far beyond any plausible offline session, but within the schema ceiling so
+    # the service-level jump guard is what rejects it.
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 50000.0, "business_counter": 50_000_000},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+
+    # Negative values are rejected by the schema before reaching the service.
+    response = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/open",
+        json={"initial_amount": 50000.0, "receipt_no": -1},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, response.text
+
+    # The terminal is still openable normally — the rejections changed nothing.
+    response = await _open(http_client, admin_header, terminal_id)
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+
+@pytest.mark.asyncio
 async def test_cash_in(http_client, admin_header, mock_outbound_services):
     """POST /cash-in records a cash deposit on an open terminal."""
     terminal_id, _ = await _create_terminal(http_client, admin_header)

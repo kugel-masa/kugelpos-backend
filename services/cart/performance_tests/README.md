@@ -197,6 +197,52 @@ TEST_PATTERNS=(50 100 150 200)
 TEST_DURATION="15m"
 ```
 
+## Snapshot A/B Comparison (issue #156)
+
+Compare the **snapshot-absent** (legacy / cache-authoritative) path against the
+**snapshot-carried** (stateless) path. A SINGLE run exercises both at once so
+they share the same stack, time window, terminal pool, and load — the cleanest
+controlled comparison. Request names are tagged `[legacy]` / `[stateless]` so
+the stats separate them side by side.
+
+```bash
+# 1. Set up terminals (once)
+./scripts/run_perf_test.sh setup 50
+
+# 2. Run the A/B comparison (legacy + stateless users together)
+./scripts/run_perf_test.sh custom 40 5m --compare
+
+# 3. Cleanup
+./scripts/run_perf_test.sh cleanup
+```
+
+The `--compare` run uses `locustfile_snapshot_compare.py` (two user classes:
+`LegacyCartUser`, `StatelessCartUser`) and auto-generates a delta report:
+
+```
+results/Custom_40users_compare_<ts>_snapshot_delta.html   # legacy vs stateless table
+results/Custom_40users_compare_<ts>_stats.csv             # raw, [legacy]/[stateless] rows
+```
+
+Regenerate the delta report from a stats CSV any time:
+
+```bash
+pipenv run python generate_snapshot_compare_report.py \
+    results/Custom_40users_compare_<ts>_stats.csv \
+    results/snapshot_delta.html
+```
+
+**Requirements / caveats:**
+
+- The cart service must have `SNAPSHOT_HMAC_KEYS` configured (the running
+  container already does). Otherwise mutating responses carry no snapshot and
+  the stateless path fails its requests loudly instead of silently degrading.
+- The client treats the snapshot as opaque (echoes it back); it needs no key.
+- In **DUAL** mode the legacy *response* also carries a snapshot, so response
+  sizes are similar. The stateless path's extra cost is the **request upload**
+  (the growing snapshot), which is **not** in Locust's response-size stat but
+  **is** included in the measured latency.
+
 ## Troubleshooting
 
 ### API_KEY not found

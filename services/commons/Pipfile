@@ -29,6 +29,9 @@ pytest = "*"
 pytest-asyncio = "*"
 pytest-mock = "*"
 respx = "*"
+# Exercises the brotli branch of the request-decompression middleware; the
+# middleware itself degrades gracefully when brotli is absent.
+brotli = "*"
 
 [requires]
 python_version = "3.12"

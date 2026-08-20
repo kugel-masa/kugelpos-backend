@@ -25,6 +25,11 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
     width (default 32 characters) and includes Japanese text.
     """
 
+    @staticmethod
+    def __or_blank(value) -> str:
+        """Render a value for the receipt, or blank when it is absent."""
+        return "" if value is None else str(value)
+
     def __init__(self, name: str, width: int = 32) -> None:
         """
         Initialize the receipt data generator.
@@ -167,6 +172,20 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
         # receipt_no
         receipt_no_str = "レシートNo. " + f"{tran.receipt_no}"
         page.lines.append(self.line_left(receipt_no_str))
+
+        # Transaction identity, printed so this sale can be found again when the
+        # customer brings the receipt back (issue #156). transaction_no is the
+        # per-open seq and restarts every time the terminal is opened, so the
+        # number alone names nothing — the store, register and open epoch have to
+        # be printed with it. A return may be accepted at any store of the tenant,
+        # which is why the store code is here and not left implicit.
+        # Guarded the same way as the return receipt's original block: every one of
+        # these is Optional on the model, and printing "None" on a customer receipt
+        # is worse than printing nothing.
+        page.lines.append(self.line_split("店舗コード", self.__or_blank(tran.store_code)))
+        page.lines.append(self.line_split("レジNo.", self.__or_blank(tran.terminal_no)))
+        page.lines.append(self.line_split("営業回数", self.__or_blank(tran.business_counter)))
+        page.lines.append(self.line_split("取引通番", self.__or_blank(tran.transaction_no)))
 
         # stamp duty
         # ----+----+----+----+----+----+--
@@ -569,23 +588,27 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
         return_lines.append(self.line_split("取引区分", tran_type_str))
 
         # 店舗コード
-        store_code_str = tran.origin.store_code if tran.origin.store_code is not None else ""
+        store_code_str = self.__or_blank(tran.origin.store_code)
         return_lines.append(self.line_split("店舗コード", store_code_str))
 
         # 店舗名
-        store_name_str = tran.origin.store_name if tran.origin.store_name is not None else ""
+        store_name_str = self.__or_blank(tran.origin.store_name)
         return_lines.append(self.line_split("店舗名", store_name_str))
 
         # レジNo.
-        terminal_no_str = str(tran.origin.terminal_no) if tran.origin.terminal_no is not None else ""
+        terminal_no_str = self.__or_blank(tran.origin.terminal_no)
         return_lines.append(self.line_split("レジNo.", terminal_no_str))
 
         # レシートNo.
-        receipt_no_str = str(tran.origin.receipt_no) if tran.origin.receipt_no is not None else ""
+        receipt_no_str = self.__or_blank(tran.origin.receipt_no)
         return_lines.append(self.line_split("レシートNo.", receipt_no_str))
 
+        # 営業回数 — 取引通番は営業回数ごとに振り直されるため、対で初めて元取引を特定できる
+        business_counter_str = self.__or_blank(tran.origin.business_counter)
+        return_lines.append(self.line_split("営業回数", business_counter_str))
+
         # 取引通番
-        tran_no_str = str(tran.origin.transaction_no) if tran.origin.transaction_no is not None else ""
+        tran_no_str = self.__or_blank(tran.origin.transaction_no)
         return_lines.append(self.line_split("取引通番", tran_no_str))
 
         return return_lines

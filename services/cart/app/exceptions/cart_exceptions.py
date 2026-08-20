@@ -405,6 +405,92 @@ class SnapshotTerminalStateException(ServiceException):
         )
 
 
+class SnapshotRequiredException(ServiceException):
+    """Exception raised when a mutating request omits the snapshot in REQUIRED mode (issue #156)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_REQUIRED,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_REQUIRED),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+class SnapshotCartIdMismatchException(ServiceException):
+    """Raised when the carried snapshot addresses a different cart than the URL path
+    (issue #156). On the stateless path the reconstructed cart replaces the cached one,
+    so a mismatch would silently operate on — and return — a cart the client never
+    addressed. Reject it instead of letting the snapshot override the request target."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_CART_ID_MISMATCH,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_CART_ID_MISMATCH),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class VoidOutOfSessionException(ServiceException):
+    """Raised when voiding a transaction from another business date or open session.
+
+    A void reverses a sale at the register while the drawer and the day's totals
+    are still open; once the session is settled the correct instrument is a return,
+    which books its own transaction instead of retroactively editing a closed
+    day's figures."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.VOID_OUT_OF_SESSION,
+            CartErrorMessage.get_message(CartErrorCode.VOID_OUT_OF_SESSION),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class TransactionAmbiguousException(ServiceException):
+    """Raised when a transaction_no alone matches more than one transaction (issue #156).
+
+    transaction_no is the per-open seq and repeats every open session, so the
+    original transaction is only pinned down together with its business_counter.
+    Rather than pick one arbitrarily — the caller could void or refund a different
+    sale than the one on the receipt — ask for the epoch."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.TRANSACTION_AMBIGUOUS,
+            CartErrorMessage.get_message(CartErrorCode.TRANSACTION_AMBIGUOUS),
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
+class FinalizeConflictException(ServiceException):
+    """Raised when a cart_id is reused for a DIFFERENT finalize than the one already
+    persisted (issue #156 / bug_008): e.g. a stale-snapshot cancel replayed over a
+    completed sale. The existing record must NOT be borrowed as an idempotent result,
+    so this surfaces as a conflict instead of silently swallowing the new operation."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.FINALIZE_CONFLICT,
+            CartErrorMessage.get_message(CartErrorCode.FINALIZE_CONFLICT),
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
 class AlreadyRefundedException(ServiceException):
     """
     Exception raised when a transaction has already been refunded.

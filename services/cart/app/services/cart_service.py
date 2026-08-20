@@ -27,9 +27,8 @@ from app.exceptions import (
     SnapshotInvalidException,
     SnapshotScopeViolationException,
     SnapshotTerminalStateException,
+    SnapshotCartIdMismatchException,
 )
-
-from kugel_common.utils.hmac_signer import canonical_json_bytes
 from app.models.repositories.cart_repository import CartRepository
 from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
 from app.models.repositories.terminal_counter_repository import (
@@ -126,6 +125,12 @@ class CartService(ICartService):
 
         self.cart_id = cart_id
         self.current_cart = None
+
+        # Client-carried cart phase 2 (issue #156). When armed via
+        # prepare_stateless_from_snapshot, the service serves the reconstructed
+        # cart and skips server-side cache reads/writes (FR-004).
+        self._stateless = False
+        self._snapshot_cart = None
 
         self.state_manager = CartStateManager()
         self.strategy_manager = CartStrategyManager()
@@ -696,12 +701,26 @@ class CartService(ICartService):
         return cart_doc
 
     # Complete the transaction
-    async def bill_async(self) -> CartDocument:
+    async def bill_async(
+        self,
+        seq: int = None,
+        receipt_no: int = None,
+        transaction_datetime: str = None,
+    ) -> CartDocument:
         """
         Complete the transaction and finalize the cart.
 
         Verifies that the balance is zero, creates a transaction log entry,
         and marks the cart as completed.
+
+        Args:
+            seq: Client-carried transaction sequence (issue #156). On the
+                stateless path the terminal supplies the finalize context so
+                the transaction number/receipt/time are deterministic across
+                retries; create_tranlog uses them instead of server counters.
+            receipt_no: Client-carried receipt number (issue #156).
+            transaction_datetime: Client-stamped transaction time (issue #156).
+                Its presence is the signal that turns on carried numbering.
 
         Returns:
             CartDocument: The final cart document with completed status
@@ -711,10 +730,24 @@ class CartService(ICartService):
         """
         logger.debug(f"Bill-> cart_id: {self.cart_id}")
 
+        # A client-carried finalize context is only valid on the stateless
+        # (signed-snapshot) path (issue #156 / bug_006). On the cache-authoritative
+        # path the server assigns the transaction/receipt numbers, so honoring a
+        # client-supplied context would let a phase-1 client forge the numbering.
+        # Reject it loudly rather than silently ignoring it.
+        if transaction_datetime is not None and not self._stateless:
+            message = (
+                f"Finalize context supplied without a signed snapshot, cart_id: {self.cart_id}. "
+                "Carried numbering requires the stateless (snapshot) path."
+            )
+            raise SnapshotInvalidException(message, logger)
+
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
         logger.debug(f"Bill-> cart_doc: {cart_doc}")
 
+        # Carry the client-stamped finalize context onto the cart so
+        # create_tranlog stamps the tranlog deterministically (issue #156).
         # Check if the event can be accepted in the current state
         self.state_manager.check_event_sequence(self)
 
@@ -727,6 +760,16 @@ class CartService(ICartService):
             raise BalanceGreaterThanZeroException(message, logger)
 
         logger.debug(f"Bill-> balance: {cart_doc.balance_amount}")
+
+        # Carry the client-stamped finalize context onto the cart (after
+        # subtotal, which may rebuild cart_doc) so create_tranlog stamps the
+        # tranlog deterministically (issue #156). transaction_datetime present
+        # turns on carried numbering — only ever on the stateless path (the
+        # non-stateless case is rejected at the top of this method, bug_006).
+        if transaction_datetime is not None and self._stateless:
+            cart_doc.seq = seq
+            cart_doc.receipt_no = receipt_no
+            cart_doc.transaction_datetime = transaction_datetime
 
         # Create transaction log
         tranlog = await self.tran_service.create_tranlog_async(cart_doc)
@@ -774,41 +817,33 @@ class CartService(ICartService):
 
         return cart_doc
 
-    async def restore_cart_async(self, envelope: dict) -> tuple[CartDocument, bool, bool]:
+    async def prepare_stateless_from_snapshot(self, envelope: dict, api_path: str = None) -> None:
         """
-        Restore a cart from a signed snapshot envelope (issue #148).
+        Arm the per-request stateless path from a carried snapshot (issue #156).
 
-        Pipeline: signature verification -> tenant/store scope check ->
-        restorable-state check -> conflict check (an existing cart with the
-        same cart_id always wins; the snapshot never overwrites server
-        state, FR-006) -> cache write -> audit record.
-
-        Every attempt (restored / existing returned / rejected) is recorded
-        in the log_cart_restore audit trail (FR-007).
+        Verifies and reconstructs the cart from the presented snapshot envelope,
+        then pins it so subsequent cart reads return the reconstructed cart and
+        cache writes are skipped — the operation never depends on server-side
+        cache (FR-004). Verifies signature, tenant/store scope, and that the
+        snapshot is an in-flight (non-finalized) cart. Rejections raise the
+        snapshot exceptions and are recorded in the audit trail (FR-007).
 
         Args:
-            envelope: Snapshot envelope as a snake_case dict
-                (SnapshotEnvelope.model_dump(mode="json"))
-
-        Returns:
-            Tuple of (cart document, restored, diverged) where restored is
-            False when an existing cart was returned, and diverged is True
-            when the presented snapshot differs from that existing cart.
+            envelope: Snapshot envelope as a snake_case dict (the peeled
+                request.scope["cart_snapshot"]).
         """
         audit_meta = snapshot_service.extract_audit_meta(envelope)
         try:
-            # 0. The restored cart must be operable immediately: require an
-            #    opened, signed-in terminal (same guard as cart creation).
+            # Same operability guard as restore / cart creation.
             if self.terminal_info.status != TerminalStatus.Opened.value:
                 raise TerminalStatusException(f"Terminal is not opened. status: {self.terminal_info.status}", logger)
             if self.terminal_info.staff is None:
                 raise SignInOutException("Terminal is not signed in", logger)
 
-            # 1. Verify signature and rebuild the cart document
+            # Verify signature/version/kid and rebuild the cart document.
             snapshot_cart = snapshot_service.verify_envelope(envelope)
 
-            # 2. Scope check against the signed attribution (FR-005 / FR-012):
-            #    same tenant AND same store; any terminal within them may restore.
+            # Scope check: same tenant AND store (FR-005 / FR-012).
             if (
                 envelope.get("tenant_id") != self.terminal_info.tenant_id
                 or envelope.get("store_code") != self.terminal_info.store_code
@@ -819,80 +854,49 @@ class CartService(ICartService):
                     logger,
                 )
 
-            # 3. Only in-flight carts are restorable; finalized snapshots are
-            #    rejected idempotently (FR-007).
+            # Only in-flight carts are operable; terminal-state snapshots are
+            # rejected (a non-finalize op on a finalized cart is invalid).
             if snapshot_cart.status in (CartStatus.Completed.value, CartStatus.Cancelled.value):
                 raise SnapshotTerminalStateException(
-                    f"Snapshot of a finalized cart cannot be restored: status={snapshot_cart.status}",
+                    f"Snapshot of a finalized cart cannot be operated on: status={snapshot_cart.status}",
                     logger,
                 )
             if snapshot_cart.status not in snapshot_service.RESTORABLE_STATUSES or not snapshot_cart.cart_id:
                 raise SnapshotInvalidException(
-                    f"Snapshot cart is not restorable: status={snapshot_cart.status} cart_id={snapshot_cart.cart_id}",
+                    f"Snapshot cart is not operable: status={snapshot_cart.status} cart_id={snapshot_cart.cart_id}",
+                    logger,
+                )
+
+            # The URL path names the cart the client addressed; the snapshot must
+            # agree. Below, the reconstructed cart replaces the cached one and
+            # __get_cached_cart_async ignores its cart_id argument, so a mismatch
+            # would silently operate on (and return) a different cart than the one
+            # requested — invisible to the client and to the audit trail, which
+            # records the snapshot's cart_id. Reject rather than let the snapshot
+            # override the request target.
+            if self.cart_id is not None and snapshot_cart.cart_id != self.cart_id:
+                raise SnapshotCartIdMismatchException(
+                    f"Snapshot cart_id does not match the requested cart: "
+                    f"snapshot={snapshot_cart.cart_id} requested={self.cart_id}",
                     logger,
                 )
         except ServiceException as e:
-            await self.__add_restore_audit_async("rejected", audit_meta, reject_reason=e.error_code)
+            await self.__add_restore_audit_async("rejected", audit_meta, reject_reason=e.error_code, api_path=api_path)
             raise
 
-        # 4. Conflict check: the existing server-side cart wins (FR-006).
-        #    The repository is queried directly because an absent cart is the
-        #    NORMAL failover case here — going through __get_cached_cart_async
-        #    would emit a fatal log + Slack notification on every restore.
-        #    Only a clean not-found proceeds to restore; any other read error
-        #    propagates rather than risking an overwrite.
+        # Arm the stateless path: reconstruct master context + state, pin the
+        # cart. Subsequent __get_cached_cart_async / __cache_cart_async observe
+        # _stateless and bypass the cache.
+        self._stateless = True
+        self._snapshot_cart = snapshot_cart
         self.cart_id = snapshot_cart.cart_id
-        try:
-            existing_cart = await self.cart_repo.get_cached_cart_async(snapshot_cart.cart_id)
-        except NotFoundException:
-            existing_cart = None
-
-        if existing_cart is not None:
-            # Hydrate repositories and state from the existing cart (same as a
-            # normal cache resume) so the response reflects server-side truth.
-            self.settings_master_repo.set_settings_master_documents(existing_cart.masters.settings)
-            self.item_master_repo.set_item_master_documents(existing_cart.masters.items)
-            self.tax_master_repo.set_tax_master_documents(existing_cart.masters.taxes)
-            self.state_manager.set_state(existing_cart.status)
-            self.current_cart = existing_cart
-            diverged = self.__comparable_cart_bytes(existing_cart) != self.__comparable_cart_bytes(snapshot_cart)
-            await self.__add_restore_audit_async("existing_returned", audit_meta, diverged=diverged)
-            logger.info("Restore returned existing cart %s (diverged=%s)", snapshot_cart.cart_id, diverged)
-            return existing_cart, False, diverged
-
-        # 5. Rebuild on this backend: hydrate the master repositories from the
-        #    snapshot (same pattern as cache resume) so the transaction keeps
-        #    its original master context, then write the authoritative cache.
         self.settings_master_repo.set_settings_master_documents(snapshot_cart.masters.settings)
         self.item_master_repo.set_item_master_documents(snapshot_cart.masters.items)
         self.tax_master_repo.set_tax_master_documents(snapshot_cart.masters.taxes)
         self.state_manager.set_state(snapshot_cart.status)
-        await self.__cache_cart_async(cart_doc=snapshot_cart, cart_status=CartStatus.NoUpdate, isNew=True)
-
-        await self.__add_restore_audit_async("restored", audit_meta)
-        logger.info(
-            "Cart %s restored from snapshot issued at %s", snapshot_cart.cart_id, audit_meta.get("snapshot_issued_at")
-        )
-        return snapshot_cart, True, False
-
-    @staticmethod
-    def __comparable_cart_bytes(cart_doc: CartDocument) -> bytes:
-        """
-        Canonical bytes of a cart document for divergence comparison.
-
-        Excludes storage bookkeeping fields (timestamps/etag) that shift on
-        every cache write, and `staff`, which the repository re-injects from
-        the CURRENT terminal info on every cache read — comparing it would
-        flag a benign operator change as snapshot divergence and make the
-        audit signal unreliable.
-        """
-        data = cart_doc.model_dump(mode="json")
-        for volatile in ("created_at", "updated_at", "etag", "staff"):
-            data.pop(volatile, None)
-        return canonical_json_bytes(data)
 
     async def __add_restore_audit_async(
-        self, result: str, audit_meta: dict, reject_reason: str = None, diverged: bool = False
+        self, result: str, audit_meta: dict, reject_reason: str = None, diverged: bool = False, api_path: str = None
     ) -> None:
         """
         Record a restore attempt in the audit trail (FR-007).
@@ -914,6 +918,7 @@ class CartService(ICartService):
                 result=result,
                 reject_reason=reject_reason,
                 diverged=diverged,
+                api_path=api_path,
                 **audit_meta,
             )
         except Exception as e:
@@ -952,6 +957,15 @@ class CartService(ICartService):
 
         # Save updated item master information to cache
         cart_doc.masters.items = self.item_master_repo.item_master_documents
+
+        if self._stateless:
+            # Snapshot-present path (issue #156): the response snapshot is the
+            # authority; do not depend on server-side cache (FR-004). Keep the
+            # pinned cart current so re-reads in this request stay consistent.
+            self._snapshot_cart = cart_doc
+            self.current_cart = None
+            return
+
         try:
             await self.cart_repo.cache_cart_async(cart_doc, isNew)
         except Exception as e:
@@ -984,6 +998,17 @@ class CartService(ICartService):
         Returns:
             CartDocument: The retrieved cart document
         """
+        # Snapshot-present path (issue #156): serve the reconstructed cart and
+        # never read the server-side cache (FR-004).
+        if self._stateless:
+            cart = self._snapshot_cart
+            self.settings_master_repo.set_settings_master_documents(cart.masters.settings)
+            self.item_master_repo.set_item_master_documents(cart.masters.items)
+            self.tax_master_repo.set_tax_master_documents(cart.masters.taxes)
+            self.state_manager.set_state(cart.status)
+            self.current_cart = cart
+            return cart
+
         # Get cart information from cache
         try:
             cart = await self.cart_repo.get_cached_cart_async(cart_id)
@@ -1029,6 +1054,9 @@ class CartService(ICartService):
         Raises:
             CartNotFoundException: If the cart cannot be found in the cache
         """
+        if self._stateless:
+            # No server-side cache entry to remove on the snapshot-present path.
+            return None
         try:
             await self.cart_repo.delete_cart_async(cart_id)
         except Exception as e:

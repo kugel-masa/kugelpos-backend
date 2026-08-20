@@ -110,11 +110,14 @@ for service_def in "${SERVICES[@]}"; do
         paths_count=$(echo "$response" | jq '.paths | length')
 
         echo -e "${GREEN}OK${NC} (${paths_count} endpoints, v${version})"
-        ((SUCCESS_COUNT++))
+        # Not ((SUCCESS_COUNT++)): post-increment evaluates to the OLD value, so the
+        # first one returns 0 — a non-zero exit status that `set -e` treats as a
+        # failure, ending the loop after a single service.
+        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     else
         echo -e "${RED}FAILED${NC}"
         FAILED_SERVICES="${FAILED_SERVICES} ${service}"
-        ((FAIL_COUNT++))
+        FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
 done
 

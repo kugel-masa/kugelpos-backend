@@ -7,6 +7,7 @@ each file under ~700 lines and lets pytest-xdist parallelise faster.
 import time
 import sys
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 import pytest
@@ -21,6 +22,7 @@ from kugel_common.exceptions import (
     CannotCreateException,
 )
 
+from app.exceptions import TransactionAmbiguousException
 from app.enums.cart_status import CartStatus
 from app.models.documents.cart_document import CartDocument
 from app.models.documents.tax_master_document import TaxMasterDocument
@@ -787,12 +789,79 @@ class TestTranlogRepository:
         with pytest.raises(CannotCreateException):
             await repo.create_tranlog_async(tranlog)
 
+    @staticmethod
+    def _tranlog(cart_id="C1", transaction_type=1, is_cancelled=False, transaction_no=500):
+        from kugel_common.models.documents.base_tranlog import BaseTransaction
+
+        t = BaseTransaction(
+            tenant_id="T001",
+            store_code="S001",
+            terminal_no=1,
+            transaction_no=transaction_no,
+            transaction_type=transaction_type,
+            generate_date_time="2024-06-01T12:00:00Z",
+            cart_id=cart_id,
+        )
+        t.sales = BaseTransaction.SalesInfo()
+        t.sales.is_cancelled = is_cancelled
+        return t
+
+    @pytest.mark.asyncio
+    async def test_idempotent_returns_existing_for_same_finalize(self):
+        """A lost-ACK retry of the SAME finalize (same cart_id, type, is_cancelled)
+        returns the persisted tranlog without re-inserting (issue #156)."""
+        repo = self._make_repo()
+        existing = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        repo.get_one_async = AsyncMock(return_value=existing)
+        repo.create_async = AsyncMock(return_value=True)
+
+        incoming = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        result = await repo.create_tranlog_async(incoming)
+
+        assert result is existing
+        repo.create_async.assert_not_awaited()  # idempotent: no second insert
+
+    @pytest.mark.asyncio
+    async def test_conflict_when_cart_id_reused_for_different_op(self):
+        """bug_008: a stale-snapshot Cancel (is_cancelled=True) reusing a completed
+        sale's cart_id must NOT borrow the sale's record — it raises a conflict so
+        the new op is not silently swallowed while reporting success."""
+        from app.exceptions import FinalizeConflictException
+
+        repo = self._make_repo()
+        existing_sale = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        repo.get_one_async = AsyncMock(return_value=existing_sale)
+        repo.create_async = AsyncMock(return_value=True)
+
+        stale_cancel = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=True)
+        with pytest.raises(FinalizeConflictException):
+            await repo.create_tranlog_async(stale_cancel)
+        repo.create_async.assert_not_awaited()  # never attempted the conflicting insert
+
+    @pytest.mark.asyncio
+    async def test_propagates_duplicate_key_for_concurrent_race(self):
+        """bug_001: when the pre-check misses (concurrent finalize) and the insert
+        loses on the unique cart_id index, the DuplicateKeyException propagates
+        (NOT wrapped into CannotCreateException) so the caller can recover idempotently."""
+        from kugel_common.exceptions import DuplicateKeyException
+
+        repo = self._make_repo()
+        repo.get_one_async = AsyncMock(return_value=None)  # pre-check misses
+        repo.create_async = AsyncMock(
+            side_effect=DuplicateKeyException("dup", "tran", {"cart_id": "C9"})
+        )
+
+        incoming = self._tranlog(cart_id="C9", transaction_type=1, is_cancelled=False)
+        with pytest.raises(DuplicateKeyException):
+            await repo.create_tranlog_async(incoming)
+
     @pytest.mark.asyncio
     async def test_get_tranlog_by_transaction_no_builds_correct_query(self):
+        """With the open epoch supplied the lookup is an exact match (issue #156)."""
         repo = self._make_repo()
         repo.get_one_async = AsyncMock(return_value=None)
 
-        await repo.get_tranlog_by_transaction_no_async("S001", 1, 100)
+        await repo.get_tranlog_by_transaction_no_async("S001", 1, 100, business_counter=7)
 
         query = repo.get_one_async.call_args[0][0]
         assert query == {
@@ -800,7 +869,43 @@ class TestTranlogRepository:
             "store_code": "S001",
             "terminal_no": 1,
             "transaction_no": 100,
+            "business_counter": 7,
         }
+
+    @pytest.mark.asyncio
+    async def test_get_tranlog_by_transaction_no_without_epoch_falls_back(self):
+        """Without the epoch the legacy key is used and a single match is returned."""
+        repo = self._make_repo()
+        only = SimpleNamespace(business_counter=7, transaction_no=100)
+        repo.get_list_async = AsyncMock(return_value=[only])
+
+        result = await repo.get_tranlog_by_transaction_no_async("S001", 1, 100)
+
+        assert result is only
+        query = repo.get_list_async.call_args.kwargs["filter"]
+        assert "business_counter" not in query
+        assert query["transaction_no"] == 100
+
+    @pytest.mark.asyncio
+    async def test_get_tranlog_by_transaction_no_without_epoch_rejects_ambiguity(self):
+        """transaction_no repeats across open sessions; guessing would void the wrong sale."""
+        repo = self._make_repo()
+        repo.get_list_async = AsyncMock(
+            return_value=[
+                SimpleNamespace(business_counter=7, transaction_no=100),
+                SimpleNamespace(business_counter=8, transaction_no=100),
+            ]
+        )
+
+        with pytest.raises(TransactionAmbiguousException):
+            await repo.get_tranlog_by_transaction_no_async("S001", 1, 100)
+
+    @pytest.mark.asyncio
+    async def test_get_tranlog_by_transaction_no_without_epoch_returns_none_when_absent(self):
+        repo = self._make_repo()
+        repo.get_list_async = AsyncMock(return_value=[])
+
+        assert await repo.get_tranlog_by_transaction_no_async("S001", 1, 100) is None
 
 
 # =========================================================================

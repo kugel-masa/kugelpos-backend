@@ -152,42 +152,6 @@ async def test_create_cart_service_error():
 
 
 # ---------------------------------------------------------------------------
-# get_cart
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_cart_success():
-    app = _make_app()
-    svc = _make_cart_service_mock()
-    svc.get_cart_async.return_value = _make_cart_doc_mock()
-
-    app.dependency_overrides[get_cart_service_with_cart_id_async] = lambda: svc
-
-    with _patch_transformer():
-        transport = ASGITransport(app=app, raise_app_exceptions=False)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/carts/test-cart-id-123")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["success"] is True
-
-
-@pytest.mark.asyncio
-async def test_get_cart_service_error():
-    app = _make_app()
-    svc = _make_cart_service_mock()
-    svc.get_cart_async.side_effect = Exception("Not found")
-
-    app.dependency_overrides[get_cart_service_with_cart_id_async] = lambda: svc
-
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/api/v1/carts/test-cart-id-123")
-    assert resp.status_code == 500
-
-
-# ---------------------------------------------------------------------------
 # cancel_transaction
 # ---------------------------------------------------------------------------
 

@@ -14,10 +14,15 @@ class TransactionStatusDocument(AbstractDocument):
     without modifying the original transaction data.
     """
 
-    # Transaction identifiers
+    # Transaction identifiers. Client-carried cart phase 2 (issue #156):
+    # transaction_no is the per-open seq and repeats across open sessions, so the
+    # identity includes business_counter — otherwise the status of one session's
+    # transaction would be read (and overwritten) as another's. Optional for
+    # records written before the migration.
     tenant_id: str
     store_code: str
     terminal_no: int
+    business_counter: Optional[int] = None
     transaction_no: int
 
     # Status flags

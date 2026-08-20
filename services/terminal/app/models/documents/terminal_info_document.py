@@ -28,6 +28,9 @@ class TerminalInfoDocument(AbstractDocument):
     business_date: Optional[str] = None  # Current business date (YYYYMMDD)
     open_counter: Optional[int] = None  # Counter incremented each time the terminal is opened
     business_counter: Optional[int] = None  # Counter incremented for each business operation
+    # Client-carried cart phase 2 (issue #156): continuous receipt number counter.
+    # Terminal service is the durable home; reconciled via max() at open.
+    receipt_no: Optional[int] = None
     staff: Optional[StaffMasterDocument] = None  # Staff member currently signed in to the terminal
     initial_amount: Optional[float] = None  # Initial cash amount when the terminal was opened
     physical_amount: Optional[float] = None  # Physical cash amount counted at terminal close

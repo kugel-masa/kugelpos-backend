@@ -1,0 +1,207 @@
+openapi: 3.0.3
+info:
+  title: Cart client-carried request snapshot (phase 2, #156)
+  version: 0.2.0
+  description: >
+    Phase 2 carries the signed snapshot the client last received in every
+    cart-mutating request. To support endpoints whose body is a top-level JSON
+    array (add_items, payments, discounts) as well as object/body-less ones,
+    phase 2 clients send a UNIFORM wrapped body:
+
+        { "signedSnapshot": <envelope>, "payload": <original body> }
+
+    A cart body-processing middleware peels `signedSnapshot` into request.state
+    and replaces the body with `payload` (the original shape: array/object), so
+    existing endpoint signatures (e.g. `list[Item]`) are unchanged and the DI
+    layer branches on request.state. Legacy phase 1 clients send the bare
+    original body (array/object/none) with no `signedSnapshot` key; those pass
+    through untouched and take the cache-authoritative path (DUAL mode).
+
+paths:
+  /api/v1/carts/{cart_id}/lineItems:
+    post:
+      summary: Add line items (representative mutating endpoint)
+      description: >
+        Representative of all cart-mutating endpoints. Phase 2 sends the wrapped
+        body; phase 1 sends the bare legacy body. After middleware peel, the
+        endpoint receives its original body shape (here, an array of items).
+      parameters:
+        - name: cart_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/WrappedMutatingRequest'
+                - $ref: '#/components/schemas/LegacyLineItemsBody'
+      responses:
+        '200':
+          description: >
+            Operation applied. Response carries the cart view plus a fresh
+            signed snapshot (phase 1 contract, unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '400':
+          description: Snapshot verification failed (tampered / malformed / scope / version).
+        '409':
+          description: Terminal-state snapshot presented for a non-finalize mutation.
+        '413':
+          description: Decompressed request body exceeds the size guard (FR-009).
+        '422':
+          description: >
+            Snapshot omitted while CART_REQUEST_SNAPSHOT_MODE=REQUIRED
+            (error 401508). In DUAL mode, omission is accepted (legacy path).
+
+  /api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions/{transaction_no}/void:
+    post:
+      summary: Void an existing transaction (carried numbering via finalize-context envelope)
+      description: >
+        void/return are their OWN transactions. Phase 2 clients carry a SIGNED
+        finalize-context envelope (NOT a cart-state snapshot) in the wrapped
+        body's `signedSnapshot` member so the void draws its per-open seq /
+        receipt_no / time and a STABLE cart_id from verified carried values —
+        keeping (business_counter, transaction_no) a clean per-open key and
+        making a lost-ACK retry converge on cart_id (idempotent, no double void).
+        The `payload` stays the unchanged refund payments array. Legacy clients
+        send the bare payments array (no envelope) and take the server-numbered +
+        fresh-cart_id path (DUAL mode). `return` is identical in shape.
+      parameters:
+        - { name: tenant_id, in: path, required: true, schema: { type: string } }
+        - { name: store_code, in: path, required: true, schema: { type: string } }
+        - { name: terminal_no, in: path, required: true, schema: { type: integer } }
+        - { name: transaction_no, in: path, required: true, schema: { type: integer } }
+        - { name: terminal_id, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/WrappedVoidReturnRequest'
+                - $ref: '#/components/schemas/LegacyPaymentsBody'
+      responses:
+        '200':
+          description: Void/return committed; response carries the new transaction (transactionNo/receiptNo reflect carried values).
+        '400':
+          description: Finalize-context verification failed (tampered / malformed / scope / version), or invalid payments.
+        '404':
+          description: Original transaction not found.
+
+components:
+  schemas:
+    WrappedVoidReturnRequest:
+      type: object
+      description: >
+        Phase 2 wrapped body for void/return. `signedSnapshot` is a
+        FinalizeContextEnvelope (the void/return's own carried numbering +
+        cart_id), `payload` is the unchanged refund payments array.
+      required: [payload]
+      properties:
+        signedSnapshot:
+          $ref: '#/components/schemas/FinalizeContextEnvelope'
+        payload:
+          type: array
+          items: { type: object }
+
+    LegacyPaymentsBody:
+      type: array
+      description: Bare refund payments array (no envelope); server-numbered + fresh cart_id (DUAL mode).
+      items:
+        type: object
+
+    FinalizeContextEnvelope:
+      type: object
+      description: >
+        Signed envelope carrying ONLY a finalize context (no cart_document) for
+        void/return. Same signing/verification (HMAC) as SnapshotEnvelope; wire
+        form is the canonical signed snake_case payload.
+      required: [schema_version, issued_at, kid, tenant_id, store_code, terminal_no, finalize_context, signature]
+      properties:
+        schema_version: { type: integer, example: 1 }
+        issued_at: { type: string }
+        kid: { type: string }
+        tenant_id: { type: string }
+        store_code: { type: string }
+        terminal_no: { type: integer }
+        finalize_context:
+          type: object
+          description: The new transaction's carried identity + numbering. All fields required.
+          required: [cart_id, seq, receipt_no, transaction_datetime]
+          properties:
+            cart_id: { type: string, description: Stable, client-generated — enables retry idempotency via downstream cart_id dedupe. }
+            seq: { type: integer, description: Per-open transaction sequence (same space as sales). }
+            receipt_no: { type: integer }
+            transaction_datetime: { type: string, description: Client-stamped ISO-8601. }
+        signature: { type: string }
+
+    WrappedMutatingRequest:
+      type: object
+      description: >
+        Phase 2 uniform wire format for ALL mutating endpoints. The middleware
+        peels signedSnapshot and forwards `payload` as the endpoint's body.
+      required: [payload]
+      properties:
+        signedSnapshot:
+          $ref: '#/components/schemas/SnapshotEnvelope'
+        payload:
+          description: >
+            The original endpoint body, unchanged in shape — a JSON array for
+            add_items/payments/discounts, an object for quantity/unit-price
+            updates, or omitted for body-less operations (subtotal/bill/cancel/
+            resume).
+          oneOf:
+            - type: array
+              items: { type: object }
+            - type: object
+
+    LegacyLineItemsBody:
+      type: array
+      description: Phase 1 bare body (no snapshot); takes the cache-authoritative path.
+      items:
+        type: object
+
+    SnapshotEnvelope:
+      type: object
+      description: Identical to the phase 1 (#148) response envelope. Unchanged schema_version.
+      required: [schema_version, issued_at, kid, tenant_id, store_code, terminal_no, cart_document, signature]
+      properties:
+        schema_version: { type: integer, example: 1 }
+        issued_at: { type: string }
+        kid: { type: string }
+        tenant_id: { type: string }
+        store_code: { type: string }
+        terminal_no: { type: integer }
+        cart_document:
+          type: object
+          description: >
+            Full CartDocument dump (snake_case). Phase 2 adds `seq` (per-open
+            transaction sequence, carried) and `transaction_datetime`
+            (client-stamped at bill). business_counter is sourced from
+            terminal_info at finalize, not duplicated here.
+          properties:
+            cart_id: { type: string }
+            seq: { type: integer }
+            transaction_datetime: { type: string, nullable: true }
+          additionalProperties: true
+        signature: { type: string }
+
+    CartResponse:
+      type: object
+      description: Phase 1 response shape (cart view + signedSnapshot), unchanged.
+      properties:
+        success: { type: boolean }
+        code: { type: integer }
+        data:
+          type: object
+          properties:
+            cartId: { type: string }
+            signedSnapshot:
+              $ref: '#/components/schemas/SnapshotEnvelope'
+          additionalProperties: true
+      additionalProperties: true

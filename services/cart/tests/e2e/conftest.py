@@ -47,6 +47,22 @@ async def http_client(_reset_db_client_per_test_e2e):
         yield client
 
 
+@pytest_asyncio.fixture(scope="function")
+async def opened_terminal_id(set_env_vars):
+    """The terminal the e2e session shares, guaranteed to be in the Opened state.
+
+    Terminal setup is owned by the session fixtures (which resolve TERMINAL_ID and
+    API_KEY); this only makes sure the terminal is open before a cart test runs, so
+    tests do not have to depend on the order the others left it in.
+    """
+    from tests.e2e.test_cart import get_terminal_info, open_terminal
+
+    terminal_info = await get_terminal_info()
+    if terminal_info.get("status") != "Opened":
+        await open_terminal()
+    return terminal_info["terminalId"]
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-mark e2e and ensure test_setup_data runs first if present."""
     this_dir = os.path.dirname(os.path.abspath(__file__))

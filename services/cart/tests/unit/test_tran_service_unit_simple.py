@@ -39,6 +39,10 @@ class TestTranServiceValidation:
         mock_transaction.store_code = "S0001"
         mock_transaction.terminal_no = 1
         mock_transaction.transaction_no = 12345
+        # Void is confined to the terminal's current business date and open session
+        # (issue #156); mirror the terminal so the test reaches the status check.
+        mock_transaction.business_date = service.terminal_info.business_date
+        mock_transaction.business_counter = service.terminal_info.business_counter
 
         # Mock status as already voided
         existing_status = TransactionStatusDocument(

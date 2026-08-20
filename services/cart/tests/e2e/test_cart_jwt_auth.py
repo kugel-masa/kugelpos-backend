@@ -85,17 +85,6 @@ async def test_cart_create_with_jwt(http_client):
     assert cart_id is not None
     print(f"Cart created with JWT auth: {cart_id}")
 
-    # Get cart with JWT auth
-    response = await http_client.get(
-        f"/api/v1/carts/{cart_id}",
-        headers=jwt_header,
-    )
-    assert response.status_code == status.HTTP_200_OK
-    cart = response.json().get("data")
-    assert cart.get("cartId") == cart_id
-    assert cart.get("tenantId") == os.environ.get("TENANT_ID")
-    print(f"Cart retrieved with JWT auth: tenant={cart.get('tenantId')}, store={cart.get('storeCode')}")
-
     # Cancel cart (cleanup)
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/cancel",

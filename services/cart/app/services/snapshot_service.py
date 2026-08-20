@@ -43,6 +43,18 @@ RESTORABLE_STATUSES = {
     CartStatus.Paying.value,
 }
 
+# Key material that ships in this repository for local development and tests, and
+# is therefore public. A deployment signing with one of these has no signature
+# protection at all: anyone reading the repo can mint a snapshot with any prices
+# in it and the server will accept it. Detected at startup and reported loudly —
+# this is more dangerous than having no key, where the feature merely degrades.
+PUBLICLY_KNOWN_KEY_MATERIAL = (
+    # services/docker-compose.yaml (development default)
+    "a3VnZWxwb3MtZGV2LXNuYXBzaG90LWtleS0zMmJ5dGU=",
+    # tests/integration/test_request_snapshot_roundtrip.py
+    "aW50ZWdyYXRpb24tdGVzdC1rZXktMzItYnl0ZXMhISE=",
+)
+
 _signer: Optional[HmacSigner] = None
 _initialized = False
 
@@ -54,6 +66,10 @@ def init_snapshot_signer(force: bool = False) -> Optional[HmacSigner]:
 
     An empty or malformed SNAPSHOT_HMAC_KEYS leaves the feature degraded:
     no snapshots are issued and the restore API rejects every envelope.
+
+    A key that ships publicly in this repository is reported as an error: it
+    loads and works, so nothing else would ever surface it, yet it leaves the
+    signature worthless.
     """
     global _signer, _initialized
     if _initialized and not force:
@@ -73,11 +89,38 @@ def init_snapshot_signer(force: bool = False) -> Optional[HmacSigner]:
                 _signer.kids,
                 _signer.current_kid,
             )
+            _warn_if_publicly_known(spec)
         except ValueError as e:
             _signer = None
             logger.error("SNAPSHOT_HMAC_KEYS is malformed; cart snapshot feature is degraded: %s", e)
     _initialized = True
     return _signer
+
+
+def _warn_if_publicly_known(spec: str) -> None:
+    """
+    Report a signing key that is published in this repository.
+
+    Unlike a missing key, this one works: snapshots are issued and verified, so
+    every other signal looks healthy while the signature protects nothing. Fine
+    for local development, catastrophic anywhere real — so say so at ERROR, where
+    a missing key only warrants a warning.
+
+    Args:
+        spec: The raw SNAPSHOT_HMAC_KEYS value
+
+    Returns:
+        None
+    """
+    if not any(known in spec for known in PUBLICLY_KNOWN_KEY_MATERIAL):
+        return
+    logger.error(
+        "SNAPSHOT_HMAC_KEYS contains key material published in this repository. "
+        "Cart snapshots are effectively UNSIGNED: anyone can forge one with arbitrary "
+        "prices and it will verify. This is acceptable ONLY for local development. "
+        "Generate a real key: "
+        "python -c \"import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())\""
+    )
 
 
 def get_snapshot_signer() -> Optional[HmacSigner]:
@@ -129,6 +172,98 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
             exc_info=True,
         )
         return None
+
+
+def build_finalize_context_envelope(
+    *,
+    cart_id: str,
+    seq: int,
+    receipt_no: int,
+    transaction_datetime: str,
+    terminal_info: TerminalInfoDocument,
+) -> Optional[dict]:
+    """
+    Build and sign a finalize-context envelope for a void/return (issue #156, B案).
+
+    Unlike the cart snapshot, a void/return has no in-flight cart to carry; the
+    terminal instead carries the new transaction's identity — a stable
+    ``cart_id`` (so a lost-ACK retry converges via downstream cart_id dedupe) and
+    the per-open ``(seq, receipt_no)`` / time it stamped — signed so the numbers
+    cannot be forged. Wire form is the canonical snake_case payload (the signed
+    bytes), transported as the ``signedSnapshot`` member of the request envelope.
+
+    Returns None when signing is degraded (no keys configured).
+    """
+    signer = get_snapshot_signer()
+    if signer is None:
+        return None
+    payload = {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "issued_at": get_app_time_str(),
+        "kid": signer.current_kid,
+        "tenant_id": terminal_info.tenant_id,
+        "store_code": terminal_info.store_code,
+        "terminal_no": terminal_info.terminal_no,
+        "finalize_context": {
+            "cart_id": cart_id,
+            "seq": seq,
+            "receipt_no": receipt_no,
+            "transaction_datetime": transaction_datetime,
+        },
+    }
+    return {**payload, "signature": signer.sign(payload)}
+
+
+def verify_finalize_context(envelope: dict) -> dict:
+    """
+    Verify a presented finalize-context envelope (issue #156, B案) and return its
+    ``finalize_context`` dict (``cart_id`` / ``seq`` / ``receipt_no`` /
+    ``transaction_datetime``).
+
+    Mirrors :func:`verify_envelope` (shape → schema version → kid → signature),
+    but carries a finalize context instead of a cart document. The caller is
+    responsible for checking the envelope scope (tenant/store/terminal) against
+    the authenticated terminal, exactly as the cart snapshot path does.
+
+    Raises the same family of exceptions as :func:`verify_envelope`.
+    """
+    if not isinstance(envelope, dict):
+        raise SnapshotInvalidException("Finalize-context envelope must be an object", logger)
+
+    payload = {k: v for k, v in envelope.items() if k != "signature"}
+    signature = envelope.get("signature")
+    required = {"schema_version", "issued_at", "kid", "tenant_id", "store_code", "terminal_no", "finalize_context"}
+    missing = required - payload.keys()
+    if missing or not signature or not isinstance(signature, str):
+        raise SnapshotInvalidException(
+            f"Finalize-context envelope is malformed (missing: {sorted(missing) if missing else 'signature'})", logger
+        )
+
+    if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
+        raise SnapshotVersionUnsupportedException(
+            f"Unsupported finalize-context schema_version: {payload['schema_version']}", logger
+        )
+
+    signer = get_snapshot_signer()
+    if signer is None:
+        logger.warning("Finalize-context rejected: no snapshot signing keys configured")
+        raise SnapshotUnknownKidException("No snapshot signing keys configured", logger)
+
+    kid = payload["kid"]
+    try:
+        valid = signer.verify(payload, kid, signature)
+    except KeyError:
+        logger.warning("Finalize-context rejected: unknown snapshot kid '%s'", kid)
+        raise SnapshotUnknownKidException(f"Unknown snapshot signing key id: {kid}", logger)
+    if not valid:
+        # Security event (NFR-003): tampered or forged numbering.
+        logger.warning("Finalize-context rejected: signature mismatch (kid=%s)", kid)
+        raise SnapshotSignatureMismatchException("Finalize-context signature mismatch", logger)
+
+    context = payload["finalize_context"]
+    if not isinstance(context, dict):
+        raise SnapshotInvalidException("Finalize-context payload is malformed", logger)
+    return context
 
 
 def verify_envelope(envelope: dict) -> CartDocument:

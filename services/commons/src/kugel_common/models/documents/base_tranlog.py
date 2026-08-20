@@ -133,6 +133,11 @@ class BaseTransaction(AbstractDocument):
         store_code: Optional[str] = None
         store_name: Optional[str] = None
         terminal_no: Optional[int] = None
+        # Client-carried cart phase 2 (issue #156): transaction_no is the per-open
+        # seq, so the original transaction is only identified together with the
+        # open epoch it belongs to. Without this a return/void cannot name which
+        # of several same-numbered originals it refers to.
+        business_counter: Optional[int] = None
         transaction_no: Optional[int] = None
         transaction_type: Optional[int] = None
         receipt_no: Optional[int] = None
@@ -149,6 +154,11 @@ class BaseTransaction(AbstractDocument):
     business_counter: Optional[int] = None
     generate_date_time: Optional[str] = None
     receipt_no: Optional[int] = None
+    # Transaction identity for client-carried cart phase 2 (issue #156 / #152).
+    # Carried from the cart at finalize; downstream consumers (report/journal/
+    # stock) dedupe on cart_id so a duplicate finalize (lost-ACK retry to any
+    # backend) converges to exactly one record (first-wins skip).
+    cart_id: Optional[str] = None
     user: Optional[UserInfoDocument] = None
     sales: Optional[SalesInfo] = None
 

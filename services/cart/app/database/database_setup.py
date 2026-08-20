@@ -21,6 +21,7 @@ async def create_some_collection(
     collection_name: str,
     index_keys_list: list,
     index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     """
     Creates a MongoDB collection with specified indexes.
@@ -42,7 +43,11 @@ async def create_some_collection(
 
     # Create the collection with indexes
     await db_helper.create_collection_with_indexes_async(
-        db_name=db_name, collection_name=collection_name, index_keys_list=index_keys_list, index_name=index_name
+        db_name=db_name,
+        collection_name=collection_name,
+        index_keys_list=index_keys_list,
+        index_name=index_name,
+        drop_indexes_by_keys=drop_indexes_by_keys,
     )
 
 
@@ -105,11 +110,29 @@ async def create_tran_log_collection(tenant_id: str):
         None
     """
     name = settings.DB_COLLECTION_NAME_TRAN_LOG
+    # Client-carried cart phase 2 (issue #156): cart_id is the transaction
+    # identity (partial-unique). transaction_no is now the per-open seq and is
+    # NOT unique on its own across sessions, so the numbering tuple includes
+    # business_counter. Mirrors the downstream report/journal indexes.
     index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}, "unique": True}
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "unique": True,
+        },
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "cart_id": 1},
+            "unique": True,
+            "partialFilterExpression": {"cart_id": {"$type": "string"}},
+        },
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Issue #156 migration: retire the old unique index that lacked
+        # business_counter (transaction_no is now the per-open seq).
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}],
     )
 
 
@@ -159,6 +182,71 @@ async def create_tran_log_delivery_status_collection(tenant_id: str):
     )
 
 
+async def backfill_status_tran_business_counter(tenant_id: str) -> None:
+    """
+    Fill in business_counter on pre-#156 transaction status records.
+
+    Client-carried cart phase 2 made transaction_no the per-open seq, so a status
+    record is only identified together with the open epoch it belongs to. Records
+    written before the migration carry no epoch, and they cannot simply be matched
+    with "epoch or null": legacy transaction_no came from a 1-based per-terminal
+    counter and seq is 1-based per open session, so the ranges overlap completely
+    — this session's seq=1 would find the terminal's very first sale from years
+    ago and report its void/refund status as the current transaction's.
+
+    So the epoch is copied in from the transaction the record refers to (the
+    tranlog has always carried business_counter). Runs before the index rework so
+    the records already match the new key by the time it is enforced.
+
+    A record whose transaction cannot be resolved unambiguously is left alone and
+    counted: it stays invisible to the new exact-match lookups, which at worst
+    allows a second void of a transaction whose log is already gone — far milder
+    than refusing every legitimate one. Backfill failure never blocks startup;
+    the collection may simply not exist yet on a fresh tenant.
+
+    Args:
+        tenant_id: The tenant identifier used to create the database name
+
+    Returns:
+        None
+    """
+    db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+    status_collection = db[settings.DB_COLLECTION_NAME_STATUS_TRAN]
+    tran_collection = db[settings.DB_COLLECTION_NAME_TRAN_LOG]
+
+    filled = 0
+    unresolved = 0
+    try:
+        # {"business_counter": None} matches both a null value and a missing field.
+        async for record in status_collection.find({"business_counter": None}):
+            key = {
+                "tenant_id": record.get("tenant_id"),
+                "store_code": record.get("store_code"),
+                "terminal_no": record.get("terminal_no"),
+                "transaction_no": record.get("transaction_no"),
+            }
+            # Read two: more than one match means the number spans several open
+            # sessions and picking either would stamp the wrong epoch.
+            candidates = await tran_collection.find(key, {"business_counter": 1}).to_list(2)
+            if len(candidates) != 1 or candidates[0].get("business_counter") is None:
+                unresolved += 1
+                continue
+            await status_collection.update_one(
+                {"_id": record["_id"]},
+                {"$set": {"business_counter": candidates[0]["business_counter"]}},
+            )
+            filled += 1
+    except Exception as e:
+        logger.warning(f"status_tran business_counter backfill skipped for tenant {tenant_id}: {e}")
+        return
+
+    if filled or unresolved:
+        logger.info(
+            f"status_tran business_counter backfill for tenant {tenant_id}: "
+            f"filled={filled} unresolved={unresolved}"
+        )
+
+
 async def create_status_tran_collection(tenant_id: str):
     """
     Creates the transaction status collection with indexes.
@@ -172,12 +260,30 @@ async def create_status_tran_collection(tenant_id: str):
     Returns:
         None
     """
+    # Fill the epoch in on existing records BEFORE the new unique key is enforced,
+    # so pre-migration statuses stay reachable by the exact-match lookups.
+    await backfill_status_tran_business_counter(tenant_id)
+
     name = settings.DB_COLLECTION_NAME_STATUS_TRAN
+    # Client-carried cart phase 2 (issue #156): transaction_no is the per-open seq
+    # and repeats every open session, so the status identity must include
+    # business_counter — otherwise one session's void/refund status collides with
+    # the same-numbered transaction of another session (a daily open resets seq to
+    # 1, so day 2's first sale would read day 1's status). Mirrors the tranlog
+    # numbering tuple.
     index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}, "unique": True}
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "unique": True,
+        }
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Issue #156 migration: retire the unique index that lacked business_counter.
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}],
     )
 
 

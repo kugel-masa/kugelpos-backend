@@ -61,6 +61,32 @@ class StockUpdateRepository(AbstractRepository[StockUpdateDocument]):
         documents = await cursor.to_list(length=None)
         return [StockUpdateDocument(**doc) for doc in documents]
 
+    async def find_by_cart_id_async(
+        self,
+        tenant_id: str,
+        store_code: str,
+        cart_id: str,
+    ) -> List[StockUpdateDocument]:
+        """Find ALL stock updates from a transaction identified by cart_id.
+
+        Client-carried cart phase 2 (issue #156 / #152): a duplicate finalize
+        (lost-ACK retry to any backend) carries the same cart_id. If any record
+        exists for this cart_id the transaction was already processed, so the
+        whole batch is skipped (apply once).
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+
+        cursor = self.dbcollection.find(
+            {
+                "tenant_id": tenant_id,
+                "store_code": store_code,
+                "cart_id": cart_id,
+            }
+        )
+        documents = await cursor.to_list(length=None)
+        return [StockUpdateDocument(**doc) for doc in documents]
+
     async def find_by_date_range_async(
         self,
         tenant_id: str,

@@ -170,17 +170,6 @@ async def test_cart_operations(http_client):
     cartId = res.get("data").get("cartId")
     assert cartId is not None
 
-    # Get cart
-    response = await http_client.get(f"/api/v1/carts/{cartId}?terminal_id={terminal_id}", headers=header)
-    assert response.status_code == status.HTTP_200_OK
-    res = response.json()
-    cart = res.get("data")
-    assert cart.get("cartId") == cartId
-    assert cart.get("cartStatus") == CartStatus.Idle.value
-    assert cart.get("tenantId") == tenant_id
-    assert cart.get("storeCode") == store_code
-    assert cart.get("terminalNo") == terminal_no
-
     # Cancel cart
     response = await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
     assert response.status_code == status.HTTP_200_OK

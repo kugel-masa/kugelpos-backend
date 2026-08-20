@@ -9,6 +9,7 @@ from kugel_common.security import verify_pubsub_notification_auth
 from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
 from kugel_common.status_codes import StatusCodes
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 
 from app.services.tran_service import TranService
 from app.models.repositories.terminal_counter_repository import (
@@ -177,6 +178,7 @@ async def get_tran_service(
     )
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
     await transaction_status_repo.initialize()
+    store_info_repo = StoreInfoWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
 
     return TranService(
         terminal_info=terminal_info,
@@ -186,6 +188,7 @@ async def get_tran_service(
         settings_master_repo=settings_master_repo,
         payment_master_repo=payment_master_repo,
         transaction_status_repo=transaction_status_repo,
+        store_info_repo=store_info_repo,
     )
 
 
@@ -313,6 +316,15 @@ async def get_transaction_by_tranasction_no(
     store_code: str = Path(...),
     terminal_no: int = Path(...),
     transaction_no: int = Path(...),
+    business_counter: int = Query(
+        default=None,
+        description=(
+            "Open epoch of the transaction (issue #156). transaction_no is the per-open "
+            "seq and repeats every open session, so this pins down which one is meant. "
+            "Omit only for transactions numbered by the server before phase 2; if the "
+            "number then matches several sessions the request is rejected as ambiguous."
+        ),
+    ),
     tran_service: TranService = Depends(get_tran_service),
 ):
     """
@@ -346,6 +358,7 @@ async def get_transaction_by_tranasction_no(
             store_code=store_code,
             terminal_no=terminal_no,
             transaction_no=transaction_no,
+            business_counter=business_counter,
         )
         return_tranlog = SchemasTransformerV1().transform_tran(tranlog=tranlog)
     except Exception as e:
@@ -374,11 +387,21 @@ async def get_transaction_by_tranasction_no(
     },
 )
 async def void_transaction_by_transaction_no(
+    request: Request,
     payments: list[PaymentRequest],
     tenant_id: str = Path(...),
     store_code: str = Path(...),
     terminal_no: int = Path(...),
     transaction_no: int = Path(...),
+    business_counter: int = Query(
+        default=None,
+        description=(
+            "Open epoch of the transaction (issue #156). transaction_no is the per-open "
+            "seq and repeats every open session. A void is confined to this terminal's "
+            "current session, so omitting this defaults to the current open epoch — the "
+            "only one a void can reach."
+        ),
+    ),
     tran_service: TranService = Depends(get_tran_service),
 ):
     """
@@ -419,14 +442,29 @@ async def void_transaction_by_transaction_no(
         message = f"terminal_no in request does not match the terminal_no in the URL : req.terminal_no->{terminal_no}, terminal_no->{tran_service.terminal_info.terminal_no}"
         raise InvalidRequestDataException(message=message, logger=logger, original_exception=None)
 
+    # A void only ever reaches this terminal's current open session, so when the
+    # caller names no epoch there is exactly one it could mean. Defaulting to it
+    # keeps clients that predate the parameter working: without it they would start
+    # getting 409s from the second open session onward, as soon as an older sale
+    # shared the seq. void_async rejects anything outside this session regardless,
+    # so the default cannot widen what a void is able to touch.
+    if business_counter is None:
+        business_counter = tran_service.terminal_info.business_counter
+
     try:
-        tranlog = await tran_service.get_tranlog_by_transaction_no_async(
+        # Scoped to the session, but reporting "not found" for a number that exists
+        # in an earlier one would send the operator back to re-read the receipt
+        # instead of switching to a return.
+        tranlog = await tran_service.get_tranlog_for_void_async(
             store_code=store_code,
             terminal_no=terminal_no,
             transaction_no=transaction_no,
+            business_counter=business_counter,
         )
         tranlog_voided = await tran_service.void_async(
-            tranlog, add_payment_list=[payment.model_dump() for payment in payments]
+            tranlog,
+            add_payment_list=[payment.model_dump() for payment in payments],
+            finalize_envelope=request.scope.get("cart_snapshot"),
         )
         return_tranlog = SchemasTransformerV1().transform_tran(tranlog_voided).model_dump()
     except Exception as e:
@@ -455,18 +493,29 @@ async def void_transaction_by_transaction_no(
     },
 )
 async def return_transaction_by_transaction_no(
+    request: Request,
     payments: list[PaymentRequest],
     tenant_id: str = Path(...),
     store_code: str = Path(...),
     terminal_no: int = Path(...),
     transaction_no: int = Path(...),
+    business_counter: int = Query(
+        default=None,
+        description=(
+            "Open epoch of the transaction (issue #156). transaction_no is the per-open "
+            "seq and repeats every open session, so this pins down which one is meant. "
+            "Omit only for transactions numbered by the server before phase 2; if the "
+            "number then matches several sessions the request is rejected as ambiguous."
+        ),
+    ),
     tran_service: TranService = Depends(get_tran_service),
 ):
     """
     Process a transaction return.
 
     Creates a return transaction based on an original transaction and processes any required refund payments.
-    The terminal making this request must be in the same store as the original transaction.
+    The original transaction may belong to any store or terminal of the same tenant (issue #156);
+    the return itself is booked against the terminal performing it.
 
     Args:
         payments: List of payment methods to use for refunding
@@ -480,10 +529,14 @@ async def return_transaction_by_transaction_no(
         API response with the return transaction details
 
     Raises:
-        InvalidRequestDataException: If tenant_id or store_code don't match the authenticated terminal
+        InvalidRequestDataException: If tenant_id doesn't match the authenticated terminal
         HTTPException: If the transaction is not found or cannot be returned
     """
-    # you can return only terminal in the same store
+    # A return may reference an original from ANY store or terminal of the tenant
+    # (issue #156): the customer brings the receipt to whichever store they choose.
+    # The path store_code/terminal_no therefore name where the ORIGINAL was rung up,
+    # not the terminal performing the return, and are not required to match the
+    # authenticated terminal. The tenant boundary is still enforced.
 
     logger.debug(f"return_transaction_by_transaction_no: payments->{payments}")
 
@@ -492,17 +545,17 @@ async def return_transaction_by_transaction_no(
         message = f"tenant_id in request does not match the tenant_id in the URL : req.tenant_id->{tenant_id}, tenant_id->{tran_service.terminal_info.tenant_id}"
         raise InvalidRequestDataException(message=message, logger=logger, original_exception=None)
 
-    # check store_code
-    if store_code != tran_service.terminal_info.store_code:
-        message = f"store_code in request does not match the store_code in the URL : req.store_code->{store_code}, store_code->{tran_service.terminal_info.store_code}"
-        raise InvalidRequestDataException(message=message, logger=logger, original_exception=None)
-
     try:
         tranlog = await tran_service.get_tranlog_by_transaction_no_async(
-            store_code=store_code, terminal_no=terminal_no, transaction_no=transaction_no
+            store_code=store_code,
+            terminal_no=terminal_no,
+            transaction_no=transaction_no,
+            business_counter=business_counter,
         )
         tranlog_returned = await tran_service.return_async(
-            tranlog, add_payment_list=[payment.model_dump() for payment in payments]
+            tranlog,
+            add_payment_list=[payment.model_dump() for payment in payments],
+            finalize_envelope=request.scope.get("cart_snapshot"),
         )
         return_tranlog = SchemasTransformerV1().transform_tran(tranlog_returned).model_dump()
     except Exception as e:
@@ -557,7 +610,7 @@ async def notify_delivery_status(
         API response with the updated delivery status
 
     Raises:
-        InvalidRequestDataException: If tenant_id or store_code don't match the authenticated terminal
+        InvalidRequestDataException: If tenant_id doesn't match the authenticated terminal
         HTTPException: If the transaction is not found or cannot be updated
     """
 

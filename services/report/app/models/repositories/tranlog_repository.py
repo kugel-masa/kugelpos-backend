@@ -50,13 +50,28 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             CannotCreateException: If the transaction log cannot be created
         """
         try:
-            # Check if the log is already created
-            filter = {
-                "tenant_id": tranlog.tenant_id,
-                "store_code": tranlog.store_code,
-                "terminal_no": tranlog.terminal_no,
-                "transaction_no": tranlog.transaction_no,
-            }
+            # Check if the log is already created. Client-carried cart phase 2
+            # (issue #156 / #152): a finalize carries cart_id as the transaction
+            # identity, so dedupe on it — a duplicate finalize (lost-ACK retry
+            # to any backend) converges to one record (first-wins skip). Fall
+            # back to the (business_counter, transaction_no) tuple for legacy
+            # records that carry no cart_id. transaction_no alone is no longer
+            # unique across open sessions (it is the per-open seq), so the
+            # tuple includes business_counter.
+            if tranlog.cart_id is not None:
+                filter = {
+                    "tenant_id": tranlog.tenant_id,
+                    "store_code": tranlog.store_code,
+                    "cart_id": tranlog.cart_id,
+                }
+            else:
+                filter = {
+                    "tenant_id": tranlog.tenant_id,
+                    "store_code": tranlog.store_code,
+                    "terminal_no": tranlog.terminal_no,
+                    "business_counter": tranlog.business_counter,
+                    "transaction_no": tranlog.transaction_no,
+                }
             if await self.get_one_async(filter):
                 logger.warning(f"Transaction already exists. transaction: {tranlog}")
                 return tranlog
@@ -68,6 +83,12 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
                 raise Exception()
             return tranlog
 
+        except DuplicateKeyException:
+            # Concurrent duplicate finalize (issue #156): both passed the
+            # get-then-insert check and one lost the unique-index race. That is
+            # the benign "already converged" signal — skip, do not error.
+            logger.warning(f"Transaction already exists (duplicate-key on insert): {tranlog}")
+            return tranlog
         except Exception as e:
             message = (
                 "Failed to create tranlog: "

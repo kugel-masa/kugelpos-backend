@@ -917,11 +917,21 @@ Get terminal information
 
 This endpoint retrieves detailed information about a specific terminal.
 
+The optional `include_api_key=true` query is honored only when the caller is
+authenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT
+or X-API-KEY), the api_key is always masked even if the flag is set.
+
 **Path Parameters:**
 
 | Parameter | Type | Required | Description |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `include_api_key` | boolean | No | False | When true, return the unmasked api_key.  |
 
 **Response:**
 
@@ -1175,6 +1185,7 @@ Close a terminal after business operations
 This endpoint transitions a terminal to the 'closed' state,
 ending the current business session. It records the final
 physical cash amount in the drawer and creates a closing report.
+Returns an X-New-Token header with updated JWT reflecting closed state.
 
 **Path Parameters:**
 
@@ -1504,6 +1515,7 @@ Open a terminal for business operations
 This endpoint transitions a terminal to the 'opened' state,
 making it ready for sales and other business operations.
 It also records the initial cash amount in the drawer.
+Returns an X-New-Token header with updated JWT reflecting opened state.
 
 **Path Parameters:**
 
@@ -1516,11 +1528,15 @@ It also records the initial cash amount in the drawer.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `initialAmount` | number | No | - |
+| `businessCounter` | integer | No | - |
+| `receiptNo` | integer | No | - |
 
 **Request Example:**
 ```json
 {
-  "initialAmount": 0.0
+  "initialAmount": 0.0,
+  "businessCounter": 0,
+  "receiptNo": 0
 }
 ```
 
@@ -1591,6 +1607,7 @@ Sign in to a terminal
 
 This endpoint associates a staff member with a terminal for the duration of their shift.
 A terminal must have a staff member signed in before most operations can be performed.
+Returns an X-New-Token header with updated JWT reflecting the new staff assignment.
 
 **Path Parameters:**
 
@@ -1675,6 +1692,7 @@ Sign out from a terminal
 
 This endpoint removes the current staff association from a terminal
 at the end of their shift or when changing operators.
+Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 **Path Parameters:**
 
@@ -1726,6 +1744,62 @@ at the end of their shift or when changing operators.
     "businessDate": "string",
     "openCounter": 0,
     "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### Other
+
+### 25. Create Token
+
+**POST** `/api/v1/auth/token`
+
+Exchange an API key for a terminal JWT token.
+
+The returned JWT contains terminal state claims and can be used
+for authentication with all services without inter-service calls.
+
+When terminal_id is provided, lookup is O(1) against the tenant DB.
+When omitted, all tenant DBs are scanned (slower, for backward compatibility).
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | Terminal ID for direct lookup (recommend |
+
+**Response:**
+
+**data Field:** `TokenResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `access_token` | string | Yes | - |
+| `token_type` | string | No | - |
+| `expires_in` | integer | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "access_token": "string",
+    "token_type": "bearer",
+    "expires_in": 0
   },
   "metadata": {
     "total": 0,

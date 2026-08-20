@@ -161,11 +161,11 @@ Format: XXYYZZ
 
 | Command | Description |
 |---------|-------------|
-| `/build` | サービスのビルド（全体/個別/共通パッケージ） |
-| `/service` | サービスの起動・停止・再起動（Daprサイドカー含む） |
-| `/deploy` | Azure Container Appsへのデプロイ手順 |
-| `/test-guide` | テスト実行ガイド（Event Loop問題対処含む） |
-| `/db-review` | MongoDB aggregation pipelineのレビュー |
+| `/build` | Build services (all / individual / common package) |
+| `/service` | Start / stop / restart services (including Dapr sidecars) |
+| `/deploy` | Deployment procedure for Azure Container Apps |
+| `/test-guide` | Test execution guide (including Event Loop issue handling) |
+| `/db-review` | Review MongoDB aggregation pipelines |
 
 ## Important Configuration
 - Environment variables loaded from `.env` files
@@ -174,9 +174,11 @@ Format: XXYYZZ
 - Dapr HTTP port: Default 3500 (configurable via `DAPR_HTTP_PORT`)
 
 ## Active Technologies
-- Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ) (072-master-data-cache)
-- Python 3.12+（既存サービスと同一） + FastAPI、Pydantic v2、Motor（async MongoDB）、Dapr（state store `cartstore`）。署名は標準ライブラリ `hmac` / `hashlib` / `json` のみ — **新規外部依存なし** (148-cart-snapshot-restore)
-- MongoDB テナント別 DB（`db_cart_{tenant_id}`）に `log_cart_restore` コレクション新設。カートキャッシュ（Redis / `cache_cart` フォールバック）は既存どおり (148-cart-snapshot-restore)
+- Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (through the existing `DaprClientHelper` wrapper) (072-master-data-cache)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (state store `cartstore`). Signing uses only the standard library (`hmac` / `hashlib` / `json`) — **no new external dependency** (148-cart-snapshot-restore)
+- New `log_cart_restore` collection in the per-tenant MongoDB database (`db_cart_{tenant_id}`). The cart cache (Redis, falling back to `cache_cart`) is unchanged (148-cart-snapshot-restore)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (pub/sub `pubsub-tranlog-report` / topic `topic-tranlog`, state store). Signing reuses phase 1's `kugel_common.utils.hmac_signer` (standard library only). Request decompression uses the standard library `gzip`/`zlib` plus the `brotli` package (.NET 8 clients support `br`/`gzip` out of the box) (156-stateless-cart)
+- Per-tenant MongoDB databases. The tranlog (report/journal) and stock_update indexes are reworked around `cart_id`. Auditing generalises phase 1's `log_cart_restore` (156-stateless-cart)
 
 ## Recent Changes
-- 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (via `DaprClientHelper` 既存ラッパ)
+- 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (through the existing `DaprClientHelper` wrapper)

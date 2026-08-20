@@ -869,13 +869,25 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 **GET** `/api/v1/terminals/{terminal_id}`
 
-端末情報を取得します。端末の詳細と現在の状態を返します。
+Get terminal information
+
+This endpoint retrieves detailed information about a specific terminal.
+
+The optional `include_api_key=true` query is honored only when the caller is
+authenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT
+or X-API-KEY), the api_key is always masked even if the flag is set.
 
 **パスパラメータ:**
 
 | パラメータ | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `terminal_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `include_api_key` | boolean | No | False | When true, return the unmasked api_key.  |
 
 **レスポンス:**
 
@@ -1115,7 +1127,12 @@ Delete Terminalを削除します。対象をシステムから削除します�
 
 **POST** `/api/v1/terminals/{terminal_id}/close`
 
-端末を閉店します。その日の取引を確定し、閉店レポートを生成します。
+Close a terminal after business operations
+
+This endpoint transitions a terminal to the 'closed' state,
+ending the current business session. It records the final
+physical cash amount in the drawer and creates a closing report.
+Returns an X-New-Token header with updated JWT reflecting closed state.
 
 **パスパラメータ:**
 
@@ -1432,7 +1449,12 @@ Represents termin |
 
 **POST** `/api/v1/terminals/{terminal_id}/open`
 
-端末を開店します。新しい営業日のために端末を初期化します。
+Open a terminal for business operations
+
+This endpoint transitions a terminal to the 'opened' state,
+making it ready for sales and other business operations.
+It also records the initial cash amount in the drawer.
+Returns an X-New-Token header with updated JWT reflecting opened state.
 
 **パスパラメータ:**
 
@@ -1445,11 +1467,15 @@ Represents termin |
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `initialAmount` | number | No | - |
+| `businessCounter` | integer | No | - |
+| `receiptNo` | integer | No | - |
 
 **リクエスト例:**
 ```json
 {
-  "initialAmount": 0.0
+  "initialAmount": 0.0,
+  "businessCounter": 0,
+  "receiptNo": 0
 }
 ```
 
@@ -1516,7 +1542,11 @@ Represents termin |
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-in`
 
-スタッフをサインインします。端末へのスタッフサインインを記録します。
+Sign in to a terminal
+
+This endpoint associates a staff member with a terminal for the duration of their shift.
+A terminal must have a staff member signed in before most operations can be performed.
+Returns an X-New-Token header with updated JWT reflecting the new staff assignment.
 
 **パスパラメータ:**
 
@@ -1597,7 +1627,11 @@ Represents termin |
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-out`
 
-スタッフをサインアウトします。端末からのスタッフサインアウトを記録します。
+Sign out from a terminal
+
+This endpoint removes the current staff association from a terminal
+at the end of their shift or when changing operators.
+Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 **パスパラメータ:**
 
@@ -1649,6 +1683,62 @@ Represents termin |
     "businessDate": "string",
     "openCounter": 0,
     "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### その他
+
+### 25. Create Token
+
+**POST** `/api/v1/auth/token`
+
+Exchange an API key for a terminal JWT token.
+
+The returned JWT contains terminal state claims and can be used
+for authentication with all services without inter-service calls.
+
+When terminal_id is provided, lookup is O(1) against the tenant DB.
+When omitted, all tenant DBs are scanned (slower, for backward compatibility).
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | Terminal ID for direct lookup (recommend |
+
+**レスポンス:**
+
+**dataフィールド:** `TokenResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `access_token` | string | Yes | - |
+| `token_type` | string | No | - |
+| `expires_in` | integer | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "access_token": "string",
+    "token_type": "bearer",
+    "expires_in": 0
   },
   "metadata": {
     "total": 0,

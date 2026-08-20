@@ -1414,7 +1414,7 @@
     "/api/v1/terminals/{terminal_id}": {
       "get": {
         "summary": "Get Terminal",
-        "description": "Get terminal information\n\nThis endpoint retrieves detailed information about a specific terminal.\n\nArgs:\n    terminal_id: ID of the terminal to retrieve\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing terminal information",
+        "description": "Get terminal information\n\nThis endpoint retrieves detailed information about a specific terminal.\n\nThe optional `include_api_key=true` query is honored only when the caller is\nauthenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT\nor X-API-KEY), the api_key is always masked even if the flag is set.\n\nArgs:\n    terminal_id: ID of the terminal to retrieve\n    include_api_key: Opt-in to receive the unmasked api_key (user-JWT only)\n    auth_ctx: Auth context (tenant_id + auth_type + subject)\n\nReturns:\n    ApiResponse containing terminal information",
         "operationId": "get_terminal_api_v1_terminals__terminal_id__get",
         "security": [
           {
@@ -1433,6 +1433,18 @@
               "type": "string",
               "title": "Terminal Id"
             }
+          },
+          {
+            "name": "include_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When true, return the unmasked api_key. Honored only when authenticated via user JWT.",
+              "default": false,
+              "title": "Include Api Key"
+            },
+            "description": "When true, return the unmasked api_key. Honored only when authenticated via user JWT."
           }
         ],
         "responses": {
@@ -1933,7 +1945,7 @@
     "/api/v1/terminals/{terminal_id}/sign-in": {
       "post": {
         "summary": "Terminal Signin",
-        "description": "Sign in to a terminal\n\nThis endpoint associates a staff member with a terminal for the duration of their shift.\nA terminal must have a staff member signed in before most operations can be performed.\n\nArgs:\n    terminal_id: ID of the terminal to sign into\n    terminal_signin: Sign-in request containing staff ID\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing updated terminal information with staff details",
+        "description": "Sign in to a terminal\n\nThis endpoint associates a staff member with a terminal for the duration of their shift.\nA terminal must have a staff member signed in before most operations can be performed.\nReturns an X-New-Token header with updated JWT reflecting the new staff assignment.\n\nArgs:\n    terminal_id: ID of the terminal to sign into\n    terminal_signin: Sign-in request containing staff ID\n    http_response: FastAPI Response object for setting headers\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing updated terminal information with staff details",
         "operationId": "terminal_signin_api_v1_terminals__terminal_id__sign_in_post",
         "security": [
           {
@@ -2077,7 +2089,7 @@
     "/api/v1/terminals/{terminal_id}/sign-out": {
       "post": {
         "summary": "Terminal Signout",
-        "description": "Sign out from a terminal\n\nThis endpoint removes the current staff association from a terminal\nat the end of their shift or when changing operators.\n\nArgs:\n    terminal_id: ID of the terminal to sign out from\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing updated terminal information without staff details",
+        "description": "Sign out from a terminal\n\nThis endpoint removes the current staff association from a terminal\nat the end of their shift or when changing operators.\nReturns an X-New-Token header with updated JWT reflecting staff removal.\n\nArgs:\n    terminal_id: ID of the terminal to sign out from\n    http_response: FastAPI Response object for setting headers\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing updated terminal information without staff details",
         "operationId": "terminal_signout_api_v1_terminals__terminal_id__sign_out_post",
         "security": [
           {
@@ -2195,7 +2207,7 @@
     "/api/v1/terminals/{terminal_id}/open": {
       "post": {
         "summary": "Terminal Open",
-        "description": "Open a terminal for business operations\n\nThis endpoint transitions a terminal to the 'opened' state,\nmaking it ready for sales and other business operations.\nIt also records the initial cash amount in the drawer.\n\nArgs:\n    terminal_id: ID of the terminal to open\n    terminal_open: Open request containing initial cash amount\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing terminal opening log details",
+        "description": "Open a terminal for business operations\n\nThis endpoint transitions a terminal to the 'opened' state,\nmaking it ready for sales and other business operations.\nIt also records the initial cash amount in the drawer.\nReturns an X-New-Token header with updated JWT reflecting opened state.\n\nArgs:\n    terminal_id: ID of the terminal to open\n    http_response: FastAPI Response object for setting headers\n    terminal_open: Open request containing initial cash amount\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing terminal opening log details",
         "operationId": "terminal_open_api_v1_terminals__terminal_id__open_post",
         "security": [
           {
@@ -2322,7 +2334,7 @@
     "/api/v1/terminals/{terminal_id}/close": {
       "post": {
         "summary": "Terminal Close",
-        "description": "Close a terminal after business operations\n\nThis endpoint transitions a terminal to the 'closed' state,\nending the current business session. It records the final\nphysical cash amount in the drawer and creates a closing report.\n\nArgs:\n    terminal_id: ID of the terminal to close\n    terminal_close: Close request containing final physical cash amount\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing terminal closing log details",
+        "description": "Close a terminal after business operations\n\nThis endpoint transitions a terminal to the 'closed' state,\nending the current business session. It records the final\nphysical cash amount in the drawer and creates a closing report.\nReturns an X-New-Token header with updated JWT reflecting closed state.\n\nArgs:\n    terminal_id: ID of the terminal to close\n    http_response: FastAPI Response object for setting headers\n    terminal_close: Close request containing final physical cash amount\n    tenant_id: Tenant ID extracted from authentication\n\nReturns:\n    ApiResponse containing terminal closing log details",
         "operationId": "terminal_close_api_v1_terminals__terminal_id__close_post",
         "security": [
           {
@@ -2823,6 +2835,60 @@
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/token": {
+      "post": {
+        "summary": "Create Token",
+        "description": "Exchange an API key for a terminal JWT token.\n\nThe returned JWT contains terminal state claims and can be used\nfor authentication with all services without inter-service calls.\n\nWhen terminal_id is provided, lookup is O(1) against the tenant DB.\nWhen omitted, all tenant DBs are scanned (slower, for backward compatibility).\n\nArgs:\n    api_key: Terminal API key from X-API-KEY header\n    terminal_id: Optional terminal ID for direct DB lookup\n\nReturns:\n    ApiResponse containing access_token, token_type, and expires_in",
+        "operationId": "create_token_api_v1_auth_token_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Terminal ID for direct lookup (recommended)",
+              "title": "Terminal Id"
+            },
+            "description": "Terminal ID for direct lookup (recommended)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TokenResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -3661,6 +3727,78 @@
         ],
         "title": "ApiResponse[Terminal]"
       },
+      "ApiResponse_TokenResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[TokenResponse]"
+      },
       "ApiResponse_list_Store__": {
         "properties": {
           "success": {
@@ -4223,6 +4361,19 @@
         ],
         "title": "DeliveryStatusUpdateResponse",
         "description": "API model for delivery status update responses.\nReturns the result of updating the delivery status."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
       },
       "HealthCheckResponse": {
         "properties": {
@@ -4882,11 +5033,37 @@
               }
             ],
             "title": "Initialamount"
+          },
+          "businessCounter": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businesscounter"
+          },
+          "receiptNo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiptno"
           }
         },
         "type": "object",
         "title": "TerminalOpenRequest",
-        "description": "Schema for terminal open request\n\nContains information required to open a terminal:\n- initial_amount: The initial cash amount in the terminal drawer"
+        "description": "Schema for terminal open request\n\nContains information required to open a terminal:\n- initial_amount: The initial cash amount in the terminal drawer\n- business_counter / receipt_no: client-carried counter values (issue #156).\n  The terminal owns these and may have advanced them offline; the service\n  reconciles via max() so an offline-used value is never reused. Because\n  that reconcile is monotonic and therefore irreversible, the values are\n  bounded here: negatives are rejected outright and the absolute ceiling\n  keeps a malformed client from permanently burning the counter space.\n  A value that is merely ahead of the stored one is still accepted — that\n  is the offline case this exists for — but see the per-open jump guard in\n  TerminalService.open_terminal_async."
       },
       "TerminalOpenResponse": {
         "properties": {
@@ -4970,6 +5147,29 @@
         "title": "TerminalUpdateRequest",
         "description": "Schema for terminal update request\n\nContains fields that can be updated for a terminal:\n- description: The new description for the terminal"
       },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "TokenResponse"
+      },
       "UpdateFunctionModeRequest": {
         "properties": {
           "functionMode": {
@@ -5012,6 +5212,46 @@
         "type": "object",
         "title": "UserError",
         "description": "User-friendly error information model.\n\nContains structured error information that is suitable for display to end users,\nsuch as error codes and localized error messages.\n\nAttributes:\n    code: Application-specific error code\n    message: User-friendly error message suitable for display"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       }
     },
     "securitySchemes": {
@@ -5020,7 +5260,7 @@
         "flows": {
           "password": {
             "scopes": {},
-            "tokenUrl": "http://localhost:3500/v1.0/invoke/account/method/api/v1/accounts/token"
+            "tokenUrl": "http://account:8000/api/v1/accounts/token"
           }
         }
       },

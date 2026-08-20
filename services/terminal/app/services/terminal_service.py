@@ -55,6 +55,12 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
+# Largest jump a client-carried counter may make above the stored value at open
+# (issue #156). Generous enough to cover any real offline session's opens/bills,
+# small enough that a malformed client cannot permanently burn the number space
+# through the irreversible max() reconcile.
+MAX_COUNTER_JUMP = 100_000
+
 
 class TerminalService:
     """
@@ -394,12 +400,52 @@ class TerminalService:
 
     # Terminal open/close methods
 
-    async def open_terminal_async(self, initial_amout: float) -> OpenCloseLog:
+    def __check_carried_counter_jump(self, field: str, stored: int, carried: int) -> None:
+        """
+        Reject a client-carried counter that is implausibly far ahead of the stored
+        value (issue #156).
+
+        The open-time reconcile is max()-based and therefore irreversible: once a
+        value is accepted the terminal can never issue a number at or below it
+        again. An offline session legitimately advances the counter by at most a
+        session's worth of opens (business_counter) or bills (receipt_no), so a
+        jump beyond MAX_COUNTER_JUMP indicates a malformed or corrupted client,
+        not an offline gap. Reject rather than silently burn the number space.
+
+        Args:
+            field: Counter name, for the error message.
+            stored: Currently persisted counter value.
+            carried: Client-carried value (None when nothing was carried).
+
+        Raises:
+            TerminalOpenException: The carried value exceeds the allowed jump.
+        """
+        if carried is None:
+            return
+        if carried > stored + MAX_COUNTER_JUMP:
+            message = (
+                f"Client-carried {field} is implausibly far ahead: carried={carried} stored={stored} "
+                f"(max jump {MAX_COUNTER_JUMP}). Terminal: {self.terminal_id}"
+            )
+            raise TerminalOpenException(message=message, logger=logger)
+
+    async def open_terminal_async(
+        self,
+        initial_amout: float,
+        client_business_counter: int = None,
+        client_receipt_no: int = None,
+    ) -> OpenCloseLog:
         """
         Open a terminal for business operations
 
         Args:
             initial_amout: Initial cash amount in the drawer
+            client_business_counter: Client-carried business_counter (issue #156).
+                The terminal owns these counters and may have advanced them during
+                an offline session; reconcile via max() so a value used offline is
+                never reused. None when the client carries nothing (first open).
+            client_receipt_no: Client-carried receipt_no (issue #156); reconciled
+                via max() and seeded into the token for the new session.
 
         Returns:
             OpenCloseLog: Log entry for the terminal opening
@@ -420,12 +466,42 @@ class TerminalService:
             message = f"Terminal is already opened: {self.terminal_id}"
             raise TerminalStatusException(message=message, logger=logger)
 
+        # Client-carried cart phase 2 (issue #156): the terminal owns
+        # business_counter and receipt_no and may have advanced them during an
+        # offline session. Reconcile via max() so an offline-used value is never
+        # reused (terminal service is the durable home; gaps allowed, no reuse).
+        # getattr-guarded reads: an existing terminal loaded from storage may
+        # have been model_construct'd without the new receipt_no field.
+        # The reconcile is monotonic, so an accepted value can never be walked
+        # back: a client that carries a wildly-ahead counter would permanently
+        # burn the number space. A legitimate offline session advances by at most
+        # a session's worth of opens/bills, so anything beyond MAX_COUNTER_JUMP
+        # above the stored value is a malformed client, not an offline gap —
+        # reject it and let the operator reconcile deliberately.
+        self.__check_carried_counter_jump(
+            "business_counter", getattr(terminal, "business_counter", None) or 0, client_business_counter
+        )
+        self.__check_carried_counter_jump(
+            "receipt_no", getattr(terminal, "receipt_no", None) or 0, client_receipt_no
+        )
+        if client_business_counter is not None:
+            terminal.business_counter = max(getattr(terminal, "business_counter", None) or 0, client_business_counter)
+        if client_receipt_no is not None:
+            terminal.receipt_no = max(getattr(terminal, "receipt_no", None) or 0, client_receipt_no)
+        # Initialize the receipt counter on first open so the token always seeds
+        # one (the client advances it per bill; first receipt becomes 1). A
+        # configurable start value / rollover is a follow-up.
+        if getattr(terminal, "receipt_no", None) is None:
+            terminal.receipt_no = 0
+
         if terminal.business_date == get_app_time().strftime("%Y%m%d"):
             terminal.open_counter += 1
         else:
             terminal.business_date = get_app_time().strftime("%Y%m%d")
             terminal.open_counter = 1
 
+        # New open epoch (after reconcile, so it is strictly above any
+        # offline-used business_counter).
         terminal.business_counter += 1
         terminal.status = TerminalStatus.Opened.value
         terminal.initial_amount = initial_amout
@@ -600,12 +676,17 @@ class TerminalService:
         )
 
         # get tran_log list
+        # Order by the canonical transaction identity (business_counter, transaction_no)
+        # — the unique key — NOT generate_date_time (client-stamped on the stateless
+        # path, issue #156, so it can tie and pick a non-deterministic last record).
+        # The report-side verification orders identically, so both sides agree on the
+        # same "last transaction" fingerprint (cart_transaction_last_no).
         paginated_result = await self.tran_log_repo.get_tran_log_list_async(
             business_date=terminal.business_date,
             open_counter=terminal.open_counter,
             limit=1,
             page=1,
-            sort=[("generate_date_time", -1)],
+            sort=[("business_counter", -1), ("transaction_no", -1)],
             include_cancelled=True,
         )
         logger.debug(f"paginated_result: {paginated_result}")

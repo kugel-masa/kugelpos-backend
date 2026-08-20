@@ -11,11 +11,13 @@ from datetime import datetime, timedelta
 logger = getLogger(__name__)
 
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
 from kugel_common.enums import TransactionType
 from kugel_common.utils.slack_notifier import send_warning_notification
+from kugel_common.exceptions import DuplicateKeyException
 
 from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.tranlog_delivery_status_repository import (
@@ -33,6 +35,7 @@ from app.models.receipt_types import validate_receipt_lines
 from app.enums.counter_type import CounterType
 from app.utils.settings import get_setting_value
 from app.services.cart_strategy_manager import CartStrategyManager
+from app.services import snapshot_service
 from app.exceptions import (
     DocumentNotFoundException,
     BadRequestBodyException,
@@ -41,6 +44,9 @@ from app.exceptions import (
     InternalErrorException,
     AlreadyVoidedException,
     AlreadyRefundedException,
+    FinalizeConflictException,
+    SnapshotInvalidException,
+    VoidOutOfSessionException,
 )
 from app.config.settings import settings
 from app.utils.pubsub_manager import PubsubManager
@@ -67,6 +73,7 @@ class TranService:
         settings_master_repo: SettingsMasterWebRepository,
         payment_master_repo: PaymentMasterWebRepository,
         transaction_status_repo: TransactionStatusRepository,
+        store_info_repo: StoreInfoWebRepository = None,
     ):
         """
         Initialize the transaction service with required repositories and information.
@@ -84,6 +91,10 @@ class TranService:
         self.tranlog_delivery_status_repo = tranlog_delivery_status_repo
         self.settings_master_repo = settings_master_repo
         self.payment_master_repo = payment_master_repo
+        # Used to name the store a return is booked into: a return may reference an
+        # original from another store (issue #156), so the new transaction must be
+        # attributed to the terminal performing it, not to the original's store.
+        self.store_info_repo = store_info_repo
         self.transaction_status_repo = transaction_status_repo
 
         # Initialize pubsub manager for publishing messages with circuit breaker
@@ -152,29 +163,48 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
         """
         tranlog = BaseTransaction()
+        # Carry the cart identity into the tranlog so downstream consumers can
+        # dedupe a duplicate finalize on cart_id (client-carried cart phase 2,
+        # issue #156 / #152).
+        tranlog.cart_id = cart.cart_id
         tranlog.tenant_id = self.terminal_info.tenant_id
         tranlog.store_code = self.terminal_info.store_code
         tranlog.store_name = cart.store_name
         tranlog.terminal_no = self.terminal_info.terminal_no
-        tranlog.transaction_no = await self.terminal_counter_repository.numbering_count(
-            countType=CounterType.Transaction.value
-        )
         tranlog.transaction_type = cart.transaction_type
         tranlog.business_date = cart.business_date
         tranlog.open_counter = self.terminal_info.open_counter
         tranlog.business_counter = self.terminal_info.business_counter
-        tranlog.generate_date_time = get_app_time_str()
-        # Settings come back as strings (master-data /settings/{name}/value
-        # returns the value as-is). The counter increment uses MongoDB's
-        # $add aggregation which fails with TypeMismatch on non-numeric
-        # operands, so cast here.
-        receipt_start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
-        receipt_end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
-        tranlog.receipt_no = await self.terminal_counter_repository.numbering_count(
-            countType=CounterType.Receipt.value,
-            start_value=int(receipt_start_raw) if receipt_start_raw is not None else 1,
-            end_value=int(receipt_end_raw) if receipt_end_raw is not None else sys.maxsize,
-        )
+
+        # Client-carried cart phase 2 (issue #156): when the client carries the
+        # finalize context (it stamps transaction_datetime at bill), the
+        # transaction number, receipt number, and time are taken from the
+        # carried values — NOT the server-side counters/clock — so a retried
+        # finalize on any backend produces the same number/time/receipt and the
+        # downstream cart_id dedupe converges to one record. Without a carried
+        # time (legacy / no-snapshot path) the server-side numbering is used.
+        carried = cart.transaction_datetime is not None
+        if carried:
+            # (business_counter, seq) composite: transaction_no carries seq.
+            tranlog.transaction_no = cart.seq
+            tranlog.generate_date_time = cart.transaction_datetime
+            tranlog.receipt_no = cart.receipt_no
+        else:
+            tranlog.transaction_no = await self.terminal_counter_repository.numbering_count(
+                countType=CounterType.Transaction.value
+            )
+            tranlog.generate_date_time = get_app_time_str()
+            # Settings come back as strings (master-data /settings/{name}/value
+            # returns the value as-is). The counter increment uses MongoDB's
+            # $add aggregation which fails with TypeMismatch on non-numeric
+            # operands, so cast here.
+            receipt_start_raw = await self._get_setting_value_async("RECEIPT_NO_START_VALUE")
+            receipt_end_raw = await self._get_setting_value_async("RECEIPT_NO_END_VALUE")
+            tranlog.receipt_no = await self.terminal_counter_repository.numbering_count(
+                countType=CounterType.Receipt.value,
+                start_value=int(receipt_start_raw) if receipt_start_raw is not None else 1,
+                end_value=int(receipt_end_raw) if receipt_end_raw is not None else sys.maxsize,
+            )
         tranlog.user = cart.user
         tranlog.sales = cart.sales
         tranlog.line_items = cart.line_items
@@ -292,6 +322,44 @@ class TranService:
             tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
             await self.tranlog_repository.commit_transaction()
 
+        except FinalizeConflictException:
+            # bug_008: the cart_id is already finalized as a DIFFERENT transaction
+            # (e.g. a stale-snapshot cancel over a completed sale). Abort the (not
+            # yet poisoned) transaction and surface the 409 as-is — do NOT mask it
+            # as a 500, and do NOT borrow the unrelated record as an idempotent result.
+            await self.tranlog_repository.abort_transaction()
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
+            raise
+        except DuplicateKeyException as e:
+            # bug_001: a concurrent identical finalize won the race. Our insert lost
+            # on the unique cart_id index and poisoned THIS transaction, so we cannot
+            # recover inside it — abort, drop the session, then re-read the winning
+            # tranlog in a fresh (non-transaction) session and return it. The finalize
+            # is idempotent on cart_id, so the retry observes the same result instead
+            # of a 500. The winner already published, so we do NOT publish again.
+            await self.tranlog_repository.abort_transaction()
+            self.tranlog_repository.set_session(session=None)
+            self.tranlog_delivery_status_repo.set_session(session=None)
+            existing = None
+            if tranlog.cart_id is not None:
+                existing = await self.tranlog_repository.get_one_async(
+                    {
+                        "tenant_id": tranlog.tenant_id,
+                        "store_code": tranlog.store_code,
+                        "cart_id": tranlog.cart_id,
+                    }
+                )
+            if existing is not None:
+                logger.warning(
+                    f"Concurrent finalize race for cart_id={tranlog.cart_id}; "
+                    "returning the winning tranlog idempotently"
+                )
+                return existing
+            # The duplicate was on some other unique index (not the cart_id race) —
+            # surface it as a real failure.
+            message = f"Error creating tranlog: {e}"
+            raise InternalErrorException(message, logger) from e
         except Exception as e:
             await self.tranlog_repository.abort_transaction()
             message = f"Error creating tranlog: {e}"
@@ -367,35 +435,140 @@ class TranService:
 
         return paginated_result
 
-    async def get_tranlog_by_transaction_no_async(self, store_code: str, terminal_no: int, transaction_no: int):
+    async def get_tranlog_by_transaction_no_async(
+        self, store_code: str, terminal_no: int, transaction_no: int, business_counter: int = None
+    ):
         """
         Retrieve a specific transaction log by its transaction number.
 
         Args:
             store_code: Store code where the transaction occurred
             terminal_no: Terminal number where the transaction occurred
-            transaction_no: Unique transaction number to retrieve
+            transaction_no: Transaction number (per-open seq in phase 2)
+            business_counter: Open epoch of the transaction (issue #156). Together
+                with transaction_no this is the transaction's identity; omitted, the
+                lookup falls back to the legacy key and raises if it is ambiguous.
 
         Returns:
             BaseTransaction: The retrieved transaction log
 
         Raises:
             DocumentNotFoundException: If the transaction is not found
+            TransactionAmbiguousException: If transaction_no alone matches several
         """
         tran = await self.tranlog_repository.get_tranlog_by_transaction_no_async(
             store_code=store_code,
             terminal_no=terminal_no,
             transaction_no=transaction_no,
+            business_counter=business_counter,
         )
         if tran is None:
-            message = f"Transaction not found: transaction_no->{transaction_no}"
+            message = (
+                f"Transaction not found: transaction_no->{transaction_no} "
+                f"business_counter->{business_counter} store_code->{store_code} terminal_no->{terminal_no}"
+            )
             raise DocumentNotFoundException(message, logger)
 
         # Merge void/return status from history for single transaction
         transaction_list = await self.get_transaction_list_with_status_async([tran])
         return transaction_list[0] if transaction_list else tran
 
-    async def void_async(self, tran: BaseTransaction, add_payment_list: list[dict[str, any]]) -> BaseTransaction:
+    async def get_tranlog_for_void_async(
+        self, store_code: str, terminal_no: int, transaction_no: int, business_counter: int
+    ):
+        """
+        Resolve the transaction a void is aimed at.
+
+        A void reaches only this terminal's current open session, so the lookup is
+        scoped to it. When nothing is found there, "not found" would be a
+        misdiagnosis if the number does exist in an earlier session: at the
+        register that reads as "you mistyped the receipt", and the operator
+        retypes instead of switching to a return. So check, and say which it is.
+
+        Args:
+            store_code: Store code of the transaction
+            terminal_no: Terminal number of the transaction
+            transaction_no: Transaction number (per-open seq in phase 2)
+            business_counter: Open epoch to look in
+
+        Returns:
+            BaseTransaction: The transaction to void
+
+        Raises:
+            VoidOutOfSessionException: The number belongs to another session.
+            DocumentNotFoundException: No such transaction anywhere.
+        """
+        try:
+            return await self.get_tranlog_by_transaction_no_async(
+                store_code=store_code,
+                terminal_no=terminal_no,
+                transaction_no=transaction_no,
+                business_counter=business_counter,
+            )
+        except DocumentNotFoundException:
+            if not await self.tranlog_repository.exists_in_any_session_async(
+                store_code=store_code, terminal_no=terminal_no, transaction_no=transaction_no
+            ):
+                raise
+            message = (
+                f"Void is limited to the current open session (business_counter={business_counter}), "
+                f"but transaction_no={transaction_no} belongs to an earlier one. Use a return instead."
+            )
+            raise VoidOutOfSessionException(message, logger)
+
+    async def _resolve_carried_finalize(
+        self, finalize_envelope: dict | None
+    ) -> tuple[str, int, int, str]:
+        """
+        Resolve ``(cart_id, transaction_no, receipt_no, generate_date_time)`` for a
+        void/return.
+
+        Client-carried cart phase 2 (issue #156, B案): when the terminal presents a
+        signed finalize-context envelope, the void/return draws its **stable**
+        ``cart_id`` and its per-open ``seq`` / ``receipt_no`` / time from the
+        *verified* carried values. This keeps ``(business_counter, transaction_no)``
+        a clean per-open key (the whole open session shares one seq space — sales
+        AND void/return) and makes a lost-ACK retry converge on ``cart_id`` (the
+        downstream dedupe returns the already-persisted record instead of double
+        voiding). Without an envelope the server-side terminal counters assign the
+        numbers and a fresh ``cart_id`` is minted (legacy / dual-mode path).
+
+        The envelope scope (tenant/store/terminal) is checked against the
+        authenticated terminal, mirroring the cart snapshot path.
+        """
+        if finalize_envelope is None:
+            transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
+            receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
+            return str(uuid.uuid4()), transaction_no, receipt_no, get_app_time_str()
+
+        context = snapshot_service.verify_finalize_context(finalize_envelope)
+        if (
+            finalize_envelope.get("tenant_id") != self.terminal_info.tenant_id
+            or finalize_envelope.get("store_code") != self.terminal_info.store_code
+            or finalize_envelope.get("terminal_no") != self.terminal_info.terminal_no
+        ):
+            raise SnapshotInvalidException(
+                f"Finalize-context scope mismatch: "
+                f"envelope={finalize_envelope.get('tenant_id')}/{finalize_envelope.get('store_code')}/"
+                f"{finalize_envelope.get('terminal_no')}",
+                logger,
+            )
+        cart_id = context.get("cart_id")
+        seq = context.get("seq")
+        receipt_no = context.get("receipt_no")
+        transaction_datetime = context.get("transaction_datetime")
+        if cart_id is None or seq is None or receipt_no is None or transaction_datetime is None:
+            raise SnapshotInvalidException(
+                "Finalize-context must carry cart_id, seq, receipt_no and transaction_datetime", logger
+            )
+        return cart_id, seq, receipt_no, transaction_datetime
+
+    async def void_async(
+        self,
+        tran: BaseTransaction,
+        add_payment_list: list[dict[str, any]],
+        finalize_envelope: dict | None = None,
+    ) -> BaseTransaction:
         """
         Process a void transaction for an existing transaction.
 
@@ -416,9 +589,30 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
             AlreadyVoidedException: If the transaction has already been voided
         """
-        # Check if the transaction has already been voided from history
+        # A void reverses a sale at the register while the drawer and the day's
+        # totals are still open. Once the session is settled the correct instrument
+        # is a return, which books its own transaction rather than retroactively
+        # editing a closed day's figures — so a void is confined to the terminal's
+        # current business date AND open session (issue #156). Without this the
+        # only thing standing between a caller and an old sale is whether its
+        # number happens to be ambiguous, which is not a rule.
+        if (
+            tran.business_date != self.terminal_info.business_date
+            or tran.business_counter != self.terminal_info.business_counter
+        ):
+            message = (
+                f"Void is limited to the current business date and open session: "
+                f"transaction business_date={tran.business_date} business_counter={tran.business_counter}, "
+                f"terminal business_date={self.terminal_info.business_date} "
+                f"business_counter={self.terminal_info.business_counter}. Use a return instead."
+            )
+            raise VoidOutOfSessionException(message, logger)
+
+        # Check if the transaction has already been voided from history. The epoch
+        # is part of the identity (issue #156): transaction_no is the per-open seq,
+        # so without it another session's same-numbered sale would be consulted.
         status = await self.transaction_status_repo.get_status_by_transaction_async(
-            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no
+            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no, tran.business_counter
         )
 
         if status and status.is_voided:
@@ -438,6 +632,9 @@ class TranService:
         tran.origin.store_code = tran.store_code
         tran.origin.store_name = tran.store_name
         tran.origin.terminal_no = tran.terminal_no
+        # The original's open epoch: transaction_no is the per-open seq (issue
+        # #156), so the origin only names one transaction together with this.
+        tran.origin.business_counter = tran.business_counter
         tran.origin.transaction_no = tran.transaction_no
         tran.origin.transaction_type = tran.transaction_type
         tran.origin.receipt_no = tran.receipt_no
@@ -493,9 +690,15 @@ class TranService:
             message = f"Invalid transaction type to void: transaction_type->{tran.transaction_type}"
             raise BadRequestBodyException(message, logger)
 
-        tran.transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
-        tran.receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
-        tran.generate_date_time = get_app_time_str()
+        # The void is its own transaction with its OWN cart_id (issue #156): never
+        # inherit the original sale's cart_id (downstream dedupe would skip the
+        # void, leaving the sale counted and inventory never reversed). On the
+        # stateless path the terminal carries a stable cart_id + per-open seq /
+        # receipt_no / time in a signed envelope (retry converges, numbering stays
+        # a clean per-open sequence); legacy mints a fresh cart_id + server numbers.
+        tran.cart_id, tran.transaction_no, tran.receipt_no, tran.generate_date_time = (
+            await self._resolve_carried_finalize(finalize_envelope)
+        )
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for void transaction
         tran.business_date = self.terminal_info.business_date
@@ -555,6 +758,7 @@ class TranService:
             store_code=tran.origin.store_code,
             terminal_no=tran.origin.terminal_no,
             transaction_no=tran.origin.transaction_no,
+            business_counter=tran.origin.business_counter,
             void_transaction_no=tran.transaction_no,
             staff_id=tran.staff.id,
         )
@@ -577,11 +781,44 @@ class TranService:
                     store_code=return_tran.origin.store_code,
                     terminal_no=return_tran.origin.terminal_no,
                     transaction_no=return_tran.origin.transaction_no,
+                    business_counter=return_tran.origin.business_counter,
                 )
 
         return tran
 
-    async def return_async(self, tran: BaseTransaction, add_payment_list: list[dict[str, any]]) -> BaseTransaction:
+    async def __get_own_store_name_async(self, fallback: str = None) -> str:
+        """
+        Resolve the name of the store this terminal belongs to.
+
+        Used when a return is attributed to the performing terminal rather than to
+        the original transaction's store (issue #156). Returns the fallback when
+        the store repository is unavailable or the lookup fails — naming the store
+        is presentation detail and must not fail the return. Callers on the return
+        path pass no fallback on purpose: the only other name available is the
+        original transaction's, and pairing it with this terminal's store_code
+        would misattribute the receipt.
+
+        Args:
+            fallback: Value to use when the lookup cannot be performed
+
+        Returns:
+            str: The store name, or the fallback
+        """
+        if self.store_info_repo is None:
+            return fallback
+        try:
+            store_info = await self.store_info_repo.get_store_info_async()
+            return store_info.store_name if store_info else fallback
+        except Exception as e:
+            logger.warning(f"Failed to resolve own store name; keeping {fallback}: {e}")
+            return fallback
+
+    async def return_async(
+        self,
+        tran: BaseTransaction,
+        add_payment_list: list[dict[str, any]],
+        finalize_envelope: dict | None = None,
+    ) -> BaseTransaction:
         """
         Process a return transaction for an existing transaction.
 
@@ -602,9 +839,10 @@ class TranService:
             ExternalServiceException: If there's an error publishing the transaction event
             AlreadyRefundedException: If the transaction has already been refunded
         """
-        # Check if the transaction has already been refunded or voided from history
+        # Check if the transaction has already been refunded or voided from history.
+        # The epoch is part of the identity (issue #156) — see void_async.
         status = await self.transaction_status_repo.get_status_by_transaction_async(
-            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no
+            tran.tenant_id, tran.store_code, tran.terminal_no, tran.transaction_no, tran.business_counter
         )
 
         if status and status.is_refunded:
@@ -622,6 +860,9 @@ class TranService:
         tran.origin.store_code = tran.store_code
         tran.origin.store_name = tran.store_name
         tran.origin.terminal_no = tran.terminal_no
+        # The original's open epoch: transaction_no is the per-open seq (issue
+        # #156), so the origin only names one transaction together with this.
+        tran.origin.business_counter = tran.business_counter
         tran.origin.transaction_no = tran.transaction_no
         tran.origin.transaction_type = tran.transaction_type
         tran.origin.receipt_no = tran.receipt_no
@@ -663,11 +904,28 @@ class TranService:
 
         # Set fields for return transaction
         tran.transaction_type = TransactionType.ReturnSales.value
-        tran.transaction_no = await self.terminal_counter_repository.numbering_count(CounterType.Transaction.value)
-        tran.receipt_no = await self.terminal_counter_repository.numbering_count(CounterType.Receipt.value)
-        tran.generate_date_time = get_app_time_str()
+        # The return is its own transaction with its OWN cart_id (issue #156): on
+        # the stateless path the terminal carries a stable cart_id + per-open seq /
+        # receipt_no / time in a signed envelope (retry converges, numbering stays a
+        # clean per-open sequence); legacy mints a fresh cart_id + server numbers.
+        tran.cart_id, tran.transaction_no, tran.receipt_no, tran.generate_date_time = (
+            await self._resolve_carried_finalize(finalize_envelope)
+        )
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for return transaction
+        # The return belongs to the terminal performing it, not to the original's
+        # store/terminal (issue #156): a return may reference an original from
+        # another terminal or another store, and `tran` here is the ORIGINAL
+        # document being rewritten in place. Without this the return would be
+        # booked against the original's store/terminal while carrying this
+        # terminal's business_counter/seq — a numbering tuple that belongs to
+        # neither, colliding with the other terminal's own sequence.
+        tran.store_code = self.terminal_info.store_code
+        # Deliberately no fallback to the original's name: keeping it would pair
+        # this terminal's store_code with another store's store_name and print
+        # that on the receipt. An empty name is the lesser wrong.
+        tran.store_name = await self.__get_own_store_name_async()
+        tran.terminal_no = self.terminal_info.terminal_no
         tran.business_date = self.terminal_info.business_date
         tran.business_counter = self.terminal_info.business_counter
         tran.open_counter = self.terminal_info.open_counter
@@ -721,6 +979,7 @@ class TranService:
             store_code=tran.origin.store_code,
             terminal_no=tran.origin.terminal_no,
             transaction_no=tran.origin.transaction_no,
+            business_counter=tran.origin.business_counter,
             return_transaction_no=tran.transaction_no,
             staff_id=tran.staff.id,
         )
@@ -977,21 +1236,35 @@ class TranService:
         if not transaction_list:
             return transaction_list
 
-        # Extract transaction numbers
-        transaction_nos = [tran.transaction_no for tran in transaction_list]
+        # A status record is identified by (store, terminal, open epoch,
+        # transaction_no) — issue #156. The list is normally one terminal's own
+        # transactions, but a single-transaction lookup may name another store's
+        # (a return can reference an original rung up anywhere in the tenant), so
+        # group by the owning identity instead of assuming this terminal's.
+        groups: dict[tuple, list[int]] = {}
+        for tran in transaction_list:
+            groups.setdefault((tran.store_code, tran.terminal_no, tran.business_counter), []).append(
+                tran.transaction_no
+            )
 
-        # Get status for all transactions in one query
-        status_dict = await self.transaction_status_repo.get_status_for_transactions_async(
-            tenant_id=self.terminal_info.tenant_id,
-            store_code=self.terminal_info.store_code,
-            terminal_no=self.terminal_info.terminal_no,
-            transaction_nos=transaction_nos,
-        )
+        status_by_identity = {}
+        for (store_code, terminal_no, business_counter), transaction_nos in groups.items():
+            status_dict = await self.transaction_status_repo.get_status_for_transactions_async(
+                tenant_id=self.terminal_info.tenant_id,
+                store_code=store_code,
+                terminal_no=terminal_no,
+                transaction_nos=transaction_nos,
+                business_counter=business_counter,
+            )
+            for transaction_no, status in status_dict.items():
+                status_by_identity[(store_code, terminal_no, business_counter, transaction_no)] = status
 
         # Merge status into transaction list
         for tran in transaction_list:
-            if tran.transaction_no in status_dict:
-                status = status_dict[tran.transaction_no]
+            status = status_by_identity.get(
+                (tran.store_code, tran.terminal_no, tran.business_counter, tran.transaction_no)
+            )
+            if status is not None:
                 # Update flags in memory only (not in database)
                 tran.is_voided = status.is_voided
                 tran.is_refunded = status.is_refunded

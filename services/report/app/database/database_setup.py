@@ -15,23 +15,44 @@ async def create_some_collection(
     collection_name: str,
     index_keys_list: list,
     index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     await db_helper.create_collection_with_indexes_async(
         db_name=f"{settings.DB_NAME_PREFIX}_{tenant_id}",
         collection_name=collection_name,
         index_keys_list=index_keys_list,
         index_name=index_name,
+        drop_indexes_by_keys=drop_indexes_by_keys,
     )
 
 
 # create tran collection
 async def create_tran_collection(tenant_id: str):
     name = settings.DB_COLLECTION_NAME_TRAN
+    # Client-carried cart phase 2 (issue #156 / #152): cart_id is the transaction
+    # identity for dedupe (partial-unique, only where present). The numbering
+    # tuple now includes business_counter because transaction_no is the per-open
+    # seq and is no longer unique on its own across sessions. The old unique
+    # index is dropped (drop_indexes_by_keys below) and the new ones are ensured
+    # on existing collections too, so this migrates live tenants on startup.
     index_keys_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}, "unique": True}
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "unique": True,
+        },
+        {
+            "keys": {"tenant_id": 1, "store_code": 1, "cart_id": 1},
+            "unique": True,
+            "partialFilterExpression": {"cart_id": {"$type": "string"}},
+        },
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_keys_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_keys_list,
+        index_name=name + "_index",
+        # Issue #156 migration: drop the old unique index missing business_counter.
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "transaction_no": 1}],
     )
 
 

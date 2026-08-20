@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Cart service manages shopping cart operations and transaction processing for the Kugelpos POS system. It implements cart lifecycle management through state machine patterns, dual storage strategy (Dapr State Store + MongoDB), plugin architecture (payment & promotion), and event-driven communication.
+The Cart service manages shopping cart operations and transaction processing for the Kugelpos POS system. It implements cart lifecycle management through state machine patterns, dual storage strategy (Dapr State Store + MongoDB), plugin architecture (payment & promotion), and event-driven communication. Since phase 2 (issue #156) the client holds the cart as a signed snapshot and server-side storage is no longer the authority ([Client-Carried Cart](./client-carried-cart.md)).
 
 ## Database Document Models
 
@@ -336,6 +336,8 @@ Delivery status update response.
 - Paying → Completed (when payment completed)
 
 ## Dual Storage Strategy
+
+> **Since phase 2 (issue #156):** the client holds the cart as a signed snapshot and carries it on every mutating request, so **server-side storage is no longer the authority**. A request that carries a snapshot reads neither the State Store nor MongoDB. The dual storage below remains for the legacy path, where no snapshot is carried (DUAL mode). See [Client-Carried Cart](./client-carried-cart.md).
 
 ### Primary Storage: Dapr State Store
 - **Purpose:** High-speed access for active carts

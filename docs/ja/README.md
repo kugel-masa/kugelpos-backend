@@ -28,9 +28,9 @@ Kugelpos POSシステムの日本語ドキュメント一覧です。各カテ�
 
 - [**アーキテクチャ仕様**](general/architecture.md) - システム全体のアーキテクチャ概要
 - [**設定優先順位**](general/configuration-priority.md) - 環境変数と設定ファイルの優先順位
-- [**デザインパターン**](general/design-patterns.md) - システムで使用されている設計パターン
+- [**デザインパターン**](general/design_patterns.md) - システムで使用されている設計パターン
 - [**エラーコード仕様**](general/error_code_spec.md) - エラーコード体系と一覧
-- [**HTTP通信仕様**](general/http-communication.md) - サービス間のHTTP通信規約
+- [**HTTP通信仕様**](general/http_communication.md) - サービス間のHTTP通信規約
 
 ## 共通機能
 
@@ -55,6 +55,7 @@ Kugelpos POSシステムの日本語ドキュメント一覧です。各カテ�
 
 - [**API仕様**](cart/api-specification.md) - REST APIエンドポイント仕様
 - [**モデル仕様**](cart/model-specification.md) - データモデルとステートマシン仕様
+- [**クライアント持ち回りカート**](cart/client-carried-cart.md) - 署名付きスナップショットの同梱、取引番号の体系、取消・返品の適用範囲（issue #156）
 
 ### Journal サービス
 

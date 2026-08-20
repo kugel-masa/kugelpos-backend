@@ -3,11 +3,12 @@ from logging import getLogger
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
-from kugel_common.exceptions import CannotCreateException
+from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.config.settings import settings
+from app.exceptions import FinalizeConflictException, TransactionAmbiguousException
 
 logger = getLogger(__name__)
 
@@ -49,11 +50,49 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             CannotCreateException: If the transaction log could not be created
         """
         try:
+            # Idempotent finalize pre-check (issue #156): a lost-ACK retry of the
+            # same finalize carries the same cart_id. Return the already-persisted
+            # tranlog BEFORE attempting the insert — the insert runs inside the
+            # finalize transaction, and letting the duplicate hit the unique index
+            # would abort that transaction (and recovery-within-it would fail).
+            if tranlog.cart_id is not None:
+                existing = await self.get_one_async(
+                    {
+                        "tenant_id": tranlog.tenant_id,
+                        "store_code": tranlog.store_code,
+                        "cart_id": tranlog.cart_id,
+                    }
+                )
+                if existing is not None:
+                    # Only a genuine retry of the SAME finalize is idempotent.
+                    # A DIFFERENT operation reusing this cart_id (e.g. a stale
+                    # EnteringItem snapshot replayed as a Cancel over a Completed
+                    # sale) must NOT borrow the existing record's result — that
+                    # would silently swallow the new op while reporting success
+                    # (bug_008). Require the operation identity to match.
+                    if self.__is_same_finalize(existing, tranlog):
+                        logger.warning(f"Idempotent finalize: tranlog for cart_id={tranlog.cart_id} already exists")
+                        return existing
+                    message = (
+                        f"cart_id={tranlog.cart_id} already finalized as a different transaction "
+                        f"(existing type={existing.transaction_type}, cancelled={self.__is_cancelled(existing)}; "
+                        f"incoming type={tranlog.transaction_type}, cancelled={self.__is_cancelled(tranlog)})"
+                    )
+                    raise FinalizeConflictException(message, logger)
+
             tranlog.shard_key = self.__get_shard_key(tranlog)
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")
             if not await self.create_async(tranlog):
                 raise Exception()
             return tranlog
+        except (DuplicateKeyException, FinalizeConflictException):
+            # bug_001: a concurrent identical finalize won the race — our insert
+            # lost on the unique cart_id index. Propagate the DuplicateKeyException
+            # so the caller (which owns the finalize transaction) can abort it and
+            # re-read the winner's tranlog idempotently in a fresh session; recovery
+            # cannot happen here because the transaction is already poisoned.
+            # FinalizeConflictException is a deliberate 409 and must not be masked.
+            raise
         except Exception as e:
             message = (
                 "Failed to create tranlog: "
@@ -66,18 +105,35 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             raise CannotCreateException(message, logger, e) from e
 
     async def get_tranlog_by_transaction_no_async(
-        self, store_code: str, terminal_no: int, transaction_no: int
+        self, store_code: str, terminal_no: int, transaction_no: int, business_counter: int = None
     ) -> BaseTransaction:
         """
         Retrieve a specific transaction log by its transaction number.
 
+        Client-carried cart phase 2 (issue #156): transaction_no is the per-open
+        seq and repeats every open session, so the transaction is only pinned down
+        together with ``business_counter`` — the same tuple the unique index uses.
+        Callers that supply it get an exact match.
+
+        When it is omitted (legacy clients, and transactions numbered by the
+        server before phase 2) the lookup falls back to the old key. That key can
+        now match several documents, and picking one arbitrarily would void or
+        refund a different sale than the one on the receipt — so an ambiguous
+        match raises instead of guessing.
+
         Args:
             store_code: Store code where the transaction occurred
             terminal_no: Terminal number where the transaction occurred
-            transaction_no: Unique transaction number to retrieve
+            transaction_no: Transaction number (per-open seq in phase 2)
+            business_counter: Open epoch of the transaction; None falls back to
+                the legacy key with an ambiguity guard
 
         Returns:
             BaseTransaction: The retrieved transaction log, or None if not found
+
+        Raises:
+            TransactionAmbiguousException: The legacy key matched more than one
+                transaction, so business_counter is required to disambiguate.
         """
         query = {
             "tenant_id": self.terminal_info.tenant_id,
@@ -85,8 +141,51 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             "terminal_no": terminal_no,
             "transaction_no": transaction_no,
         }
-        logger.debug(f"TranlogRepository.get_tranlog_by_transaction_no_async: query->{query}")
-        return await self.get_one_async(query)
+        if business_counter is not None:
+            query["business_counter"] = business_counter
+            logger.debug(f"TranlogRepository.get_tranlog_by_transaction_no_async: query->{query}")
+            return await self.get_one_async(query)
+
+        logger.debug(f"TranlogRepository.get_tranlog_by_transaction_no_async (no epoch): query->{query}")
+        # Read two: one row is unambiguous, two means the caller must say which
+        # open session it meant.
+        matches = await self.get_list_async(filter=query, max=2)
+        if not matches:
+            return None
+        if len(matches) > 1:
+            message = (
+                f"transaction_no={transaction_no} matches {len(matches)}+ transactions on "
+                f"store_code={store_code} terminal_no={terminal_no} "
+                f"(business_counters include {[m.business_counter for m in matches]}). "
+                "Specify business_counter to identify the transaction."
+            )
+            raise TransactionAmbiguousException(message, logger)
+        return matches[0]
+
+    async def exists_in_any_session_async(self, store_code: str, terminal_no: int, transaction_no: int) -> bool:
+        """
+        Whether a transaction with this number exists in ANY open session.
+
+        Used to tell "the number is wrong" apart from "the number is right but the
+        sale belongs to a session this operation cannot reach" (issue #156). The
+        two need different answers at the register: one means re-read the receipt,
+        the other means use a return instead.
+
+        Args:
+            store_code: Store code where the transaction occurred
+            terminal_no: Terminal number where the transaction occurred
+            transaction_no: Transaction number (per-open seq in phase 2)
+
+        Returns:
+            bool: True if at least one transaction carries this number
+        """
+        query = {
+            "tenant_id": self.terminal_info.tenant_id,
+            "store_code": store_code,
+            "terminal_no": terminal_no,
+            "transaction_no": transaction_no,
+        }
+        return await self.get_one_async(query) is not None
 
     # get tranlog list by query parameters
     async def get_tranlog_list_by_query_async(
@@ -135,6 +234,27 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             f"TranlogRepository.get_tranlog_list_by_query_async: query->{query} limit->{limit} page->{page} sort->{sort}"
         )
         return await self.get_paginated_list_async(filter=query, limit=limit, page=page, sort=sort)
+
+    @staticmethod
+    def __is_cancelled(tranlog: BaseTransaction) -> bool:
+        """Whether the tranlog represents a cancelled sale (sales.is_cancelled)."""
+        sales = getattr(tranlog, "sales", None)
+        return bool(getattr(sales, "is_cancelled", False)) if sales is not None else False
+
+    def __is_same_finalize(self, existing: BaseTransaction, incoming: BaseTransaction) -> bool:
+        """
+        Decide whether an already-persisted tranlog is the SAME finalize operation
+        as the incoming one (a true idempotent retry) versus a different operation
+        that happens to reuse the cart_id (issue #156 / bug_008).
+
+        The operation identity is (transaction_type, is_cancelled): a Cancel and a
+        normal Sale of the same cart share transaction_type but differ on
+        sales.is_cancelled, so both must be compared.
+        """
+        return (
+            existing.transaction_type == incoming.transaction_type
+            and self.__is_cancelled(existing) == self.__is_cancelled(incoming)
+        )
 
     def __get_shard_key(self, tranlog: BaseTransaction) -> str:
         """

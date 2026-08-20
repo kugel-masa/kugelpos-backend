@@ -48,7 +48,7 @@ PERF_TEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CART_DIR="$(cd "${PERF_TEST_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${CART_DIR}/../.." && pwd)"
 
-# Parse --api-key flag from arguments
+# Parse auth/locustfile flags from arguments
 AUTH_MODE="jwt"
 LOCUSTFILE="locustfile_jwt.py"
 AUTH_SUFFIX=""
@@ -58,6 +58,12 @@ for arg in "$@"; do
         AUTH_MODE="apikey"
         LOCUSTFILE="locustfile.py"
         AUTH_SUFFIX="_apikey"
+    elif [ "$arg" = "--compare" ]; then
+        # Snapshot A/B: legacy (no snapshot) vs stateless (carried), one run.
+        # Uses API-key auth like locustfile.py. Stats are tagged [legacy]/[stateless].
+        AUTH_MODE="apikey"
+        LOCUSTFILE="locustfile_snapshot_compare.py"
+        AUTH_SUFFIX="_compare"
     else
         ARGS+=("$arg")
     fi
@@ -236,15 +242,29 @@ run_test_pattern() {
         print_message "${GREEN}" "  HTML Report: ${html_report}"
         print_message "${GREEN}" "  CSV Stats: ${csv_stats}"
 
-        # Generate Add Item specific chart
-        local add_item_chart="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_add_item.html"
-        print_message "${BLUE}" "\n  Generating Add Item chart..."
         cd "${PERF_TEST_DIR}"
-        pipenv run python generate_item_chart.py "${csv_stats}" "${add_item_chart}"
-        if [ $? -eq 0 ]; then
-            print_message "${GREEN}" "  Add Item Chart: ${add_item_chart}"
+
+        if [ "${AUTH_SUFFIX}" = "_compare" ]; then
+            # Snapshot A/B: emit the legacy-vs-stateless delta report instead of
+            # the legacy-only add-item chart (request names are [legacy]/[stateless]).
+            local compare_report="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_snapshot_delta.html"
+            print_message "${BLUE}" "\n  Generating snapshot A/B delta report..."
+            pipenv run python generate_snapshot_compare_report.py "${csv_stats}" "${compare_report}"
+            if [ $? -eq 0 ]; then
+                print_message "${GREEN}" "  Snapshot delta report: ${compare_report}"
+            else
+                print_message "${YELLOW}" "  ! Warning: Failed to generate snapshot delta report"
+            fi
         else
-            print_message "${YELLOW}" "  ! Warning: Failed to generate Add Item chart"
+            # Generate Add Item specific chart
+            local add_item_chart="${OUTPUT_DIR}/${file_prefix}_${TIMESTAMP}_add_item.html"
+            print_message "${BLUE}" "\n  Generating Add Item chart..."
+            pipenv run python generate_item_chart.py "${csv_stats}" "${add_item_chart}"
+            if [ $? -eq 0 ]; then
+                print_message "${GREEN}" "  Add Item Chart: ${add_item_chart}"
+            else
+                print_message "${YELLOW}" "  ! Warning: Failed to generate Add Item chart"
+            fi
         fi
     else
         print_message "${RED}" "\n✗ ${pattern_name} failed with exit code ${exit_code}"

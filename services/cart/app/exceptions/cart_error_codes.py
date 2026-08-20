@@ -51,6 +51,15 @@ class CartErrorCode:
     SNAPSHOT_TERMINAL_STATE = "401506"  # Snapshot of a finalized (terminal-state) cart
     SNAPSHOT_GENERATION_FAILED = "401507"  # Internal snapshot generation failure (degraded)
 
+    # Client-carried cart phase 2 (4015xx, issue #156)
+    SNAPSHOT_REQUIRED = "401508"  # Snapshot-less mutating request rejected (REQUIRED mode)
+    REQUEST_BODY_TOO_LARGE = "401509"  # Decompressed request body exceeds the size guard
+    SEQUENCE_ANOMALY = "401510"  # Transaction sequence duplicate/gap detected (audit)
+    FINALIZE_CONFLICT = "401511"  # cart_id already finalized as a different transaction
+    SNAPSHOT_CART_ID_MISMATCH = "401512"  # Carried snapshot addresses a different cart than the URL
+    TRANSACTION_AMBIGUOUS = "401513"  # transaction_no matches several open sessions; business_counter needed
+    VOID_OUT_OF_SESSION = "401514"  # void is limited to the terminal's current business date and open session
+
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
     SIGN_IN_OUT_ERROR = "404002"  # サインイン・サインアウトエラー
@@ -93,6 +102,13 @@ class CartErrorMessage:
             CartErrorCode.SNAPSHOT_SCOPE_VIOLATION: "スナップショットのテナントまたは店舗が一致しません",
             CartErrorCode.SNAPSHOT_TERMINAL_STATE: "確定済み取引のスナップショットは復元できません",
             CartErrorCode.SNAPSHOT_GENERATION_FAILED: "スナップショットの生成に失敗しました",
+            CartErrorCode.SNAPSHOT_REQUIRED: "このリクエストにはスナップショットの同梱が必要です",
+            CartErrorCode.REQUEST_BODY_TOO_LARGE: "リクエストボディが大きすぎます",
+            CartErrorCode.SEQUENCE_ANOMALY: "取引連番の重複または欠番を検出しました",
+            CartErrorCode.FINALIZE_CONFLICT: "このカートは別の取引として既に確定済みです",
+            CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
+            CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回数に該当します。business_counter を指定してください",
+            CartErrorCode.VOID_OUT_OF_SESSION: "取消は当日かつ現在の営業回数の取引のみ可能です。過去の取引は返品で処理してください",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "端末の状態を確認してください",
             CartErrorCode.SIGN_IN_OUT_ERROR: "担当者の登録状況を確認してください",
@@ -127,6 +143,13 @@ class CartErrorMessage:
             CartErrorCode.SNAPSHOT_SCOPE_VIOLATION: "Snapshot tenant or store scope mismatch",
             CartErrorCode.SNAPSHOT_TERMINAL_STATE: "Cannot restore a snapshot of a finalized transaction",
             CartErrorCode.SNAPSHOT_GENERATION_FAILED: "Snapshot generation failed",
+            CartErrorCode.SNAPSHOT_REQUIRED: "This request requires a carried snapshot",
+            CartErrorCode.REQUEST_BODY_TOO_LARGE: "Request body too large",
+            CartErrorCode.SEQUENCE_ANOMALY: "Transaction sequence duplicate or gap detected",
+            CartErrorCode.FINALIZE_CONFLICT: "This cart was already finalized as a different transaction",
+            CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "Carried snapshot addresses a different cart than the URL",
+            CartErrorCode.TRANSACTION_AMBIGUOUS: "transaction_no matches more than one open session",
+            CartErrorCode.VOID_OUT_OF_SESSION: "Void is limited to the current business date and open session",
             # その他
             CartErrorCode.TERMINAL_STATUS_ERROR: "Check terminal status",
             CartErrorCode.SIGN_IN_OUT_ERROR: "Check sign-in/out status",
