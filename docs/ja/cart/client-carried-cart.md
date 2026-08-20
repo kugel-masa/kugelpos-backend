@@ -176,7 +176,9 @@ Finalize numbered from the server-side series while the terminal has its own
 (issue #168): cart_id=… reason=signing_degraded terminal_receipt_counter=…
 ```
 
-リストア監査証跡（`log_cart_restore`）に `numbering_fallback` レコードを書く（`reject_reason` はどちらの条件で発火したか——`signing_degraded` / `no_carried_context`——を示す）。
+リストア監査証跡（`log_cart_restore`）に `numbering_fallback` レコードを書く（`reject_reason` はどの条件で発火したかを示す——`signing_degraded` / `snapshot_without_finalize_context` / `no_carried_context`）。
+
+1 つだけ意図的に検知できないケースがある。まだ 1 件も採番していない phase 2 端末が、署名は正常でスナップショットも運ばずに確定した場合、phase 1 端末と完全に見分けがつかない。open は全端末のカウンタを 0 でシードするため、0 を「自前の系列を持つ」と扱うと**すべてのレガシー確定をインシデントとして報告してしまう**。
 
 `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` にすればこの窓は完全に消える（スナップショットなしの更新系リクエストが拒否されるため、落ちる先の系列が存在しない）。それまでは、署名鍵の縮退は修正すべきインシデントであり、起動ログだけでなく**取引単位で可視化される**ようになった。
 

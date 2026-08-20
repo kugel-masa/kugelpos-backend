@@ -109,13 +109,33 @@ class TestWhenItStaysQuiet:
         svc.cart_restore_log_repo.add_record_async.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_a_zero_counter_is_not_a_series(self):
-        # Seeded at open and never advanced: the terminal has not numbered anything.
+    async def test_a_zero_counter_alone_is_not_a_series(self):
+        # Open seeds every terminal with zero, phase 1 included, so zero on its
+        # own cannot mean "numbers its own receipts" - treating it that way would
+        # report every legacy finalize as an incident. A phase 2 terminal sitting
+        # at zero is caught by the snapshot signal instead (see below).
         svc = _make_service(terminal_receipt_counter=0)
         with _signer(present=True):
             await _detect(svc)
 
         svc.cart_restore_log_repo.add_record_async.assert_not_awaited()
+
+
+class TestTheSnapshotSignal:
+    """What a zero counter would otherwise miss."""
+
+    @pytest.mark.asyncio
+    async def test_a_snapshot_without_a_finalize_context_is_flagged(self):
+        # Carrying a snapshot makes this a phase 2 client whatever its counter
+        # says, so the finalize going to the server-side series is an incident.
+        svc = _make_service(stateless=True, terminal_receipt_counter=0)
+        with _signer(present=True):
+            await _detect(svc)
+
+        assert (
+            svc.cart_restore_log_repo.add_record_async.await_args.kwargs["reject_reason"]
+            == "snapshot_without_finalize_context"
+        )
 
 
 class TestAuditFailureIsNotFatal:

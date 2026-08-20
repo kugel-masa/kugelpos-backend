@@ -45,6 +45,7 @@ def _make_cart_service(stateless=True):
             store_info_repo=AsyncMock(),
             tran_service=AsyncMock(),
             cart_id="cart-170",
+            cart_restore_log_repo=AsyncMock(),
         )
 
     svc._stateless = stateless
@@ -137,3 +138,22 @@ class TestGuard:
             await svc.cancel_transaction_async(
                 seq=7, receipt_no=111117, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
             )
+
+
+class TestBillAlsoAudits:
+    """The wiring, not just the helper: removing the call from bill must fail."""
+
+    @pytest.mark.asyncio
+    async def test_bill_without_a_carried_context_audits_the_fallback(self):
+        doc = _cart_doc()
+        doc.balance_amount = 0
+        svc = _arm(_make_cart_service(stateless=True), doc)
+        svc.terminal_info.receipt_counter = 42
+        svc._CartService__subtotal_async = AsyncMock(return_value=doc)
+        svc._CartService__cache_cart_async = AsyncMock()
+
+        await svc.bill_async()
+
+        svc.cart_restore_log_repo.add_record_async.assert_awaited_once()
+        assert svc.cart_restore_log_repo.add_record_async.await_args.kwargs["result"] == "numbering_fallback"
+        assert svc.cart_restore_log_repo.add_record_async.await_args.kwargs["api_path"] == "bill"

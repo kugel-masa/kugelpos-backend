@@ -209,8 +209,14 @@ Finalize numbered from the server-side series while the terminal has its own
 ```
 
 and writes a `numbering_fallback` record to the restore audit trail
-(`log_cart_restore`), with `reject_reason` naming which condition fired
-(`signing_degraded` / `no_carried_context`).
+(`log_cart_restore`), with `reject_reason` naming which condition fired (`signing_degraded`,
+`snapshot_without_finalize_context`, or `no_carried_context`).
+
+One case is deliberately out of reach: a phase 2 terminal that has not numbered
+anything yet, whose signing is healthy and which carries no snapshot at all,
+looks exactly like a phase 1 terminal. Open seeds every terminal's counter with
+zero, so treating zero as "has its own series" would report every legacy
+finalize as an incident instead.
 
 `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` removes the window entirely — a
 snapshot-less mutating request is rejected, so there is no second series to fall

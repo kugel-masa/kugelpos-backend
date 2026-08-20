@@ -971,13 +971,29 @@ class CartService(ICartService):
         """
         signing_degraded = snapshot_service.get_snapshot_signer() is None
         terminal_counter = getattr(self.terminal_info, "receipt_counter", None)
+        # A counter above zero means this terminal has numbered receipts itself.
+        # Zero is deliberately not enough: open seeds every terminal with zero, so
+        # `is not None` would flag every phase 1 finalize as an incident.
         terminal_numbers_its_own = bool(terminal_counter)
-        if not (signing_degraded or terminal_numbers_its_own):
+        # A request that carried a snapshot but no finalize context is a phase 2
+        # client whatever its counter says - the case a zero counter would miss.
+        carried_a_snapshot = self._stateless
+        if not (signing_degraded or terminal_numbers_its_own or carried_a_snapshot):
             # A phase 1 terminal with no series of its own: the server-side
             # numbering is simply how it works, and nothing can collide.
+            #
+            # Blind spot, stated rather than papered over: a phase 2 terminal that
+            # has not numbered anything yet (counter zero), whose signing is
+            # healthy, and which carries no snapshot at all is indistinguishable
+            # from a phase 1 terminal here. Its first sale would not be flagged.
             return
 
-        reason = "signing_degraded" if signing_degraded else "no_carried_context"
+        if signing_degraded:
+            reason = "signing_degraded"
+        elif carried_a_snapshot:
+            reason = "snapshot_without_finalize_context"
+        else:
+            reason = "no_carried_context"
         logger.error(
             "Finalize numbered from the server-side series while the terminal has "
             "its own (issue #168): cart_id=%s reason=%s terminal_receipt_counter=%s "
