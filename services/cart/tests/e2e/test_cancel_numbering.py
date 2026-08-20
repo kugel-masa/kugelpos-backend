@@ -155,3 +155,38 @@ async def test_legacy_cancel_is_unaffected(http_client, api_header, opened_termi
     data = response.json()["data"]
     assert data["cartStatus"] == "Cancelled"
     assert data["receiptNo"] is not None
+
+
+@pytest.mark.asyncio
+async def test_retried_carried_cancel_is_idempotent(http_client, api_header, opened_terminal_id):
+    """A lost ACK must not book the cancellation twice (issue #170).
+
+    The bill path has the same guarantee; a cancellation now takes the same
+    numbering, so it needs the same property: the retry carries the identical
+    context, and the cart_id dedupe returns the record already written.
+    """
+    cart_id, snapshot = await _cart_with_item(http_client, opened_terminal_id, api_header)
+    request = {
+        "signedSnapshot": snapshot,
+        "payload": {
+            "seq": SYNTHETIC_SEQ_BASE + 20,
+            "receiptCounter": 20,
+            "transactionDatetime": "2026-08-20T13:20:00",
+        },
+    }
+    url = f"/api/v1/carts/{cart_id}/cancel?terminal_id={opened_terminal_id}"
+
+    first = await http_client.post(url, json=request, headers=api_header)
+    assert first.status_code == status.HTTP_200_OK, first.text
+
+    second = await http_client.post(url, json=request, headers=api_header)
+    assert second.status_code == status.HTTP_200_OK, second.text
+
+    assert second.json()["data"]["transactionNo"] == first.json()["data"]["transactionNo"]
+    assert second.json()["data"]["receiptNo"] == first.json()["data"]["receiptNo"]
+
+    # And exactly one transaction log was written for the cart.
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}")
+    assert await db["log_tran"].count_documents({"cart_id": cart_id}) == 1

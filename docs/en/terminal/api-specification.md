@@ -1530,13 +1530,15 @@ Returns an X-New-Token header with updated JWT reflecting opened state.
 | `initialAmount` | number | No | - |
 | `businessCounter` | integer | No | - |
 | `receiptNo` | integer | No | - |
+| `receiptCounter` | integer | No | - |
 
 **Request Example:**
 ```json
 {
   "initialAmount": 0.0,
   "businessCounter": 0,
-  "receiptNo": 0
+  "receiptNo": 0,
+  "receiptCounter": 0
 }
 ```
 
