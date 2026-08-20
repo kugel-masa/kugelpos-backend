@@ -22,18 +22,51 @@ import pytest
 import pytest_asyncio
 from fastapi import status
 
-# The shipped defaults, which the e2e tenant does not override.
-RECEIPT_NO_START = 111111
+# Fallback only. The fixture below prefers the range master-data actually
+# reports, so these tests check that cart numbers with the same range a client
+# can read (#166 / #174) rather than that both happen to match a constant
+# written here.
+SHIPPED_START, SHIPPED_END = 111111, 999999
 # Per-open seq values these tests carry; kept above the suite's own numbering and
 # removed afterwards (see _remove_synthetic_transactions).
 SYNTHETIC_SEQ_BASE = 9000
-RECEIPT_NO_END = 999999
-RANGE_WIDTH = RECEIPT_NO_END - RECEIPT_NO_START + 1
 
 
 @pytest.fixture
 def api_header():
     return {"X-API-KEY": os.environ.get("API_KEY")}
+
+
+@pytest.fixture(scope="module")
+def receipt_range():
+    """The range master-data reports — what a client would read (#174).
+
+    Asserting against this rather than a constant makes the suite check the
+    thing that matters: cart numbers with the same range the client can see. It
+    also keeps the suite honest on a tenant that overrides the range.
+    """
+    import httpx
+
+    base = os.environ.get("BASE_URL_MASTER_DATA")
+    tenant_id = os.environ.get("TENANT_ID")
+    header = {"X-API-KEY": os.environ.get("API_KEY")}
+
+    def value(name, fallback):
+        try:
+            response = httpx.get(
+                f"{base}/tenants/{tenant_id}/settings/{name}/value?store_code=5678&terminal_no=9",
+                headers=header,
+                timeout=10.0,
+            )
+            if response.status_code == status.HTTP_200_OK:
+                return int(response.json()["data"]["value"])
+        except Exception:
+            pass
+        return fallback
+
+    start = value("RECEIPT_NO_START_VALUE", SHIPPED_START)
+    end = value("RECEIPT_NO_END_VALUE", SHIPPED_END)
+    return start, end, end - start + 1
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -102,8 +135,11 @@ async def _bill(http_client, terminal_id, header, cart_id, snapshot, **finalize)
 
 
 @pytest.mark.asyncio
-async def test_carried_counter_prints_inside_the_configured_range(http_client, api_header, opened_terminal_id):
+async def test_carried_counter_prints_inside_the_configured_range(
+    http_client, api_header, opened_terminal_id, receipt_range
+):
     """Counter 1 prints the configured start value, not 1."""
+    start, _, _ = receipt_range
     cart_id, snapshot = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header)
 
     data = await _bill(
@@ -117,12 +153,13 @@ async def test_carried_counter_prints_inside_the_configured_range(http_client, a
         transactionDatetime="2026-08-20T10:00:00",
     )
 
-    assert data["receiptNo"] == RECEIPT_NO_START
+    assert data["receiptNo"] == start
     assert data["transactionNo"] == 9001  # per-open seq, untouched
 
 
 @pytest.mark.asyncio
-async def test_counter_advances_within_the_range(http_client, api_header, opened_terminal_id):
+async def test_counter_advances_within_the_range(http_client, api_header, opened_terminal_id, receipt_range):
+    start, _, _ = receipt_range
     cart_id, snapshot = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header)
 
     data = await _bill(
@@ -136,12 +173,13 @@ async def test_counter_advances_within_the_range(http_client, api_header, opened
         transactionDatetime="2026-08-20T10:01:00",
     )
 
-    assert data["receiptNo"] == RECEIPT_NO_START + 4
+    assert data["receiptNo"] == start + 4
 
 
 @pytest.mark.asyncio
-async def test_counter_wraps_at_the_end_of_the_range(http_client, api_header, opened_terminal_id):
+async def test_counter_wraps_at_the_end_of_the_range(http_client, api_header, opened_terminal_id, receipt_range):
     """The whole point of the issue: the range must actually cycle."""
+    start, _, width = receipt_range
     cart_id, snapshot = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header)
 
     data = await _bill(
@@ -151,15 +189,16 @@ async def test_counter_wraps_at_the_end_of_the_range(http_client, api_header, op
         cart_id,
         snapshot,
         seq=9003,
-        receiptCounter=RANGE_WIDTH + 1,  # first number of the second cycle
+        receiptCounter=width + 1,  # first number of the second cycle
         transactionDatetime="2026-08-20T10:02:00",
     )
 
-    assert data["receiptNo"] == RECEIPT_NO_START
+    assert data["receiptNo"] == start
 
 
 @pytest.mark.asyncio
-async def test_last_number_of_a_cycle(http_client, api_header, opened_terminal_id):
+async def test_last_number_of_a_cycle(http_client, api_header, opened_terminal_id, receipt_range):
+    _, end, width = receipt_range
     cart_id, snapshot = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header)
 
     data = await _bill(
@@ -169,11 +208,11 @@ async def test_last_number_of_a_cycle(http_client, api_header, opened_terminal_i
         cart_id,
         snapshot,
         seq=9004,
-        receiptCounter=RANGE_WIDTH,
+        receiptCounter=width,
         transactionDatetime="2026-08-20T10:03:00",
     )
 
-    assert data["receiptNo"] == RECEIPT_NO_END
+    assert data["receiptNo"] == end
 
 
 @pytest.mark.asyncio
