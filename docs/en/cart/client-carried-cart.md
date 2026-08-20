@@ -118,7 +118,9 @@ Duplicate finalizes converge on `cart_id`.
 
 ## Index migration
 
-Applied to existing tenant collections at startup.
+**The only trigger is the tenant creation API (`POST /api/v1/tenants`)** — it does not run at application startup. A new tenant goes through it on creation, but **an existing tenant is not migrated automatically**. Introducing this feature into a running deployment requires a separate way to run the migration over existing tenants.
+
+The migration itself does the following.
 
 1. Drop the stale unique index (the one without `business_counter`)
 2. Create the new indexes
