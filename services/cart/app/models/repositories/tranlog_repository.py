@@ -33,6 +33,52 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
         super().__init__(settings.DB_COLLECTION_NAME_TRAN_LOG, BaseTransaction, db)
         self.terminal_info = terminal_info
 
+    async def get_existing_finalize_async(self, tranlog: BaseTransaction) -> BaseTransaction:
+        """
+        The already-persisted tranlog for this finalize, if there is one.
+
+        Used twice: as the idempotent pre-check before inserting, and as the
+        recovery after a failed finalize, where the question is whether a
+        concurrent request already wrote the same transaction (issue #172).
+
+        Only a genuine retry of the SAME finalize is idempotent. A DIFFERENT
+        operation reusing this cart_id (e.g. a stale EnteringItem snapshot
+        replayed as a Cancel over a Completed sale) must NOT borrow the existing
+        record's result — that would silently swallow the new op while reporting
+        success (bug_008). Require the operation identity to match.
+
+        Args:
+            tranlog: The transaction log being finalized
+
+        Returns:
+            The persisted tranlog for the same finalize, or None
+
+        Raises:
+            FinalizeConflictException: The cart_id is already finalized as a
+                different operation.
+        """
+        if tranlog.cart_id is None:
+            return None
+
+        existing = await self.get_one_async(
+            {
+                "tenant_id": tranlog.tenant_id,
+                "store_code": tranlog.store_code,
+                "cart_id": tranlog.cart_id,
+            }
+        )
+        if existing is None:
+            return None
+        if self.__is_same_finalize(existing, tranlog):
+            return existing
+
+        message = (
+            f"cart_id={tranlog.cart_id} already finalized as a different transaction "
+            f"(existing type={existing.transaction_type}, cancelled={self.__is_cancelled(existing)}; "
+            f"incoming type={tranlog.transaction_type}, cancelled={self.__is_cancelled(tranlog)})"
+        )
+        raise FinalizeConflictException(message, logger)
+
     async def create_tranlog_async(self, tranlog: BaseTransaction) -> BaseTransaction:
         """
         Create a new transaction log entry in the database.
@@ -55,30 +101,10 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             # tranlog BEFORE attempting the insert — the insert runs inside the
             # finalize transaction, and letting the duplicate hit the unique index
             # would abort that transaction (and recovery-within-it would fail).
-            if tranlog.cart_id is not None:
-                existing = await self.get_one_async(
-                    {
-                        "tenant_id": tranlog.tenant_id,
-                        "store_code": tranlog.store_code,
-                        "cart_id": tranlog.cart_id,
-                    }
-                )
-                if existing is not None:
-                    # Only a genuine retry of the SAME finalize is idempotent.
-                    # A DIFFERENT operation reusing this cart_id (e.g. a stale
-                    # EnteringItem snapshot replayed as a Cancel over a Completed
-                    # sale) must NOT borrow the existing record's result — that
-                    # would silently swallow the new op while reporting success
-                    # (bug_008). Require the operation identity to match.
-                    if self.__is_same_finalize(existing, tranlog):
-                        logger.warning(f"Idempotent finalize: tranlog for cart_id={tranlog.cart_id} already exists")
-                        return existing
-                    message = (
-                        f"cart_id={tranlog.cart_id} already finalized as a different transaction "
-                        f"(existing type={existing.transaction_type}, cancelled={self.__is_cancelled(existing)}; "
-                        f"incoming type={tranlog.transaction_type}, cancelled={self.__is_cancelled(tranlog)})"
-                    )
-                    raise FinalizeConflictException(message, logger)
+            existing = await self.get_existing_finalize_async(tranlog)
+            if existing is not None:
+                logger.warning(f"Idempotent finalize: tranlog for cart_id={tranlog.cart_id} already exists")
+                return existing
 
             tranlog.shard_key = self.__get_shard_key(tranlog)
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")

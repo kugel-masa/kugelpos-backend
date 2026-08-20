@@ -337,30 +337,31 @@ class TranService:
             # tranlog in a fresh (non-transaction) session and return it. The finalize
             # is idempotent on cart_id, so the retry observes the same result instead
             # of a 500. The winner already published, so we do NOT publish again.
-            await self.tranlog_repository.abort_transaction()
-            self.tranlog_repository.set_session(session=None)
-            self.tranlog_delivery_status_repo.set_session(session=None)
-            existing = None
-            if tranlog.cart_id is not None:
-                existing = await self.tranlog_repository.get_one_async(
-                    {
-                        "tenant_id": tranlog.tenant_id,
-                        "store_code": tranlog.store_code,
-                        "cart_id": tranlog.cart_id,
-                    }
-                )
+            existing = await self.__recover_concurrent_finalize(tranlog)
             if existing is not None:
-                logger.warning(
-                    f"Concurrent finalize race for cart_id={tranlog.cart_id}; "
-                    "returning the winning tranlog idempotently"
-                )
-                return existing
+                return self.__apply_tranlog_to_cart(cart, existing)
             # The duplicate was on some other unique index (not the cart_id race) —
             # surface it as a real failure.
             message = f"Error creating tranlog: {e}"
             raise InternalErrorException(message, logger) from e
         except Exception as e:
-            await self.tranlog_repository.abort_transaction()
+            # The duplicate does not always surface at the insert (issue #172): with
+            # two identical finalizes in flight the loser's insert is buffered and
+            # the unique index rejects it at COMMIT, so the failure arrives here
+            # rather than as a DuplicateKeyException. Same race, same recovery —
+            # otherwise the caller is told the transaction failed while the
+            # transaction it asked for is sitting in the database.
+            existing = await self.__recover_concurrent_finalize(tranlog)
+            if existing is not None:
+                # Deliberately terse: the exception carries the whole tranlog, and
+                # one race must not put a full cart document in the log (issue #155).
+                logger.warning(
+                    "Finalize failed but the same finalize is already persisted "
+                    "(cart_id=%s, %s); returning it",
+                    tranlog.cart_id,
+                    type(e).__name__,
+                )
+                return self.__apply_tranlog_to_cart(cart, existing)
             message = f"Error creating tranlog: {e}"
             raise InternalErrorException(message, logger) from e
         finally:
@@ -371,14 +372,7 @@ class TranService:
         # Publish tranlog
         await self._publish_tranlog_async(event_message)
 
-        # Update cart_doc data
-        cart.transaction_no = tranlog.transaction_no
-        cart.receipt_no = tranlog.receipt_no
-        cart.staff = tranlog.staff
-        cart.receipt_text = tranlog.receipt_text
-        cart.journal_text = tranlog.journal_text
-
-        return tranlog
+        return self.__apply_tranlog_to_cart(cart, tranlog)
 
     async def get_tranlog_by_query_async(
         self,
@@ -1004,6 +998,62 @@ class TranService:
         )
 
         return tran
+
+    def __apply_tranlog_to_cart(self, cart: CartDocument, tranlog: BaseTransaction) -> BaseTransaction:
+        """
+        Copy the finalized transaction's identity onto the cart the caller holds.
+
+        The response is built from the cart, so this has to happen on the
+        recovery path too (issue #172): a caller that lost a concurrent finalize
+        race is handed the winner's tranlog, and without this its cart would
+        still carry no receipt_no and the response would fail validation.
+
+        Args:
+            cart: The cart document being finalized
+            tranlog: The persisted transaction log
+
+        Returns:
+            The transaction log, so callers can `return` this directly
+        """
+        cart.transaction_no = tranlog.transaction_no
+        cart.receipt_no = tranlog.receipt_no
+        cart.staff = tranlog.staff
+        cart.receipt_text = tranlog.receipt_text
+        cart.journal_text = tranlog.journal_text
+        return tranlog
+
+    async def __recover_concurrent_finalize(self, tranlog: BaseTransaction) -> BaseTransaction:
+        """
+        The tranlog a concurrent request already wrote for this finalize, if any.
+
+        Called after a failed finalize (issue #156 bug_001, issue #172). The
+        transaction is poisoned, so recovery cannot happen inside it: abort it,
+        drop the session, and look the record up in a fresh one. Returning it is
+        idempotent — the winner already published, so the caller must not publish
+        again.
+
+        Args:
+            tranlog: The transaction log this attempt was writing
+
+        Returns:
+            The persisted tranlog for the same finalize, or None when no
+            concurrent request wrote one (i.e. the failure was something else)
+
+        Raises:
+            FinalizeConflictException: The cart_id belongs to a different
+                finalize, which must surface as a 409 rather than a 500.
+        """
+        await self.tranlog_repository.abort_transaction()
+        self.tranlog_repository.set_session(session=None)
+        self.tranlog_delivery_status_repo.set_session(session=None)
+
+        existing = await self.tranlog_repository.get_existing_finalize_async(tranlog)
+        if existing is not None:
+            logger.warning(
+                f"Concurrent finalize race for cart_id={tranlog.cart_id}; "
+                "returning the winning tranlog idempotently"
+            )
+        return existing
 
     async def _receipt_range_async(self) -> tuple:
         """
