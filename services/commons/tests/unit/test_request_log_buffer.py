@@ -562,3 +562,87 @@ class TestWhichFailuresAreWorthRepeating:
         assert any("lost" in r.message.lower() for r in caplog.records), (
             "a permanent failure dropped the entries without saying so"
         )
+
+
+class TestNothingAccumulates:
+    async def test_inflight_is_emptied_after_a_failed_write(self, written):
+        # _inflight is what shutdown waits on. A task left in it would be waited
+        # for forever on the next shutdown, and the set would grow with every
+        # failure.
+        from pymongo.errors import ServerSelectionTimeoutError
+
+        written.fail_with = ServerSelectionTimeoutError("backend down")
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        for _ in range(6):
+            await buffer.add(_log())
+
+        assert buffer._inflight == set()
+
+    async def test_inflight_is_emptied_after_a_cancelled_write(self, written):
+        buffer = RequestLogBuffer(max_size=3, flush_interval=60.0)
+
+        async def add_until_flush():
+            for _ in range(3):
+                await buffer.add(_log())
+
+        task = asyncio.create_task(add_until_flush())
+        await asyncio.sleep(0.005)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert buffer._inflight == set()
+
+    async def test_the_buffer_does_not_grow_while_writes_succeed(self, written):
+        buffer = RequestLogBuffer(max_size=5, flush_interval=60.0)
+
+        for _ in range(50):
+            await buffer.add(_log())
+
+        assert buffer._buffer == []
+        assert buffer._pending_total() == 0
+        assert buffer._inflight == set()
+
+
+class TestOverlappingFlushes:
+    async def test_two_flushes_in_flight_lose_nothing(self, written, monkeypatch):
+        """Writes run outside the lock, so a second flush can start while the
+        first is still writing. Every entry must still land exactly once."""
+        gate = asyncio.Event()
+
+        class _GatedCollection:
+            async def insert_many(self, docs, ordered=True):
+                await gate.wait()
+                await asyncio.sleep(0)
+                written.extend(docs)
+
+        class _GatedDb:
+            def __getitem__(self, _name):
+                return _GatedCollection()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _GatedDb()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        # Two independent tasks, each filling the buffer to its size trigger, so
+        # both are inside a write at the same time.
+        async def fill(tag):
+            for i in range(2):
+                await buffer.add(_log(url=f"/{tag}-{i}"))
+
+        tasks = [asyncio.create_task(fill("a")), asyncio.create_task(fill("b"))]
+        await asyncio.sleep(0.02)
+        gate.set()
+        await asyncio.gather(*tasks)
+        await buffer.shutdown()
+
+        urls = [d["request_info"]["url"] for d in written]
+        expected = {"/a-0", "/a-1", "/b-0", "/b-1"}
+        assert set(urls) >= expected, f"entries lost across overlapping flushes: {sorted(set(urls))}"
+        # Each entry goes to the commons and the tenant database, and no more.
+        for url in expected:
+            assert urls.count(url) == 2, f"{url} written {urls.count(url)} times, expected 2"
