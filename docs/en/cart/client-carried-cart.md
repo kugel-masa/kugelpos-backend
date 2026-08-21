@@ -183,6 +183,60 @@ Pre-#166 clients keep working: they carry no counter, send their number under th
 old `receipt_no` name at open (numerically the same value — they counted 1, 2, 3
 with no wrap), and their receipt numbers are recorded as sent.
 
+## Rollback is accepted, and visible afterwards (#165)
+
+The signature proves an envelope was issued unmodified. It does not prove it is
+the **current** one, and on the stateless path the server deliberately does not
+consult the cache, so it has no other basis for telling a current envelope from
+an earlier one for the same cart. Refusing a stale envelope synchronously would
+mean knowing the high-water mark per cart — a per-request write, which is exactly
+what phase 2 removed.
+
+So rollback is accepted and made findable instead. The cart document carries a
+monotonic `revision`, covered by the signature, and every issued snapshot
+advances it:
+
+```
+create → revision 1 → add item → revision 2 → add item → revision 3
+```
+
+The revision a request *presented* is recorded on its request log entry, as its
+own `snapshot_info` field — not in the body, which the logging middleware strips
+(#155):
+
+```json
+"snapshot_info": {"cart_id": "…", "revision": 3, "schema_version": 2, "kid": "v1"}
+```
+
+Normal operation is strictly increasing and a lost-ACK retry repeats a value.
+A replayed older envelope is the one that goes **down**, which a query over
+`snapshot_info.cart_id` ordered by `request_info.accept_time` finds directly
+(there is an index for it).
+
+The index is created by tenant setup, and nothing creates it at startup — so on
+an environment that already has tenants, `POST /api/v1/tenants/{tenant_id}` has
+to be re-run once per tenant before the query is indexed rather than a
+collection scan. Index creation is idempotent, and this is the same step #156
+needed for its own indexes.
+
+Envelopes are issued at `schema_version` 2. Version 1 is still accepted: a client
+that has not migrated presents one, and refusing it would break the failover the
+snapshot exists for — such an envelope simply carries no revision to record.
+
+Note the mechanics: the middleware that peels the envelope runs *outside* the
+request logger, so by the time the request is logged the envelope is gone. The
+peel leaves the scalars on the request scope for the logger to pick up.
+
+One limit worth stating: the revision advances when a snapshot is *issued*, in
+the response, and the cache-authoritative path has already written the cart by
+then — so the bump reaches the client but not the cache. A cart that switched
+back to the cache path mid-life would be handed a revision from wherever the
+cache left off, which reads as a rollback. That is not a case to tune the
+detection for: switching paths inside one cart rebuilds it from a cache that the
+stateless path deliberately stopped writing, so the cart itself has rolled back,
+not just its revision. Every cart route is a body-carrying mutation, so a client
+that carries carries throughout.
+
 ## Two numbering series while DUAL mode is on (#168)
 
 The finalize path branches per **transaction**, not per terminal:

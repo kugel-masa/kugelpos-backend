@@ -45,6 +45,10 @@ from kugel_common.middleware.request_log_buffer import get_request_log_buffer
 logger = getLogger(__name__)
 logger_request = getLogger("requestLogger")
 
+# Scope key a service uses to hand this middleware the marks of a client-carried
+# snapshot (issue #165); see _make_snapshot_info.
+SNAPSHOT_SCOPE_KEY = "request_log_snapshot"
+
 # Parsed form of settings.REQUEST_LOG_STRIP_FIELDS, recomputed when the setting
 # changes so tests (and a live reconfiguration) are not stuck with the first
 # value seen.
@@ -121,6 +125,7 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
                 staff_info=await _make_staff_info(terminal_info),
                 user_info=await _make_user_info(user_dict),
                 terminal_info=await _make_terminal_info(terminal_info),
+                snapshot_info=_make_snapshot_info(request),
                 service_name=service_name  # Add service name to the log
             )
             # Log to file synchronously (fast operation)
@@ -488,6 +493,39 @@ async def _make_user_info(user_dict: dict) -> RequestLog.UserInfo:
         )
     else:
         return RequestLog.UserInfo(tenant_id="", username="", is_superuser=False)
+
+def _make_snapshot_info(request: Request) -> RequestLog.SnapshotInfo:
+    """
+    Snapshot marks a service left on the request scope (issue #165).
+
+    Middleware that peels a client-carried envelope runs outside this one, so
+    the envelope is gone by the time the request is logged; a service that wants
+    something from it recorded puts the scalars under
+    `scope["request_log_snapshot"]`. Kept to a fixed set of scalars: the body
+    itself is stripped precisely to keep whole cart documents out of the log
+    (issue #155).
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        RequestLog.SnapshotInfo, or None when the request carried no snapshot
+    """
+    marks = request.scope.get(SNAPSHOT_SCOPE_KEY)
+    if not isinstance(marks, dict):
+        return None
+    try:
+        return RequestLog.SnapshotInfo(
+            cart_id=marks.get("cart_id"),
+            revision=marks.get("revision"),
+            schema_version=marks.get("schema_version"),
+            kid=marks.get("kid"),
+        )
+    except Exception:
+        # Never let an odd value cost the whole request log.
+        logger.debug("Could not record snapshot marks from the request scope")
+        return None
+
 
 async def _make_terminal_info(terminal_info: TerminalInfoDocument) -> RequestLog.TerminalInfo:
     """

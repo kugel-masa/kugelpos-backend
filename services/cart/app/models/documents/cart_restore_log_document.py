@@ -40,6 +40,10 @@ class CartRestoreLogDocument(AbstractDocument):
     snapshot_terminal_no: Optional[int] = None
     snapshot_kid: Optional[str] = None
     snapshot_schema_version: Optional[int] = None
+    # Monotonic cart revision from the presented envelope (issue #165). A
+    # rejection is worth knowing the revision of: it says which generation of the
+    # cart the terminal was holding when it was refused.
+    snapshot_revision: Optional[int] = None
 
     # Record time
     event_datetime: str

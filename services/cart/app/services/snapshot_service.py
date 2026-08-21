@@ -32,8 +32,11 @@ from app.models.documents.cart_document import CartDocument
 
 logger = getLogger(__name__)
 
-SNAPSHOT_SCHEMA_VERSION = 1
-SUPPORTED_SCHEMA_VERSIONS = {1}
+# Version 2 adds the cart document's monotonic `revision` (issue #165). Version 1
+# envelopes are still accepted: a client that has not migrated presents one, and
+# rejecting it would break the very failover the snapshot exists for.
+SNAPSHOT_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {1, 2}
 
 # Cart statuses a snapshot may be restored into. Terminal states (Completed /
 # Cancelled) are rejected idempotently by the caller; anything else is invalid.
@@ -142,6 +145,11 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
     if signer is None:
         return None
     try:
+        # One snapshot is issued per mutating response, so bumping here is
+        # "once per cart mutation" (issue #165). The envelope the terminal is
+        # handed therefore always carries a higher revision than the one it
+        # presented; replaying an older one is visible as a lower number.
+        cart_doc.revision = (cart_doc.revision or 0) + 1
         payload = {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "issued_at": get_app_time_str(),
@@ -154,7 +162,7 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
         raw_size = len(canonical_json_bytes(payload))
         if raw_size > settings.SNAPSHOT_SIZE_WARN_BYTES:
             logger.warning(
-                "Snapshot for cart %s is %d bytes raw (threshold %d); " "consider revisiting the size budget (R-008)",
+                "Snapshot for cart %s is %d bytes raw (threshold %d); consider revisiting the size budget (R-008)",
                 cart_doc.cart_id,
                 raw_size,
                 settings.SNAPSHOT_SIZE_WARN_BYTES,
@@ -331,6 +339,41 @@ def verify_envelope(envelope: dict) -> CartDocument:
         raise SnapshotInvalidException("Snapshot cart document does not parse", logger, e)
 
 
+# Longest string kept from a presented envelope. Matches the cap the body strip
+# already applies to metadata it carries over (_STRIP_META_MAX_STR in
+# kugel_common.utils.log_utils), so a value cannot enter the request log through
+# these marks that would have been dropped from the body.
+#
+# Everything extracted here comes off an UNVERIFIED envelope — extraction runs
+# before (and regardless of) signature verification, and a rejected request is
+# logged just the same. Without a cap the caller writes an attacker-chosen
+# string of any length into MongoDB, which is the amplification issue #155 was
+# about. A cart_id is a uuid4 (36 chars) and a kid is a key label, so anything
+# longer is not the value it claims to be.
+MARK_MAX_CHARS = 128
+
+
+def _mark_str(value) -> Optional[str]:
+    """A string worth recording from an unverified envelope, or None.
+
+    Over-length values are dropped rather than truncated: the body strip treats a
+    long string as payload rather than metadata, and a truncated cart_id would
+    read as a real one while matching no cart.
+    """
+    if not isinstance(value, str) or len(value) > MARK_MAX_CHARS:
+        return None
+    return value
+
+
+def _mark_int(value) -> Optional[int]:
+    """An int worth recording from an unverified envelope, or None.
+
+    `type(...) is int` rather than isinstance: bool is a subclass of int, and a
+    `revision: true` recorded as revision 1 is a fabricated mark, not a revision.
+    """
+    return value if type(value) is int else None
+
+
 def extract_audit_meta(envelope: dict) -> dict:
     """
     Best-effort extraction of audit metadata from a presented envelope.
@@ -342,24 +385,80 @@ def extract_audit_meta(envelope: dict) -> dict:
     if not isinstance(envelope, dict):
         return {"cart_id": None}
 
-    def _as(value, types):
-        return value if isinstance(value, types) else None
-
     return {
         "cart_id": _safe_cart_id(envelope),
-        "snapshot_issued_at": _as(envelope.get("issued_at"), str),
-        "snapshot_terminal_no": _as(envelope.get("terminal_no"), int),
-        "snapshot_kid": _as(envelope.get("kid"), str),
-        "snapshot_schema_version": _as(envelope.get("schema_version"), int),
+        "snapshot_issued_at": _mark_str(envelope.get("issued_at")),
+        "snapshot_terminal_no": _mark_int(envelope.get("terminal_no")),
+        "snapshot_kid": _mark_str(envelope.get("kid")),
+        "snapshot_schema_version": _mark_int(envelope.get("schema_version")),
+        "snapshot_revision": (extract_snapshot_marks(envelope) or {}).get("revision"),
     }
 
 
+def extract_snapshot_marks(envelope: dict) -> Optional[dict]:
+    """
+    The few scalars worth carrying into the request log (issue #165).
+
+    Best-effort and never raising: this runs on the request path for every
+    carried snapshot, including malformed ones, and its only job is to leave
+    behind enough to spot a rollback afterwards - a `revision` sequence for a
+    cart_id that is not increasing.
+
+    Args:
+        envelope: The presented snapshot envelope, in whatever shape it arrived
+
+    Returns:
+        Dict with cart_id / revision / schema_version / kid, or None when the
+        envelope carries nothing recognisable
+    """
+    if not isinstance(envelope, dict):
+        return None
+
+    def pick(*names):
+        """Accept both spellings: this runs before the envelope is normalised.
+
+        The signing canonical form is snake_case, but a terminal presents the
+        envelope exactly as it received it - camelCase, per the response alias
+        generator - and the peel middleware sees that wire form.
+        """
+        for name in names:
+            if name in envelope:
+                return envelope[name]
+        return None
+
+    cart_document = pick("cart_document", "cartDocument")
+    revision = None
+    if isinstance(cart_document, dict):
+        revision = cart_document.get("revision")
+    schema_version = pick("schema_version", "schemaVersion")
+    kid = envelope.get("kid")
+
+    marks = {
+        "cart_id": _safe_cart_id(envelope),
+        "revision": _mark_int(revision),
+        "schema_version": _mark_int(schema_version),
+        "kid": _mark_str(kid),
+    }
+    return marks if any(v is not None for v in marks.values()) else None
+
+
 def _safe_cart_id(envelope: dict) -> Optional[str]:
-    """Best-effort cart_id extraction for logging; never raises."""
+    """Best-effort cart_id extraction for logging; never raises.
+
+    Accepts the wire form as well as the signing canonical form: an envelope
+    reaches the peel middleware exactly as the terminal received it, which is
+    camelCase (issue #165).
+
+    Screened through _mark_str: a non-string here would fail RequestLog's
+    SnapshotInfo validation and cost the whole record - so a malformed envelope,
+    the case rejections most need traceable, would be the one that logs nothing.
+    """
     try:
         cart_document = envelope.get("cart_document")
+        if not isinstance(cart_document, dict):
+            cart_document = envelope.get("cartDocument")
         if isinstance(cart_document, dict):
-            return cart_document.get("cart_id")
+            return _mark_str(cart_document.get("cart_id")) or _mark_str(cart_document.get("cartId"))
     except Exception:
         pass
     return None

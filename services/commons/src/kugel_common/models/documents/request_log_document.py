@@ -87,6 +87,22 @@ class RequestLog(AbstractDocument):
         business_date: str
         open_counter: int
     
+    class SnapshotInfo(BaseModel):
+        """
+        Marks from a client-carried snapshot (issue #165).
+
+        Recorded as its own field rather than left in the request body, which
+        the logging middleware strips (issue #155). `revision` is the point: a
+        sequence that is not increasing for a cart_id is a replayed envelope,
+        which a stateless backend cannot refuse but can be seen to have
+        happened.
+        """
+
+        cart_id: Optional[str] = None
+        revision: Optional[int] = None
+        schema_version: Optional[int] = None
+        kid: Optional[str] = None
+
     tenant_id: Optional[str] = None
     client_info: ClientInfo
     request_info: RequestInfo
@@ -94,3 +110,4 @@ class RequestLog(AbstractDocument):
     staff_info: Optional[StaffInfo] = None
     user_info: Optional[UserInfo] = None
     terminal_info: Optional[TerminalInfo] = None
+    snapshot_info: Optional[SnapshotInfo] = None

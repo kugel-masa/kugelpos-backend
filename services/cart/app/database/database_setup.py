@@ -160,7 +160,16 @@ async def create_request_log_collection(tenant_id: str):
     """
     name = settings.DB_COLLECTION_NAME_REQUEST_LOG
     index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}, "unique": True}
+        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}, "unique": True},
+        # Rollback detection (issue #165): walk a cart's revisions in the order
+        # they were presented. Normal operation is strictly increasing and a
+        # retry repeats a value; anything lower is a replayed older envelope.
+        # Partial, because only carried requests have marks to index.
+        {
+            "keys": {"tenant_id": 1, "snapshot_info.cart_id": 1, "request_info.accept_time": 1},
+            "unique": False,
+            "partialFilterExpression": {"snapshot_info.cart_id": {"$type": "string"}},
+        },
     ]
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"

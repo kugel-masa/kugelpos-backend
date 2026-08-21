@@ -34,6 +34,9 @@ from logging import getLogger
 import json
 
 from kugel_common.middleware.http_compression import replace_body_headers, replay_body
+from kugel_common.middleware.log_requests import SNAPSHOT_SCOPE_KEY
+
+from app.services import snapshot_service
 
 logger = getLogger(__name__)
 
@@ -122,6 +125,13 @@ class SnapshotEnvelopePeelMiddleware:
         # which the framework may initialize/replace.
         scope = dict(scope)
         scope["cart_snapshot"] = snapshot
+        # The request log runs inside this middleware, so by the time it sees the
+        # body the envelope is gone. Leave the few scalars worth recording where
+        # it can find them (issue #165) - the revision is what makes a replayed
+        # older envelope visible after the fact.
+        marks = snapshot_service.extract_snapshot_marks(snapshot) if snapshot is not None else None
+        if marks is not None:
+            scope[SNAPSHOT_SCOPE_KEY] = marks
         # Peeling changes the body length, so content-length must follow it:
         # the value the client sent describes the wrapper, not the payload now
         # being delivered, and anything downstream that trusts the header would
