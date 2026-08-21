@@ -115,6 +115,10 @@ class TestWhatTheTokenSays:
         assert buffer.logs[-1].terminal_info.store_code == "5678"
 
     def test_the_tenant_is_still_recorded(self, captured):
+        # Not evidence for this fix - `_make_tenant_id` falls back to the decoded
+        # user, so this passes with the fix reverted. Kept as a guard that the
+        # new path does not break the tenant, which is what the log is
+        # partitioned by.
         buffer, client = captured
 
         client.get("/api/v1/probe", headers=_bearer(_terminal()))
@@ -188,3 +192,64 @@ class TestPrecedence:
 
         assert buffer.logs[-1].terminal_info.store_code == ""
         assert buffer.logs[-1].user_info.username == "admin"
+
+
+class TestATerminalThatHasNotBeenOpened:
+    """A token is issued before the terminal is ever opened."""
+
+    def test_a_token_without_the_open_claims_does_not_break_the_request(self, captured):
+        # `create_terminal_token` omits the claims for state the terminal does
+        # not have yet, so `open_counter` arrives as None - and
+        # RequestLog.TerminalInfo declares it `int`. The ValidationError escapes
+        # the middleware's `finally`, so the route's 200 becomes a 500 and the
+        # log is dropped: the defect class of issue #161, reachable here as soon
+        # as this field is filled in from a token at all.
+        buffer, client = captured
+        never_opened = TerminalInfoDocument(
+            tenant_id="T6216", store_code="5678", terminal_no=9, terminal_id="T6216-5678-9", status="Idle"
+        )
+        assert never_opened.open_counter is None, "precondition: the claim is genuinely absent"
+
+        response = client.get("/api/v1/probe", headers=_bearer(never_opened))
+
+        assert response.status_code == 200, "the log middleware hijacked the route's response"
+        assert len(buffer.logs) == 1, "the request was not logged at all"
+        info = buffer.logs[-1].terminal_info
+        assert (info.store_code, info.terminal_no) == ("5678", 9)
+        assert (info.business_date, info.open_counter) == ("", 0)
+
+
+class TestWhenBothCredentialsArePresent:
+    def test_the_token_wins_over_the_api_key(self, captured, monkeypatch):
+        # The routes resolve the token first (`get_terminal_info_with_jwt_or_apikey`:
+        # "Priority 1: Try terminal JWT"), so a request carrying both executes as
+        # the token's terminal. Attributing it to the API key's would name a
+        # terminal that did not make the request.
+        buffer, client = captured
+        other = _terminal(store_code="9999", terminal_no=1, terminal_id="T6216-9999-1")
+
+        async def api_key_terminal(*args, **kwargs):
+            return other
+
+        monkeypatch.setattr(log_requests_module, "get_terminal_info", api_key_terminal)
+
+        client.get(
+            "/api/v1/probe?terminal_id=T6216-9999-1",
+            headers={**_bearer(_terminal()), "X-API-Key": "an-api-key"},
+        )
+
+        info = buffer.logs[-1].terminal_info
+        assert (info.store_code, info.terminal_no) == ("5678", 9), "the API key overrode the token"
+
+    def test_the_api_key_still_works_on_its_own(self, captured, monkeypatch):
+        buffer, client = captured
+
+        async def api_key_terminal(*args, **kwargs):
+            return _terminal(store_code="9999", terminal_no=1)
+
+        monkeypatch.setattr(log_requests_module, "get_terminal_info", api_key_terminal)
+
+        client.get("/api/v1/probe?terminal_id=T6216-9999-1", headers={"X-API-Key": "an-api-key"})
+
+        info = buffer.logs[-1].terminal_info
+        assert (info.store_code, info.terminal_no) == ("9999", 1)
