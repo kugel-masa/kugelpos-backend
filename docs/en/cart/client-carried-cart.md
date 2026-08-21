@@ -213,6 +213,12 @@ A replayed older envelope is the one that goes **down**, which a query over
 `snapshot_info.cart_id` ordered by `request_info.accept_time` finds directly
 (there is an index for it).
 
+The index is created by tenant setup, and nothing creates it at startup — so on
+an environment that already has tenants, `POST /api/v1/tenants/{tenant_id}` has
+to be re-run once per tenant before the query is indexed rather than a
+collection scan. Index creation is idempotent, and this is the same step #156
+needed for its own indexes.
+
 Envelopes are issued at `schema_version` 2. Version 1 is still accepted: a client
 that has not migrated presents one, and refusing it would break the failover the
 snapshot exists for — such an envelope simply carries no revision to record.

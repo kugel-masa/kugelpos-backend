@@ -128,3 +128,71 @@ async def test_a_request_carrying_nothing_records_nothing(http_client, snapshot_
     )
 
     assert await _logged_snapshot_marks(cart_id) == []
+
+
+async def test_a_hostile_envelope_cannot_grow_the_log(http_client, snapshot_keys):
+    """What the marks may carry is bounded, measured at the collection.
+
+    The marks are taken off the envelope before it is verified, and the request
+    log is written in a `finally` - so a rejected request is recorded just the
+    same, carrying values the client chose. The logged body is capped at
+    REQUEST_LOG_MAX_BODY_BYTES precisely so the log cannot be used as an
+    amplifier (issue #155); this asserts the marks did not reopen that at the
+    one place it actually matters, which is the stored document.
+    """
+    import bson
+
+    from kugel_common.database import database as db_helper
+
+    cart_id = "hostile-165"
+    hostile = {
+        "schemaVersion": 2,
+        "issuedAt": "2026-08-21T00:00:00",
+        "kid": "K" * 100_000,
+        "tenantId": os.environ.get("TENANT_ID"),
+        "storeCode": "5678",
+        "terminalNo": 9,
+        "cartDocument": {"cartId": "A" * 1_000_000, "revision": 3},
+        "signature": "x" * 44,
+    }
+
+    response = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={_terminal_id()}",
+        json={"signedSnapshot": hostile, "payload": [{"itemCode": "49-01", "quantity": 1}]},
+        headers=_api_headers(),
+    )
+    # Rejected - and logged anyway, which is the case under test.
+    assert response.status_code != status.HTTP_200_OK
+
+    await get_request_log_buffer().shutdown()
+    db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}")
+    row = await db["log_request"].find_one(
+        {"request_info.url": {"$regex": cart_id}}, sort=[("request_info.accept_time", -1)]
+    )
+
+    assert row is not None, "the rejected request was not logged at all"
+    assert len(bson.BSON.encode(row)) < 64 * 1024, "a rejected request wrote an oversized log document"
+    marks = row["snapshot_info"]
+    # The oversized values are dropped; the bounded ones around them survive, so
+    # the rejection is still traceable.
+    assert marks["cart_id"] is None
+    assert marks["kid"] is None
+    assert marks["revision"] == 3
+    assert marks["schema_version"] == 2
+
+
+async def test_the_rollback_query_has_an_index():
+    """The detection is a query over a growing collection; without the index it
+    is a collection scan, and nothing else would report that."""
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}")
+    indexes = await db["log_request"].index_information()
+
+    wanted = [("tenant_id", 1), ("snapshot_info.cart_id", 1), ("request_info.accept_time", 1)]
+    matching = [name for name, info in indexes.items() if [tuple(k) for k in info.get("key", [])] == wanted]
+
+    assert matching, f"no index for the rollback query in {list(indexes)}"
+    # Partial: only carried requests have marks, and the rest of the collection
+    # (the large majority) should not pay for the index.
+    assert "partialFilterExpression" in indexes[matching[0]]
