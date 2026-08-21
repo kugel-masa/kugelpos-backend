@@ -33,7 +33,12 @@ import time
 
 from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse
-from kugel_common.security import get_terminal_info, get_current_user
+from kugel_common.security import (
+    get_terminal_info,
+    get_current_user,
+    verify_terminal_token,
+    terminal_claims_to_terminal_info,
+)
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.repositories.request_log_repository import RequestLogRepository
 from kugel_common.models.documents.request_log_document import RequestLog
@@ -269,8 +274,44 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
         logger.debug(f"terminal_id: {terminal_id}, api_key: {mask_api_key(api_key)}")
         terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service=is_terminal_service)
 
+    if terminal_info is None:
+        terminal_info = _terminal_info_from_terminal_token(request)
+
     logger.debug(f"terminal_info: {terminal_info}")
     return terminal_info
+
+
+def _terminal_info_from_terminal_token(request: Request) -> TerminalInfoDocument:
+    """
+    Terminal attribution for a JWT-authenticated request (issue #181).
+
+    The API-key path above resolves the terminal from `X-API-Key` plus a
+    `terminal_id` parameter. A terminal-JWT request carries neither - that is the
+    point of the migration - so before this the request log recorded an empty
+    terminal: no store, no terminal number, no business date, no open counter,
+    and no staff, for the credential the fleet is moving to. The identity
+    survived only as text inside `user_info.username`.
+
+    Read from the claims rather than looked up: the token already carries every
+    field the log wants, and this runs on the response path of every request.
+
+    Returns None - never raises. This is called from the logging middleware's
+    `finally` block, so an exception here would replace whatever the route was
+    returning, including the 401 that a bad token is supposed to produce (the
+    defect class of issue #161).
+    """
+    header = request.headers.get("Authorization")
+    if not header:
+        return None
+    try:
+        claims = verify_terminal_token(header.replace("Bearer ", "").strip())
+        return terminal_claims_to_terminal_info(claims)
+    except Exception:
+        # Not a terminal token, or not a valid one. Either way the log simply
+        # has no terminal to name; the route's own dependency decides the
+        # request's fate.
+        logger.debug("No terminal identity in the request token")
+        return None
 
 async def _get_current_user(request: Request) -> dict:
     """
