@@ -74,6 +74,13 @@ class RequestLogBuffer:
         # relative order of two concurrent flushes is unspecified, and these are
         # timestamped audit records rather than a sequence.
         self._pending: dict[str, list[dict]] = {}
+        # Set by shutdown(). Past this point nothing new may be scheduled: a
+        # timer armed on a loop that is closing is a task that never runs.
+        self._closing = False
+        # Tasks currently inside _write. The write runs outside the lock, and
+        # _take_batch has already cleared _timer_task by then - so without this,
+        # a flush in flight is invisible to shutdown and dies with the loop.
+        self._inflight: set[asyncio.Task] = set()
 
     async def add(self, request_log: RequestLog) -> None:
         """Add a request log to the buffer. Flushes when buffer is full."""
@@ -88,8 +95,24 @@ class RequestLogBuffer:
 
     async def shutdown(self) -> None:
         """Flush remaining buffer on service shutdown."""
+        self._closing = True
         async with self._lock:
             self._cancel_timer()
+
+        # A flush already in flight is finished rather than cancelled, and
+        # waited for here. Cancelling it would only move its batch into a
+        # backlog that nothing is left to flush - the same silent loss this
+        # issue is about, relocated to shutdown. `_cancel_timer` above cannot
+        # reach it either: a timer that got as far as writing has already had
+        # its reference cleared by `_take_batch`.
+        inflight = [task for task in self._inflight if task is not asyncio.current_task()]
+        if inflight:
+            try:
+                await asyncio.gather(*inflight, return_exceptions=True)
+            except asyncio.CancelledError:
+                pass
+
+        async with self._lock:
             batch = self._take_batch()
         await self._write(batch)
 
@@ -103,6 +126,8 @@ class RequestLogBuffer:
         request, which is the cost this buffer exists to avoid. Armed once, it
         bounds the age of the oldest entry instead.
         """
+        if self._closing:
+            return
         if self._timer_task is None or self._timer_task.done():
             self._timer_task = asyncio.create_task(self._timer())
 
@@ -191,7 +216,11 @@ class RequestLogBuffer:
                     f"dropping {len(docs) - len(keep)} of {len(docs)} documents for {db_name}. "
                     "The audit trail has a hole for this window."
                 )
-            self._pending.setdefault(db_name, []).extend(keep)
+            if keep:
+                # Never leave an empty list behind: the next flush would hand it
+                # to insert_many, which rejects an empty batch with a TypeError
+                # and fails that whole target for the flush.
+                self._pending.setdefault(db_name, []).extend(keep)
         # Traffic may stop before the next add, so the retry needs its own wake-up.
         self._arm_timer()
 
@@ -211,11 +240,25 @@ class RequestLogBuffer:
         if not db_docs:
             return
 
+        task = asyncio.current_task()
+        if task is not None:
+            self._inflight.add(task)
+        try:
+            await self._write_batches(db_docs)
+        finally:
+            if task is not None:
+                self._inflight.discard(task)
+
+    async def _write_batches(self, db_docs: dict[str, list[dict]]) -> None:
+        """The write itself; see _write for why it runs outside the lock."""
         items = list(db_docs.items())
         failed: list[tuple[str, list[dict]]] = []
         attempted = 0
         try:
             for db_name, docs in items:
+                if not docs:
+                    attempted += 1
+                    continue
                 try:
                     database = await db_helper.get_db_async(db_name)
                     collection = database[settings.DB_COLLECTION_NAME_REQUEST_LOG]
@@ -253,8 +296,11 @@ class RequestLogBuffer:
             # buffer, so a client disconnect cancels it - and the batch it is
             # carrying belongs to every other request in the window, not to that
             # client. Keep what was not written, then let the cancellation stand.
-            failed.append((items[attempted][0], items[attempted][1]))
-            failed.extend(items[attempted + 1 :])
+            # From the batch that was in flight to the end. A slice rather
+            # than an index: `attempted` is only ever < len(items) here, but an
+            # IndexError raised inside a cancellation handler would skip the
+            # salvage entirely, which is too expensive a way to find out.
+            failed.extend(items[attempted:])
             self._keep_for_retry(failed)
             logger.error(
                 f"Request log flush was cancelled mid-write; kept {sum(len(d) for _, d in failed)} "

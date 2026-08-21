@@ -413,3 +413,98 @@ class TestTheBudgetUnderConcurrentFlushes:
         assert buffer._pending_total() <= buffer_module.MAX_PENDING_DOCS, (
             f"a concurrent flush pushed the backlog to {buffer._pending_total()}"
         )
+
+
+class TestShutdownRacingAFlush:
+    """Cancelling a task does not stop it where the cancel is called."""
+
+    @staticmethod
+    def _slow_backend(monkeypatch, written, started, release):
+        class _SlowCollection:
+            async def insert_many(self, docs, ordered=True):
+                started.set()
+                await release.wait()
+                written.extend(docs)
+
+        class _SlowDb:
+            def __getitem__(self, _name):
+                return _SlowCollection()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _SlowDb()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+
+    async def test_a_timer_flush_in_flight_is_not_abandoned(self, written, monkeypatch):
+        # A timer that got as far as writing has already had its reference
+        # cleared by _take_batch, so `_cancel_timer` cannot reach it and
+        # shutdown cannot see it. Returning anyway leaves that batch to die with
+        # the event loop - the same silent loss as #180, relocated to shutdown.
+        started, release = asyncio.Event(), asyncio.Event()
+        self._slow_backend(monkeypatch, written, started, release)
+        buffer = RequestLogBuffer(max_size=100, flush_interval=0.1)
+
+        await buffer.add(_log(url="/in-flight"))
+        await asyncio.wait_for(started.wait(), timeout=1.0)  # the timer is inside the write
+
+        shutdown = asyncio.create_task(buffer.shutdown())
+        await asyncio.sleep(0.05)
+        assert not shutdown.done(), "shutdown returned while a write was still in flight"
+
+        release.set()
+        await asyncio.wait_for(shutdown, timeout=2.0)
+
+        urls = {d["request_info"]["url"] for d in written}
+        assert "/in-flight" in urls, f"the in-flight batch was abandoned: written={sorted(urls)}"
+        assert buffer._buffer == []
+        assert buffer._pending_total() == 0
+
+    async def test_shutdown_arms_no_new_timer(self, written):
+        # A timer armed while the loop is closing is a task that never runs, and
+        # asyncio reports it as destroyed-while-pending.
+        buffer = RequestLogBuffer(max_size=100, flush_interval=0.1)
+
+        await buffer.add(_log())
+        await buffer.shutdown()
+        buffer._keep_for_retry([("db_a", [{"n": 1}])])  # a failure during the final write
+
+        assert buffer._timer_task is None, "shutdown scheduled a timer on a closing loop"
+
+
+class TestAnEmptyBatchIsNeverOffered:
+    async def test_a_full_backlog_leaves_no_empty_list_behind(self, written):
+        # insert_many([]) raises TypeError("documents must be a non-empty list"),
+        # which would fail the whole target for that flush.
+        buffer = RequestLogBuffer(max_size=10, flush_interval=60.0)
+        buffer._pending = {"db_a": [{"n": i} for i in range(buffer_module.MAX_PENDING_DOCS)]}
+
+        buffer._keep_for_retry([("db_b", [{"n": 1}])])
+
+        assert buffer._pending.get("db_b") is None, "an empty batch was left in the backlog"
+
+    async def test_an_empty_batch_is_skipped_rather_than_written(self, written, monkeypatch):
+        calls = []
+
+        class _Collection:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0)
+                calls.append(len(docs))
+                if not docs:
+                    raise TypeError("documents must be a non-empty list")
+                written.extend(docs)
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _Collection()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=100, flush_interval=60.0)
+
+        await buffer._write({"db_a": [], "db_b": [{"n": 1}]})
+
+        assert calls == [1], f"an empty batch reached insert_many: {calls}"
