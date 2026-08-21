@@ -253,3 +253,46 @@ class TestWhenBothCredentialsArePresent:
 
         info = buffer.logs[-1].terminal_info
         assert (info.store_code, info.terminal_no) == ("9999", 1)
+
+
+class TestATokenWhoseClaimsAreTheWrongShape:
+    """A signature proves the claims were issued unmodified, not that they are sane.
+
+    Anything holding the signing key can mint a token whose claims are the wrong
+    type, and this runs in the middleware's `finally` - where a ValidationError
+    does not merely lose the attribution, it replaces the route's response.
+    """
+
+    @staticmethod
+    def _signed(claims):
+        import jwt
+
+        from kugel_common.security import ALGORITHM, SECRET_KEY
+
+        base = {
+            "sub": "terminal:T6216-5678-9",
+            "tenant_id": "T6216",
+            "token_type": "terminal",
+            "iss": "terminal-service",
+        }
+        base.update(claims)
+        return {"Authorization": f"Bearer {jwt.encode(base, SECRET_KEY, algorithm=ALGORITHM)}"}
+
+    @pytest.mark.parametrize(
+        "claims",
+        [
+            pytest.param({"terminal_no": "nine"}, id="terminal_no is a word"),
+            pytest.param({"store_code": ["5678"]}, id="store_code is a list"),
+            pytest.param({"open_counter": {"n": 1}}, id="open_counter is an object"),
+            pytest.param({"business_date": 20260821}, id="business_date is a number"),
+            pytest.param({"staff_id": 1, "staff_name": None}, id="staff_id is a number"),
+            pytest.param({"terminal_no": None, "store_code": None}, id="explicit nulls"),
+        ],
+    )
+    def test_the_route_still_answers_and_the_request_is_still_logged(self, captured, claims):
+        buffer, client = captured
+
+        response = client.get("/api/v1/probe", headers=self._signed(claims))
+
+        assert response.status_code == 200, f"{claims} hijacked the route's response"
+        assert len(buffer.logs) == 1, f"{claims} cost the request log"
