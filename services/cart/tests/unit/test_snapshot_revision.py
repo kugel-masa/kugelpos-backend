@@ -10,8 +10,11 @@ number for the same cart_id.
 """
 
 import base64
+import json
 
 import pytest
+
+from kugel_common.models.documents.request_log_document import RequestLog
 
 from app.models.documents.cart_document import CartDocument
 from app.services import snapshot_service
@@ -118,6 +121,104 @@ class TestMarksForTheRequestLog:
         )
 
         assert marks["revision"] is None
+
+
+class TestMarksAreBoundedAndTyped:
+    """What is recorded comes off an UNVERIFIED envelope.
+
+    Extraction runs before verification and the request log is written in a
+    `finally`, so a rejected request is recorded just the same. Whatever these
+    marks carry, an attacker-controlled envelope chose - and the logged body is
+    already capped at REQUEST_LOG_MAX_BODY_BYTES precisely to keep the log from
+    being an amplifier (issue #155). These marks must not reopen that.
+    """
+
+    def test_an_oversized_cart_id_is_not_recorded(self):
+        marks = snapshot_service.extract_snapshot_marks(
+            {
+                "schema_version": 2,
+                "kid": "v1",
+                "cart_document": {"cart_id": "A" * (snapshot_service.MARK_MAX_CHARS + 1)},
+            }
+        )
+
+        # Dropped, not truncated: a truncated cart_id reads as a real one while
+        # matching no cart.
+        assert marks["cart_id"] is None
+        # The bounded marks around it still survive - the request is still
+        # traceable, it just does not get to name its own cart.
+        assert marks["schema_version"] == 2
+        assert marks["kid"] == "v1"
+
+    def test_an_oversized_kid_is_not_recorded(self):
+        marks = snapshot_service.extract_snapshot_marks(
+            {"kid": "K" * (snapshot_service.MARK_MAX_CHARS + 1), "cart_document": {"cart_id": "c1"}}
+        )
+
+        assert marks["kid"] is None
+        assert marks["cart_id"] == "c1"
+
+    def test_a_real_cart_id_fits(self):
+        import uuid
+
+        cart_id = str(uuid.uuid4())
+        marks = snapshot_service.extract_snapshot_marks({"cart_document": {"cart_id": cart_id}})
+
+        assert marks["cart_id"] == cart_id
+
+    def test_the_marks_a_hostile_envelope_can_produce_stay_small(self):
+        envelope = {
+            "schema_version": 2,
+            "kid": "K" * 100_000,
+            "cart_document": {"cart_id": "A" * 5_000_000, "revision": 3},
+        }
+
+        marks = snapshot_service.extract_snapshot_marks(envelope)
+
+        assert len(json.dumps(marks)) < 1024
+
+    def test_a_boolean_is_not_a_revision(self):
+        # bool is a subclass of int, so an isinstance screen lets `true` through
+        # and records it as revision 1 - a mark the envelope never carried.
+        marks = snapshot_service.extract_snapshot_marks(
+            {"schemaVersion": True, "cartDocument": {"cartId": "c1", "revision": True}}
+        )
+
+        assert marks["revision"] is None
+        assert marks["schema_version"] is None
+
+    def test_a_non_string_cart_id_costs_only_itself(self):
+        # RequestLog.SnapshotInfo(cart_id=...) rejects a dict, and the logging
+        # middleware drops the whole record when construction raises - so a
+        # malformed envelope, the case a rejection most needs traceable, would
+        # be the one that records nothing at all.
+        marks = snapshot_service.extract_snapshot_marks(
+            {"kid": "v1", "cart_document": {"cart_id": {"$ne": None}, "revision": 7}}
+        )
+
+        assert marks["cart_id"] is None
+        assert marks["revision"] == 7
+        assert marks["kid"] == "v1"
+        RequestLog.SnapshotInfo(**marks)  # must not raise
+
+    def test_audit_meta_is_bounded_too(self):
+        # extract_audit_meta writes the same unverified values into the restore
+        # audit trail.
+        meta = snapshot_service.extract_audit_meta(
+            {
+                "issued_at": "I" * 5000,
+                "kid": "K" * 5000,
+                "terminal_no": True,
+                "schema_version": 2,
+                "cart_document": {"cart_id": "A" * 5000},
+            }
+        )
+
+        assert meta["snapshot_issued_at"] is None
+        assert meta["snapshot_kid"] is None
+        assert meta["snapshot_terminal_no"] is None
+        assert meta["cart_id"] is None
+        assert meta["snapshot_schema_version"] == 2
 
 
 class TestTheWireForm:

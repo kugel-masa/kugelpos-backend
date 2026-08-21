@@ -221,6 +221,16 @@ Note the mechanics: the middleware that peels the envelope runs *outside* the
 request logger, so by the time the request is logged the envelope is gone. The
 peel leaves the scalars on the request scope for the logger to pick up.
 
+One limit worth stating: the revision advances when a snapshot is *issued*, in
+the response, and the cache-authoritative path has already written the cart by
+then — so the bump reaches the client but not the cache. A cart that switched
+back to the cache path mid-life would be handed a revision from wherever the
+cache left off, which reads as a rollback. That is not a case to tune the
+detection for: switching paths inside one cart rebuilds it from a cache that the
+stateless path deliberately stopped writing, so the cart itself has rolled back,
+not just its revision. Every cart route is a body-carrying mutation, so a client
+that carries carries throughout.
+
 ## Two numbering series while DUAL mode is on (#168)
 
 The finalize path branches per **transaction**, not per terminal:
