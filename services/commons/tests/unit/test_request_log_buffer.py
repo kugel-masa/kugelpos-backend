@@ -460,16 +460,34 @@ class TestShutdownRacingAFlush:
         assert buffer._buffer == []
         assert buffer._pending_total() == 0
 
-    async def test_shutdown_arms_no_new_timer(self, written):
-        # A timer armed while the loop is closing is a task that never runs, and
-        # asyncio reports it as destroyed-while-pending.
+    async def test_the_final_write_arms_no_timer(self, written):
+        # A failed write asks for a retry by arming a timer. During shutdown that
+        # is a task on a loop about to close: it never runs, and asyncio reports
+        # it as destroyed-while-pending.
+        from pymongo.errors import ServerSelectionTimeoutError
+
+        written.fail_with = ServerSelectionTimeoutError("backend down")
         buffer = RequestLogBuffer(max_size=100, flush_interval=0.1)
 
         await buffer.add(_log())
         await buffer.shutdown()
-        buffer._keep_for_retry([("db_a", [{"n": 1}])])  # a failure during the final write
 
         assert buffer._timer_task is None, "shutdown scheduled a timer on a closing loop"
+
+    async def test_the_buffer_still_works_after_a_shutdown(self, written):
+        # shutdown means "flush everything now", and the suites use it that way -
+        # on a process-wide singleton. Holding the closing flag past the call
+        # would make the first shutdown the last flush the process performs, and
+        # every entry accepted afterwards would sit with no timer to write it.
+        buffer = RequestLogBuffer(max_size=100, flush_interval=0.2)
+
+        await buffer.add(_log(url="/before"))
+        await buffer.shutdown()
+        await buffer.add(_log(url="/after"))
+        await asyncio.sleep(0.8)
+
+        urls = {d["request_info"]["url"] for d in written}
+        assert "/after" in urls, f"the buffer stopped flushing after a shutdown: {sorted(urls)}"
 
 
 class TestAnEmptyBatchIsNeverOffered:
@@ -508,3 +526,39 @@ class TestAnEmptyBatchIsNeverOffered:
         await buffer._write({"db_a": [], "db_b": [{"n": 1}]})
 
         assert calls == [1], f"an empty batch reached insert_many: {calls}"
+
+
+class TestWhichFailuresAreWorthRepeating:
+    async def test_a_connection_failure_wrapped_by_the_db_helper_is_still_retried(self, written):
+        # get_db_async wraps everything it catches in a DatabaseException, so an
+        # unreachable backend can arrive with the ConnectionFailure only in
+        # __cause__. A classification that tested the exception in hand would
+        # turn every outage into permanent loss.
+        from pymongo.errors import ServerSelectionTimeoutError
+
+        wrapped = RuntimeError("Failed to get database")
+        wrapped.__cause__ = ServerSelectionTimeoutError("backend down")
+        written.fail_with = wrapped
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        await buffer.add(_log())
+        await buffer.add(_log())
+
+        assert buffer._pending_total() > 0, "a wrapped outage was treated as permanent"
+
+    async def test_a_failure_a_repeat_cannot_help_is_not_retried(self, written, caplog):
+        # A document the driver refuses to encode fails the same way every time.
+        # Holding it would keep the backlog against entries that could be written.
+        from bson.errors import InvalidDocument
+
+        written.fail_with = InvalidDocument("cannot encode object")
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        with caplog.at_level("ERROR"):
+            await buffer.add(_log())
+            await buffer.add(_log())
+
+        assert buffer._pending_total() == 0
+        assert any("lost" in r.message.lower() for r in caplog.records), (
+            "a permanent failure dropped the entries without saying so"
+        )

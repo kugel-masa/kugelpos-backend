@@ -56,6 +56,30 @@ logger = getLogger(__name__)
 MAX_PENDING_DOCS = 1000
 
 
+def _is_transient(error: BaseException) -> bool:
+    """Whether a failed write is worth repeating.
+
+    Walks the cause chain rather than testing the exception in hand:
+    ``get_db_async`` wraps everything it catches in a DatabaseException, so a
+    backend that is simply unreachable can arrive here with the ConnectionFailure
+    only in ``__cause__`` - and a classification that missed it would quietly
+    turn every outage into permanent loss.
+
+    Everything else is treated as permanent on purpose. The failures that are
+    not connection failures are the ones a repeat cannot help: a document the
+    driver refuses to encode, one over the BSON size limit, a duplicate key.
+    Retrying those forever would hold the backlog against the entries that could
+    still be written.
+    """
+    seen: set[int] = set()
+    while error is not None and id(error) not in seen:
+        if isinstance(error, ConnectionFailure):
+            return True
+        seen.add(id(error))
+        error = error.__cause__
+    return False
+
+
 class RequestLogBuffer:
     """Batches RequestLog documents and flushes them to MongoDB via insert_many."""
 
@@ -94,8 +118,21 @@ class RequestLogBuffer:
         await self._write(batch)
 
     async def shutdown(self) -> None:
-        """Flush remaining buffer on service shutdown."""
+        """Flush everything buffered, and wait for any flush already in flight.
+
+        Named for the service lifecycle, but it is also how the test suites force
+        a flush - and the buffer is a process-wide singleton. So `_closing` is
+        held only for the duration of this call: leaving it set would make the
+        first shutdown the last flush the process ever performs, and every entry
+        accepted afterwards would sit in the buffer with no timer to write it.
+        """
         self._closing = True
+        try:
+            await self._shutdown()
+        finally:
+            self._closing = False
+
+    async def _shutdown(self) -> None:
         async with self._lock:
             self._cancel_timer()
 
@@ -264,16 +301,6 @@ class RequestLogBuffer:
                     collection = database[settings.DB_COLLECTION_NAME_REQUEST_LOG]
                     await collection.insert_many(docs, ordered=False)
                     logger.debug(f"Flushed {len(docs)} request logs to {db_name}")
-                except ConnectionFailure as e:
-                    # The backend could not be reached, so the batch is worth
-                    # keeping: a restart or a failover ends, and the next flush
-                    # carries it.
-                    failed.append((db_name, docs))
-                    logger.error(
-                        f"Request log backend unreachable for {db_name}: {e}. "
-                        f"Kept {len(docs)} documents for the next flush.",
-                        exc_info=True,
-                    )
                 except BulkWriteError as e:
                     # The server answered and refused specific documents (a
                     # duplicate key, an oversized document). With ordered=False
@@ -286,10 +313,22 @@ class RequestLogBuffer:
                         exc_info=True,
                     )
                 except Exception as e:
-                    logger.error(
-                        f"Failed to flush {len(docs)} request logs to {db_name}: {e}",
-                        exc_info=True,
-                    )
+                    if _is_transient(e):
+                        # The backend could not be reached, so the batch is worth
+                        # keeping: a restart or a failover ends, and the next
+                        # flush carries it.
+                        failed.append((db_name, docs))
+                        logger.error(
+                            f"Request log backend unreachable for {db_name}: {e}. "
+                            f"Kept {len(docs)} documents for the next flush.",
+                            exc_info=True,
+                        )
+                    else:
+                        logger.error(
+                            f"Request log write to {db_name} failed for {len(docs)} documents "
+                            f"and cannot be repeated: {e}. Those entries are lost.",
+                            exc_info=True,
+                        )
                 attempted += 1
         except asyncio.CancelledError:
             # A size-triggered flush runs on the request task that filled the
