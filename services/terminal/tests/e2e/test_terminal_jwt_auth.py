@@ -8,6 +8,7 @@ Tests the complete JWT auth flow:
 - Backward compatibility with API key auth
 - Invalid credentials handling
 """
+
 import pytest
 import os
 from fastapi import status
@@ -220,3 +221,72 @@ async def test_terminal_jwt_auth_flow(http_client):
     print(f"Cleanup: terminal {terminal_id} deleted")
 
     print("All terminal JWT auth tests passed!")
+
+
+@pytest.mark.asyncio()
+async def test_a_jwt_request_is_attributed_in_the_request_log(http_client):
+    """The request log names the store and terminal of a JWT request (issue #181).
+
+    Here rather than in a lower tier because this is the only place the token
+    comes from the real issuer: the terminal service mints it from a stored
+    terminal, so the claims are whatever that document actually holds, not what a
+    fixture chose. Before #181 this row named no store, no terminal and no staff -
+    for the credential the fleet is migrating to.
+
+    It doubles as an end-to-end check of #180: nothing here reaches the buffer's
+    size trigger, so the row can only arrive by the idle flush.
+    """
+    import asyncio
+
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    tenant_id = os.environ.get("TENANT_ID")
+
+    login_data = {"username": "admin", "password": "admin", "client_id": tenant_id}
+    async with AsyncClient() as auth_client:
+        response = await auth_client.post(url=os.environ.get("TOKEN_URL"), data=login_data)
+    assert response.status_code == status.HTTP_200_OK
+    admin_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+
+    await http_client.post(
+        f"/api/v1/tenants/{tenant_id}/stores",
+        json={"store_code": "JWT2", "store_name": "JWT Log Store", "tags": ["JWT-Test"]},
+        headers=admin_header,
+    )
+    create_resp = await http_client.post(
+        "/api/v1/terminals",
+        json={"store_code": "JWT2", "terminal_no": 78, "description": "JWT Request Log Terminal"},
+        headers=admin_header,
+    )
+    assert create_resp.status_code == status.HTTP_201_CREATED, create_resp.text
+    created = create_resp.json().get("data")
+    terminal_id, api_key = created.get("terminalId"), created.get("apiKey")
+
+    try:
+        response = await http_client.post("/api/v1/auth/token", headers={"X-API-KEY": api_key})
+        assert response.status_code == status.HTTP_200_OK
+        terminal_jwt = response.json().get("data").get("access_token")
+
+        response = await http_client.get(
+            f"/api/v1/terminals/{terminal_id}", headers={"Authorization": f"Bearer {terminal_jwt}"}
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+        # The buffer flushes on 100 entries or 5s idle; only the timer can write
+        # a single request, which is the defect #180 fixed.
+        await asyncio.sleep(8)
+
+        client = AsyncIOMotorClient(os.environ.get("MONGODB_URI"))
+        db = client[f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"]
+        row = await db["log_request"].find_one(
+            {"request_info.url": {"$regex": terminal_id}}, sort=[("request_info.accept_time", -1)]
+        )
+
+        assert row is not None, "the JWT request never reached the request log"
+        info = row["terminal_info"]
+        assert (info["store_code"], info["terminal_no"]) == ("JWT2", 78), (
+            f"a JWT request recorded no terminal attribution: {info}"
+        )
+        print(f"Request log attribution: store={info['store_code']} terminal={info['terminal_no']}")
+    finally:
+        await http_client.delete(f"/api/v1/terminals/{terminal_id}", headers=admin_header)
