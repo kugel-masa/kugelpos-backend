@@ -216,3 +216,200 @@ class TestAFailedWrite:
         offered = entries * 2
         assert buffer._pending_total() < offered, "the backlog kept everything; nothing was dropped"
         assert buffer._pending_total() <= buffer_module.MAX_PENDING_DOCS
+
+
+class TestOneTargetDoesNotStarveAnother:
+    """Every entry is written to the commons AND the tenant database."""
+
+    async def test_the_retry_budget_is_shared_between_databases(self, written):
+        from pymongo.errors import ServerSelectionTimeoutError
+
+        # An outage fails both targets at once. A first-come budget let commons
+        # take the whole allowance and dropped 100% of the per-tenant trail -
+        # which is the copy an auditor reads.
+        written.fail_with = ServerSelectionTimeoutError("backend down")
+        buffer = RequestLogBuffer(max_size=100, flush_interval=60.0)
+
+        for _ in range(1200):
+            await buffer.add(_log(tenant_id="T0001"))
+
+        per_db = {name: len(docs) for name, docs in buffer._pending.items()}
+        assert len(per_db) == 2, f"expected both targets to be held back: {per_db}"
+        assert all(n > 0 for n in per_db.values()), f"one target was starved: {per_db}"
+
+
+class TestCancellationMidWrite:
+    """A size-triggered flush runs on the request task that filled the buffer."""
+
+    async def test_a_cancelled_flush_keeps_the_batch(self, written, monkeypatch):
+        # The batch belongs to every request in the window, not to the client
+        # whose connection dropped.
+        buffer = RequestLogBuffer(max_size=3, flush_interval=60.0)
+
+        async def add_until_flush():
+            for _ in range(3):
+                await buffer.add(_log())
+
+        task = asyncio.create_task(add_until_flush())
+        await asyncio.sleep(0.005)  # inside the write, which sleeps 0.01
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert written == [], "precondition: the write should not have completed"
+        assert buffer._pending_total() > 0, "the cancelled flush dropped the batch"
+
+    async def test_the_kept_batch_is_written_by_the_next_flush(self, written):
+        buffer = RequestLogBuffer(max_size=3, flush_interval=60.0)
+
+        async def add_until_flush():
+            for _ in range(3):
+                await buffer.add(_log(url="/cancelled"))
+
+        task = asyncio.create_task(add_until_flush())
+        await asyncio.sleep(0.005)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        for _ in range(3):
+            await buffer.add(_log(url="/later"))
+
+        urls = {d["request_info"]["url"] for d in written}
+        assert "/cancelled" in urls, f"the cancelled batch never reached the database: {sorted(urls)}"
+
+
+class TestTheFlushDoesNotHoldUpRequests:
+    async def test_the_lock_is_free_while_the_write_is_in_flight(self, written, monkeypatch):
+        """Holding the lock across the write would make the audit log stall the
+        requests it audits: an unreachable backend costs a server-selection
+        timeout per flush, and every concurrent `add` would wait behind it."""
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        class _SlowCollection:
+            async def insert_many(self, docs, ordered=True):
+                started.set()
+                await release.wait()
+                written.extend(docs)
+
+        class _SlowDb:
+            def __getitem__(self, _name):
+                return _SlowCollection()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _SlowDb()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        flusher = asyncio.create_task(_fill(buffer, 2))
+        await asyncio.wait_for(started.wait(), timeout=1.0)
+
+        # The write is in flight; another request must not be blocked by it.
+        await asyncio.wait_for(buffer.add(_log(url="/concurrent")), timeout=0.5)
+
+        release.set()
+        await flusher
+        assert buffer._buffer, "the concurrent entry never made it into the buffer"
+
+
+async def _fill(buffer, n):
+    for _ in range(n):
+        await buffer.add(_log())
+
+
+class TestTheBacklogUnderAProlongedOutage:
+    async def test_the_bound_holds_across_repeated_failures(self, written):
+        from pymongo.errors import ServerSelectionTimeoutError
+
+        # `max(1, ...)` as a share floor looks harmless and leaks a document per
+        # database per flush for as long as the backend stays down.
+        written.fail_with = ServerSelectionTimeoutError("backend down")
+        buffer = RequestLogBuffer(max_size=10, flush_interval=60.0)
+
+        for _ in range(1500):  # the bound is reached after ~100 flushes
+            await buffer.add(_log())
+
+        assert buffer._pending_total() <= buffer_module.MAX_PENDING_DOCS, (
+            f"the backlog grew past its bound: {buffer._pending_total()}"
+        )
+
+    async def test_a_full_backlog_keeps_nothing_rather_than_everything(self, written):
+        from pymongo.errors import ServerSelectionTimeoutError
+
+        # docs[-0:] is the whole list; a share of zero has to mean zero.
+        written.fail_with = ServerSelectionTimeoutError("backend down")
+        buffer = RequestLogBuffer(max_size=10, flush_interval=60.0)
+
+        for _ in range(1500):
+            await buffer.add(_log())
+        before = buffer._pending_total()
+        for _ in range(100):
+            await buffer.add(_log())
+
+        assert buffer._pending_total() <= max(before, buffer_module.MAX_PENDING_DOCS)
+
+
+class TestATimerIsAlwaysArmedForWaitingEntries:
+    async def test_an_entry_added_during_a_write_still_gets_flushed(self, written, monkeypatch):
+        """Leaving the timer reference set across the write is how a buffer ends
+        up holding entries with nothing scheduled to flush them: the concurrent
+        `add` sees a task that is not done and skips arming, and the timer that
+        is already on its way out then clears the reference."""
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        class _SlowCollection:
+            async def insert_many(self, docs, ordered=True):
+                started.set()
+                await release.wait()
+                written.extend(docs)
+
+        class _SlowDb:
+            def __getitem__(self, _name):
+                return _SlowCollection()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _SlowDb()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=100, flush_interval=0.2)
+
+        await buffer.add(_log(url="/first"))
+        await asyncio.wait_for(started.wait(), timeout=1.0)  # the timer flush is in flight
+        await buffer.add(_log(url="/second"))  # arrives while the write is in flight
+        release.set()
+
+        await asyncio.sleep(1.0)  # room for another whole timer cycle
+
+        urls = {d["request_info"]["url"] for d in written}
+        assert "/second" in urls, f"the entry added during the write was never flushed: {sorted(urls)}"
+
+
+class TestTheBudgetUnderConcurrentFlushes:
+    """Writes run outside the lock, so two flushes can be in flight at once.
+
+    In the ordinary path the backlog is drained into the batch before the write,
+    so `_pending` is empty when the retry decision is made and the budget is the
+    whole allowance. Two overlapping flushes are the case where it is not - and
+    where `docs[-share:]` with a share of zero would keep the entire batch
+    instead of nothing, turning a full backlog into an unbounded one.
+    """
+
+    async def test_a_second_flush_cannot_push_the_backlog_past_the_bound(self, written):
+        buffer = RequestLogBuffer(max_size=10, flush_interval=60.0)
+        batch = [{"n": i} for i in range(800)]
+
+        buffer._keep_for_retry([("db_a", list(batch)), ("db_b", list(batch))])
+        first = buffer._pending_total()
+        # A flush that overlapped the first one now reports its own failure while
+        # the backlog is already populated.
+        buffer._keep_for_retry([("db_a", list(batch)), ("db_b", list(batch))])
+
+        assert first <= buffer_module.MAX_PENDING_DOCS
+        assert buffer._pending_total() <= buffer_module.MAX_PENDING_DOCS, (
+            f"a concurrent flush pushed the backlog to {buffer._pending_total()}"
+        )

@@ -36,6 +36,7 @@ stating because neither is obvious from the code alone:
   the batch is kept; documents the server actively refused are not, and
   repeating them just repeats the refusal.
 """
+
 import asyncio
 from logging import getLogger
 from typing import List
@@ -66,22 +67,31 @@ class RequestLogBuffer:
         self._lock = asyncio.Lock()
         # Documents whose write failed for a reason a retry could fix, per target
         # database, carried into the next flush. Bounded by MAX_PENDING_DOCS.
+        #
+        # Mutated without the lock from _write, which runs outside it. That is
+        # safe because every mutation here is a plain dict/list operation with no
+        # await inside it, so it cannot interleave with another one; only the
+        # relative order of two concurrent flushes is unspecified, and these are
+        # timestamped audit records rather than a sequence.
         self._pending: dict[str, list[dict]] = {}
 
     async def add(self, request_log: RequestLog) -> None:
         """Add a request log to the buffer. Flushes when buffer is full."""
         async with self._lock:
             self._buffer.append(request_log)
-            if len(self._buffer) >= self._max_size:
-                await self._flush_unlocked()
-            else:
+            if len(self._buffer) < self._max_size:
                 self._arm_timer()
+                return
+            batch = self._take_batch()
+        # Outside the lock on purpose: see _write.
+        await self._write(batch)
 
     async def shutdown(self) -> None:
         """Flush remaining buffer on service shutdown."""
         async with self._lock:
             self._cancel_timer()
-            await self._flush_unlocked()
+            batch = self._take_batch()
+        await self._write(batch)
 
     def _arm_timer(self) -> None:
         """Start the age timer if one is not already running.
@@ -114,47 +124,32 @@ class RequestLogBuffer:
         try:
             await asyncio.sleep(self._flush_interval)
             async with self._lock:
-                await self._flush_unlocked()
+                batch = self._take_batch()
+            await self._write(batch)
         except asyncio.CancelledError:
             pass
         finally:
             if self._timer_task is asyncio.current_task():
                 self._timer_task = None
 
-    def _pending_total(self) -> int:
-        """Documents currently held back for a retry, across all databases."""
-        return sum(len(docs) for docs in self._pending.values())
+    def _take_batch(self) -> dict[str, list[dict]]:
+        """Empty the buffer into per-database batches. Call with the lock held.
 
-    def _keep_for_retry(self, db_name: str, docs: list[dict]) -> None:
-        """Hold a failed batch for the next flush, within MAX_PENDING_DOCS."""
-        room = MAX_PENDING_DOCS - self._pending_total()
-        if len(docs) > room:
-            dropped = len(docs) - max(room, 0)
-            logger.error(
-                f"Request log retry backlog is full ({MAX_PENDING_DOCS} documents); "
-                f"dropping {dropped} of {len(docs)} entries for {db_name}. "
-                "The audit trail has a hole for this window."
-            )
-            if room <= 0:
-                return
-            docs = docs[-room:]  # keep the most recent; see MAX_PENDING_DOCS
-        self._pending.setdefault(db_name, []).extend(docs)
-
-    async def _flush_unlocked(self) -> None:
-        """Write buffered logs to MongoDB. Must be called with _lock held."""
-        if not self._buffer and not self._pending:
-            return
-
-        to_write = self._buffer
-        self._buffer = []
+        Clears the timer reference here rather than after the write, so that an
+        ``add`` arriving while the write is in flight sees no armed timer and
+        arms a fresh one. Leaving the reference set across the write would let a
+        concurrent add skip arming - and then the timer that is already on its
+        way out clears it - which is how a buffer ends up holding entries with
+        nothing scheduled to flush them.
+        """
         self._cancel_timer()
 
         # Anything held back from a previous flush goes out first, ahead of the
         # entries buffered since.
-        db_docs: dict[str, list[dict]] = {db_name: docs for db_name, docs in self._pending.items()}
+        db_docs: dict[str, list[dict]] = self._pending
         self._pending = {}
 
-        # Group by target database
+        to_write, self._buffer = self._buffer, []
         for log in to_write:
             tenant_id = log.tenant_id
             targets = [f"{settings.DB_NAME_PREFIX}_commons"]
@@ -165,40 +160,109 @@ class RequestLogBuffer:
                     db_docs[db_name] = []
                 db_docs[db_name].append(log.model_dump())
 
-        # Batch insert per database
-        for db_name, docs in db_docs.items():
-            try:
-                database = await db_helper.get_db_async(db_name)
-                collection = database[settings.DB_COLLECTION_NAME_REQUEST_LOG]
-                await collection.insert_many(docs, ordered=False)
-                logger.debug(f"Flushed {len(docs)} request logs to {db_name}")
-            except ConnectionFailure as e:
-                # The backend could not be reached, so the batch is worth keeping:
-                # a restart or a failover ends, and the next flush carries it.
-                # Retrying a batch a network error interrupted mid-write can
-                # duplicate documents - at-least-once is the right trade for an
-                # audit trail against losing the window entirely.
-                self._keep_for_retry(db_name, docs)
+        return db_docs
+
+    def _pending_total(self) -> int:
+        """Documents currently held back for a retry, across all databases."""
+        return sum(len(docs) for docs in self._pending.values())
+
+    def _keep_for_retry(self, failed: list[tuple[str, list[dict]]]) -> None:
+        """Hold failed batches for the next flush, within MAX_PENDING_DOCS.
+
+        The budget is shared out across the failing databases rather than handed
+        to whichever one the loop reached first. An outage fails every target at
+        once, and every entry goes to both the commons and the tenant database -
+        so a first-come rule let commons take the whole allowance and dropped
+        100% of the per-tenant trail, which is the copy an auditor reads.
+        """
+        if not failed:
+            return
+        budget = max(0, MAX_PENDING_DOCS - self._pending_total())
+        share = budget // len(failed)
+        for db_name, docs in failed:
+            # `docs[-share:]` with share == 0 is the WHOLE list, not an empty one,
+            # so a full backlog has to be spelled out rather than fall out of the
+            # slice - and `max(1, ...)` would leak a document per database per
+            # flush for as long as the outage lasts.
+            keep = docs[-share:] if share > 0 else []  # most recent; see MAX_PENDING_DOCS
+            if len(keep) < len(docs):
                 logger.error(
-                    f"Request log backend unreachable for {db_name}: {e}. "
-                    f"Kept {len(docs)} documents for the next flush.",
-                    exc_info=True,
+                    f"Request log retry backlog is full ({MAX_PENDING_DOCS} documents); "
+                    f"dropping {len(docs) - len(keep)} of {len(docs)} documents for {db_name}. "
+                    "The audit trail has a hole for this window."
                 )
-            except BulkWriteError as e:
-                # The server answered and refused specific documents (a duplicate
-                # key, an oversized document). With ordered=False the rest were
-                # written, and repeating the batch would only repeat the refusal.
-                failed = len(e.details.get("writeErrors", [])) if isinstance(e.details, dict) else len(docs)
-                logger.error(
-                    f"Request log write to {db_name} refused {failed} of {len(docs)} documents "
-                    f"(the rest were written): {e}. Not retried; those entries are lost.",
-                    exc_info=True,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to flush {len(docs)} request logs to {db_name}: {e}",
-                    exc_info=True,
-                )
+            self._pending.setdefault(db_name, []).extend(keep)
+        # Traffic may stop before the next add, so the retry needs its own wake-up.
+        self._arm_timer()
+
+    async def _write(self, db_docs: dict[str, list[dict]]) -> None:
+        """Write per-database batches. Runs OUTSIDE the lock.
+
+        Outside on purpose: this awaits MongoDB, and holding the lock across that
+        would make every concurrent request wait on the audit log it is only
+        supposed to leave a note in. With an unreachable backend that is a
+        server-selection timeout per flush, so the logging of a request would
+        stall the requests - the buffer taking down the service it audits.
+
+        Retries are safe to repeat: ``insert_many`` stamps ``_id`` into the
+        documents in place, so a document written before an interruption is
+        refused as a duplicate on the way back rather than stored twice.
+        """
+        if not db_docs:
+            return
+
+        items = list(db_docs.items())
+        failed: list[tuple[str, list[dict]]] = []
+        attempted = 0
+        try:
+            for db_name, docs in items:
+                try:
+                    database = await db_helper.get_db_async(db_name)
+                    collection = database[settings.DB_COLLECTION_NAME_REQUEST_LOG]
+                    await collection.insert_many(docs, ordered=False)
+                    logger.debug(f"Flushed {len(docs)} request logs to {db_name}")
+                except ConnectionFailure as e:
+                    # The backend could not be reached, so the batch is worth
+                    # keeping: a restart or a failover ends, and the next flush
+                    # carries it.
+                    failed.append((db_name, docs))
+                    logger.error(
+                        f"Request log backend unreachable for {db_name}: {e}. "
+                        f"Kept {len(docs)} documents for the next flush.",
+                        exc_info=True,
+                    )
+                except BulkWriteError as e:
+                    # The server answered and refused specific documents (a
+                    # duplicate key, an oversized document). With ordered=False
+                    # the rest were written, and repeating the batch would only
+                    # repeat the refusal.
+                    refused = len(e.details.get("writeErrors", [])) if isinstance(e.details, dict) else len(docs)
+                    logger.error(
+                        f"Request log write to {db_name} refused {refused} of {len(docs)} documents "
+                        f"(the rest were written): {e}. Not retried.",
+                        exc_info=True,
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to flush {len(docs)} request logs to {db_name}: {e}",
+                        exc_info=True,
+                    )
+                attempted += 1
+        except asyncio.CancelledError:
+            # A size-triggered flush runs on the request task that filled the
+            # buffer, so a client disconnect cancels it - and the batch it is
+            # carrying belongs to every other request in the window, not to that
+            # client. Keep what was not written, then let the cancellation stand.
+            failed.append((items[attempted][0], items[attempted][1]))
+            failed.extend(items[attempted + 1 :])
+            self._keep_for_retry(failed)
+            logger.error(
+                f"Request log flush was cancelled mid-write; kept {sum(len(d) for _, d in failed)} "
+                "documents for the next flush."
+            )
+            raise
+
+        self._keep_for_retry(failed)
 
 
 # Module-level singleton
@@ -210,11 +274,13 @@ def get_request_log_buffer() -> RequestLogBuffer:
 
     Configuration via environment variables:
         REQUEST_LOG_BUFFER_SIZE: Max buffer size before flush (default: 100)
-        REQUEST_LOG_FLUSH_INTERVAL: Idle flush interval in seconds (default: 5.0)
+        REQUEST_LOG_FLUSH_INTERVAL: Age of the oldest entry before a flush, in
+            seconds (default: 5.0)
     """
     global _buffer
     if _buffer is None:
         import os
+
         max_size = int(os.environ.get("REQUEST_LOG_BUFFER_SIZE", "100"))
         flush_interval = float(os.environ.get("REQUEST_LOG_FLUSH_INTERVAL", "5.0"))
         _buffer = RequestLogBuffer(max_size=max_size, flush_interval=flush_interval)
