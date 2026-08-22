@@ -68,6 +68,7 @@ async def carts_created():
     db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}")
     if created:
         await db["log_tran"].delete_many({"cart_id": {"$in": created}})
+        await db["log_cart_restore"].delete_many({"cart_id": {"$in": created}})
 
 
 async def _cart_ready_to_bill(http_client, terminal_id, header, created=None):
@@ -254,3 +255,91 @@ async def test_the_recorded_transaction_names_its_cart(http_client, api_header, 
     rows = await _tranlogs_for(cart_id)
     assert len(rows) == 1
     assert rows[0]["cart_id"] == cart_id
+
+
+async def _divergence_rows(cart_id):
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}")
+    return (
+        await db["log_cart_restore"].find({"cart_id": cart_id, "result": "finalize_repeat_diverged"}).to_list(length=10)
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_repeat_carrying_other_numbers_is_written_down(
+    http_client, api_header, opened_terminal_id, carts_created
+):
+    """Issue #190, through the service rather than through the helper.
+
+    The unit tests call the reporter directly, so they would all pass with the
+    calls to it removed. This is what says it is wired: the audit row has to come
+    out of a real finalize.
+    """
+    cart_id, paying = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header, carts_created)
+    url = f"/api/v1/carts/{cart_id}/bill?terminal_id={opened_terminal_id}"
+
+    first = await http_client.post(url, json=_finalize(paying, SYNTHETIC_SEQ_BASE + 8, 68), headers=api_header)
+    assert first.status_code == status.HTTP_200_OK, first.text
+    repeat = await http_client.post(url, json=_finalize(paying, SYNTHETIC_SEQ_BASE + 9, 69), headers=api_header)
+    assert repeat.status_code == status.HTTP_200_OK, repeat.text
+
+    rows = await _divergence_rows(cart_id)
+    assert len(rows) == 1, f"the divergence left no audit row: {rows}"
+    reason = rows[0]["reject_reason"]
+    assert "receipt_counter" in reason and "69" in reason and "68" in reason, reason
+    assert rows[0]["diverged"] is True
+
+
+@pytest.mark.asyncio
+async def test_an_identical_repeat_is_not_written_down(http_client, api_header, opened_terminal_id, carts_created):
+    """The ordinary retry must not fill the trail it is meant to keep readable."""
+    cart_id, paying = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header, carts_created)
+    url = f"/api/v1/carts/{cart_id}/bill?terminal_id={opened_terminal_id}"
+    request = _finalize(paying, SYNTHETIC_SEQ_BASE + 10, 70)
+
+    await http_client.post(url, json=request, headers=api_header)
+    await http_client.post(url, json=request, headers=api_header)
+
+    assert await _divergence_rows(cart_id) == []
+
+
+@pytest.mark.asyncio
+async def test_a_server_numbered_race_is_not_written_down(http_client, api_header, opened_terminal_id, carts_created):
+    """Two simultaneous bills with no snapshot, where the SERVER issues the numbers.
+
+    They differ by construction — the counter hands out 50 and 49 — and that says
+    nothing about a terminal. Measured before the guard: one false row per race.
+    """
+    import asyncio
+
+    response = await http_client.post(
+        f"/api/v1/carts?terminal_id={opened_terminal_id}",
+        json={"transaction_type": 101, "user_id": "99", "user_name": "Server numbered"},
+        headers=api_header,
+    )
+    cart_id = response.json()["data"]["cartId"]
+    carts_created.append(cart_id)
+    await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={opened_terminal_id}",
+        json=[{"itemCode": "49-01", "quantity": 1}],
+        headers=api_header,
+    )
+    response = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={opened_terminal_id}", json={}, headers=api_header
+    )
+    await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={opened_terminal_id}",
+        json=[{"paymentCode": "01", "amount": int(response.json()["data"]["balanceAmount"])}],
+        headers=api_header,
+    )
+
+    url = f"/api/v1/carts/{cart_id}/bill?terminal_id={opened_terminal_id}"
+    first, second = await asyncio.gather(
+        http_client.post(url, headers=api_header), http_client.post(url, headers=api_header)
+    )
+
+    assert first.status_code == status.HTTP_200_OK, first.text
+    assert second.status_code == status.HTTP_200_OK, second.text
+    assert len(await _tranlogs_for(cart_id)) == 1
+    assert await _divergence_rows(cart_id) == [], "the server's own numbering was filed as a terminal divergence"

@@ -21,6 +21,7 @@ from kugel_common.utils.slack_notifier import send_warning_notification
 from kugel_common.exceptions import DuplicateKeyException
 
 from app.models.repositories.tranlog_repository import TranlogRepository
+from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
 from app.models.repositories.tranlog_delivery_status_repository import (
     TranlogDeliveryStatusRepository,
 )
@@ -75,6 +76,7 @@ class TranService:
         payment_master_repo: PaymentMasterWebRepository,
         transaction_status_repo: TransactionStatusRepository,
         store_info_repo: StoreInfoWebRepository = None,
+        cart_restore_log_repo: CartRestoreLogRepository = None,
     ):
         """
         Initialize the transaction service with required repositories and information.
@@ -91,6 +93,10 @@ class TranService:
         self.tranlog_repository = tranlog_repo
         self.tranlog_delivery_status_repo = tranlog_delivery_status_repo
         self.settings_master_repo = settings_master_repo
+        # Where a finalize whose carried numbers do not match the recorded ones
+        # is written down (issue #190). Optional: a caller that does not supply
+        # it still gets the log line.
+        self.cart_restore_log_repo = cart_restore_log_repo
         self.payment_master_repo = payment_master_repo
         # Used to name the store a return is booked into: a return may reference an
         # original from another store (issue #156), so the new transaction must be
@@ -185,6 +191,13 @@ class TranService:
         # downstream cart_id dedupe converges to one record. Without a carried
         # time (legacy / no-snapshot path) the server-side numbering is used.
         carried = cart.transaction_datetime is not None
+        # A repeat is reported once. The insert path can report and then fail to
+        # commit, which lands in the recovery below - where the tranlog in hand
+        # is by then the recorded one, so a second report finds no divergence and
+        # says the repeat carried the same numbers, directly after a line saying
+        # it carried different ones. The audit row is not at risk; the
+        # contradiction in the log is, and that is what a reader works from.
+        reported = False
         if carried:
             # (business_counter, seq) composite: transaction_no carries seq.
             tranlog.transaction_no = cart.seq
@@ -318,7 +331,13 @@ class TranService:
                 payload=event_message,
                 services=event_distinations,
             )
+            submitted = tranlog
             tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
+            if tranlog is not submitted:
+                # Not a fresh insert: the repository returned a tranlog that was
+                # already there, so this finalize was a repeat (issue #152).
+                await self.__report_finalize_repeat_async(submitted, tranlog, carried)
+                reported = True
             await self.tranlog_repository.commit_transaction()
 
         except FinalizeConflictException:
@@ -339,6 +358,9 @@ class TranService:
             # of a 500. The winner already published, so we do NOT publish again.
             existing = await self.__recover_concurrent_finalize(tranlog)
             if existing is not None:
+                if not reported:
+                    await self.__report_finalize_repeat_async(tranlog, existing, carried)
+                    reported = True
                 return self.__apply_tranlog_to_cart(cart, existing)
             # The duplicate was on some other unique index (not the cart_id race) —
             # surface it as a real failure.
@@ -356,11 +378,13 @@ class TranService:
                 # Deliberately terse: the exception carries the whole tranlog, and
                 # one race must not put a full cart document in the log (issue #155).
                 logger.warning(
-                    "Finalize failed but the same finalize is already persisted "
-                    "(cart_id=%s, %s); returning it",
+                    "Finalize failed but the same finalize is already persisted (cart_id=%s, %s); returning it",
                     tranlog.cart_id,
                     type(e).__name__,
                 )
+                if not reported:
+                    await self.__report_finalize_repeat_async(tranlog, existing, carried)
+                    reported = True
                 return self.__apply_tranlog_to_cart(cart, existing)
             message = f"Error creating tranlog: {e}"
             raise InternalErrorException(message, logger) from e
@@ -509,9 +533,7 @@ class TranService:
             )
             raise VoidOutOfSessionException(message, logger)
 
-    async def _resolve_carried_finalize(
-        self, finalize_envelope: dict | None
-    ) -> tuple[str, int, int, str]:
+    async def _resolve_carried_finalize(self, finalize_envelope: dict | None) -> tuple[str, int, int, str]:
         """
         Resolve ``(cart_id, transaction_no, receipt_no, generate_date_time,
         receipt_counter)`` for a
@@ -776,12 +798,14 @@ class TranService:
         if tran.transaction_type == TransactionType.VoidReturn.value:
             # The origin contains the return transaction info
             # We need to find the original sale transaction that was refunded
-            return_tran = await self.tranlog_repository.get_one_async({
-                "tenant_id": tran.origin.tenant_id,
-                "store_code": tran.origin.store_code,
-                "terminal_no": tran.origin.terminal_no,
-                "transaction_no": tran.origin.transaction_no,
-            })
+            return_tran = await self.tranlog_repository.get_one_async(
+                {
+                    "tenant_id": tran.origin.tenant_id,
+                    "store_code": tran.origin.store_code,
+                    "terminal_no": tran.origin.terminal_no,
+                    "transaction_no": tran.origin.transaction_no,
+                }
+            )
 
             if return_tran and return_tran.origin:
                 # Reset the refund status on the original sale transaction
@@ -999,6 +1023,98 @@ class TranService:
 
         return tran
 
+    # The finalize context a terminal carries (issue #156). What a repeat claims
+    # for these is the whole question issue #190 is about.
+    CARRIED_FINALIZE_FIELDS = ("transaction_no", "receipt_no", "receipt_counter", "generate_date_time")
+
+    @staticmethod
+    def __same_instant(asked, holds) -> bool:
+        """Whether two stamped times are the same moment, however they are written.
+
+        The carried value is validated as ISO-8601 but not normalised, so the same
+        instant can arrive as `...+00:00` or `...Z`, with or without microseconds.
+        Comparing the strings would report those as a terminal that had moved on.
+        """
+        if asked == holds:
+            return True
+        if not isinstance(asked, str) or not isinstance(holds, str):
+            return False
+        try:
+            return datetime.fromisoformat(asked.replace("Z", "+00:00")) == datetime.fromisoformat(
+                holds.replace("Z", "+00:00")
+            )
+        except (ValueError, TypeError):
+            return False
+
+    def __finalize_divergence(self, carried: BaseTransaction, recorded: BaseTransaction) -> dict:
+        """What this finalize asked to record that differs from what is recorded."""
+        divergence = {}
+        for field in self.CARRIED_FINALIZE_FIELDS:
+            asked, holds = getattr(carried, field, None), getattr(recorded, field, None)
+            if field == "generate_date_time" and self.__same_instant(asked, holds):
+                continue
+            if asked != holds:
+                divergence[field] = {"carried": asked, "recorded": holds}
+        return divergence
+
+    async def __report_finalize_repeat_async(
+        self, carried: BaseTransaction, recorded: BaseTransaction, client_numbered: bool = True
+    ) -> None:
+        """
+        Write down that a finalize repeated, and whether it repeated itself (issue #190).
+
+        A terminal repeats because it did not hear the first answer, and it is
+        answered with the transaction that exists - which is right, and which the
+        log already said. What it did not say is whether the repeat carried the
+        SAME numbers.
+
+        It usually does: a terminal that heard nothing has not advanced. When it
+        does not, the terminal's running receipt counter has moved past what was
+        recorded, and that means one of three things - it printed a receipt whose
+        number is in no transaction log, or it advanced without printing (a gap,
+        which issue #166 allows), or a different transaction reused the cart_id.
+        The first is worth chasing and the second is not, and until now they left
+        the same single line behind.
+        """
+        # Only when the terminal supplied the numbers. On the server-numbered
+        # path the numbers in hand were issued by this request from the server's
+        # own counter and clock, so a race against a concurrent finalize differs
+        # by construction - measured at "carried 50 vs recorded 49" for two
+        # simultaneous bills - and says nothing at all about the terminal. Filing
+        # that would bury the rows that do mean something.
+        divergence = self.__finalize_divergence(carried, recorded) if client_numbered else {}
+        if not divergence:
+            logger.warning(
+                "Finalize repeated for cart_id=%s carrying the same numbers; "
+                "answered with the transaction already recorded",
+                recorded.cart_id,
+            )
+            return
+
+        logger.error(
+            "Finalize repeated for cart_id=%s carrying DIFFERENT numbers (issue #190): %s. "
+            "The terminal has moved past what is recorded; a printed receipt may carry a "
+            "number that appears in no transaction log.",
+            recorded.cart_id,
+            divergence,
+        )
+        if self.cart_restore_log_repo is None:
+            return
+        try:
+            await self.cart_restore_log_repo.add_record_async(
+                result="finalize_repeat_diverged",
+                cart_id=recorded.cart_id,
+                diverged=True,
+                reject_reason=", ".join(
+                    f"{field}: carried {values['carried']} vs recorded {values['recorded']}"
+                    for field, values in divergence.items()
+                ),
+            )
+        except Exception as e:
+            # The transaction is recorded and answered; losing the note about it
+            # must not turn that into a failure.
+            logger.error(f"Could not record the finalize divergence for cart_id={recorded.cart_id}: {e}")
+
     def __apply_tranlog_to_cart(self, cart: CartDocument, tranlog: BaseTransaction) -> BaseTransaction:
         """
         Copy the finalized transaction's identity onto the cart the caller holds.
@@ -1050,8 +1166,7 @@ class TranService:
         existing = await self.tranlog_repository.get_existing_finalize_async(tranlog)
         if existing is not None:
             logger.warning(
-                f"Concurrent finalize race for cart_id={tranlog.cart_id}; "
-                "returning the winning tranlog idempotently"
+                f"Concurrent finalize race for cart_id={tranlog.cart_id}; returning the winning tranlog idempotently"
             )
         return existing
 
@@ -1112,8 +1227,7 @@ class TranService:
             # it the derived number would leave the configured range entirely, so
             # prefer whatever the terminal printed and say so loudly.
             logger.error(
-                "Receipt number range unavailable (counter=%s); "
-                "%s. Check master-data reachability.",
+                "Receipt number range unavailable (counter=%s); %s. Check master-data reachability.",
                 receipt_counter,
                 (
                     "recording the number the terminal printed"

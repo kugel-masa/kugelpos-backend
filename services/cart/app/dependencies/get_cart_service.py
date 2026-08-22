@@ -169,7 +169,8 @@ async def __get_cart_service_async(
     tranlog_repo = TranlogRepository(db=db, terminal_info=terminal_info)
     await tranlog_repo.initialize()
     tranlog_delivery_status_repo = TranlogDeliveryStatusRepository(
-        db=db_common, terminal_info=terminal_info  # use common db
+        db=db_common,
+        terminal_info=terminal_info,  # use common db
     )
     await tranlog_delivery_status_repo.initialize()
     transaction_status_repo = TransactionStatusRepository(db=db, terminal_info=terminal_info)
@@ -203,6 +204,7 @@ async def __get_cart_service_async(
         payment_master_repo=payment_master_repo,
         transaction_status_repo=transaction_status_repo,
         store_info_repo=store_info_repo,
+        cart_restore_log_repo=cart_restore_log_repo,
     )
 
     return CartService(
