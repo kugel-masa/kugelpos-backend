@@ -191,6 +191,10 @@ class TranService:
         # downstream cart_id dedupe converges to one record. Without a carried
         # time (legacy / no-snapshot path) the server-side numbering is used.
         carried = cart.transaction_datetime is not None
+        # A repeat is reported once. The insert path can report and then fail to
+        # commit, which lands in the recovery below - and reporting the same
+        # repeat twice doubles every row the audit query is meant to count.
+        reported = False
         if carried:
             # (business_counter, seq) composite: transaction_no carries seq.
             tranlog.transaction_no = cart.seq
@@ -324,12 +328,13 @@ class TranService:
                 payload=event_message,
                 services=event_distinations,
             )
-            carried = tranlog
+            submitted = tranlog
             tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
-            if tranlog is not carried:
+            if tranlog is not submitted:
                 # Not a fresh insert: the repository returned a tranlog that was
                 # already there, so this finalize was a repeat (issue #152).
-                await self.__report_finalize_repeat_async(carried, tranlog)
+                await self.__report_finalize_repeat_async(submitted, tranlog, carried)
+                reported = True
             await self.tranlog_repository.commit_transaction()
 
         except FinalizeConflictException:
@@ -350,7 +355,9 @@ class TranService:
             # of a 500. The winner already published, so we do NOT publish again.
             existing = await self.__recover_concurrent_finalize(tranlog)
             if existing is not None:
-                await self.__report_finalize_repeat_async(tranlog, existing)
+                if not reported:
+                    await self.__report_finalize_repeat_async(tranlog, existing, carried)
+                    reported = True
                 return self.__apply_tranlog_to_cart(cart, existing)
             # The duplicate was on some other unique index (not the cart_id race) —
             # surface it as a real failure.
@@ -372,7 +379,9 @@ class TranService:
                     tranlog.cart_id,
                     type(e).__name__,
                 )
-                await self.__report_finalize_repeat_async(tranlog, existing)
+                if not reported:
+                    await self.__report_finalize_repeat_async(tranlog, existing, carried)
+                    reported = True
                 return self.__apply_tranlog_to_cart(cart, existing)
             message = f"Error creating tranlog: {e}"
             raise InternalErrorException(message, logger) from e
@@ -1015,16 +1024,39 @@ class TranService:
     # for these is the whole question issue #190 is about.
     CARRIED_FINALIZE_FIELDS = ("transaction_no", "receipt_no", "receipt_counter", "generate_date_time")
 
+    @staticmethod
+    def __same_instant(asked, holds) -> bool:
+        """Whether two stamped times are the same moment, however they are written.
+
+        The carried value is validated as ISO-8601 but not normalised, so the same
+        instant can arrive as `...+00:00` or `...Z`, with or without microseconds.
+        Comparing the strings would report those as a terminal that had moved on.
+        """
+        if asked == holds:
+            return True
+        if not isinstance(asked, str) or not isinstance(holds, str):
+            return False
+        try:
+            return datetime.fromisoformat(asked.replace("Z", "+00:00")) == datetime.fromisoformat(
+                holds.replace("Z", "+00:00")
+            )
+        except (ValueError, TypeError):
+            return False
+
     def __finalize_divergence(self, carried: BaseTransaction, recorded: BaseTransaction) -> dict:
         """What this finalize asked to record that differs from what is recorded."""
         divergence = {}
         for field in self.CARRIED_FINALIZE_FIELDS:
             asked, holds = getattr(carried, field, None), getattr(recorded, field, None)
+            if field == "generate_date_time" and self.__same_instant(asked, holds):
+                continue
             if asked != holds:
                 divergence[field] = {"carried": asked, "recorded": holds}
         return divergence
 
-    async def __report_finalize_repeat_async(self, carried: BaseTransaction, recorded: BaseTransaction) -> None:
+    async def __report_finalize_repeat_async(
+        self, carried: BaseTransaction, recorded: BaseTransaction, client_numbered: bool = True
+    ) -> None:
         """
         Write down that a finalize repeated, and whether it repeated itself (issue #190).
 
@@ -1041,7 +1073,13 @@ class TranService:
         The first is worth chasing and the second is not, and until now they left
         the same single line behind.
         """
-        divergence = self.__finalize_divergence(carried, recorded)
+        # Only when the terminal supplied the numbers. On the server-numbered
+        # path the numbers in hand were issued by this request from the server's
+        # own counter and clock, so a race against a concurrent finalize differs
+        # by construction - measured at "carried 50 vs recorded 49" for two
+        # simultaneous bills - and says nothing at all about the terminal. Filing
+        # that would bury the rows that do mean something.
+        divergence = self.__finalize_divergence(carried, recorded) if client_numbered else {}
         if not divergence:
             logger.warning(
                 "Finalize repeated for cart_id=%s carrying the same numbers; "

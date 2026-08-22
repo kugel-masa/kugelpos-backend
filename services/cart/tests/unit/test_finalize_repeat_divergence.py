@@ -173,3 +173,63 @@ class TestTheNoteMustNotCostTheTransaction:
             await _report(service, _tranlog(receipt_counter=42), _tranlog())
 
         assert [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+class TestWhoDidTheNumbering:
+    """Only a terminal's numbers can diverge from what was recorded.
+
+    On the server-numbered path the numbers in hand were issued by *this* request
+    from the server's own counter and clock, so a race against a concurrent
+    finalize differs by construction. Measured on the running stack with two
+    simultaneous bills and no snapshot: `carried 50 vs recorded 49`, timestamps
+    apart by microseconds — and nothing there is a terminal that moved on.
+    Filing those would bury the rows that mean something.
+    """
+
+    async def test_a_server_numbered_repeat_is_not_a_divergence(self):
+        audit = _audit()
+        service = _make_service(audit)
+
+        await service._TranService__report_finalize_repeat_async(
+            _tranlog(transaction_no=50, receipt_no=111160), _tranlog(transaction_no=49), client_numbered=False
+        )
+
+        audit.add_record_async.assert_not_awaited()
+
+    async def test_a_client_numbered_repeat_still_is(self):
+        audit = _audit()
+        service = _make_service(audit)
+
+        await service._TranService__report_finalize_repeat_async(
+            _tranlog(transaction_no=50), _tranlog(transaction_no=49), client_numbered=True
+        )
+
+        audit.add_record_async.assert_awaited_once()
+
+
+class TestTheSameInstantWrittenTwoWays:
+    @pytest.mark.parametrize(
+        "carried_when,recorded_when",
+        [
+            pytest.param("2026-08-22T10:30:00+00:00", "2026-08-22T10:30:00Z", id="Z against an explicit offset"),
+            pytest.param("2026-08-22T10:30:00.000000+09:00", "2026-08-22T10:30:00+09:00", id="zero microseconds"),
+        ],
+    )
+    async def test_it_is_not_reported_as_a_divergence(self, carried_when, recorded_when):
+        # The carried value is validated as ISO-8601 and not normalised, so the
+        # same moment can arrive written differently. Comparing the strings would
+        # report a terminal that had not moved at all.
+        audit = _audit()
+        service = _make_service(audit)
+
+        await _report(service, _tranlog(when=carried_when), _tranlog(when=recorded_when))
+
+        audit.add_record_async.assert_not_awaited()
+
+    async def test_a_genuinely_different_time_still_is(self):
+        audit = _audit()
+        service = _make_service(audit)
+
+        await _report(service, _tranlog(when="2026-08-23T00:00:01+09:00"), _tranlog(when="2026-08-22T23:59:59+09:00"))
+
+        audit.add_record_async.assert_awaited_once()
