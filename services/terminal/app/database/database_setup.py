@@ -13,6 +13,7 @@ async def create_some_collection(
     collection_name: str,
     index_keys_list: list,
     index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     """
     Creates a MongoDB collection with specified indexes.
@@ -22,6 +23,9 @@ async def create_some_collection(
         collection_name: Name of the collection to create
         index_keys_list: List of index key definitions for the collection
         index_name: Name for the created index
+        drop_indexes_by_keys: Index key patterns to retire first, matched by
+            pattern rather than by name (issue #182 uses it to replace the
+            index keyed on fields a request log document does not have)
 
     Returns:
         None
@@ -34,7 +38,11 @@ async def create_some_collection(
 
     # Create the collection with indexes
     await db_helper.create_collection_with_indexes_async(
-        db_name=db_name, collection_name=collection_name, index_keys_list=index_keys_list, index_name=index_name
+        db_name=db_name,
+        collection_name=collection_name,
+        index_keys_list=index_keys_list,
+        index_name=index_name,
+        drop_indexes_by_keys=drop_indexes_by_keys,
     )
 
 
@@ -114,10 +122,36 @@ async def create_request_log_collection(tenant_id: str):
     """
     name = settings.DB_COLLECTION_NAME_REQUEST_LOG
     index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}, "unique": True}
+        # Issue #182: the key columns were `store_code` and `terminal_no` at the
+        # top level, where a request log document does not have them - they live
+        # under `terminal_info`. So the index resolved to
+        # (tenant_id, null, null, accept_time) and the constraint it enforced was
+        # one request per tenant per timestamp, never the per-terminal separation
+        # it was written for.
+        #
+        # Corrected to the paths that exist, and no longer unique. What a unique
+        # index here could protect against - the same request written twice - does
+        # not happen: insert_many stamps `_id` into the documents in place, so a
+        # retried batch is refused by `_id` (issue #183). What it did do was
+        # reject audit records that legitimately happened, silently; measured at
+        # 66 rows across this environment.
+        {
+            "keys": {
+                "tenant_id": 1,
+                "terminal_info.store_code": 1,
+                "terminal_info.terminal_no": 1,
+                "request_info.accept_time": 1,
+            },
+            "unique": False,
+        }
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Retire the index keyed on fields that do not exist (issue #182).
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}],
     )
 
 

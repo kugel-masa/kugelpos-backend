@@ -45,6 +45,7 @@ async def test_create_some_collection(mock_db_helper):
         collection_name=collection_name,
         index_keys_list=index_keys_list,
         index_name=index_name,
+        drop_indexes_by_keys=None,
     )
 
 
@@ -78,8 +79,21 @@ async def test_create_request_log_collection(mock_create_some):
     await create_request_log_collection(tenant_id=TENANT_ID)
 
     expected_name = settings.DB_COLLECTION_NAME_REQUEST_LOG
+    # Issue #182: keyed on the paths a request log document actually has -
+    # `store_code` and `terminal_no` live under `terminal_info`, so at the top
+    # level they indexed as null and the constraint was one request per tenant
+    # per timestamp. No longer unique either: an audit trail should not be the
+    # thing that decides a record did not happen.
     expected_index_key_list = [
-        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}, "unique": True}
+        {
+            "keys": {
+                "tenant_id": 1,
+                "terminal_info.store_code": 1,
+                "terminal_info.terminal_no": 1,
+                "request_info.accept_time": 1,
+            },
+            "unique": False,
+        }
     ]
 
     mock_create_some.assert_awaited_once_with(
@@ -87,6 +101,7 @@ async def test_create_request_log_collection(mock_create_some):
         collection_name=expected_name,
         index_keys_list=expected_index_key_list,
         index_name=expected_name + "_index",
+        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}],
     )
 
 
