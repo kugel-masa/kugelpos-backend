@@ -18,6 +18,7 @@ This module provides a set of asynchronous utilities for interacting with MongoD
 using the Motor driver. It handles connection management, database and collection
 operations, and provides unified error handling.
 """
+
 # database.py
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from logging import getLogger
@@ -39,27 +40,29 @@ client: AsyncIOMotorClient = None
 _client_lock = asyncio.Lock()
 
 # Type variable for generic return type
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 def with_connection_retry(func: Callable[..., T]) -> Callable[..., T]:
     """
     Decorator that handles connection errors and retries the operation
     after resetting the client connection.
-    
+
     The number of retry attempts is controlled by the DB_CONNECTION_RETRY_COUNT
     setting (default: 1).
-    
+
     Args:
         func: The async function to wrap
-        
+
     Returns:
         The wrapped function with retry logic
     """
+
     @wraps(func)
     async def wrapper(*args, **kwargs):
         last_exception = None
         retry_count = settings.DB_CONNECTION_RETRY_COUNT
-        
+
         # Try once, then retry up to retry_count times
         for attempt in range(1 + retry_count):
             try:
@@ -67,7 +70,9 @@ def with_connection_retry(func: Callable[..., T]) -> Callable[..., T]:
             except (ConnectionFailure, ServerSelectionTimeoutError) as e:
                 last_exception = e
                 if attempt < retry_count:
-                    logger.warning(f"Connection error in {func.__name__} (attempt {attempt + 1}): {e}. Resetting client...")
+                    logger.warning(
+                        f"Connection error in {func.__name__} (attempt {attempt + 1}): {e}. Resetting client..."
+                    )
                     await reset_client_async()
                     # Continue to next retry attempt
                 else:
@@ -80,23 +85,25 @@ def with_connection_retry(func: Callable[..., T]) -> Callable[..., T]:
             except Exception as e:
                 # Re-raise non-connection errors immediately
                 raise
-        
+
         # Should not reach here, but just in case
         if last_exception:
             raise last_exception
+
     return wrapper
+
 
 async def get_client_async() -> AsyncIOMotorClient:
     """
     Create and get MongoDB client instance asynchronously
-    
+
     Creates a singleton client instance connecting to MongoDB or returns
     the existing client if already connected. Connection validation is
     done lazily when actual operations are performed.
-    
+
     Returns:
         AsyncIOMotorClient: MongoDB client instance
-        
+
     Raises:
         DatabaseException: If connection to MongoDB fails
     """
@@ -107,12 +114,10 @@ async def get_client_async() -> AsyncIOMotorClient:
                 client = AsyncIOMotorClient(
                     # Connection string
                     host=MONGODB_URI,
-                    
                     # Connection pool management
                     maxPoolSize=settings.DB_MAX_POOL_SIZE,
                     minPoolSize=settings.DB_MIN_POOL_SIZE,
                     maxIdleTimeMS=settings.DB_MAX_IDLE_TIME_MS,
-                    
                     # Timeout settings
                     serverSelectionTimeoutMS=settings.DB_SERVER_SELECTION_TIMEOUT_MS,
                     connectTimeoutMS=settings.DB_CONNECT_TIMEOUT_MS,
@@ -121,21 +126,24 @@ async def get_client_async() -> AsyncIOMotorClient:
                 # Initial connection test
                 info = await client.server_info()
                 logger.info(f"Connected to MongoDB {info}")
-                logger.info(f"Connection pool settings: maxPoolSize={settings.DB_MAX_POOL_SIZE}, "
-                           f"minPoolSize={settings.DB_MIN_POOL_SIZE}, "
-                           f"maxIdleTimeMS={settings.DB_MAX_IDLE_TIME_MS}")
+                logger.info(
+                    f"Connection pool settings: maxPoolSize={settings.DB_MAX_POOL_SIZE}, "
+                    f"minPoolSize={settings.DB_MIN_POOL_SIZE}, "
+                    f"maxIdleTimeMS={settings.DB_MAX_IDLE_TIME_MS}"
+                )
             except Exception as e:
                 client = None
                 message = f"Failed to connect to MongoDB: uri->{MONGODB_URI}"
                 raise DatabaseException(message, logger, e) from e
         return client
 
+
 async def close_client_async():
     """
     Close the MongoDB client connection asynchronously
-    
+
     Properly closes the MongoDB client connection to release resources.
-    
+
     Raises:
         DatabaseException: If closing the connection fails
     """
@@ -143,7 +151,7 @@ async def close_client_async():
     try:
         if client is not None:
             client.close()
-            logger.info("Database connection closed")     
+            logger.info("Database connection closed")
     except Exception as e:
         message = "Failed to close database connection"
         raise DatabaseException(message, logger, e) from e
@@ -151,10 +159,11 @@ async def close_client_async():
         client = None
         logger.info("MongoDB client set to None")
 
+
 async def reset_client_async():
     """
     Reset the MongoDB client connection
-    
+
     Closes the existing client connection and resets it to None,
     forcing a new connection to be created on the next access.
     """
@@ -168,20 +177,21 @@ async def reset_client_async():
             client = None
             logger.info("MongoDB client reset")
 
+
 @with_connection_retry
 async def get_db_async(db_name: str) -> AsyncIOMotorDatabase:
     """
     Get MongoDB database instance asynchronously
-    
+
     Connects to a specific database using the MongoDB client.
     Automatically resets the client on connection errors.
-    
+
     Args:
         db_name: Name of the database to connect to
-        
+
     Returns:
         AsyncIOMotorDatabase: MongoDB database instance
-        
+
     Raises:
         DatabaseException: If getting the database instance fails
     """
@@ -194,17 +204,18 @@ async def get_db_async(db_name: str) -> AsyncIOMotorDatabase:
         message = f"Failed to get database: uri->{MONGODB_URI} db->{db_name}"
         raise DatabaseException(message, logger, e) from e
 
+
 @with_connection_retry
 async def check_db_exists_async(db_name: str) -> bool:
     """
     Check if a database exists asynchronously
-    
+
     Args:
         db_name: Name of the database to check
-        
+
     Returns:
         bool: True if the database exists, False otherwise
-        
+
     Raises:
         DatabaseException: If checking for database existence fails
     """
@@ -216,19 +227,20 @@ async def check_db_exists_async(db_name: str) -> bool:
         message = f"Failed to check if database exists: {db_name}"
         raise DatabaseException(message, logger, e) from e
 
+
 @with_connection_retry
 async def drop_db_async(db_name: str) -> bool:
     """
     Drop a database asynchronously
-    
+
     Completely removes a database and all its collections.
-    
+
     Args:
         db_name: Name of the database to drop
-        
+
     Returns:
         bool: True if the operation was successful
-        
+
     Raises:
         DatabaseException: If dropping the database fails
     """
@@ -241,13 +253,106 @@ async def drop_db_async(db_name: str) -> bool:
         message = f"Failed to drop database: {db_name}"
         raise DatabaseException(message, logger, e) from e
 
+
+# How many colliding key values to name when a unique index cannot be built.
+# Enough to see the shape of the problem; not so many that the message becomes
+# the data dump it is describing.
+BLOCKING_DUPLICATE_SAMPLE = 5
+
+
+async def find_blocking_duplicates_async(
+    db: AsyncIOMotorDatabase,
+    collection_name: str,
+    index_keys: dict,
+    partial_filter_expression: Optional[dict] = None,
+    limit: int = BLOCKING_DUPLICATE_SAMPLE,
+) -> list:
+    """
+    Key values that already appear more than once, and so block a unique index.
+
+    Called when a required unique index turns out to be missing after the attempt
+    to build it. Without this the caller can only say the build failed and guess
+    at why; with it, the failure names the documents that have to be resolved.
+
+    Best-effort by design: an aggregation that fails here must not replace the
+    failure it was called to explain.
+
+    Args:
+        db: Database instance
+        collection_name: Collection the index belongs to
+        index_keys: The index key specification, e.g. {"tenant_id": 1, ...}
+        partial_filter_expression: The index's partial filter, when it has one -
+            documents outside it are not indexed and so cannot be blocking
+        limit: Maximum number of colliding key values to return
+
+    Returns:
+        List of {"_id": {...key values...}, "n": count}, most-duplicated first,
+        or an empty list if nothing was found or the lookup itself failed
+    """
+    try:
+        pipeline = []
+        if partial_filter_expression:
+            pipeline.append({"$match": partial_filter_expression})
+        pipeline += [
+            # A $group _id may not contain dots in its field names, and index
+            # keys can be nested paths.
+            {"$group": {"_id": {k.replace(".", "\uff0e"): f"${k}" for k in index_keys}, "n": {"$sum": 1}}},
+            {"$match": {"n": {"$gt": 1}}},
+            {"$sort": {"n": -1}},
+            {"$limit": limit},
+        ]
+        return await db[collection_name].aggregate(pipeline).to_list(length=limit)
+    except Exception as e:
+        logger.warning(f"Could not identify the documents blocking an index on {collection_name}: {e}")
+        return []
+
+
+async def run_setup_steps_async(tenant_id: str, steps: list) -> None:
+    """
+    Run every setup step, then report all the failures rather than only the first.
+
+    Stopping at the first failure is worse than it looks: the collections after it
+    are never created either, so one blocked collection leaves the rest of the
+    tenant unset up - and the operator learns about the blocked ones one restart
+    at a time. Running them all leaves every healthy collection ready and names
+    every blocked one at once (issue #185).
+
+    A backend that cannot be reached is different in kind and still stops
+    everything: the remaining steps would only fail the same way.
+
+    Args:
+        tenant_id: Passed to each step
+        steps: Setup coroutine functions taking a single tenant_id argument
+
+    Raises:
+        DatabaseException: If any step failed, naming all of them
+        ConnectionFailure / ServerSelectionTimeoutError: propagated immediately
+    """
+    failures = []
+    for step in steps:
+        try:
+            await step(tenant_id)
+        except (ConnectionFailure, ServerSelectionTimeoutError):
+            raise
+        except Exception as e:
+            failures.append(str(e))
+            logger.error(f"Tenant setup step {getattr(step, '__name__', step)} failed: {e}")
+
+    if failures:
+        raise DatabaseException(
+            f"Tenant setup for {tenant_id} could not complete {len(failures)} of {len(steps)} steps: "
+            + " | ".join(failures),
+            logger,
+        )
+
+
 @with_connection_retry
 async def create_collection_with_indexes_async(
-        db_name: str,
-        collection_name: str,
-        index_keys_list: list,
-        index_name: str,
-        drop_indexes_by_keys: list = None,
+    db_name: str,
+    collection_name: str,
+    index_keys_list: list,
+    index_name: str,
+    drop_indexes_by_keys: list = None,
 ):
     """
     Create a collection with specified indexes asynchronously
@@ -323,18 +428,37 @@ async def create_collection_with_indexes_async(
         # by index key pattern (name-agnostic) and hard-fail if it was not achieved.
         # New collections skip this: there is nothing to migrate and a brand-new
         # collection always reflects index_keys_list exactly.
-        if not created:
-            final_info = await db[collection_name].index_information()
-            present = [tuple((k, v) for k, v in info.get("key", [])) for info in final_info.values()]
+        # Verified whether or not the collection was just created. A new
+        # collection is expected to reflect index_keys_list exactly, but the
+        # ensure loop above swallows its failures with a warning - so without
+        # this, an index that never got built reports success (issue #185).
+        final_info = await db[collection_name].index_information()
+        present = [tuple((k, v) for k, v in info.get("key", [])) for info in final_info.values()]
 
-            for index_info in index_keys_list:
-                want = tuple((k, v) for k, v in index_info.get("keys", {}).items())
-                if want not in present:
-                    raise DatabaseException(
-                        f"Required index {want} missing on {collection_name} after migration "
-                        "(index ensure failed — likely existing data violates a new unique constraint)",
-                        logger,
+        for index_info in index_keys_list:
+            keys_dict = index_info.get("keys", {})
+            want = tuple((k, v) for k, v in keys_dict.items())
+            if want not in present:
+                # Say what is actually in the way. "Likely existing data
+                # violates a new unique constraint" was a guess, and left the
+                # operator with a collection name and nothing to act on.
+                blocking = ""
+                if index_info.get("unique"):
+                    duplicates = await find_blocking_duplicates_async(
+                        db, collection_name, keys_dict, index_info.get("partialFilterExpression")
                     )
+                    if duplicates:
+                        listed = "; ".join(f"{d.get('_id')} x{d.get('n')}" for d in duplicates)
+                        blocking = (
+                            f" Documents already in the collection share this key and have to be "
+                            f"resolved before it can be built (showing up to "
+                            f"{BLOCKING_DUPLICATE_SAMPLE}): {listed}"
+                        )
+                raise DatabaseException(
+                    f"Required index {want} missing on {collection_name} after migration "
+                    f"(index ensure failed).{blocking}",
+                    logger,
+                )
 
             if drop_indexes_by_keys:
                 for drop_keys in drop_indexes_by_keys:
@@ -353,6 +477,7 @@ async def create_collection_with_indexes_async(
         message = f"Failed to create collection with indexes: {collection_name} in {db_name}. Error: {str(e)}"
         logger.error(f"Collection with indexes creation error: {type(e).__name__}: {str(e)}")
         raise DatabaseException(message, logger, e) from e
+
 
 async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
     """
@@ -380,7 +505,7 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
     try:
         if collection_name in await db.list_collection_names():
             logger.info(f"Collection {collection_name} already exists")
-            return False # return false if collection already exists
+            return False  # return false if collection already exists
         await db.create_collection(collection_name)
         logger.info(f"Collection {collection_name} created")
     except (ConnectionFailure, ServerSelectionTimeoutError):
@@ -390,6 +515,7 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
         logger.error(f"Collection creation error details: {type(e).__name__}: {str(e)}")
         raise DatabaseException(message, logger, e) from e
     return True
+
 
 async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
     """
@@ -424,6 +550,7 @@ async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
         raise DatabaseException(message, logger, e) from e
     return True
 
+
 async def execute_command_async(command: dict, db: AsyncIOMotorDatabase):
     """
     Execute a MongoDB command asynchronously
@@ -454,6 +581,7 @@ async def execute_command_async(command: dict, db: AsyncIOMotorDatabase):
         message = f"Failed to execute command: {command}"
         raise DatabaseException(message, logger, e) from e
     return True
+
 
 def create_indexes_command(
     collection_name: str,
@@ -504,22 +632,20 @@ def create_indexes_command(
 
     indexes.append(index)
 
-    return {
-        "createIndexes": collection_name,
-        "indexes": indexes
-    }
+    return {"createIndexes": collection_name, "indexes": indexes}
+
 
 async def get_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
     """
     Get a MongoDB collection instance asynchronously
-    
+
     Args:
         collection_name: Name of the collection to retrieve
         db: Database instance
-        
+
     Returns:
         AsyncIOMotorCollection: Collection instance
-        
+
     Raises:
         DatabaseException: If getting the collection fails
     """
@@ -529,16 +655,17 @@ async def get_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
         message = f"Failed to get collection: {collection_name}"
         raise DatabaseException(message, logger, e) from e
 
+
 async def get_collection_names_async(db: AsyncIOMotorDatabase):
     """
     Get a list of collection names in a database asynchronously
-    
+
     Args:
         db: Database instance
-        
+
     Returns:
         list: List of collection names
-        
+
     Raises:
         DatabaseException: If getting the collection names fails
     """

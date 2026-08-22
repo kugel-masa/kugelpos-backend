@@ -111,12 +111,21 @@ async def create_request_log_collection(tenant_id: str):
 
 # create all collections
 async def create_collections(tenant_id: str):
-    await create_tran_collection(tenant_id)
-    await create_cash_in_out_log_collection(tenant_id)
-    await create_open_close_log_collection(tenant_id)
-    await create_request_log_collection(tenant_id)
+    """Create every collection this service needs for a tenant.
 
-    # add more collections here
+    Through run_setup_steps_async so that one blocked collection does not stop
+    the rest from being created, and so a failure names every blocked collection
+    at once rather than one restart at a time (issue #185).
+    """
+    await db_helper.run_setup_steps_async(
+        tenant_id,
+        [
+            create_tran_collection,
+            create_cash_in_out_log_collection,
+            create_open_close_log_collection,
+            create_request_log_collection,
+        ],
+    )
 
 
 # setup database

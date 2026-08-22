@@ -176,22 +176,23 @@ async def create_terminallog_delivery_status_collection(tenant_id: str):
 
 
 async def create_collections(tenant_id: str):
-    """
-    Creates all required collections for a tenant
+    """Create every collection this service needs for a tenant.
 
-    This function orchestrates the creation of all necessary MongoDB collections
-    for a new tenant in the system
-
-    Args:
-        tenant_id: Tenant ID to create collections for
+    Through run_setup_steps_async so that one blocked collection does not stop
+    the rest from being created, and so a failure names every blocked collection
+    at once rather than one restart at a time (issue #185).
     """
-    await create_tenant_info_collection(tenant_id)
-    await create_terminal_info_collection(tenant_id)
-    await create_cash_in_out_log_collection(tenant_id)
-    await create_request_log_collection(tenant_id)
-    await create_open_close_log_collection(tenant_id)
-    await create_terminallog_delivery_status_collection(tenant_id)
-    # Additional collections can be added here as needed
+    await db_helper.run_setup_steps_async(
+        tenant_id,
+        [
+            create_tenant_info_collection,
+            create_terminal_info_collection,
+            create_cash_in_out_log_collection,
+            create_request_log_collection,
+            create_open_close_log_collection,
+            create_terminallog_delivery_status_collection,
+        ],
+    )
 
 
 async def execute(tenant_id: str):

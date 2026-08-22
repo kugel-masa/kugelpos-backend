@@ -81,21 +81,19 @@ async def create_request_log_collection(tenant_id: str):
 
 
 async def create_collections(tenant_id: str):
+    """Create every collection this service needs for a tenant.
+
+    Through run_setup_steps_async so that one blocked collection does not stop
+    the rest from being created, and so a failure names every blocked collection
+    at once rather than one restart at a time (issue #185).
     """
-    Create all required collections for a new tenant
-
-    This function should be extended when new collections are added to the system.
-    Each collection creation should be added to this function.
-
-    Args:
-        tenant_id: The tenant identifier
-
-    Returns:
-        None
-    """
-    await create_user_account_collection(tenant_id)
-    await create_request_log_collection(tenant_id)
-    # Add more collections here as the system grows
+    await db_helper.run_setup_steps_async(
+        tenant_id,
+        [
+            create_user_account_collection,
+            create_request_log_collection,
+        ],
+    )
 
 
 async def execute(tenant_id: str):

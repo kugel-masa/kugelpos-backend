@@ -52,7 +52,11 @@ async def create_tenant(
         await database_setup.execute(tenant_id=tenant_id)
 
     except Exception as e:
-        message = f"Error creating tenant: {tenant_id}"
+        # Carry the reason, not just the tenant. Which collection and which index
+        # could not be built - and, for a unique index, the documents in the way -
+        # already exist one frame down; discarding them left an operator with a
+        # bare 500 and nowhere to start (issue #185).
+        message = f"Error creating tenant: {tenant_id}: {e}"
         logger.error(message)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
 

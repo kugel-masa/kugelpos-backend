@@ -83,6 +83,11 @@ class TestCreateTenant:
             mock_client_instance = AsyncMock()
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
+            # A downstream setup that succeeded. Checked rather than
+            # raise_for_status()'d so the failing body survives into the message
+            # (issue #185), and a bare MagicMock is truthy for is_error.
+            mock_response.is_error = False
+            mock_response.status_code = 201
             mock_client_instance.post.return_value = mock_response
             mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
             mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -96,6 +101,43 @@ class TestCreateTenant:
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["tenantId"] == TENANT_ID
+
+    @pytest.mark.asyncio
+    async def test_a_downstream_failure_reports_what_that_service_said(self):
+        """The fan-out is where an operator meets the failure first (issue #185).
+
+        `raise_for_status()` reports the URL and the status and drops the body -
+        and the body is where the downstream service names the collection and the
+        index it could not build. Without it the caller is told only that some
+        service returned 500.
+        """
+        app = make_app()
+        mock_service = AsyncMock()
+        with (
+            patch("app.api.v1.tenant.database_setup") as mock_db_setup,
+            patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service),
+            patch("app.api.v1.tenant.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_db_setup.execute = AsyncMock()
+            mock_client_instance = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.is_error = True
+            mock_response.status_code = 500
+            mock_response.text = "Required index (('tenant_id', 1), ('transaction_no', 1)) missing on log_tran"
+            mock_client_instance.post.return_value = mock_response
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/tenants",
+                    json={"tenant_id": TENANT_ID, "tenant_name": "Test Tenant", "tags": ["test"]},
+                )
+
+        assert resp.status_code == 500
+        detail = resp.text
+        assert "log_tran" in detail, f"the downstream reason was dropped: {detail[:200]}"
+        assert "tenants" in detail, "the response did not say which service failed"
 
     @pytest.mark.asyncio
     async def test_tenant_id_mismatch(self):
@@ -124,6 +166,11 @@ class TestCreateTenant:
             mock_client_instance = AsyncMock()
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
+            # A downstream setup that succeeded. Checked rather than
+            # raise_for_status()'d so the failing body survives into the message
+            # (issue #185), and a bare MagicMock is truthy for is_error.
+            mock_response.is_error = False
+            mock_response.status_code = 201
             mock_client_instance.post.return_value = mock_response
             mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
             mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -165,9 +212,7 @@ class TestGetTenant:
     async def test_service_error(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.get_tenant_async.side_effect = HTTPException(
-            status_code=404, detail="Not found"
-        )
+        mock_service.get_tenant_async.side_effect = HTTPException(status_code=404, detail="Not found")
 
         with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -232,9 +277,7 @@ class TestDeleteTenant:
     async def test_service_error(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.delete_tenant_async.side_effect = HTTPException(
-            status_code=404, detail="Not found"
-        )
+        mock_service.delete_tenant_async.side_effect = HTTPException(status_code=404, detail="Not found")
 
         with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -248,8 +291,10 @@ class TestDeleteTenant:
         mock_service = AsyncMock()
         mock_service.delete_tenant_async.return_value = None
 
-        with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service), \
-             patch("app.api.v1.tenant.audit_logger") as mock_audit:
+        with (
+            patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service),
+            patch("app.api.v1.tenant.audit_logger") as mock_audit,
+        ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.delete(f"/api/v1/tenants/{TENANT_ID}")
         assert resp.status_code == 200
@@ -290,9 +335,7 @@ class TestAddStore:
     async def test_service_error(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.add_store_async.side_effect = HTTPException(
-            status_code=400, detail="Duplicate store"
-        )
+        mock_service.add_store_async.side_effect = HTTPException(status_code=400, detail="Duplicate store")
 
         with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -354,9 +397,7 @@ class TestGetStore:
     async def test_service_error(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.get_store_async.side_effect = HTTPException(
-            status_code=404, detail="Store not found"
-        )
+        mock_service.get_store_async.side_effect = HTTPException(status_code=404, detail="Store not found")
 
         with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -421,9 +462,7 @@ class TestDeleteStore:
     async def test_service_error(self):
         app = make_app()
         mock_service = AsyncMock()
-        mock_service.delete_store_async.side_effect = HTTPException(
-            status_code=404, detail="Store not found"
-        )
+        mock_service.delete_store_async.side_effect = HTTPException(status_code=404, detail="Store not found")
 
         with patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

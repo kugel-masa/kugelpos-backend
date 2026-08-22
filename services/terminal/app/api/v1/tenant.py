@@ -91,7 +91,15 @@ async def create_tenant(
                 response = await client.post(
                     url, headers={"Authorization": f"Bearer {token}"}, json={"tenant_id": tenant_id}
                 )
-                response.raise_for_status()
+                if response.is_error:
+                    # raise_for_status() reports the URL and the status and drops
+                    # the body, which is where the downstream service says which
+                    # collection and index it could not build (issue #185). This
+                    # is the fan-out point an operator reaches first.
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Tenant setup failed at {url} ({response.status_code}): {response.text}",
+                    )
     except Exception as e:
         raise e
 
