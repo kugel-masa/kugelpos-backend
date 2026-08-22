@@ -232,25 +232,22 @@ class TestTheContractIsInTheSpec:
         app.include_router(cart_api.router)
         return app.openapi()
 
-    def test_every_route_that_can_return_it_declares_it(self, schema):
+    def test_every_cart_route_declares_it(self, schema):
         from app.api.v1 import cart as cart_api
 
-        # Derived from the router, not a hand-copied list: a new cart-mutating
-        # endpoint is covered the day it is added.
-        expected = {
-            route.path
-            for route in cart_api.router.routes
-            if getattr(route, "endpoint", None) is not None
-            and (
-                "_cart_data_with_snapshot" in route.endpoint.__code__.co_names
-                or "SnapshotGenerationFailedException" in route.endpoint.__code__.co_names
-            )
-        }
-        assert expected, "no cart-mutating route found - the detection above stopped working"
+        # Every route on this router mutates a cart - the GET endpoint was
+        # retired (FR-010) - so every one of them can reach the refusal. Taken
+        # from the router itself rather than from a detected subset: inferring
+        # which endpoints reach it would quietly cover fewer routes the day one
+        # is refactored, and pass on what was left. This way a route added later
+        # has to declare it, and a genuinely non-mutating route added here fails
+        # loudly instead of opting out unnoticed.
+        paths = {route.path for route in cart_api.router.routes}
+        assert paths, "the cart router is empty - this asserts nothing"
 
         missing = [
-            path
-            for path in expected
+            f"{method.upper()} {path}"
+            for path in paths
             for method, spec in schema["paths"][path].items()
             if "503" not in spec["responses"]
         ]
