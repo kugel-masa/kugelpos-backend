@@ -32,7 +32,6 @@ from pydantic import ValidationError
 import json
 import time
 
-from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.security import (
     get_terminal_info,
@@ -41,7 +40,6 @@ from kugel_common.security import (
     terminal_claims_to_terminal_info,
 )
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
-from kugel_common.models.repositories.request_log_repository import RequestLogRepository
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.config.settings import settings
 from kugel_common.utils.misc import get_app_time_str
@@ -113,37 +111,87 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
         accept_time = get_app_time_str()
         process_time_ms = 0
         response: Response = None
+        request_info = None
         try:
             start_time = time.time()
-            request_info = await _make_request_info(request, accept_time)
+            try:
+                request_info = await _make_request_info(request, accept_time)
+            except Exception as e:
+                # Reading and sanitizing the body is for the log, so a failure
+                # here is the log's problem and not the request's. Left unguarded
+                # it raised before the route was ever called, and the caller was
+                # answered with the logger's error (issue #161). The record is
+                # rebuilt from what is known in _record_request.
+                logger.error(
+                    f"Could not capture the request for logging: {request.method} {request.url}: {e}",
+                    exc_info=True,
+                )
+                request_info = None
             response = await call_next(request)
             process_time_ms = int((time.time() - start_time) * 1000)
-        except Exception as e:
-            raise
         finally:
-            is_terminal_service = True if service_name == "terminal" else False
-            terminal_info = await _get_terminal_info(request, is_terminal_service)
-            user_dict = await _get_current_user(request)
-            request_log = RequestLog(
-                tenant_id=await _make_tenant_id(terminal_info, user_dict),
-                client_info=await _make_client_info(request),
-                request_info=request_info,
-                response_info=await _make_response_info(response, process_time_ms),
-                staff_info=await _make_staff_info(terminal_info),
-                user_info=await _make_user_info(user_dict),
-                terminal_info=await _make_terminal_info(terminal_info),
-                snapshot_info=_make_snapshot_info(request),
-                service_name=service_name,  # Add service name to the log
-            )
-            # Log to file synchronously (fast operation)
-            await _output_request_log_to_file(request_log)
-
-            # Buffer for batched database write (insert_many)
-            buffer = get_request_log_buffer()
-            await buffer.add(request_log)
+            # Nothing in here may change what the caller gets back. This block
+            # runs while the route's own exception is still in flight, so an
+            # exception raised here REPLACES it - the 401 the route raised
+            # arrives as a 500, and the request log is dropped along the way
+            # (issue #161). Its job is observability; it does not get a vote on
+            # the response.
+            try:
+                await _record_request(request, service_name, accept_time, request_info, response, process_time_ms)
+            except Exception as e:
+                logger.error(
+                    f"Request log could not be written for {request.method} {request.url}: {e}",
+                    exc_info=True,
+                )
         return response
 
     return middleware
+
+
+async def _record_request(
+    request: Request,
+    service_name: str,
+    accept_time: str,
+    request_info: RequestLog.RequestInfo,
+    response: Response,
+    process_time_ms: int,
+) -> None:
+    """
+    Assemble the request log and hand it to the file logger and the buffer.
+
+    Called from the middleware's `finally` and wrapped there, so nothing it does
+    can reach the caller. Kept as its own function so that boundary is a single
+    place rather than a block someone can extend past.
+    """
+    is_terminal_service = service_name == "terminal"
+    terminal_info = await _get_terminal_info(request, is_terminal_service)
+    user_dict = await _get_current_user(request)
+
+    if request_info is None:
+        # _make_request_info did not get to return - reading or sanitizing the
+        # body failed. Record the request anyway: what it was is still worth
+        # having, and it is the failures that most need a trail.
+        request_info = RequestLog.RequestInfo(
+            method=request.method, url=str(request.url), body=None, accept_time=accept_time
+        )
+
+    request_log = RequestLog(
+        tenant_id=await _make_tenant_id(terminal_info, user_dict),
+        client_info=await _make_client_info(request),
+        request_info=request_info,
+        response_info=await _make_response_info(response, process_time_ms),
+        staff_info=await _make_staff_info(terminal_info),
+        user_info=await _make_user_info(user_dict),
+        terminal_info=await _make_terminal_info(terminal_info),
+        snapshot_info=_make_snapshot_info(request),
+        service_name=service_name,
+    )
+    # Log to file synchronously (fast operation)
+    await _output_request_log_to_file(request_log)
+
+    # Buffer for batched database write (insert_many)
+    buffer = get_request_log_buffer()
+    await buffer.add(request_log)
 
 
 async def _output_request_log_to_file(request_log: RequestLog):
@@ -176,60 +224,6 @@ async def _output_request_log_to_file(request_log: RequestLog):
         f"user_name-> {request_log.user_info.username if request_log.user_info else None}\n"
         f"is_superuser-> {request_log.user_info.is_superuser if request_log.user_info else None}\n"
     )
-
-
-async def _output_request_log_to_db_async(request_log: RequestLog):
-    """
-    Store the request log in the database asynchronously (fire-and-forget)
-
-    This function is designed to run as a background task without blocking
-    the HTTP response. Any exceptions are caught and logged to prevent
-    unhandled task exceptions.
-
-    Saves the request log to both the common database and tenant-specific database
-    for audit trail and analytics purposes.
-
-    Args:
-        request_log: RequestLog document containing all request/response information
-    """
-    try:
-        await _output_request_log_to_db(request_log)
-    except Exception as e:
-        # Log the error but don't propagate it to avoid unhandled task exceptions
-        logger.error(
-            f"Background task failed to write request log to database: "
-            f"url={request_log.request_info.url}, "
-            f"method={request_log.request_info.method}, "
-            f"error={e}",
-            exc_info=True,
-        )
-
-
-async def _output_request_log_to_db(request_log: RequestLog):
-    """
-    Store the request log in the database
-
-    Internal function that performs the actual database write operation.
-    This is called by _output_request_log_to_db_async in a background task.
-
-    Args:
-        request_log: RequestLog document containing all request/response information
-    """
-    tenant_id = request_log.tenant_id
-
-    db_list = []
-    db_list.append(f"{settings.DB_NAME_PREFIX}_commons")
-    if tenant_id:
-        db_list.append(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
-
-    for db_name in db_list:
-        logger.debug(f"db_name: {db_name}")
-        db = await db_helper.get_db_async(db_name)
-        request_log_repository = RequestLogRepository(db)
-        try:
-            await request_log_repository.create_request_log_async(request_log)
-        except Exception as e:
-            logger.error(f"Failed to output request log to db: request_log->{request_log},  error->{e}")
 
 
 async def _create_async_iterator(body: bytes, chunk_size: int = 1024) -> bytes:
@@ -291,7 +285,22 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
 
     if terminal_id and api_key:
         logger.debug(f"terminal_id: {terminal_id}, api_key: {mask_api_key(api_key)}")
-        terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service=is_terminal_service)
+        try:
+            terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service=is_terminal_service)
+        except Exception:
+            # `security.get_terminal_info` maps ANY HttpClientError onto
+            # HTTPException(401), so a terminal service that is merely
+            # unreachable arrives here as an authentication failure - and
+            # unguarded it escapes the middleware's `finally`, turning a request
+            # the route had already answered into a 500 and dropping its log
+            # (issue #161). The sibling helper below has carried this guard, and
+            # the reason for it, since long before.
+            #
+            # Degraded here rather than at the outer guard on purpose: returning
+            # None still records the request with whatever else is known, where
+            # letting it out records nothing at all.
+            logger.warning(f"Could not resolve the terminal for the request log: terminal_id={terminal_id}")
+            terminal_info = None
 
     logger.debug(f"terminal_info: {terminal_info}")
     return terminal_info
