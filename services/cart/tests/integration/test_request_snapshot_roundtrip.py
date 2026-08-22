@@ -205,6 +205,94 @@ async def test_carried_cancel_rejects_a_context_without_a_snapshot(http_client, 
     assert r.status_code >= status.HTTP_400_BAD_REQUEST, r.text
 
 
+async def _tranlog_count(cart_id: str) -> int:
+    from kugel_common.database import database as db_helper
+
+    db = await db_helper.get_db_async(f"db_cart_{os.environ.get('TENANT_ID')}")
+    return await db["log_tran"].count_documents({"cart_id": cart_id})
+
+
+async def _pay_off(http_client, cart_id: str, snapshot: dict):
+    """Drive a carried cart to Paying and return the snapshot to finalize with."""
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    balance = r.json()["data"]["balanceAmount"]
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json={
+            "signedSnapshot": r.json()["data"]["signedSnapshot"],
+            "payload": [{"paymentCode": "01", "amount": int(balance)}],
+        },
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    return r.json()["data"]["signedSnapshot"]
+
+
+@pytest.mark.asyncio
+async def test_a_finalize_that_cannot_be_signed_is_refused_and_repeatable(http_client, snapshot_keys):
+    """The costliest path this change creates (issue #192).
+
+    A finalize writes the transaction and publishes it, and only then is the
+    response built. On the carried path a response without a snapshot is refused
+    with 503 rather than returned unsigned — so the client is told the request
+    failed while the sale is already recorded. That is only safe if repeating it
+    converges, which is what this asserts end to end:
+
+    - the 503 does not roll the transaction back (it is already committed),
+    - the repeat returns that same transaction rather than booking a second,
+    - and exactly one row exists for the cart when the dust settles.
+
+    Signing is broken here by hand because startup no longer lets a service run
+    without a key: what is being simulated is a key that loads and then fails to
+    sign, which is the only case left that reaches this branch.
+    """
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+    paying_snapshot = await _pay_off(http_client, cart_id, snapshot)
+
+    ctx = {"seq": 5252, "receiptNo": 5253, "transactionDatetime": "2026-06-14T05:06:07"}
+    wrapped = {"signedSnapshot": paying_snapshot, "payload": ctx}
+    url = f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}"
+
+    assert await _tranlog_count(cart_id) == 0, "precondition: nothing recorded yet"
+
+    original = snapshot_service.build_envelope
+    snapshot_service.build_envelope = lambda *a, **k: None
+    try:
+        refused = await http_client.post(url, json=wrapped, headers=headers)
+    finally:
+        snapshot_service.build_envelope = original
+
+    assert refused.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, refused.text
+    assert "401507" in refused.text, refused.text
+    # The sale was recorded before the response could be built. Refusing does not
+    # take it back — which is exactly why the client must repeat rather than
+    # treat the 503 as "it did not happen".
+    assert await _tranlog_count(cart_id) == 1
+
+    repeated = await http_client.post(url, json=wrapped, headers=headers)
+
+    assert repeated.status_code == status.HTTP_200_OK, repeated.text
+    data = repeated.json()["data"]
+    assert data["cartStatus"] == "Completed"
+    assert data["transactionNo"] == 5252, data
+    assert data["receiptNo"] == 5253, data
+    assert data["signedSnapshot"] is not None, "the repeat has to hand back what the 503 could not"
+    # Still one: the repeat returned the recorded transaction instead of booking
+    # a second one against the same cart.
+    assert await _tranlog_count(cart_id) == 1
+
+
 @pytest.mark.asyncio
 async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys):
     """B2: a retried finalize (same snapshot + finalize context) returns the same
