@@ -175,7 +175,7 @@ class TestAPartialRecordIsStillARecord:
         assert len(buffer.logs) == 1, "a response that could not be read cost the whole record"
         logged = buffer.logs[-1]
         assert logged.request_info.url.endswith("/api/v1/ok"), "the request it recorded is not identifiable"
-        assert logged.response_info.body == {"_capture_failed": True}
+        assert logged.response_info.body == {"_assembly_failed": True}
 
     def test_a_client_with_no_address_still_leaves_a_row(self, captured, monkeypatch):
         # An ASGI scope does not always carry a client, and reaching into it
@@ -205,3 +205,44 @@ class TestAPartialRecordIsStillARecord:
         client.post("/api/v1/echo", json={"a": 1})
 
         assert buffer.logs[-1].request_info.body == {"_capture_failed": True}
+
+    def test_the_fallback_keeps_the_tenant_it_had_already_resolved(self, captured, monkeypatch):
+        """Dropping the tenant is not a cosmetic loss.
+
+        The buffer routes by it, so a record without one never reaches the
+        tenant's own database — and a row with no tenant reads as an
+        unauthenticated request, which is a different thing entirely. It was
+        resolved before the field that failed, so there is no reason to lose it.
+        """
+        buffer, client = captured
+
+        async def resolved(*args, **kwargs):
+            return {"tenant_id": "T6216", "username": "admin", "is_superuser": True, "is_service_account": False}
+
+        async def boom(*args, **kwargs):
+            raise RuntimeError("the response body will not re-read")
+
+        monkeypatch.setattr(log_requests_module, "_get_current_user", resolved)
+        monkeypatch.setattr(log_requests_module, "_make_response_info", boom)
+
+        client.get("/api/v1/ok")
+
+        assert buffer.logs[-1].tenant_id == "T6216", "the fallback discarded a tenant it already had"
+
+    def test_a_request_with_no_client_address_is_recorded(self, captured, monkeypatch):
+        # An ASGI scope does not always carry a client, and the guard for that is
+        # inside _make_client_info rather than around it.
+        buffer, client = captured
+        real = log_requests_module.RequestLog
+
+        class _NoClient:
+            client = None
+            method = "GET"
+            url = "http://testserver/api/v1/ok"
+            headers = {}
+            scope = {}
+
+        info = pytest.importorskip("asyncio").run(log_requests_module._make_client_info(_NoClient()))
+
+        assert info.ip_address == "", "a scope without a client raised instead of recording"
+        assert isinstance(info, real.ClientInfo)

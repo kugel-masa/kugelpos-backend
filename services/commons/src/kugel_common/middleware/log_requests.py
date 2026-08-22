@@ -149,6 +149,18 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
     return middleware
 
 
+async def _resolved_or_none(build):
+    """Await a record field, or give up on it alone.
+
+    Only used on the fallback path, where the alternative is discarding
+    information that was already resolved because something else failed.
+    """
+    try:
+        return await build()
+    except Exception:
+        return None
+
+
 async def _record_request(
     request: Request,
     service_name: str,
@@ -203,14 +215,22 @@ async def _record_request(
             f"Request log could not be assembled in full for {request.method} {request.url}: {e}",
             exc_info=True,
         )
+        # Keep what was already resolved. Dropping the tenant is not a
+        # cosmetic loss: the buffer routes by it, so a record without one never
+        # reaches the tenant's own database - and a row with no tenant reads as
+        # an unauthenticated request, which is a different thing entirely.
+        client_info = await _resolved_or_none(lambda: _make_client_info(request))
         request_log = RequestLog(
-            tenant_id=None,
-            client_info=RequestLog.ClientInfo(ip_address=""),
+            tenant_id=await _resolved_or_none(lambda: _make_tenant_id(terminal_info, user_dict)),
+            client_info=client_info or RequestLog.ClientInfo(ip_address=""),
             request_info=request_info,
             response_info=RequestLog.ResponseInfo(
                 status_code=getattr(response, "status_code", 0) or 0,
                 process_time_ms=process_time_ms,
-                body={"_capture_failed": True},
+                # A marker of its own. `_capture_failed` on the request body says
+                # the body could not be read; this says the record could not be
+                # assembled - two different questions an operator asks.
+                body={"_assembly_failed": True},
             ),
             service_name=service_name,
         )
@@ -327,7 +347,10 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
             # Degraded here rather than at the outer guard on purpose: returning
             # None still records the request with whatever else is known, where
             # letting it out records nothing at all.
-            logger.warning(f"Could not resolve the terminal for the request log: terminal_id={terminal_id}")
+            logger.warning(
+                f"Could not resolve the terminal for the request log: terminal_id={terminal_id}",
+                exc_info=True,
+            )
             terminal_info = None
 
     logger.debug(f"terminal_info: {terminal_info}")
