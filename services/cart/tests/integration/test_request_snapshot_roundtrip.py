@@ -237,7 +237,7 @@ async def _pay_off(http_client, cart_id: str, snapshot: dict):
 
 
 @pytest.mark.asyncio
-async def test_a_finalize_that_cannot_be_signed_is_refused_and_repeatable(http_client, snapshot_keys):
+async def test_a_finalize_that_cannot_be_signed_is_refused_and_repeatable(http_client, snapshot_keys, monkeypatch):
     """The costliest path this change creates (issue #192).
 
     A finalize writes the transaction and publishes it, and only then is the
@@ -266,12 +266,11 @@ async def test_a_finalize_that_cannot_be_signed_is_refused_and_repeatable(http_c
 
     assert await _tranlog_count(cart_id) == 0, "precondition: nothing recorded yet"
 
-    original = snapshot_service.build_envelope
-    snapshot_service.build_envelope = lambda *a, **k: None
-    try:
+    # A nested context, not the fixture's own monkeypatch: undoing this must not
+    # also undo `snapshot_keys`, since the repeat below needs signing back.
+    with monkeypatch.context() as broken_signing:
+        broken_signing.setattr(snapshot_service, "build_envelope", lambda *a, **k: None)
         refused = await http_client.post(url, json=wrapped, headers=headers)
-    finally:
-        snapshot_service.build_envelope = original
 
     assert refused.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, refused.text
     assert "401507" in refused.text, refused.text
@@ -301,21 +300,7 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     headers = _api_headers()
 
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
-        json={"signedSnapshot": snapshot, "payload": {}},
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    balance = r.json()["data"]["balanceAmount"]
-    snapshot = r.json()["data"]["signedSnapshot"]
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
-        json={"signedSnapshot": snapshot, "payload": [{"paymentCode": "01", "amount": int(balance)}]},
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    paying_snapshot = r.json()["data"]["signedSnapshot"]
+    paying_snapshot = await _pay_off(http_client, cart_id, snapshot)
 
     ctx = {"seq": 5151, "receiptNo": 5152, "transactionDatetime": "2026-06-14T02:03:04"}
     wrapped = {"signedSnapshot": paying_snapshot, "payload": ctx}

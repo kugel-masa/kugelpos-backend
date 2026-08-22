@@ -20,6 +20,7 @@ from app.api.v1.schemas import (
 )
 from app.dependencies.get_cart_service import get_cart_service_async, get_cart_service_with_cart_id_async
 from app.exceptions import SnapshotGenerationFailedException
+from app.exceptions.cart_error_codes import CartErrorCode, CartErrorMessage
 from app.services import snapshot_service
 from app.services.cart_service import CartService
 
@@ -47,10 +48,20 @@ CARRIED_SNAPSHOT_UNAVAILABLE = {
         "model": ApiResponse,
         "content": {
             "application/json": {
+                # The shape the handler actually returns, so a client can be written
+                # against it: `user_error.code` is the stable identifier to match on,
+                # since 503 alone does not distinguish this from an outage.
                 "example": {
                     "success": False,
                     "code": 503,
-                    "message": "Snapshot generation failed",
+                    "message": (
+                        "Cannot sign the snapshot for carried cart_id=...; the cart is held by "
+                        "the client alone and cannot be returned unsigned"
+                    ),
+                    "user_error": {
+                        "code": CartErrorCode.SNAPSHOT_GENERATION_FAILED,
+                        "message": CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_GENERATION_FAILED),
+                    },
                     "data": None,
                 }
             }

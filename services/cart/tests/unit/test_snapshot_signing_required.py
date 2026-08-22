@@ -253,6 +253,22 @@ class TestTheContractIsInTheSpec:
         ]
         assert missing == [], missing
 
+    def test_the_example_carries_the_error_code_a_client_matches_on(self, schema):
+        """503 alone does not separate this from an outage.
+
+        A client that retries every 503 blindly would also retry an outage, so
+        what it keys off is the error code in the body. The example is where a
+        client author sees it, and taking it from the enum keeps it from drifting
+        into a lie if the code ever changes.
+        """
+        from app.exceptions.cart_error_codes import CartErrorCode
+
+        example = schema["paths"]["/carts/{cart_id}/bill"]["post"]["responses"]["503"]["content"][
+            "application/json"
+        ]["example"]
+
+        assert example["user_error"]["code"] == CartErrorCode.SNAPSHOT_GENERATION_FAILED
+
     def test_it_says_to_repeat_the_request(self, schema):
         description = schema["paths"]["/carts/{cart_id}/bill"]["post"]["responses"]["503"]["description"]
 
