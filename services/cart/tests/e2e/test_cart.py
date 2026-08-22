@@ -31,7 +31,9 @@ async def create_tenant(http_client, token):
     header = {"Authorization": f"Bearer {token}"}
 
     response = await http_client.post(
-        "/api/v1/tenants", json={"tenant_id": tenant_id}, headers=header,
+        "/api/v1/tenants",
+        json={"tenant_id": tenant_id},
+        headers=header,
     )
     if response.status_code == status.HTTP_201_CREATED:
         res = response.json()
@@ -41,9 +43,7 @@ async def create_tenant(http_client, token):
     if response.status_code == status.HTTP_409_CONFLICT:
         # Tenant already created in an earlier test in this session.
         return tenant_id
-    raise AssertionError(
-        f"Failed to create tenant: {response.status_code} {response.text}"
-    )
+    raise AssertionError(f"Failed to create tenant: {response.status_code} {response.text}")
 
 
 # Helper - fetch terminal info via X-API-KEY
@@ -56,7 +56,8 @@ async def get_terminal_info(tenant_id=None):
 
     async with AsyncClient(base_url=base_url) as http_terminal_client:
         response = await http_terminal_client.get(
-            f"/terminals/{terminal_id}", headers={"X-API-KEY": api_key},
+            f"/terminals/{terminal_id}",
+            headers={"X-API-KEY": api_key},
         )
 
     assert response.status_code == status.HTTP_200_OK, response.text
@@ -79,28 +80,32 @@ async def open_terminal(tenant_id=None):
         # function_mode -> OpenTerminal
         r = await http_terminal_client.patch(
             f"/terminals/{terminal_id}/function_mode",
-            json={"function_mode": "OpenTerminal"}, headers=header,
+            json={"function_mode": "OpenTerminal"},
+            headers=header,
         )
         assert r.status_code == status.HTTP_200_OK, r.text
 
         # sign in
         r = await http_terminal_client.post(
             f"/terminals/{terminal_id}/sign-in",
-            json={"staff_id": "S001"}, headers=header,
+            json={"staff_id": "S001"},
+            headers=header,
         )
         assert r.status_code == status.HTTP_200_OK, r.text
 
         # open
         r = await http_terminal_client.post(
             f"/terminals/{terminal_id}/open",
-            json={"initial_amount": 500000}, headers=header,
+            json={"initial_amount": 500000},
+            headers=header,
         )
         assert r.status_code == status.HTTP_200_OK, r.text
 
         # function_mode -> Sales
         r = await http_terminal_client.patch(
             f"/terminals/{terminal_id}/function_mode",
-            json={"function_mode": "Sales"}, headers=header,
+            json={"function_mode": "Sales"},
+            headers=header,
         )
         assert r.status_code == status.HTTP_200_OK, r.text
 
@@ -118,12 +123,14 @@ async def close_terminal(tenant_id=None):
 
     async with AsyncClient(base_url=base_url) as http_terminal_client:
         r = await http_terminal_client.post(
-            f"/terminals/{terminal_id}/close", headers=header,
+            f"/terminals/{terminal_id}/close",
+            headers=header,
         )
         assert r.status_code == status.HTTP_200_OK, r.text
 
         r = await http_terminal_client.post(
-            f"/terminals/{terminal_id}/sign-out", headers=header,
+            f"/terminals/{terminal_id}/sign-out",
+            headers=header,
         )
         assert r.status_code == status.HTTP_200_OK, r.text
 
@@ -177,7 +184,6 @@ async def test_cart_operations(http_client):
     assert res.get("success") is True
     assert res.get("data").get("cartId") == cartId
     assert res.get("data").get("cartStatus") == CartStatus.Cancelled.value
-
 
 
 # Test - line item operations
@@ -267,7 +273,6 @@ async def test_line_item_operations(http_client):
 
     # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
-
 
 
 # Test - discount operations
@@ -375,7 +380,6 @@ async def test_discount_operations(http_client):
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
 
 
-
 # Test - payment + bill flow
 @pytest.mark.asyncio
 async def test_payment_process(http_client):
@@ -457,7 +461,6 @@ async def test_payment_process(http_client):
     assert res.get("data").get("changeAmount") > 0
 
 
-
 # Test - bill rejected when balance is unpaid
 @pytest.mark.asyncio
 async def test_bill_with_insufficient_balance(http_client):
@@ -510,7 +513,6 @@ async def test_bill_with_insufficient_balance(http_client):
 
     # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
-
 
 
 # Test - stamp duty
@@ -725,7 +727,6 @@ async def test_transaction_operations(http_client):
     assert len(journal_data) > 0
 
 
-
 # Test - "Others" payment method
 @pytest.mark.asyncio
 async def test_payment_by_others(http_client):
@@ -815,7 +816,6 @@ async def test_payment_by_others(http_client):
     assert others_payment is not None
     assert others_payment.get("paymentAmount") == total_amount
     assert others_payment.get("paymentDetail") == others_detail
-
 
 
 # Test - multiple payment methods combined
@@ -945,7 +945,6 @@ async def test_multiple_payment_methods(http_client):
     assert cash_payment.get("paymentAmount") == total_amount - others_amount - cashless_amount
 
 
-
 # Test - unregistered item error
 @pytest.mark.asyncio
 async def test_unregistered_item_error(http_client):
@@ -987,4 +986,3 @@ async def test_unregistered_item_error(http_client):
 
     # Cancel cart to clean up
     await http_client.post(f"/api/v1/carts/{cartId}/cancel?terminal_id={terminal_id}", headers=header)
-

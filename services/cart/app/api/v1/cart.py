@@ -19,6 +19,8 @@ from app.api.v1.schemas import (
     ItemUnitPriceUpdateRequest,
 )
 from app.dependencies.get_cart_service import get_cart_service_async, get_cart_service_with_cart_id_async
+from app.exceptions import SnapshotGenerationFailedException
+from app.exceptions.cart_error_codes import CartErrorCode, CartErrorMessage
 from app.services import snapshot_service
 from app.services.cart_service import CartService
 
@@ -29,15 +31,65 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
+# The one status on these routes whose correct handling is not "the request
+# failed" (issue #192). Declared here rather than taken from the shared
+# StatusCodes table because the part a client needs is cart-specific: the cart is
+# held by the client, so it has to be repeated, and on a finalize the transaction
+# is already recorded, so starting a new sale books it twice.
+CARRIED_SNAPSHOT_UNAVAILABLE = {
+    status.HTTP_503_SERVICE_UNAVAILABLE: {
+        "description": (
+            "The cart is carried by the client and its snapshot could not be signed, so it "
+            "cannot be returned. Repeat the identical request with the snapshot already held: "
+            "a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the "
+            "repeat returns the transaction already recorded. Do NOT start a new cart - the "
+            "transaction may already exist and a new one would be booked a second time."
+        ),
+        "model": ApiResponse,
+        "content": {
+            "application/json": {
+                # The shape the handler actually returns, so a client can be written
+                # against it: `user_error.code` is the stable identifier to match on,
+                # since 503 alone does not distinguish this from an outage.
+                "example": {
+                    "success": False,
+                    "code": 503,
+                    "message": (
+                        "Cannot sign the snapshot for carried cart_id=...; the cart is held by "
+                        "the client alone and cannot be returned unsigned"
+                    ),
+                    "user_error": {
+                        "code": CartErrorCode.SNAPSHOT_GENERATION_FAILED,
+                        "message": CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_GENERATION_FAILED),
+                    },
+                    "data": None,
+                }
+            }
+        },
+    }
+}
+
+
 def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
     """
     Transform a mutated cart into response data with a signed snapshot attached.
 
     Every cart-mutating response carries a restorable copy of the cart
-    (issue #148). Snapshot generation is best-effort: on failure the field
-    is null and the operation itself still succeeds.
+    (issue #148). Generation is best-effort while the server holds the cart in
+    its cache: the field is null and the operation still succeeds.
+
+    On the carried path it is not optional (issue #192). The server kept no
+    copy, so a response without a snapshot hands the client a cart it can no
+    longer address - the request has to fail instead, and the client repeats it
+    with the snapshot it still holds.
     """
     snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
+    if snapshot is None and cart_service.is_carried:
+        raise SnapshotGenerationFailedException(
+            f"Cannot sign the snapshot for carried cart_id={cart_doc.cart_id}; "
+            "the cart is held by the client alone and cannot be returned unsigned",
+            logger,
+        )
     return SchemasTransformerV1().transform_cart(cart_doc=cart_doc, snapshot=snapshot).model_dump()
 
 
@@ -54,6 +106,7 @@ def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
         status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def create_cart(
@@ -81,17 +134,28 @@ async def create_cart(
             transaction_type=create_req.transaction_type,
             user_id=create_req.user_id,
             user_name=create_req.user_name,
+            carry_snapshot=create_req.carry_snapshot,
         )
     except Exception as e:
         raise e
 
     # Creation is a mutation, so its response also carries a signed snapshot
-    # (FR-001). The snapshot is built from the cached (authoritative) cart;
-    # skip the extra cache read entirely when generation is degraded.
+    # (FR-001). `get_cart_async` serves the cart just created - from the cache
+    # for a cart the server keeps, from the pinned document for a carried one,
+    # which is never written (issue #192).
     snapshot = None
     if snapshot_service.get_snapshot_signer() is not None:
         cart_doc = await cart_service.get_cart_async()
         snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
+    if snapshot is None and cart_service.is_carried:
+        # A carried cart is written nowhere, so returning its id without the
+        # snapshot loses it at the moment of creation (issue #192). Nothing was
+        # persisted, so failing here leaves nothing behind either.
+        raise SnapshotGenerationFailedException(
+            f"Cannot sign the snapshot for carried cart_id={cart_id}; "
+            "the cart would be unreachable the moment it is created",
+            logger,
+        )
 
     response = ApiResponse(
         success=True,
@@ -115,6 +179,7 @@ async def create_cart(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def cancel_transaction(
@@ -170,6 +235,7 @@ async def cancel_transaction(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def add_items(
@@ -218,6 +284,7 @@ async def add_items(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def cancel_line_item(
@@ -264,6 +331,7 @@ async def cancel_line_item(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def update_item_unit_price(
@@ -313,6 +381,7 @@ async def update_item_unit_price(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def update_item_quantity(
@@ -362,6 +431,7 @@ async def update_item_quantity(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def add_discount_to_line_item(
@@ -413,6 +483,7 @@ async def add_discount_to_line_item(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def subtotal(
@@ -457,6 +528,7 @@ async def subtotal(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def discount_to_cart(
@@ -506,6 +578,7 @@ async def discount_to_cart(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def payments(
@@ -554,6 +627,7 @@ async def payments(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def bill(
@@ -609,6 +683,7 @@ async def bill(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def resume_item_entry(

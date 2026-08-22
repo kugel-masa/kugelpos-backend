@@ -5,6 +5,7 @@
 
 (The terminal_info cache and its endpoints were removed in #127.)
 """
+
 import os
 
 import pytest

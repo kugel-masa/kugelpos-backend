@@ -2,6 +2,7 @@
 """
 cart サービスの例外モジュール
 """
+
 from kugel_common.exceptions import (
     # 基本例外
     AppException,
@@ -59,6 +60,8 @@ from .cart_exceptions import (
     SnapshotTerminalStateException,
     SnapshotRequiredException,
     FinalizeConflictException,
+    CartPathMismatchException,
+    SnapshotGenerationFailedException,
     SnapshotCartIdMismatchException,
     TransactionAmbiguousException,
     VoidOutOfSessionException,

@@ -225,3 +225,33 @@ async def test_degraded_mode_mutation_succeeds_without_snapshot(http_client, sna
     )
     assert r.status_code == status.HTTP_200_OK, r.text
     assert r.json()["data"].get("signedSnapshot") is None
+
+
+@pytest.mark.asyncio
+async def test_a_carried_cart_is_not_created_when_it_cannot_be_signed(http_client, snapshot_keys_unset):
+    """Degraded mode has no null-snapshot answer for a carried cart (issue #192).
+
+    The cart above survives a null snapshot because the server still holds it.
+    A cart the client declared it would carry is written nowhere, so the same
+    answer would hand back an id addressing nothing — the client could neither
+    carry it nor find it, and the cart would be lost at the moment of creation.
+
+    Startup now refuses to run without a key, so reaching this needs the keys
+    pulled out from under a running app, which is what the fixture does. The
+    check stays because a key that loads and then fails to sign gets past
+    startup, and lands here identically.
+    """
+    response = await http_client.post(
+        f"/api/v1/carts?terminal_id={_terminal_id()}",
+        json={
+            "carrySnapshot": True,
+            "tenant_id": os.environ.get("TENANT_ID"),
+            "terminal_id": _terminal_id(),
+            "operator_code": "9999",
+            "operator_name": "Test Operator",
+        },
+        headers=_api_headers(),
+    )
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, response.text
+    assert "401507" in response.text, response.text

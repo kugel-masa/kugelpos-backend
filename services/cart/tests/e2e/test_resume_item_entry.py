@@ -68,7 +68,9 @@ async def test_resume_item_entry_from_paying_state(
     headers = {"x-api-key": terminal_api_key}
 
     # Create cart
-    response = await async_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers)
+    response = await async_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers
+    )
     assert response.status_code == 201
     cart_id = response.json()["data"]["cartId"]
 
@@ -123,7 +125,9 @@ async def test_resume_item_entry_from_invalid_states(
     headers = {"x-api-key": terminal_api_key}
 
     # Test from Idle state
-    response = await async_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers)
+    response = await async_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers
+    )
     assert response.status_code == 201
     cart_id_idle = response.json()["data"]["cartId"]
 
@@ -134,7 +138,9 @@ async def test_resume_item_entry_from_invalid_states(
     assert "Invalid event" in response.json()["message"]
 
     # Test from EnteringItem state
-    response = await async_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers)
+    response = await async_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers
+    )
     assert response.status_code == 201
     cart_id_entering = response.json()["data"]["cartId"]
 
@@ -158,7 +164,9 @@ async def test_resume_item_entry_preserves_line_items(
     headers = {"x-api-key": terminal_api_key}
 
     # Create cart and add multiple items
-    response = await async_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers)
+    response = await async_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers
+    )
     assert response.status_code == 201
     cart_id = response.json()["data"]["cartId"]
 
@@ -211,7 +219,9 @@ async def test_resume_item_entry_clears_all_payments(
     headers = {"x-api-key": terminal_api_key}
 
     # Create cart and prepare for payment
-    response = await async_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers)
+    response = await async_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}", json=create_cart_data, headers=headers
+    )
     assert response.status_code == 201
     cart_id = response.json()["data"]["cartId"]
 

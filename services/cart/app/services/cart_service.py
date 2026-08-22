@@ -5,6 +5,7 @@ from logging import getLogger
 # Get logger instance
 logger = getLogger(__name__)
 
+from app.config.settings import settings
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.utils.slack_notifier import send_warning_notification, send_fatal_error_notification
@@ -25,6 +26,7 @@ from app.exceptions import (
     TerminalStatusException,
     SignInOutException,
     SnapshotInvalidException,
+    CartPathMismatchException,
     SnapshotScopeViolationException,
     SnapshotTerminalStateException,
     SnapshotCartIdMismatchException,
@@ -179,12 +181,37 @@ class CartService(ICartService):
     #
     # Create a new cart and return the cart ID
     #
+    def __cart_is_carried(self, carry_snapshot: bool) -> bool:
+        """
+        Whether this cart will be carried, and so must not be cached.
+
+        The client says so at creation. In REQUIRED mode it does not have to:
+        every mutating request from then on has to carry a snapshot, so a cached
+        copy could never be read and writing one is pure waste.
+        """
+        if settings.CART_REQUEST_SNAPSHOT_MODE.upper() == "REQUIRED":
+            return True
+        return bool(carry_snapshot)
+
+    @property
+    def is_carried(self) -> bool:
+        """
+        Whether the client holds this cart rather than the server (issue #192).
+
+        True both for a request that arrived carrying a snapshot and for the
+        creation of a cart declared as carried, which is what the API layer needs
+        to know: in either case nothing was written to the cache, so a response
+        without a snapshot would leave the client with no cart at all.
+        """
+        return self._stateless
+
     async def create_cart_async(
         self,
         terminal_id: str,
         transaction_type: int,
         user_id: str,
         user_name: str,
+        carry_snapshot: bool = False,
     ) -> str:
         """
         Create a new cart for a transaction.
@@ -264,7 +291,22 @@ class CartService(ICartService):
             message = f"Failed to create cart, transaction_type: {transaction_type}, user_id: {user_id}, user_name: {user_name}"
             raise CartCannotCreateException(message, logger, e) from e
 
-        # Save to cache
+        # A cart the client will carry is never written to the cache - not even
+        # here (issue #192). Creation is the one request that always wrote,
+        # because it has nothing to carry yet and the server could not know
+        # whether the client would; that copy then sat there while the carried
+        # requests moved the cart on, and a single snapshot-less request
+        # continued from it, dropping everything in between and answering with a
+        # correctly signed snapshot of a cart missing it.
+        #
+        # Not writing makes the mixture impossible rather than detectable: there
+        # is no stale copy to continue from, so such a request finds no cart at
+        # all (404, error 401002). Setting `_stateless` here is what the rest of
+        # the service already keys off - __cache_cart_async pins the document
+        # instead of writing it, and __get_cached_cart_async serves the pinned
+        # one - so the response is still built from the cart just created.
+        cart.carry_snapshot = self.__cart_is_carried(carry_snapshot)
+        self._stateless = cart.carry_snapshot
         await self.__cache_cart_async(cart_doc=cart, cart_status=CartStatus.Idle, isNew=True)
 
         # Store cart ID
@@ -700,7 +742,6 @@ class CartService(ICartService):
 
         # Add payments to cart
         for add_payment in add_payment_list:
-
             # Check balance
             if cart_doc.balance_amount == 0:
                 message = f"The balance is equal to 0, cart_id: {self.cart_id}, balance: {cart_doc.balance_amount}, payments: {add_payment_list}, add_payment: {add_payment}"
@@ -904,6 +945,21 @@ class CartService(ICartService):
                     logger,
                 )
 
+            # A cart opened for the cache path must not be carried (issue #192).
+            # Its copy is in the cache, and this request would not update it -
+            # so the next snapshot-less request would continue from a cart
+            # missing everything done here, and answer with a correctly signed
+            # snapshot of it. Refusing is the whole guard: the way the cart was
+            # opened is in the signed document, so no cache read is needed to
+            # know it. `None` is a cart created before the field existed and is
+            # left alone, so carts in flight across a deployment keep working.
+            if snapshot_cart.carry_snapshot is False:
+                raise CartPathMismatchException(
+                    f"Cart {snapshot_cart.cart_id} was opened without carrySnapshot, so it is served from the "
+                    "server-side cache and cannot be carried. Open the cart with carrySnapshot=true to carry it.",
+                    logger,
+                )
+
             # Only in-flight carts are operable; terminal-state snapshots are
             # rejected (a non-finalize op on a finalized cart is invalid).
             if snapshot_cart.status in (CartStatus.Completed.value, CartStatus.Cancelled.value):
@@ -953,9 +1009,13 @@ class CartService(ICartService):
         DUAL mode keeps two independent receipt-number sources: a carried
         finalize numbers from the terminal's running counter, a snapshot-less one
         from cart's `terminal_counter`. The branch is per *transaction*, so a
-        phase 2 terminal whose snapshot signing has degraded - an unset,
-        malformed or mid-rotation SNAPSHOT_HMAC_KEYS - silently falls into the
-        other series and can print a receipt number it has already issued.
+        phase 2 terminal whose snapshot signing has degraded silently falls into
+        the other series and can print a receipt number it has already issued.
+
+        An unset or malformed key no longer reaches here: the service refuses to
+        start without a usable one (issue #192). What is left is a key that loads
+        and then fails to sign, so the check stays - it costs one comparison, and
+        the signal it carries is one nothing else would report.
 
         Detected, not blocked: refusing the finalize would stop a store selling
         over a key misconfiguration, and this codebase's posture for numbering

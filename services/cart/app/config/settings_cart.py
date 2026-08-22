@@ -39,11 +39,22 @@ class CartSettings(BaseSettings):
     # Signed cart snapshot (client-carried cart phase 1, issue #148).
     # Format: "<kid>:<base64 key>[,<kid>:<base64 key>...]". The first entry is the
     # current signing key; the rest are previous generations accepted for verification
-    # only (rotation grace). Empty means the snapshot feature runs degraded: cart
-    # responses carry no snapshot and the restore API rejects all envelopes.
+    # only (rotation grace).
+    #
+    # Required: the service refuses to start without a usable key (issue #192).
+    # A cart the client carries exists nowhere else, so a service that cannot sign
+    # cannot hand one back - it would take the cart with it. Running degraded was
+    # survivable only while the server-side cache was authoritative.
     SNAPSHOT_HMAC_KEYS: str = Field(
         default="",
         description="HMAC keys for cart snapshot signing as 'kid:base64key' CSV; first entry signs, the rest verify.",
+    )
+    # The key committed to this repository works, so nothing else would surface it:
+    # snapshots are issued and verified while the signature protects nothing. Startup
+    # refuses it unless this says the stack is a development one.
+    SNAPSHOT_ALLOW_INSECURE_KEY: bool = Field(
+        default=False,
+        description="Allow starting with the signing key published in this repository (local development only).",
     )
     SNAPSHOT_SIZE_WARN_BYTES: int = Field(
         default=262144,
@@ -75,10 +86,7 @@ class CartSettings(BaseSettings):
     # gRPC settings
     USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
     GRPC_TIMEOUT: float = Field(default=5.0, description="gRPC request timeout in seconds")
-    MASTER_DATA_GRPC_URL: str = Field(
-        default="master-data:50051",
-        description="Master-data gRPC server URL"
-    )
+    MASTER_DATA_GRPC_URL: str = Field(default="master-data:50051", description="Master-data gRPC server URL")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

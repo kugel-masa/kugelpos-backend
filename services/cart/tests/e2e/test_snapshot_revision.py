@@ -29,7 +29,14 @@ async def _cart_with_snapshots(http_client, terminal_id, header, mutations=2):
     """Create a cart and mutate it, keeping every snapshot it was handed."""
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
-        json={"transaction_type": 101, "user_id": "99", "user_name": "Revision"},
+        json={
+            # Opened for the carried path (issue #192): every request below
+            # carries the snapshot, so nothing is cached to serve a plain one.
+            "carrySnapshot": True,
+            "transaction_type": 101,
+            "user_id": "99",
+            "user_name": "Revision",
+        },
         headers=header,
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text

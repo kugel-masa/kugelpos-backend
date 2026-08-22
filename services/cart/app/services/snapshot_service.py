@@ -8,11 +8,19 @@ JSON serialization. Signing and verification both operate on the snake_case
 model_dump(mode="json") representation, so wire-level camelCase aliasing
 never affects the signature.
 
-Snapshot generation is best-effort (degraded mode): a failure to build or
-sign a snapshot must never fail the underlying cart operation. Verification
-is strict: with no keys configured, every envelope is rejected.
+Signing is a startup requirement (issue #192): the service refuses to run
+without a usable key, so no request is ever served by a process that cannot
+sign. A cart the client carries exists nowhere else, so handing back a
+response without a snapshot would take the cart with it - see
+`require_snapshot_signer`.
+
+Generation remains best-effort for a cart the server still holds in its
+cache: a build failure there leaves the response without a snapshot and the
+cart operation itself still succeeds. Verification is strict: an envelope
+signed with an unknown key is always rejected.
 """
 
+import base64
 from logging import getLogger
 from typing import Optional
 
@@ -58,6 +66,11 @@ PUBLICLY_KNOWN_KEY_MATERIAL = (
     "aW50ZWdyYXRpb24tdGVzdC1rZXktMzItYnl0ZXMhISE=",
 )
 
+# HMAC-SHA256 produces a 32-byte tag; a key shorter than that weakens it while
+# signing and verifying exactly like a real one. Documented in .env.sample as the
+# minimum, and enforced at startup so the documentation is true.
+MINIMUM_KEY_BYTES = 32
+
 _signer: Optional[HmacSigner] = None
 _initialized = False
 
@@ -100,6 +113,39 @@ def init_snapshot_signer(force: bool = False) -> Optional[HmacSigner]:
     return _signer
 
 
+def _short_key_ids(spec: str) -> list[str]:
+    """
+    Key ids in the spec whose material is below the minimum length.
+
+    Only ever called after `HmacSigner.from_spec` has accepted the spec, so
+    anything unparseable here has already been rejected and is skipped rather
+    than reported twice.
+
+    Args:
+        spec: The raw SNAPSHOT_HMAC_KEYS value
+
+    Returns:
+        The offending kids, in the order they appear
+    """
+    short = []
+    for entry in spec.split(","):
+        kid, sep, encoded = entry.strip().partition(":")
+        if not sep:
+            continue
+        try:
+            key = base64.b64decode(encoded.strip(), validate=True)
+        except Exception:
+            continue
+        if len(key) < MINIMUM_KEY_BYTES:
+            short.append(kid.strip())
+    return short
+
+
+def _is_publicly_known(spec: str) -> bool:
+    """Whether the spec contains key material committed to this repository."""
+    return any(known in spec for known in PUBLICLY_KNOWN_KEY_MATERIAL)
+
+
 def _warn_if_publicly_known(spec: str) -> None:
     """
     Report a signing key that is published in this repository.
@@ -115,7 +161,7 @@ def _warn_if_publicly_known(spec: str) -> None:
     Returns:
         None
     """
-    if not any(known in spec for known in PUBLICLY_KNOWN_KEY_MATERIAL):
+    if not _is_publicly_known(spec):
         return
     logger.error(
         "SNAPSHOT_HMAC_KEYS contains key material published in this repository. "
@@ -124,6 +170,64 @@ def _warn_if_publicly_known(spec: str) -> None:
         "Generate a real key: "
         "python -c \"import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())\""
     )
+
+
+class SnapshotSigningUnavailableError(RuntimeError):
+    """Raised at startup when the service has no signing key it may use.
+
+    Not an API exception: nothing has been served yet. It propagates out of the
+    lifespan hook so the process exits and the container is restarted rather
+    than accepting traffic it cannot serve correctly.
+    """
+
+
+def require_snapshot_signer() -> HmacSigner:
+    """
+    Load the signing key ring and refuse to run without one (issue #192).
+
+    A cart on the carried path is held by the client alone. A process that
+    cannot sign cannot hand one back, and the client has nowhere to continue
+    from - the cart is lost the moment it is created. Degrading was survivable
+    only while the server-side cache was authoritative, and that cache is being
+    retired, so the situation is removed instead of worked around.
+
+    The key published in this repository is refused for the same reason it is
+    reported at ERROR: it signs and verifies, so every other signal looks
+    healthy while the signature protects nothing. Local stacks say so with
+    `SNAPSHOT_ALLOW_INSECURE_KEY`.
+
+    Returns:
+        The loaded signer
+
+    Raises:
+        SnapshotSigningUnavailableError: no key, a malformed key, or the public
+            development key without an explicit opt-in
+    """
+    signer = init_snapshot_signer(force=True)
+    if signer is None:
+        raise SnapshotSigningUnavailableError(
+            "SNAPSHOT_HMAC_KEYS is unset or malformed. The cart service signs every "
+            "cart it hands back to a client that carries it, so it cannot start "
+            "without a key. Generate one: "
+            "python -c \"import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())\""
+        )
+    short = _short_key_ids(getattr(settings, "SNAPSHOT_HMAC_KEYS", "") or "")
+    if short:
+        raise SnapshotSigningUnavailableError(
+            f"SNAPSHOT_HMAC_KEYS entries {short} are shorter than {MINIMUM_KEY_BYTES} bytes. "
+            "A short key signs and verifies exactly like a real one, so nothing else "
+            "would report it. Generate a real key: "
+            "python -c \"import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())\""
+        )
+    spec = getattr(settings, "SNAPSHOT_HMAC_KEYS", "") or ""
+    if _is_publicly_known(spec) and not settings.SNAPSHOT_ALLOW_INSECURE_KEY:
+        raise SnapshotSigningUnavailableError(
+            "SNAPSHOT_HMAC_KEYS is the key published in this repository. Cart "
+            "snapshots signed with it are effectively unsigned: anyone can forge one "
+            "with arbitrary prices and it will verify. Supply a real key, or set "
+            "SNAPSHOT_ALLOW_INSECURE_KEY=true if this really is a development stack."
+        )
+    return signer
 
 
 def get_snapshot_signer() -> Optional[HmacSigner]:

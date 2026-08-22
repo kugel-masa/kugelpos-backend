@@ -53,15 +53,24 @@ async def _remove_synthetic_transactions(http_client):
 async def _cart_with_item(http_client, terminal_id, header):
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
-        json={"transaction_type": 101, "user_id": "99", "user_name": "Cancel Numbering"},
+        json={
+            # Opened for the carried path (issue #192): every request below
+            # carries the snapshot, so nothing is cached to serve a plain one.
+            "carrySnapshot": True,
+            "transaction_type": 101,
+            "user_id": "99",
+            "user_name": "Cancel Numbering",
+        },
         headers=header,
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
-    cart_id = response.json()["data"]["cartId"]
+    created = response.json()["data"]
+    cart_id = created["cartId"]
+    snapshot = created["signedSnapshot"]
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 1}],
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
         headers=header,
     )
     assert response.status_code == status.HTTP_200_OK, response.text
@@ -143,8 +152,24 @@ async def test_carried_cancel_does_not_collide_with_a_sale(http_client, api_head
 
 @pytest.mark.asyncio
 async def test_legacy_cancel_is_unaffected(http_client, api_header, opened_terminal_id):
-    """A phase 1 client cancels with no snapshot and no context, as before."""
-    cart_id, _ = await _cart_with_item(http_client, opened_terminal_id, api_header)
+    """A phase 1 client cancels with no snapshot and no context, as before.
+
+    Its cart is opened the phase 1 way too — for the cache path, since that is
+    what a client which carries nothing means (issue #192).
+    """
+    response = await http_client.post(
+        f"/api/v1/carts?terminal_id={opened_terminal_id}",
+        json={"transaction_type": 101, "user_id": "99", "user_name": "Legacy cancel"},
+        headers=api_header,
+    )
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    cart_id = response.json()["data"]["cartId"]
+    response = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={opened_terminal_id}",
+        json=[{"itemCode": "49-01", "quantity": 1}],
+        headers=api_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/cancel?terminal_id={opened_terminal_id}",

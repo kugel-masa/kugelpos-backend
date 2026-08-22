@@ -99,7 +99,7 @@ The receipt prints all four fields needed to identify the original (store code /
 | `401504` | 400 | Unsupported snapshot schema version |
 | `401505` | 403 | Snapshot tenant or store scope mismatch |
 | `401506` | 400 | Snapshot of a finalized transaction cannot be operated on |
-| `401507` | - | Snapshot generation failed (degraded; the operation itself succeeds) |
+| `401507` | 503 | Snapshot generation failed. On the carried path the request fails and is safe to repeat; on the cache path the operation succeeds with a null snapshot |
 | `401508` | 422 | Snapshot-less request under REQUIRED mode |
 | `401509` | 413 | Decompressed request body over the ceiling |
 | `401510` | - | Transaction sequence duplicate or gap detected (audit) |
@@ -227,15 +227,50 @@ Note the mechanics: the middleware that peels the envelope runs *outside* the
 request logger, so by the time the request is logged the envelope is gone. The
 peel leaves the scalars on the request scope for the logger to pick up.
 
-One limit worth stating: the revision advances when a snapshot is *issued*, in
-the response, and the cache-authoritative path has already written the cart by
-then — so the bump reaches the client but not the cache. A cart that switched
-back to the cache path mid-life would be handed a revision from wherever the
-cache left off, which reads as a rollback. That is not a case to tune the
-detection for: switching paths inside one cart rebuilds it from a cache that the
-stateless path deliberately stopped writing, so the cart itself has rolled back,
-not just its revision. Every cart route is a body-carrying mutation, so a client
-that carries carries throughout.
+Switching paths inside one cart used to be the case that got past this. The
+carried path writes nothing, so a cart built up by carried requests left the
+cache holding it as it was at creation, and one snapshot-less request continued
+from there — dropping everything in between and answering with a correctly
+signed snapshot of a cart missing it. The revision it presented afterwards would
+go down, so it was *sometimes* visible; a client that stayed on the cache path
+left no trace at all.
+
+That is now impossible rather than detectable (#192). See below.
+
+## One cart, one path (#192)
+
+The path is chosen per request, on whether a snapshot came with it — so nothing
+stopped one cart from using both. The client now says which way it will work
+when it opens the cart:
+
+```json
+POST /carts   {"transactionType": 101, "carrySnapshot": true}
+```
+
+With `carrySnapshot: true` the cart is **never written to the cache** — not even
+at creation, which is the one request that always wrote, because it has nothing
+to carry yet and the server could not know what the client would do. There is
+then no stale copy for a snapshot-less request to continue from, and it finds no
+cart at all:
+
+```
+carrySnapshot=true    carried → 200      without a snapshot → 404 (401002)
+carrySnapshot=false   carried → 409 (401515)   without a snapshot → 200
+```
+
+Both directions are refused, because both lose the same thing. Declaring the
+cache path and then carrying leaves the cache copy behind while the cart moves
+on, which is the same silent loss reached from the other side.
+
+The declaration rides in the signed cart document, so checking it costs no cache
+read: a snapshot states which way its cart was opened. A cart created before the
+field existed says neither, and is left alone — carts in flight across the
+deployment keep working.
+
+`carrySnapshot` defaults to false, which is what a client that predates it means
+by not sending it. In `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` it is not needed:
+every mutating request has to carry, so a cached copy could never be read and
+none is written.
 
 ## Two numbering series while DUAL mode is on (#168)
 
@@ -246,11 +281,14 @@ The finalize path branches per **transaction**, not per terminal:
 | carries a finalize context | the terminal's running `receipt_counter` |
 | carries none | cart's own `terminal_counter` collection |
 
-A phase 2 terminal whose snapshot signing has degraded — `SNAPSHOT_HMAC_KEYS`
-unset, malformed, or mid-rotation — is issued no snapshot, so it cannot carry
-anything and its next sale is numbered from the *other* series. That series knows
-nothing about how far the terminal has advanced, so it can print a receipt number
-the terminal has already issued.
+A phase 2 terminal whose snapshot signing has degraded is issued no snapshot, so
+it cannot carry anything and its next sale is numbered from the *other* series.
+That series knows nothing about how far the terminal has advanced, so it can
+print a receipt number the terminal has already issued.
+
+An unset or malformed key no longer reaches this point: the service refuses to
+start without a usable one (#192). What remains is a key that loads and then
+fails to sign, which lands here identically — so the detection stays.
 
 This is **detected, not blocked**: refusing the finalize would stop a store
 selling over a key misconfiguration, and the posture for numbering integrity here
@@ -277,11 +315,46 @@ snapshot-less mutating request is rejected, so there is no second series to fall
 into. Until then, a degraded signing key is an incident to fix, and now one that
 is visible per transaction rather than only in the startup log.
 
+## Signing is a requirement, not a feature (#192)
+
+Once a cart can be held by the client alone, an unsigned response stops being a
+missing extra and becomes a lost cart: the client is handed a `cart_id` that
+addresses nothing, and the server kept no copy to find. So the situation is
+removed rather than worked around.
+
+**The service does not start without a usable signing key.** An unset key, a
+malformed one, and one shorter than 32 bytes each stop the process at startup
+instead of leaving it to answer requests it cannot serve correctly. The key
+committed to this repository is refused the same way — it signs and verifies, so
+every other signal looks healthy while the signature protects nothing — unless
+`SNAPSHOT_ALLOW_INSECURE_KEY=true` says the stack really is a development one.
+
+That leaves one case startup cannot see: a key that loads and then fails to sign.
+A carried response that comes out without a snapshot is refused with **503
+(`401507`)** rather than returned unsigned. Nothing is lost by refusing, and the
+client recovers by repeating the request:
+
+- a carried request writes no cart state, so a repeat with the snapshot the
+  client still holds is simply the same request,
+- a finalize does write, and is idempotent by `cart_id` (#170), so a repeat
+  returns the transaction already recorded.
+
+Repeat, do not start over. A finalize records the transaction and publishes it
+before the response is built, so the sale exists even though the client was told
+the request failed. Ringing it up again produces a new `cart_id`, and dedupe is
+on `cart_id` - it would be booked a second time. The 503 is declared on every
+route that can return it so a generated client sees this in the API contract and
+not only here.
+
+A cart the server holds in its cache is unaffected: its snapshot is a
+convenience, the field goes out null, and the operation still succeeds.
+
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SNAPSHOT_HMAC_KEYS` | unset | Snapshot signing keys. **Unset means degraded**: no snapshot is issued, every carried one is rejected, and clients silently fall back to the cache path. See the key rotation runbook, [available in Japanese only](../../ja/cart-snapshot-key-rotation.md) |
+| `SNAPSHOT_HMAC_KEYS` | unset | Snapshot signing keys. **Required — the service does not start without one** (#192), and refuses a key shorter than 32 bytes. See the key rotation runbook, [available in Japanese only](../../ja/cart-snapshot-key-rotation.md) |
+| `SNAPSHOT_ALLOW_INSECURE_KEY` | `false` | Allows startup with the signing key committed to this repository. Local development only: that key signs and verifies, so anyone who can read the repository can mint a snapshot with any prices in it |
 | `CART_REQUEST_SNAPSHOT_MODE` | `DUAL` | Migration mode (above) |
 | `REQUEST_DECOMPRESS_MAX_BYTES` | `1048576` | Decompressed request body ceiling |
 | `SNAPSHOT_SIZE_WARN_BYTES` | `262144` | Snapshot size warning threshold |

@@ -247,6 +247,15 @@ class BaseCartCreateRequest(BaseSchemmaModel):
     transaction_type: Optional[int] = TransactionType.NormalSales.value
     user_id: Optional[str] = None
     user_name: Optional[str] = None
+    # The client's undertaking to send the signed snapshot with every subsequent
+    # request for this cart (issue #192). Declared here because the server
+    # cannot infer it: creation has nothing to carry yet, so it would otherwise
+    # write the cart to the cache on the chance that the client will not carry -
+    # and that copy is what a later snapshot-less request silently continues
+    # from, having missed everything the carried requests did.
+    #
+    # Defaults to False, which is what a pre-#192 client means by not sending it.
+    carry_snapshot: Optional[bool] = False
 
 
 class BaseCartCreateResponse(BaseSchemmaModel):

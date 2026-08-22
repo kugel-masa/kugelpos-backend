@@ -56,15 +56,24 @@ async def _remove_synthetic_transactions(http_client):
 async def _cart_ready_to_bill(http_client, terminal_id, header):
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
-        json={"transaction_type": 101, "user_id": "99", "user_name": "Concurrent finalize"},
+        json={
+            # Opened for the carried path (issue #192): every request below
+            # carries the snapshot, so nothing is cached to serve a plain one.
+            "carrySnapshot": True,
+            "transaction_type": 101,
+            "user_id": "99",
+            "user_name": "Concurrent finalize",
+        },
         headers=header,
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
-    cart_id = response.json()["data"]["cartId"]
+    created = response.json()["data"]
+    cart_id = created["cartId"]
+    snapshot = created["signedSnapshot"]
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 1}],
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
         headers=header,
     )
     snapshot = response.json()["data"]["signedSnapshot"]
@@ -125,13 +134,22 @@ async def test_concurrent_identical_cancels_both_succeed(http_client, api_header
     """A cancellation takes the same finalize path since #170."""
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={opened_terminal_id}",
-        json={"transaction_type": 101, "user_id": "99", "user_name": "Concurrent cancel"},
+        json={
+            # Opened for the carried path (issue #192): every request below
+            # carries the snapshot, so nothing is cached to serve a plain one.
+            "carrySnapshot": True,
+            "transaction_type": 101,
+            "user_id": "99",
+            "user_name": "Concurrent cancel",
+        },
         headers=api_header,
     )
-    cart_id = response.json()["data"]["cartId"]
+    created = response.json()["data"]
+    cart_id = created["cartId"]
+    snapshot = created["signedSnapshot"]
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={opened_terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 1}],
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
         headers=api_header,
     )
     request = {

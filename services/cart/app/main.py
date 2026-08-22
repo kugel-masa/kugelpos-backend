@@ -64,9 +64,7 @@ async def lifespan(app: FastAPI):
     from app.config.settings_cart import cart_settings
 
     if cart_settings.MASTER_DATA_CACHE_ENABLED:
-        app.state.master_cache_backend = DaprStateCacheBackend(
-            store_name=cart_settings.MASTER_DATA_CACHE_STATE_STORE
-        )
+        app.state.master_cache_backend = DaprStateCacheBackend(store_name=cart_settings.MASTER_DATA_CACHE_STATE_STORE)
         logger.info(
             "master-data cache backend initialized: store=%s",
             cart_settings.MASTER_DATA_CACHE_STATE_STORE,
@@ -75,12 +73,13 @@ async def lifespan(app: FastAPI):
         app.state.master_cache_backend = None
         logger.info("master-data cache disabled (MASTER_DATA_CACHE_ENABLED=False)")
 
-    # Validate snapshot signing keys at startup so a misconfigured
-    # SNAPSHOT_HMAC_KEYS surfaces here (degraded mode) instead of on the
-    # first request (issue #148).
-    from app.services.snapshot_service import init_snapshot_signer
+    # Snapshot signing is a startup requirement, not a feature that degrades
+    # (issues #148 / #192). A cart the client carries is held nowhere else, so a
+    # process that cannot sign cannot hand one back - it would take the cart with
+    # it. Refusing to start is the only honest response; this raises.
+    from app.services.snapshot_service import require_snapshot_signer
 
-    init_snapshot_signer()
+    require_snapshot_signer()
     try:
         yield
     finally:
@@ -250,6 +249,7 @@ async def close_event():
 
     logger.info("Flushing request log buffer")
     from kugel_common.middleware.request_log_buffer import get_request_log_buffer
+
     await get_request_log_buffer().shutdown()
 
     logger.info("Closing the database connection")
@@ -278,5 +278,3 @@ async def close_event():
 
     # add shutdown tasks here
     logger.info("Application closed")
-
-

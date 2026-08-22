@@ -8,6 +8,7 @@ state machines, etc.) and therefore need the full docker-compose stack.
 Auto-marks tests with `e2e`. Inherits set_env_vars from the parent
 conftest (which fetches admin token + API key from running services).
 """
+
 import os
 
 import pytest
@@ -32,6 +33,7 @@ async def _setup_cart_db_e2e(set_env_vars):
 async def _reset_db_client_per_test_e2e(_setup_cart_db_e2e):
     yield
     from kugel_common.database import database as db_helper
+
     try:
         await db_helper.reset_client_async()
     except Exception:
