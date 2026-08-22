@@ -153,3 +153,55 @@ class TestWhenTheRequestItselfCouldNotBeRead:
         assert len(buffer.logs) == 1, "a failure reading the body cost the whole record"
         assert buffer.logs[-1].request_info.url.endswith("/api/v1/echo")
         assert buffer.logs[-1].request_info.method == "POST"
+
+
+class TestAPartialRecordIsStillARecord:
+    """Every field the record is assembled from can fail on its own."""
+
+    def test_a_response_that_cannot_be_read_still_leaves_a_row(self, captured, monkeypatch):
+        # `_make_response_info` re-reads the response body. If that raises, the
+        # whole record used to be lost - caught by the outer guard, so the caller
+        # was fine and the audit trail simply had nothing.
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise RuntimeError("the response body will not re-read")
+
+        monkeypatch.setattr(log_requests_module, "_make_response_info", boom)
+
+        response = client.get("/api/v1/ok")
+
+        assert response.status_code == 200
+        assert len(buffer.logs) == 1, "a response that could not be read cost the whole record"
+        logged = buffer.logs[-1]
+        assert logged.request_info.url.endswith("/api/v1/ok"), "the request it recorded is not identifiable"
+        assert logged.response_info.body == {"_capture_failed": True}
+
+    def test_a_client_with_no_address_still_leaves_a_row(self, captured, monkeypatch):
+        # An ASGI scope does not always carry a client, and reaching into it
+        # unguarded is an AttributeError inside the assembly.
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise AttributeError("'NoneType' object has no attribute 'host'")
+
+        monkeypatch.setattr(log_requests_module, "_make_client_info", boom)
+
+        response = client.get("/api/v1/ok")
+
+        assert response.status_code == 200
+        assert len(buffer.logs) == 1
+
+    def test_a_failed_body_capture_says_so(self, captured, monkeypatch):
+        # `body: None` cannot be told apart from a request that had no body, and
+        # a reader of the audit trail has only what is written down.
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise ValueError("the body could not be read")
+
+        monkeypatch.setattr(log_requests_module, "_make_request_info", boom)
+
+        client.post("/api/v1/echo", json={"a": 1})
+
+        assert buffer.logs[-1].request_info.body == {"_capture_failed": True}

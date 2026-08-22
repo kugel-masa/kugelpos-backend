@@ -28,6 +28,7 @@ stored as a truncation marker instead.
 
 from fastapi import Request, Response
 from logging import getLogger
+from typing import Optional
 from pydantic import ValidationError
 import json
 import time
@@ -152,8 +153,8 @@ async def _record_request(
     request: Request,
     service_name: str,
     accept_time: str,
-    request_info: RequestLog.RequestInfo,
-    response: Response,
+    request_info: Optional[RequestLog.RequestInfo],
+    response: Optional[Response],
     process_time_ms: int,
 ) -> None:
     """
@@ -172,20 +173,47 @@ async def _record_request(
         # body failed. Record the request anyway: what it was is still worth
         # having, and it is the failures that most need a trail.
         request_info = RequestLog.RequestInfo(
-            method=request.method, url=str(request.url), body=None, accept_time=accept_time
+            method=request.method,
+            url=str(request.url),
+            # Marked rather than left as None, which a reader cannot tell apart
+            # from a request that legitimately had no body.
+            body={"_capture_failed": True},
+            accept_time=accept_time,
         )
 
-    request_log = RequestLog(
-        tenant_id=await _make_tenant_id(terminal_info, user_dict),
-        client_info=await _make_client_info(request),
-        request_info=request_info,
-        response_info=await _make_response_info(response, process_time_ms),
-        staff_info=await _make_staff_info(terminal_info),
-        user_info=await _make_user_info(user_dict),
-        terminal_info=await _make_terminal_info(terminal_info),
-        snapshot_info=_make_snapshot_info(request),
-        service_name=service_name,
-    )
+    try:
+        request_log = RequestLog(
+            tenant_id=await _make_tenant_id(terminal_info, user_dict),
+            client_info=await _make_client_info(request),
+            request_info=request_info,
+            response_info=await _make_response_info(response, process_time_ms),
+            staff_info=await _make_staff_info(terminal_info),
+            user_info=await _make_user_info(user_dict),
+            terminal_info=await _make_terminal_info(terminal_info),
+            snapshot_info=_make_snapshot_info(request),
+            service_name=service_name,
+        )
+    except Exception as e:
+        # Any one of those can raise - a response body that will not re-read, a
+        # claim of the wrong shape, a field a future change makes required - and
+        # each of them would otherwise cost the entire record. Guarded once, at
+        # the assembly, rather than six times inside it: the point is that the
+        # request is recorded, not that every part of it was resolvable.
+        logger.error(
+            f"Request log could not be assembled in full for {request.method} {request.url}: {e}",
+            exc_info=True,
+        )
+        request_log = RequestLog(
+            tenant_id=None,
+            client_info=RequestLog.ClientInfo(ip_address=""),
+            request_info=request_info,
+            response_info=RequestLog.ResponseInfo(
+                status_code=getattr(response, "status_code", 0) or 0,
+                process_time_ms=process_time_ms,
+                body={"_capture_failed": True},
+            ),
+            service_name=service_name,
+        )
     # Log to file synchronously (fast operation)
     await _output_request_log_to_file(request_log)
 
@@ -466,7 +494,9 @@ async def _make_client_info(request: Request) -> RequestLog.ClientInfo:
     Returns:
         RequestLog.ClientInfo object with client IP address
     """
-    return RequestLog.ClientInfo(ip_address=request.client.host)
+    # `request.client` is not always populated - an ASGI scope can arrive
+    # without one - and an AttributeError here costs the whole record.
+    return RequestLog.ClientInfo(ip_address=request.client.host if request.client else "")
 
 
 async def _make_request_info(request: Request, accept_time: str) -> RequestLog.RequestInfo:
