@@ -191,3 +191,47 @@ class TestAnIndexWithTheRightKeysAndTheWrongOptions:
             index_keys_list=[{"keys": KEYS, "unique": True}],
             index_name="probe_index",
         )
+
+
+class TestTheTranlogDedupeIndexIsPartialForAReason:
+    """Transactions predating `cart_id` have none, and must still coexist.
+
+    The dedupe index on (tenant_id, store_code, cart_id) is unique, so without a
+    partial filter every historical row would collide with every other on a
+    missing key — and the collection could never be indexed at all. Nothing else
+    would notice the filter being dropped until a tenant with history could not
+    be set up, which is what issue #185 looks like from the outside.
+    """
+
+    DEDUPE_KEYS = {"tenant_id": 1, "store_code": 1, "cart_id": 1}
+    PARTIAL = {"cart_id": {"$type": "string"}}
+
+    async def test_rows_without_a_cart_id_do_not_collide(self, collection):
+        db_name, name, db = collection
+        await db[name].insert_many([_tranlog(1), _tranlog(2), _tranlog(3)])  # no cart_id on any
+
+        await create_collection_with_indexes_async(
+            db_name=db_name,
+            collection_name=name,
+            index_keys_list=[{"keys": self.DEDUPE_KEYS, "unique": True, "partialFilterExpression": self.PARTIAL}],
+            index_name="probe_index",
+        )
+
+        # And the collection keeps accepting them afterwards.
+        await db[name].insert_many([_tranlog(4), _tranlog(5)])
+        assert await db[name].count_documents({}) == 5
+
+    async def test_two_rows_with_the_same_cart_id_still_collide(self, collection):
+        db_name, name, db = collection
+        await create_collection_with_indexes_async(
+            db_name=db_name,
+            collection_name=name,
+            index_keys_list=[{"keys": self.DEDUPE_KEYS, "unique": True, "partialFilterExpression": self.PARTIAL}],
+            index_name="probe_index",
+        )
+
+        await db[name].insert_one(_tranlog(1, cart_id="the-same-cart"))
+        with pytest.raises(Exception):
+            await db[name].insert_one(_tranlog(2, cart_id="the-same-cart"))
+
+        assert await db[name].count_documents({}) == 1
