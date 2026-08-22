@@ -192,8 +192,11 @@ class TranService:
         # time (legacy / no-snapshot path) the server-side numbering is used.
         carried = cart.transaction_datetime is not None
         # A repeat is reported once. The insert path can report and then fail to
-        # commit, which lands in the recovery below - and reporting the same
-        # repeat twice doubles every row the audit query is meant to count.
+        # commit, which lands in the recovery below - where the tranlog in hand
+        # is by then the recorded one, so a second report finds no divergence and
+        # says the repeat carried the same numbers, directly after a line saying
+        # it carried different ones. The audit row is not at risk; the
+        # contradiction in the log is, and that is what a reader works from.
         reported = False
         if carried:
             # (business_counter, seq) composite: transaction_no carries seq.

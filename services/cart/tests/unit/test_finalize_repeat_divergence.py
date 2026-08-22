@@ -233,3 +233,130 @@ class TestTheSameInstantWrittenTwoWays:
         await _report(service, _tranlog(when="2026-08-23T00:00:01+09:00"), _tranlog(when="2026-08-22T23:59:59+09:00"))
 
         audit.add_record_async.assert_awaited_once()
+
+
+class TestTheConcurrentRaceReportsItToo:
+    """The race can surface at the insert or at the commit, and both recover.
+
+    Those two recoveries are separate call sites from the idempotent pre-check,
+    and each has to report on its own — the e2e covers only the sequential
+    repeat, where the pre-check is what answers. Driving `create_tranlog_async`
+    rather than the reporter, so the routing itself is what is under test.
+    """
+
+    def _armed(self, failure, winner, audit):
+        from unittest.mock import MagicMock
+
+        service = _make_service(audit)
+        service.tranlog_delivery_status_repo.create_status_async = AsyncMock()
+        service.tranlog_repository.start_transaction = AsyncMock(return_value=MagicMock())
+        service.tranlog_repository.create_tranlog_async = AsyncMock(side_effect=failure)
+        service.tranlog_repository.commit_transaction = AsyncMock()
+        service.tranlog_repository.abort_transaction = AsyncMock()
+        service.tranlog_repository.set_session = MagicMock()
+        service.tranlog_delivery_status_repo.set_session = MagicMock()
+        service.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
+        service._get_setting_value_async = AsyncMock(return_value=None)
+        service._publish_tranlog_async = AsyncMock()
+        service.receipt_data_strategy = MagicMock()
+        service.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
+        return service
+
+    def _winner(self):
+        from kugel_common.models.documents.base_tranlog import BaseTransaction
+
+        winner = BaseTransaction()
+        winner.cart_id = "cart-190"
+        winner.tenant_id = "test_tenant"
+        winner.store_code = "S0001"
+        winner.transaction_no = 7
+        winner.receipt_no = 111117
+        winner.receipt_counter = 7
+        winner.generate_date_time = "2026-08-22T10:00:00"
+        winner.receipt_text = "R"
+        winner.journal_text = "J"
+        return winner
+
+    def _cart_carrying(self, counter):
+        from kugel_common.enums import TransactionType
+
+        from app.models.documents.cart_document import CartDocument
+
+        cart = CartDocument()
+        cart.cart_id = "cart-190"
+        cart.transaction_type = TransactionType.NormalSales.value
+        cart.business_date = "20260822"
+        cart.seq = 8
+        cart.receipt_counter = counter
+        cart.receipt_no = 111118
+        cart.transaction_datetime = "2026-08-22T10:00:07"
+        cart.sales = CartDocument.SalesInfo()
+        cart.sales.total_amount_with_tax = 110.0
+        cart.user = None
+        return cart
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            pytest.param("insert", id="the unique index rejects the insert"),
+            pytest.param("commit", id="the unique index rejects at commit"),
+        ],
+    )
+    async def test_a_divergent_loser_is_recorded(self, failure):
+        from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
+
+        raised = (
+            DuplicateKeyException("dup", "log_tran", {}, None)
+            if failure == "insert"
+            else CannotCreateException("wrapped duplicate", "log_tran", {}, None)
+        )
+        audit = _audit()
+        service = self._armed(raised, self._winner(), audit)
+
+        await service.create_tranlog_async(self._cart_carrying(counter=9))
+
+        audit.add_record_async.assert_awaited_once()
+        assert audit.add_record_async.await_args.kwargs["result"] == "finalize_repeat_diverged"
+
+    async def test_a_loser_carrying_the_same_numbers_is_not(self):
+        from kugel_common.exceptions import DuplicateKeyException
+
+        audit = _audit()
+        winner = self._winner()
+        service = self._armed(DuplicateKeyException("dup", "log_tran", {}, None), winner, audit)
+        cart = self._cart_carrying(counter=winner.receipt_counter)
+        cart.seq = winner.transaction_no
+        cart.receipt_no = winner.receipt_no
+        cart.transaction_datetime = winner.generate_date_time
+
+        await service.create_tranlog_async(cart)
+
+        audit.add_record_async.assert_not_awaited()
+
+    async def test_a_repeat_reported_before_a_failed_commit_is_not_reported_again(self, caplog):
+        """The insert path can report and then fail to commit.
+
+        That lands in the recovery, which reports again — and by then the tranlog
+        in hand IS the recorded one, so the second report finds no divergence and
+        says the repeat "carried the same numbers". Directly after a line saying
+        it carried different ones. The audit row is not at risk (the second
+        comparison is the record against itself); the contradiction in the log
+        is, and that is what a reader has to work from.
+        """
+        audit = _audit()
+        winner = self._winner()
+        service = self._armed(None, winner, audit)
+        # A repeat detected by the pre-check: the repository hands back the row
+        # that was already there rather than raising.
+        service.tranlog_repository.create_tranlog_async = AsyncMock(return_value=winner)
+        service.tranlog_repository.commit_transaction = AsyncMock(side_effect=RuntimeError("commit lost"))
+        service.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
+
+        with caplog.at_level("WARNING"):
+            await service.create_tranlog_async(self._cart_carrying(counter=9))
+
+        reports = [r for r in caplog.records if "Finalize repeated" in r.getMessage()]
+        assert len(reports) == 1, (
+            f"the same repeat was reported {len(reports)} times: {[r.getMessage()[:60] for r in reports]}"
+        )
+        audit.add_record_async.assert_awaited_once()
