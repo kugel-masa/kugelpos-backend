@@ -55,6 +55,16 @@ class CartDocument(BaseTransaction):
     # makes a rollback visible after the fact. Detection only: a stateless
     # backend cannot know the high-water mark without a per-request write.
     revision: Optional[int] = 0
+    # What the client undertook at creation (issue #192). Covered by the
+    # signature, so a snapshot states which way this cart was opened and the
+    # server needs no cache read to check it:
+    #   True  - carried; nothing was written to the cache, so a snapshot-less
+    #           request finds no cart and is refused by that alone
+    #   False - not carried; presenting it as a snapshot is refused here, since
+    #           the cache copy it would leave behind is what a later
+    #           snapshot-less request would silently continue from
+    #   None  - a cart created before this field existed; neither is refused
+    carry_snapshot: Optional[bool] = None
     # Running receipt counter (issue #166): the terminal's count of finalized
     # transactions, seeded at open and advanced with seq. The printed receipt_no
     # is derived from it and the configured range, so the wrap lives in the

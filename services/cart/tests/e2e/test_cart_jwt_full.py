@@ -16,6 +16,7 @@ Covers:
 - Multiple payment methods
 - Unregistered item error handling
 """
+
 import pytest
 import os
 from fastapi import status

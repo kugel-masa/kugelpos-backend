@@ -81,6 +81,7 @@ async def create_cart(
             transaction_type=create_req.transaction_type,
             user_id=create_req.user_id,
             user_name=create_req.user_name,
+            carry_snapshot=create_req.carry_snapshot,
         )
     except Exception as e:
         raise e

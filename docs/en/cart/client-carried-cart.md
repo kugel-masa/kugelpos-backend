@@ -227,15 +227,50 @@ Note the mechanics: the middleware that peels the envelope runs *outside* the
 request logger, so by the time the request is logged the envelope is gone. The
 peel leaves the scalars on the request scope for the logger to pick up.
 
-One limit worth stating: the revision advances when a snapshot is *issued*, in
-the response, and the cache-authoritative path has already written the cart by
-then — so the bump reaches the client but not the cache. A cart that switched
-back to the cache path mid-life would be handed a revision from wherever the
-cache left off, which reads as a rollback. That is not a case to tune the
-detection for: switching paths inside one cart rebuilds it from a cache that the
-stateless path deliberately stopped writing, so the cart itself has rolled back,
-not just its revision. Every cart route is a body-carrying mutation, so a client
-that carries carries throughout.
+Switching paths inside one cart used to be the case that got past this. The
+carried path writes nothing, so a cart built up by carried requests left the
+cache holding it as it was at creation, and one snapshot-less request continued
+from there — dropping everything in between and answering with a correctly
+signed snapshot of a cart missing it. The revision it presented afterwards would
+go down, so it was *sometimes* visible; a client that stayed on the cache path
+left no trace at all.
+
+That is now impossible rather than detectable (#192). See below.
+
+## One cart, one path (#192)
+
+The path is chosen per request, on whether a snapshot came with it — so nothing
+stopped one cart from using both. The client now says which way it will work
+when it opens the cart:
+
+```json
+POST /carts   {"transactionType": 101, "carrySnapshot": true}
+```
+
+With `carrySnapshot: true` the cart is **never written to the cache** — not even
+at creation, which is the one request that always wrote, because it has nothing
+to carry yet and the server could not know what the client would do. There is
+then no stale copy for a snapshot-less request to continue from, and it finds no
+cart at all:
+
+```
+carrySnapshot=true    carried → 200      without a snapshot → 404 (401002)
+carrySnapshot=false   carried → 403      without a snapshot → 200
+```
+
+Both directions are refused, because both lose the same thing. Declaring the
+cache path and then carrying leaves the cache copy behind while the cart moves
+on, which is the same silent loss reached from the other side.
+
+The declaration rides in the signed cart document, so checking it costs no cache
+read: a snapshot states which way its cart was opened. A cart created before the
+field existed says neither, and is left alone — carts in flight across the
+deployment keep working.
+
+`carrySnapshot` defaults to false, which is what a client that predates it means
+by not sending it. In `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` it is not needed:
+every mutating request has to carry, so a cached copy could never be read and
+none is written.
 
 ## Two numbering series while DUAL mode is on (#168)
 

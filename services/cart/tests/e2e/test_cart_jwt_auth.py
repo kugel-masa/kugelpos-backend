@@ -4,6 +4,7 @@ Integration tests for cart operations using terminal JWT authentication.
 Verifies that cart endpoints accept terminal JWT tokens and that
 JWT is correctly forwarded to master-data for item/payment lookups.
 """
+
 import pytest
 import os
 from fastapi import status

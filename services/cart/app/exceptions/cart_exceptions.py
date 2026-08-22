@@ -491,6 +491,27 @@ class FinalizeConflictException(ServiceException):
         )
 
 
+class CartPathMismatchException(ServiceException):
+    """Raised when a cart is used through the path it was not opened for (issue #192).
+
+    The client says at creation whether it will carry the cart. Carrying one
+    opened for the cache leaves that copy behind while the cart moves on, and a
+    later snapshot-less request continues from it — the silent loss this refusal
+    exists to prevent. The other direction needs no exception: nothing was
+    cached, so there is no cart to find.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.CART_PATH_MISMATCH,
+            CartErrorMessage.get_message(CartErrorCode.CART_PATH_MISMATCH),
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
 class AlreadyRefundedException(ServiceException):
     """
     Exception raised when a transaction has already been refunded.

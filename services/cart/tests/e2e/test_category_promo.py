@@ -38,10 +38,7 @@ async def cleanup_test_promotions(tenant_id: str, promotion_codes: list[str]):
     collection = db["master_promotion"]
 
     for code in promotion_codes:
-        result = await collection.delete_many({
-            "tenant_id": tenant_id,
-            "promotion_code": code
-        })
+        result = await collection.delete_many({"tenant_id": tenant_id, "promotion_code": code})
         if result.deleted_count > 0:
             print(f"[CLEANUP] Physically deleted promotion: {code} ({result.deleted_count} docs)")
 
@@ -117,9 +114,7 @@ async def create_test_promotion(token: str, tenant_id: str, store_code: str):
     }
 
     async with AsyncClient(base_url=base_url) as client:
-        response = await client.post(
-            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=header
-        )
+        response = await client.post(f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=header)
 
     # Ignore if promotion already exists (409 conflict)
     if response.status_code not in [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST]:
@@ -138,9 +133,7 @@ async def delete_test_promotion(token: str, tenant_id: str, promotion_code: str)
     header = {"Authorization": f"Bearer {token}"}
 
     async with AsyncClient(base_url=base_url) as client:
-        await client.delete(
-            f"/tenants/{tenant_id}/promotions/{promotion_code}", headers=header
-        )
+        await client.delete(f"/tenants/{tenant_id}/promotions/{promotion_code}", headers=header)
 
 
 @pytest.mark.asyncio()
@@ -175,11 +168,7 @@ async def test_category_promo_applied_to_cart(http_client):
 
         # Create cart with terminal_id in query params and required body
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         print(f"Create cart response: {res}")
         assert response.status_code == status.HTTP_201_CREATED
@@ -190,9 +179,7 @@ async def test_category_promo_applied_to_cart(http_client):
         # Add item with category "001" (item code "49-01" should have category "001")
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 2}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -213,9 +200,7 @@ async def test_category_promo_applied_to_cart(http_client):
 
         # Verify discount was applied
         discounts = added_item.get("discounts", [])
-        category_discounts = [
-            d for d in discounts if d.get("promotionType") == "category_discount"
-        ]
+        category_discounts = [d for d in discounts if d.get("promotionType") == "category_discount"]
         assert len(category_discounts) > 0, "Category discount not applied!"
 
         discount = category_discounts[0]
@@ -261,11 +246,7 @@ async def test_category_promo_respects_discount_restriction(http_client):
 
         # Create cart with terminal_id in query params and required body
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
@@ -273,9 +254,7 @@ async def test_category_promo_respects_discount_restriction(http_client):
         # Add item with category "001" (item code "49-01" should have category "001")
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -295,9 +274,7 @@ async def test_category_promo_respects_discount_restriction(http_client):
         print(f"discounts: {discounts}")
 
         # Verify discount behavior based on restriction status
-        category_discounts = [
-            d for d in discounts if d.get("promotionType") == "category_discount"
-        ]
+        category_discounts = [d for d in discounts if d.get("promotionType") == "category_discount"]
 
         if is_restricted:
             # If restricted, there should be no category discounts
@@ -354,9 +331,7 @@ async def test_category_promo_all_stores(http_client):
     }
 
     async with AsyncClient(base_url=base_url) as client:
-        response = await client.post(
-            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
-        )
+        response = await client.post(f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header)
 
     await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
 
@@ -368,11 +343,7 @@ async def test_category_promo_all_stores(http_client):
 
         # Create cart with terminal_id in query params and required body
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
@@ -380,9 +351,7 @@ async def test_category_promo_all_stores(http_client):
         # Add item with category "001" (item code "49-01" should have category "001")
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -398,9 +367,7 @@ async def test_category_promo_all_stores(http_client):
         )
 
         discounts = added_item.get("discounts", [])
-        category_discounts = [
-            d for d in discounts if d.get("promotionType") == "category_discount"
-        ]
+        category_discounts = [d for d in discounts if d.get("promotionType") == "category_discount"]
         assert len(category_discounts) > 0, "All-stores promotion not applied!"
 
         discount = category_discounts[0]
@@ -480,11 +447,7 @@ async def test_category_promo_best_discount_selected(http_client):
 
         # Create cart with terminal_id in query params and required body
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
@@ -492,9 +455,7 @@ async def test_category_promo_best_discount_selected(http_client):
         # Add item with category "001" (item code "49-01" should have category "001")
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -510,16 +471,12 @@ async def test_category_promo_best_discount_selected(http_client):
         )
 
         discounts = added_item.get("discounts", [])
-        category_discounts = [
-            d for d in discounts if d.get("promotionType") == "category_discount"
-        ]
+        category_discounts = [d for d in discounts if d.get("promotionType") == "category_discount"]
         assert len(category_discounts) > 0, "No category discount applied!"
 
         # Should have the 15% discount (best)
         discount = category_discounts[0]
-        assert discount.get("discountValue") == 15.0, (
-            f"Expected 15% discount but got {discount.get('discountValue')}%"
-        )
+        assert discount.get("discountValue") == 15.0, f"Expected 15% discount but got {discount.get('discountValue')}%"
         assert discount.get("promotionCode") == "TEST_PROMO_15PCT"
         print("Best discount (15%) correctly selected!")
 
@@ -565,9 +522,7 @@ async def test_category_promo_not_applied_to_non_matching_category(http_client):
     }
 
     async with AsyncClient(base_url=base_url) as client:
-        response = await client.post(
-            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
-        )
+        response = await client.post(f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header)
     assert response.status_code == status.HTTP_201_CREATED
 
     await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
@@ -578,11 +533,7 @@ async def test_category_promo_not_applied_to_non_matching_category(http_client):
         await open_terminal(tenant_id)
 
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
@@ -590,9 +541,7 @@ async def test_category_promo_not_applied_to_non_matching_category(http_client):
         # Add item with category "001" - does NOT match promotion target "999"
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -605,12 +554,9 @@ async def test_category_promo_not_applied_to_non_matching_category(http_client):
         assert added_item.get("categoryCode") == "001"
 
         category_discounts = [
-            d for d in added_item.get("discounts", [])
-            if d.get("promotionType") == "category_discount"
+            d for d in added_item.get("discounts", []) if d.get("promotionType") == "category_discount"
         ]
-        assert len(category_discounts) == 0, (
-            "Discount should NOT be applied when category does not match!"
-        )
+        assert len(category_discounts) == 0, "Discount should NOT be applied when category does not match!"
         print("Correctly skipped discount for non-matching category")
 
     finally:
@@ -650,9 +596,7 @@ async def test_category_promo_inactive_not_applied(http_client):
     }
 
     async with AsyncClient(base_url=base_url) as client:
-        response = await client.post(
-            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
-        )
+        response = await client.post(f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header)
     assert response.status_code == status.HTTP_201_CREATED
 
     await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
@@ -663,20 +607,14 @@ async def test_category_promo_inactive_not_applied(http_client):
         await open_terminal(tenant_id)
 
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
 
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -686,13 +624,8 @@ async def test_category_promo_inactive_not_applied(http_client):
         assert len(line_items) > 0
 
         added_item = line_items[0]
-        category_discounts = [
-            d for d in added_item.get("discounts", [])
-            if d.get("promotionCode") == promo_code
-        ]
-        assert len(category_discounts) == 0, (
-            "Inactive promotion should NOT be applied!"
-        )
+        category_discounts = [d for d in added_item.get("discounts", []) if d.get("promotionCode") == promo_code]
+        assert len(category_discounts) == 0, "Inactive promotion should NOT be applied!"
         print("Correctly skipped inactive promotion")
 
     finally:
@@ -733,9 +666,7 @@ async def test_category_promo_expired_not_applied(http_client):
     }
 
     async with AsyncClient(base_url=base_url) as client:
-        response = await client.post(
-            f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header
-        )
+        response = await client.post(f"/tenants/{tenant_id}/promotions", json=promotion_data, headers=auth_header)
     assert response.status_code == status.HTTP_201_CREATED
 
     await invalidate_promotion_cache(token, tenant_id, os.environ.get("STORE_CODE"))
@@ -746,20 +677,14 @@ async def test_category_promo_expired_not_applied(http_client):
         await open_terminal(tenant_id)
 
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
 
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 1}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -769,13 +694,8 @@ async def test_category_promo_expired_not_applied(http_client):
         assert len(line_items) > 0
 
         added_item = line_items[0]
-        category_discounts = [
-            d for d in added_item.get("discounts", [])
-            if d.get("promotionCode") == promo_code
-        ]
-        assert len(category_discounts) == 0, (
-            "Expired promotion should NOT be applied!"
-        )
+        category_discounts = [d for d in added_item.get("discounts", []) if d.get("promotionCode") == promo_code]
+        assert len(category_discounts) == 0, "Expired promotion should NOT be applied!"
         print("Correctly skipped expired promotion")
 
     finally:
@@ -806,11 +726,7 @@ async def test_category_promo_discount_amount_calculation(http_client):
         await open_terminal(tenant_id)
 
         cart_body = {"transaction_type": 101, "user_id": "99", "user_name": "Test User"}
-        response = await http_client.post(
-            f"/api/v1/carts?terminal_id={terminal_id}",
-            json=cart_body,
-            headers=header
-        )
+        response = await http_client.post(f"/api/v1/carts?terminal_id={terminal_id}", json=cart_body, headers=header)
         res = response.json()
         assert response.status_code == status.HTTP_201_CREATED
         cart_id = res.get("data").get("cartId")
@@ -818,9 +734,7 @@ async def test_category_promo_discount_amount_calculation(http_client):
         # Add item with quantity=2 to verify amount calculation
         add_item_data = [{"itemCode": "49-01", "unitPrice": None, "quantity": 2}]
         response = await http_client.post(
-            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-            json=add_item_data,
-            headers=header
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}", json=add_item_data, headers=header
         )
         res = response.json()
         print(f"Add item response: {res}")
@@ -835,8 +749,7 @@ async def test_category_promo_discount_amount_calculation(http_client):
         print(f"unit_price: {unit_price}, quantity: {quantity}")
 
         category_discounts = [
-            d for d in added_item.get("discounts", [])
-            if d.get("promotionType") == "category_discount"
+            d for d in added_item.get("discounts", []) if d.get("promotionType") == "category_discount"
         ]
         assert len(category_discounts) > 0, "Category discount not applied!"
 
@@ -847,9 +760,7 @@ async def test_category_promo_discount_amount_calculation(http_client):
         expected_amount = round(unit_price * quantity * 10.0 / 100, 0)
         actual_amount = discount.get("discountAmount")
         print(f"expected_amount: {expected_amount}, actual_amount: {actual_amount}")
-        assert actual_amount == expected_amount, (
-            f"Expected discount amount {expected_amount} but got {actual_amount}"
-        )
+        assert actual_amount == expected_amount, f"Expected discount amount {expected_amount} but got {actual_amount}"
         print(f"Discount amount correctly calculated: {actual_amount}")
 
     finally:
@@ -915,8 +826,7 @@ async def test_category_promo_in_tranlog_after_checkout(http_client):
         line_items = res.get("data").get("lineItems", [])
         assert len(line_items) > 0
         category_discounts = [
-            d for d in line_items[0].get("discounts", [])
-            if d.get("promotionType") == "category_discount"
+            d for d in line_items[0].get("discounts", []) if d.get("promotionType") == "category_discount"
         ]
         assert len(category_discounts) > 0, "Category discount not applied at add-item!"
         print("Sanity check passed: discount applied at add-item time")
@@ -959,16 +869,12 @@ async def test_category_promo_in_tranlog_after_checkout(http_client):
         assert len(bill_line_items) > 0
 
         bill_discounts = [
-            d for d in bill_line_items[0].get("discounts", [])
-            if d.get("promotionType") == "category_discount"
+            d for d in bill_line_items[0].get("discounts", []) if d.get("promotionType") == "category_discount"
         ]
-        assert len(bill_discounts) > 0, (
-            "promotionType missing from bill response discounts!"
-        )
+        assert len(bill_discounts) > 0, "promotionType missing from bill response discounts!"
         bill_discount = bill_discounts[0]
         assert bill_discount.get("promotionCode") == promotion_code, (
-            f"Expected promotionCode '{promotion_code}' in bill but got "
-            f"'{bill_discount.get('promotionCode')}'"
+            f"Expected promotionCode '{promotion_code}' in bill but got '{bill_discount.get('promotionCode')}'"
         )
         assert bill_discount.get("promotionType") == "category_discount"
         assert bill_discount.get("discountAmount") > 0, (
@@ -978,9 +884,7 @@ async def test_category_promo_in_tranlog_after_checkout(http_client):
 
         # 5b. Verify totalDiscountAmount > 0 in sales info
         total_discount_amount = bill_data.get("totalDiscountAmount", 0)
-        assert total_discount_amount > 0, (
-            f"totalDiscountAmount should be > 0 but got {total_discount_amount}"
-        )
+        assert total_discount_amount > 0, f"totalDiscountAmount should be > 0 but got {total_discount_amount}"
         print(f"totalDiscountAmount: {total_discount_amount}")
 
         # 6. Retrieve saved tranlog via transaction detail API
@@ -1003,16 +907,12 @@ async def test_category_promo_in_tranlog_after_checkout(http_client):
         assert len(tran_line_items) > 0
 
         tran_discounts = [
-            d for d in tran_line_items[0].get("discounts", [])
-            if d.get("promotionType") == "category_discount"
+            d for d in tran_line_items[0].get("discounts", []) if d.get("promotionType") == "category_discount"
         ]
-        assert len(tran_discounts) > 0, (
-            "promotionType missing from saved tranlog discounts!"
-        )
+        assert len(tran_discounts) > 0, "promotionType missing from saved tranlog discounts!"
         tran_discount = tran_discounts[0]
         assert tran_discount.get("promotionCode") == promotion_code, (
-            f"Expected promotionCode '{promotion_code}' in tranlog but got "
-            f"'{tran_discount.get('promotionCode')}'"
+            f"Expected promotionCode '{promotion_code}' in tranlog but got '{tran_discount.get('promotionCode')}'"
         )
         assert tran_discount.get("promotionType") == "category_discount"
         assert tran_discount.get("discountAmount") > 0

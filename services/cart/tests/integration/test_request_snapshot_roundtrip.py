@@ -58,6 +58,8 @@ async def _create_cart_with_items(http_client):
     r = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
         json={
+            # Opened for the carried path (issue #192): these tests carry the snapshot on every subsequent request.
+            "carrySnapshot": True,
             "tenant_id": os.environ.get("TENANT_ID"),
             "terminal_id": terminal_id,
             "operator_code": "9999",
@@ -66,11 +68,14 @@ async def _create_cart_with_items(http_client):
         headers=headers,
     )
     assert r.status_code == status.HTTP_201_CREATED, r.text
-    cart_id = r.json()["data"]["cartId"]
+    created = r.json()["data"]
+    cart_id = created["cartId"]
 
+    # Carried from the first request onward, because the cart was opened that way
+    # and there is no cached copy to serve a plain one (issue #192).
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 2}],
+        json={"signedSnapshot": created["signedSnapshot"], "payload": [{"itemCode": "49-01", "quantity": 2}]},
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK, r.text
@@ -113,15 +118,20 @@ async def test_carried_finalize_context_drives_numbering(http_client, snapshot_k
     terminal_id = _terminal_id()
     headers = _api_headers()
 
-    cart_id, _, _ = await _create_cart_with_items(http_client)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
 
-    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=headers,
+    )
     assert r.status_code == status.HTTP_200_OK, r.text
     balance = r.json()["data"]["balanceAmount"]
+    snapshot = r.json()["data"]["signedSnapshot"]
 
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
-        json=[{"paymentCode": "01", "amount": int(balance)}],
+        json={"signedSnapshot": snapshot, "payload": [{"paymentCode": "01", "amount": int(balance)}]},
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK, r.text
@@ -153,8 +163,12 @@ async def test_carried_cancel_is_numbered_from_the_carried_context(http_client, 
     terminal_id = _terminal_id()
     headers = _api_headers()
 
-    cart_id, _, _ = await _create_cart_with_items(http_client)
-    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=headers,
+    )
     assert r.status_code == status.HTTP_200_OK, r.text
     snapshot = r.json()["data"]["signedSnapshot"]
     assert snapshot is not None
@@ -182,7 +196,7 @@ async def test_carried_cancel_rejects_a_context_without_a_snapshot(http_client, 
     terminal_id = _terminal_id()
     headers = _api_headers()
 
-    cart_id, _, _ = await _create_cart_with_items(http_client)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
         json={"seq": 7811, "receiptNo": 7812, "transactionDatetime": "2026-06-14T04:06:07"},
@@ -198,13 +212,18 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     terminal_id = _terminal_id()
     headers = _api_headers()
 
-    cart_id, _, _ = await _create_cart_with_items(http_client)
-    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=headers,
+    )
     assert r.status_code == status.HTTP_200_OK, r.text
     balance = r.json()["data"]["balanceAmount"]
+    snapshot = r.json()["data"]["signedSnapshot"]
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
-        json=[{"paymentCode": "01", "amount": int(balance)}],
+        json={"signedSnapshot": snapshot, "payload": [{"paymentCode": "01", "amount": int(balance)}]},
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK, r.text
@@ -231,17 +250,27 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
 async def _bill_a_sale(http_client, terminal_id, headers):
     """Create -> add item -> subtotal -> pay -> (legacy) bill. Returns
     (transaction_no, paid_amount) for the committed sale."""
-    cart_id, _, _ = await _create_cart_with_items(http_client)
-    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
-    assert r.status_code == status.HTTP_200_OK, r.text
-    balance = int(r.json()["data"]["balanceAmount"])
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
     r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
-        json=[{"paymentCode": "01", "amount": balance}],
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK, r.text
-    r = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", headers=headers)
+    balance = int(r.json()["data"]["balanceAmount"])
+    snapshot = r.json()["data"]["signedSnapshot"]
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": [{"paymentCode": "01", "amount": balance}]},
+        headers=headers,
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    snapshot = r.json()["data"]["signedSnapshot"]
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=headers,
+    )
     assert r.status_code == status.HTTP_200_OK, r.text
     return r.json()["data"]["transactionNo"], balance
 
@@ -325,7 +354,7 @@ async def test_required_mode_rejects_snapshotless_mutation(http_client, snapshot
 
     terminal_id = _terminal_id()
     headers = _api_headers()
-    cart_id, _, _ = await _create_cart_with_items(http_client)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
 
     monkeypatch.setattr(settings, "CART_REQUEST_SNAPSHOT_MODE", "REQUIRED")
 
@@ -346,13 +375,18 @@ async def test_snapshotless_bill_with_finalize_context_is_rejected(http_client, 
     terminal_id = _terminal_id()
     headers = _api_headers()
 
-    cart_id, _, _ = await _create_cart_with_items(http_client)
-    r = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=headers)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=headers,
+    )
     assert r.status_code == status.HTTP_200_OK, r.text
     balance = r.json()["data"]["balanceAmount"]
+    snapshot = r.json()["data"]["signedSnapshot"]
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
-        json=[{"paymentCode": "01", "amount": int(balance)}],
+        json={"signedSnapshot": snapshot, "payload": [{"paymentCode": "01", "amount": int(balance)}]},
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK, r.text
@@ -486,7 +520,7 @@ async def test_oversized_compressed_request_is_refused(http_client, snapshot_key
     import gzip as gzip_module
 
     terminal_id = _terminal_id()
-    cart_id, _, _ = await _create_cart_with_items(http_client)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
 
     # Small on the wire, far past the guard once expanded.
     bomb = gzip_module.compress(b"a" * (settings.REQUEST_DECOMPRESS_MAX_BYTES + 1024))

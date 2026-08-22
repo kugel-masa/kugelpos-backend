@@ -75,17 +75,26 @@ async def _cart_ready_to_bill(http_client, terminal_id, header, created=None):
     """Take a cart to `paying` and return its cart_id with the snapshot from there."""
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
-        json={"transaction_type": 101, "user_id": "99", "user_name": "Replayed finalize"},
+        json={
+            # Opened for the carried path (issue #192): every request below
+            # carries the snapshot, so nothing is cached to serve a plain one.
+            "carrySnapshot": True,
+            "transaction_type": 101,
+            "user_id": "99",
+            "user_name": "Replayed finalize",
+        },
         headers=header,
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
-    cart_id = response.json()["data"]["cartId"]
+    opened = response.json()["data"]
+    cart_id = opened["cartId"]
+    snapshot = opened["signedSnapshot"]
     if created is not None:
         created.append(cart_id)
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 1}],
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
         headers=header,
     )
     assert response.status_code == status.HTTP_200_OK, response.text
@@ -315,10 +324,14 @@ async def test_a_server_numbered_race_is_not_written_down(http_client, api_heade
 
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={opened_terminal_id}",
+        # Deliberately NOT carried: this test is about the path where the SERVER
+        # issues the numbers, so the cart has to be served from the cache.
         json={"transaction_type": 101, "user_id": "99", "user_name": "Server numbered"},
         headers=api_header,
     )
-    cart_id = response.json()["data"]["cartId"]
+    opened = response.json()["data"]
+    cart_id = opened["cartId"]
+    snapshot = opened["signedSnapshot"]
     carts_created.append(cart_id)
     await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={opened_terminal_id}",

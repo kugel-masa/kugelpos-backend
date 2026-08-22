@@ -13,6 +13,7 @@ admin JWT) and a real master-data service (to POST settings). The
 integration tier mocks master-data and uses locally-generated JWTs, so
 this kind of cross-service registration belongs here, not there.
 """
+
 import os
 
 import pytest
@@ -31,9 +32,7 @@ async def _register_setting(tenant_id: str, token: str, name: str, default_value
     }
 
     async with AsyncClient() as client:
-        response = await client.post(
-            f"{base_url}/tenants/{tenant_id}/settings", json=payload, headers=header
-        )
+        response = await client.post(f"{base_url}/tenants/{tenant_id}/settings", json=payload, headers=header)
         return response.json()
 
 
@@ -59,9 +58,7 @@ async def test_register_invoice_number(set_env_vars):
         {"storeCode": store_code, "terminalNo": terminal_no, "value": "T1234567890123"},
         {"storeCode": store_code, "value": "T1234567890111"},
     ]
-    result = await _register_setting(
-        tenant_id, token, "INVOICE_REGISTRATION_NUMBER", "T999999999999", invoice_values
-    )
+    result = await _register_setting(tenant_id, token, "INVOICE_REGISTRATION_NUMBER", "T999999999999", invoice_values)
     if result.get("code") == status.HTTP_400_BAD_REQUEST:
         assert "already exists" in result.get("message", "")
     else:
@@ -92,9 +89,7 @@ async def test_register_invoice_number(set_env_vars):
         {"storeCode": store_code, "terminalNo": terminal_no, "value": str(header_terminal)},
         {"storeCode": store_code, "value": str(header_store)},
     ]
-    result = await _register_setting(
-        tenant_id, token, "RECEIPT_HEADERS", str(header_default), receipt_header_values
-    )
+    result = await _register_setting(tenant_id, token, "RECEIPT_HEADERS", str(header_default), receipt_header_values)
     if result.get("code") == status.HTTP_400_BAD_REQUEST:
         assert "already exists" in result.get("message", "")
     else:
@@ -120,9 +115,7 @@ async def test_register_invoice_number(set_env_vars):
         {"storeCode": store_code, "terminalNo": terminal_no, "value": str(footer_terminal)},
         {"storeCode": store_code, "value": str(footer_store)},
     ]
-    result = await _register_setting(
-        tenant_id, token, "RECEIPT_FOOTERS", str(footer_default), receipt_footer_values
-    )
+    result = await _register_setting(tenant_id, token, "RECEIPT_FOOTERS", str(footer_default), receipt_footer_values)
     if result.get("code") == status.HTTP_400_BAD_REQUEST:
         assert "already exists" in result.get("message", "")
     else:

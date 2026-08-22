@@ -57,7 +57,15 @@ async def _cart_with_snapshots(http_client, snapshot_keys, mutations=2):
     terminal_id, headers = _terminal_id(), _api_headers()
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={terminal_id}",
-        json={"transaction_type": 101, "user_id": "99", "user_name": "Revision"},
+        json={
+            # Opened for the carried path (issue #192): these tests carry the snapshot on every subsequent request.
+            # Opened for the carried path (issue #192): these tests carry the
+            # snapshot on every subsequent request.
+            "carrySnapshot": True,
+            "transaction_type": 101,
+            "user_id": "99",
+            "user_name": "Revision",
+        },
         headers=headers,
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
