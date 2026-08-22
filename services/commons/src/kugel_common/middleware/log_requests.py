@@ -123,10 +123,7 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
                 # it raised before the route was ever called, and the caller was
                 # answered with the logger's error (issue #161). The record is
                 # rebuilt from what is known in _record_request.
-                logger.error(
-                    f"Could not capture the request for logging: {request.method} {request.url}: {e}",
-                    exc_info=True,
-                )
+                _report(f"Could not capture the request for logging: {request.method} {request.url}: {e}")
                 request_info = None
             response = await call_next(request)
             process_time_ms = int((time.time() - start_time) * 1000)
@@ -140,13 +137,23 @@ def log_requests(service_name: str = "NO_SERVICE_NAME"):
             try:
                 await _record_request(request, service_name, accept_time, request_info, response, process_time_ms)
             except Exception as e:
-                logger.error(
-                    f"Request log could not be written for {request.method} {request.url}: {e}",
-                    exc_info=True,
-                )
+                _report(f"Request log could not be written for {request.method} {request.url}: {e}")
         return response
 
     return middleware
+
+
+def _report(message: str) -> None:
+    """Report a failure of the logging path, and never become one.
+
+    `logger.error` is not free of risk here: a handler that raises - a full disk,
+    a custom handler - propagates, and these calls sit on paths whose whole
+    purpose is that nothing on them reaches the caller.
+    """
+    try:
+        logger.error(message, exc_info=True)
+    except Exception:
+        pass
 
 
 async def _resolved_or_none(build):
@@ -176,9 +183,12 @@ async def _record_request(
     can reach the caller. Kept as its own function so that boundary is a single
     place rather than a block someone can extend past.
     """
-    is_terminal_service = service_name == "terminal"
-    terminal_info = await _get_terminal_info(request, is_terminal_service)
-    user_dict = await _get_current_user(request)
+    # Both are resolved inside the assembly guard below rather than ahead of it.
+    # Each is internally guarded, but an unexpected failure here used to abort
+    # _record_request outright - no record at all, exactly when one is most
+    # wanted.
+    terminal_info = None
+    user_dict = None
 
     if request_info is None:
         # _make_request_info did not get to return - reading or sanitizing the
@@ -194,6 +204,9 @@ async def _record_request(
         )
 
     try:
+        is_terminal_service = service_name == "terminal"
+        terminal_info = await _get_terminal_info(request, is_terminal_service)
+        user_dict = await _get_current_user(request)
         request_log = RequestLog(
             tenant_id=await _make_tenant_id(terminal_info, user_dict),
             client_info=await _make_client_info(request),
@@ -211,10 +224,7 @@ async def _record_request(
         # each of them would otherwise cost the entire record. Guarded once, at
         # the assembly, rather than six times inside it: the point is that the
         # request is recorded, not that every part of it was resolvable.
-        logger.error(
-            f"Request log could not be assembled in full for {request.method} {request.url}: {e}",
-            exc_info=True,
-        )
+        _report(f"Request log could not be assembled in full for {request.method} {request.url}: {e}")
         # Keep what was already resolved. Dropping the tenant is not a
         # cosmetic loss: the buffer routes by it, so a record without one never
         # reaches the tenant's own database - and a row with no tenant reads as
@@ -234,8 +244,13 @@ async def _record_request(
             ),
             service_name=service_name,
         )
-    # Log to file synchronously (fast operation)
-    await _output_request_log_to_file(request_log)
+    # Log to file synchronously (fast operation). Guarded on its own: a local
+    # disk problem must not cost the database record, which is the copy that is
+    # actually queried.
+    try:
+        await _output_request_log_to_file(request_log)
+    except Exception as e:
+        _report(f"Request log could not be written to file for {request.method} {request.url}: {e}")
 
     # Buffer for batched database write (insert_many)
     buffer = get_request_log_buffer()

@@ -246,3 +246,93 @@ class TestAPartialRecordIsStillARecord:
 
         assert info.ip_address == "", "a scope without a client raised instead of recording"
         assert isinstance(info, real.ClientInfo)
+
+
+class TestTheLoggerCannotBecomeTheFailure:
+    def test_a_log_handler_that_raises_does_not_reach_the_caller(self, captured, monkeypatch):
+        """`logger.error` is not free of risk on these paths.
+
+        A handler that raises — a full disk, a custom handler — propagates, and
+        these calls sit inside guards whose whole purpose is that nothing on
+        them reaches the caller. A report that becomes the failure it was
+        reporting is the same defect one level down.
+        """
+        import logging
+
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise RuntimeError("the buffer is unavailable")
+
+        monkeypatch.setattr(log_requests_module, "get_request_log_buffer", lambda: type("B", (), {"add": boom})())
+
+        class _FailingHandler(logging.Handler):
+            def emit(self, record):
+                raise OSError("no space left on device")
+
+        handler = _FailingHandler()
+        log_requests_module.logger.addHandler(handler)
+        try:
+            response = client.get("/api/v1/ok")
+        finally:
+            log_requests_module.logger.removeHandler(handler)
+
+        assert response.status_code == 200, "reporting the failure became the failure"
+
+
+class TestTheRecordSaysWhichServiceAnsweredIt:
+    def test_the_service_name_is_kept(self, captured):
+        # Every service writes to the same commons collection. The middleware has
+        # always passed this and the model never declared it, so Pydantic dropped
+        # it and a reader could not tell cart from journal.
+        buffer, client = captured
+
+        client.get("/api/v1/ok")
+
+        assert buffer.logs[-1].service_name == "test-service"
+        assert "service_name" in buffer.logs[-1].model_dump(), "it is not persisted"
+
+    def test_the_fallback_record_says_so_too(self, captured, monkeypatch):
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise RuntimeError("the response body will not re-read")
+
+        monkeypatch.setattr(log_requests_module, "_make_response_info", boom)
+
+        client.get("/api/v1/ok")
+
+        assert buffer.logs[-1].service_name == "test-service"
+
+
+class TestResolvingTheContextIsPartOfTheAssembly:
+    def test_a_failure_resolving_the_terminal_still_leaves_a_record(self, captured, monkeypatch):
+        # These used to run before the assembly guard, so an unexpected failure
+        # there aborted the whole function - no record at all.
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise AttributeError("'NoneType' object has no attribute 'headers'")
+
+        monkeypatch.setattr(log_requests_module, "_get_terminal_info", boom)
+
+        response = client.get("/api/v1/ok")
+
+        assert response.status_code == 200
+        assert len(buffer.logs) == 1, "a failure resolving the terminal cost the whole record"
+        assert buffer.logs[-1].request_info.url.endswith("/api/v1/ok")
+
+    def test_a_failure_writing_the_file_log_still_reaches_the_database(self, captured, monkeypatch):
+        # The file copy is local and the database copy is the one that is
+        # queried; a disk problem should not cost the second.
+        buffer, client = captured
+
+        async def boom(*args, **kwargs):
+            raise OSError("no space left on device")
+
+        monkeypatch.setattr(log_requests_module, "_output_request_log_to_file", boom)
+
+        response = client.get("/api/v1/ok")
+
+        assert response.status_code == 200
+        assert len(buffer.logs) == 1, "a file-log failure cost the database record"
