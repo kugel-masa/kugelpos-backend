@@ -193,6 +193,18 @@ class CartService(ICartService):
             return True
         return bool(carry_snapshot)
 
+    @property
+    def is_carried(self) -> bool:
+        """
+        Whether the client holds this cart rather than the server (issue #192).
+
+        True both for a request that arrived carrying a snapshot and for the
+        creation of a cart declared as carried, which is what the API layer needs
+        to know: in either case nothing was written to the cache, so a response
+        without a snapshot would leave the client with no cart at all.
+        """
+        return self._stateless
+
     async def create_cart_async(
         self,
         terminal_id: str,
@@ -997,9 +1009,13 @@ class CartService(ICartService):
         DUAL mode keeps two independent receipt-number sources: a carried
         finalize numbers from the terminal's running counter, a snapshot-less one
         from cart's `terminal_counter`. The branch is per *transaction*, so a
-        phase 2 terminal whose snapshot signing has degraded - an unset,
-        malformed or mid-rotation SNAPSHOT_HMAC_KEYS - silently falls into the
-        other series and can print a receipt number it has already issued.
+        phase 2 terminal whose snapshot signing has degraded silently falls into
+        the other series and can print a receipt number it has already issued.
+
+        An unset or malformed key no longer reaches here: the service refuses to
+        start without a usable one (issue #192). What is left is a key that loads
+        and then fails to sign, so the check stays - it costs one comparison, and
+        the signal it carries is one nothing else would report.
 
         Detected, not blocked: refusing the finalize would stop a store selling
         over a key misconfiguration, and this codebase's posture for numbering

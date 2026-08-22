@@ -30,6 +30,10 @@ def _make_cart_service_mock(cart_id="test-cart-id-123"):
     terminal_info.store_code = "store1"
     terminal_info.terminal_no = 1
     svc.terminal_info = terminal_info
+    # These drive the cache path, where a response without a snapshot is allowed.
+    # Left as an AsyncMock attribute it would read as truthy, and every one of
+    # them would come back 503 (issue #192).
+    svc.is_carried = False
     return svc
 
 

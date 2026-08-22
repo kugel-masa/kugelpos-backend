@@ -251,6 +251,12 @@ services:
       UVICORN_WORKERS: 4
       REQUEST_LOG_BUFFER_SIZE: ${REQUEST_LOG_BUFFER_SIZE:-100}
       REQUEST_LOG_FLUSH_INTERVAL: ${REQUEST_LOG_FLUSH_INTERVAL:-5.0}
+      # Signed cart snapshots (issues #148 / #156 / #192). Required, and
+      # deliberately without a default: the cart service will not start without a
+      # key, because a cart the client carries is held nowhere else. Generate one
+      # per environment and keep it out of this file:
+      #   python -c "import base64,os;print('v1:'+base64.b64encode(os.urandom(32)).decode())"
+      SNAPSHOT_HMAC_KEYS: ${SNAPSHOT_HMAC_KEYS:?set a signing key for cart snapshots}
     depends_on:
       mongodb:
         condition: service_healthy

@@ -19,6 +19,7 @@ from app.api.v1.schemas import (
     ItemUnitPriceUpdateRequest,
 )
 from app.dependencies.get_cart_service import get_cart_service_async, get_cart_service_with_cart_id_async
+from app.exceptions import SnapshotGenerationFailedException
 from app.services import snapshot_service
 from app.services.cart_service import CartService
 
@@ -34,10 +35,21 @@ def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
     Transform a mutated cart into response data with a signed snapshot attached.
 
     Every cart-mutating response carries a restorable copy of the cart
-    (issue #148). Snapshot generation is best-effort: on failure the field
-    is null and the operation itself still succeeds.
+    (issue #148). Generation is best-effort while the server holds the cart in
+    its cache: the field is null and the operation still succeeds.
+
+    On the carried path it is not optional (issue #192). The server kept no
+    copy, so a response without a snapshot hands the client a cart it can no
+    longer address - the request has to fail instead, and the client repeats it
+    with the snapshot it still holds.
     """
     snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
+    if snapshot is None and cart_service.is_carried:
+        raise SnapshotGenerationFailedException(
+            f"Cannot sign the snapshot for carried cart_id={cart_doc.cart_id}; "
+            "the cart is held by the client alone and cannot be returned unsigned",
+            logger,
+        )
     return SchemasTransformerV1().transform_cart(cart_doc=cart_doc, snapshot=snapshot).model_dump()
 
 
@@ -87,12 +99,22 @@ async def create_cart(
         raise e
 
     # Creation is a mutation, so its response also carries a signed snapshot
-    # (FR-001). The snapshot is built from the cached (authoritative) cart;
-    # skip the extra cache read entirely when generation is degraded.
+    # (FR-001). `get_cart_async` serves the cart just created - from the cache
+    # for a cart the server keeps, from the pinned document for a carried one,
+    # which is never written (issue #192).
     snapshot = None
     if snapshot_service.get_snapshot_signer() is not None:
         cart_doc = await cart_service.get_cart_async()
         snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
+    if snapshot is None and cart_service.is_carried:
+        # A carried cart is written nowhere, so returning its id without the
+        # snapshot loses it at the moment of creation (issue #192). Nothing was
+        # persisted, so failing here leaves nothing behind either.
+        raise SnapshotGenerationFailedException(
+            f"Cannot sign the snapshot for carried cart_id={cart_id}; "
+            "the cart would be unreachable the moment it is created",
+            logger,
+        )
 
     response = ApiResponse(
         success=True,

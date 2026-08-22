@@ -491,6 +491,34 @@ class FinalizeConflictException(ServiceException):
         )
 
 
+class SnapshotGenerationFailedException(ServiceException):
+    """Raised when a carried cart cannot be handed back to the client (issue #192).
+
+    On the carried path the snapshot is the cart: the server keeps no copy, so a
+    response without one leaves the client with nothing to continue from. That
+    makes an unsigned response worse than a failed request, which is why this is
+    raised rather than returning `signedSnapshot: null` as the cache path does.
+
+    Nothing is lost by failing. A carried request writes no cart state, so the
+    client simply repeats it with the snapshot it still holds; the one request
+    that does write - a finalize - is idempotent by cart_id (issue #170), so a
+    repeat returns the transaction already recorded.
+
+    Signing itself is verified at startup (`require_snapshot_signer`), so this is
+    left for a generation failure that gets past a healthy key ring.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.SNAPSHOT_GENERATION_FAILED,
+            CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_GENERATION_FAILED),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
 class CartPathMismatchException(ServiceException):
     """Raised when a cart is used through the path it was not opened for (issue #192).
 
