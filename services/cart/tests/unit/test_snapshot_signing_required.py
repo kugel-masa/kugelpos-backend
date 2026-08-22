@@ -204,3 +204,60 @@ class TestACarriedCartIsNeverReturnedUnsigned:
 
         assert raised.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert raised.value.error_code == "401507"
+
+
+class TestTheContractIsInTheSpec:
+    """A 503 nobody knows how to handle is worse than no 503 at all.
+
+    Every other status on these routes means the request failed and the client
+    may start over. This one means the opposite: on a finalize the transaction
+    is already recorded, so starting a new cart books it twice. The only place a
+    generated client learns that is the OpenAPI description, so it is asserted
+    rather than left to survive the next edit by luck.
+    """
+
+    @pytest.fixture(scope="class")
+    def schema(self):
+        """Built from the router alone.
+
+        Importing `app.main` would do it in one line, but it configures logging
+        for the whole process on import and other tests then capture nothing.
+        The router is what carries the declaration anyway.
+        """
+        from fastapi import FastAPI
+
+        from app.api.v1 import cart as cart_api
+
+        app = FastAPI()
+        app.include_router(cart_api.router)
+        return app.openapi()
+
+    def test_every_route_that_can_return_it_declares_it(self, schema):
+        from app.api.v1 import cart as cart_api
+
+        # Derived from the router, not a hand-copied list: a new cart-mutating
+        # endpoint is covered the day it is added.
+        expected = {
+            route.path
+            for route in cart_api.router.routes
+            if getattr(route, "endpoint", None) is not None
+            and (
+                "_cart_data_with_snapshot" in route.endpoint.__code__.co_names
+                or "SnapshotGenerationFailedException" in route.endpoint.__code__.co_names
+            )
+        }
+        assert expected, "no cart-mutating route found - the detection above stopped working"
+
+        missing = [
+            path
+            for path in expected
+            for method, spec in schema["paths"][path].items()
+            if "503" not in spec["responses"]
+        ]
+        assert missing == [], missing
+
+    def test_it_says_to_repeat_the_request(self, schema):
+        description = schema["paths"]["/carts/{cart_id}/bill"]["post"]["responses"]["503"]["description"]
+
+        assert "Repeat the identical request" in description
+        assert "new cart" in description, "the description has to warn against starting over"

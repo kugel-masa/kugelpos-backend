@@ -30,6 +30,35 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
+# The one status on these routes whose correct handling is not "the request
+# failed" (issue #192). Declared here rather than taken from the shared
+# StatusCodes table because the part a client needs is cart-specific: the cart is
+# held by the client, so it has to be repeated, and on a finalize the transaction
+# is already recorded, so starting a new sale books it twice.
+CARRIED_SNAPSHOT_UNAVAILABLE = {
+    status.HTTP_503_SERVICE_UNAVAILABLE: {
+        "description": (
+            "The cart is carried by the client and its snapshot could not be signed, so it "
+            "cannot be returned. Repeat the identical request with the snapshot already held: "
+            "a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the "
+            "repeat returns the transaction already recorded. Do NOT start a new cart - the "
+            "transaction may already exist and a new one would be booked a second time."
+        ),
+        "model": ApiResponse,
+        "content": {
+            "application/json": {
+                "example": {
+                    "success": False,
+                    "code": 503,
+                    "message": "Snapshot generation failed",
+                    "data": None,
+                }
+            }
+        },
+    }
+}
+
+
 def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
     """
     Transform a mutated cart into response data with a signed snapshot attached.
@@ -66,6 +95,7 @@ def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
         status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def create_cart(
@@ -138,6 +168,7 @@ async def create_cart(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def cancel_transaction(
@@ -193,6 +224,7 @@ async def cancel_transaction(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def add_items(
@@ -241,6 +273,7 @@ async def add_items(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def cancel_line_item(
@@ -287,6 +320,7 @@ async def cancel_line_item(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def update_item_unit_price(
@@ -336,6 +370,7 @@ async def update_item_unit_price(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def update_item_quantity(
@@ -385,6 +420,7 @@ async def update_item_quantity(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def add_discount_to_line_item(
@@ -436,6 +472,7 @@ async def add_discount_to_line_item(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def subtotal(
@@ -480,6 +517,7 @@ async def subtotal(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def discount_to_cart(
@@ -529,6 +567,7 @@ async def discount_to_cart(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def payments(
@@ -577,6 +616,7 @@ async def payments(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def bill(
@@ -632,6 +672,7 @@ async def bill(
         status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
         status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
         status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+        **CARRIED_SNAPSHOT_UNAVAILABLE,
     },
 )
 async def resume_item_entry(

@@ -339,6 +339,13 @@ client recovers by repeating the request:
 - a finalize does write, and is idempotent by `cart_id` (#170), so a repeat
   returns the transaction already recorded.
 
+Repeat, do not start over. A finalize records the transaction and publishes it
+before the response is built, so the sale exists even though the client was told
+the request failed. Ringing it up again produces a new `cart_id`, and dedupe is
+on `cart_id` - it would be booked a second time. The 503 is declared on every
+route that can return it so a generated client sees this in the API contract and
+not only here.
+
 A cart the server holds in its cache is unaffected: its snapshot is a
 convenience, the field goes out null, and the operation still succeeds.
 
