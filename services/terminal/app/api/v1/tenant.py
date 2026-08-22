@@ -27,6 +27,11 @@ from app.dependencies.get_tenant_service import (
     get_tenant_id_with_security_by_query_optional_wrapper,
 )
 
+# How much of a downstream error body to carry into the response. Enough for the
+# collection and index a service names when tenant setup fails (issue #185),
+# bounded because a proxy in between answers with a whole HTML page.
+DOWNSTREAM_ERROR_CHARS = 1000
+
 router = APIRouter()
 logger = getLogger(__name__)
 audit_logger = getLogger("audit")
@@ -96,9 +101,16 @@ async def create_tenant(
                     # the body, which is where the downstream service says which
                     # collection and index it could not build (issue #185). This
                     # is the fan-out point an operator reaches first.
+                    #
+                    # Truncated: what answers is not always one of our services
+                    # saying something short - a proxy in between can return an
+                    # HTML error page, and that would arrive whole.
+                    downstream = response.text[:DOWNSTREAM_ERROR_CHARS]
+                    if len(response.text) > DOWNSTREAM_ERROR_CHARS:
+                        downstream += f"... ({len(response.text)} chars, truncated)"
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Tenant setup failed at {url} ({response.status_code}): {response.text}",
+                        detail=f"Tenant setup failed at {url} ({response.status_code}): {downstream}",
                     )
     except Exception as e:
         raise e
@@ -337,9 +349,7 @@ async def add_store(
     except Exception as e:
         raise e
 
-    audit_logger.info(
-        "Store created (tenant_id=%s, store_code=%s)", tenant_id, store.store_code
-    )
+    audit_logger.info("Store created (tenant_id=%s, store_code=%s)", tenant_id, store.store_code)
 
     response = ApiResponse(
         success=True,
@@ -585,9 +595,7 @@ async def delete_store(
     except Exception as e:
         raise e
 
-    audit_logger.info(
-        "Store deleted (tenant_id=%s, store_code=%s)", tenant_id, store_code
-    )
+    audit_logger.info("Store deleted (tenant_id=%s, store_code=%s)", tenant_id, store_code)
 
     response = ApiResponse(
         success=True,

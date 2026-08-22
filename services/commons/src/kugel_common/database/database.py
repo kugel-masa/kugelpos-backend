@@ -259,6 +259,12 @@ async def drop_db_async(db_name: str) -> bool:
 # the data dump it is describing.
 BLOCKING_DUPLICATE_SAMPLE = 5
 
+# Ceiling on the diagnostic aggregation. It runs on a collection with no usable
+# index for the grouping - a full scan - and the collection it runs on is a
+# production log that may hold millions of documents. Better to return a failure
+# without the sample than to spend the database on explaining one.
+BLOCKING_DUPLICATE_TIMEOUT_MS = 10_000
+
 
 async def find_blocking_duplicates_async(
     db: AsyncIOMotorDatabase,
@@ -275,7 +281,13 @@ async def find_blocking_duplicates_async(
     at why; with it, the failure names the documents that have to be resolved.
 
     Best-effort by design: an aggregation that fails here must not replace the
-    failure it was called to explain.
+    failure it was called to explain - including when it exceeds
+    BLOCKING_DUPLICATE_TIMEOUT_MS on a collection too large to scan.
+
+    Does not resolve a unique index on an array field: `$group` groups on the
+    array as a value, while the index collides on the elements, so `[1, 2]` and
+    `[2, 3]` read as distinct here and clash in the index. No unique index in
+    this system is on an array field; if one is added, this needs `$unwind`.
 
     Args:
         db: Database instance
@@ -301,7 +313,12 @@ async def find_blocking_duplicates_async(
             {"$sort": {"n": -1}},
             {"$limit": limit},
         ]
-        return await db[collection_name].aggregate(pipeline).to_list(length=limit)
+        cursor = db[collection_name].aggregate(
+            pipeline,
+            allowDiskUse=True,
+            maxTimeMS=BLOCKING_DUPLICATE_TIMEOUT_MS,
+        )
+        return await cursor.to_list(length=limit)
     except Exception as e:
         logger.warning(f"Could not identify the documents blocking an index on {collection_name}: {e}")
         return []
@@ -433,11 +450,40 @@ async def create_collection_with_indexes_async(
         # ensure loop above swallows its failures with a warning - so without
         # this, an index that never got built reports success (issue #185).
         final_info = await db[collection_name].index_information()
-        present = [tuple((k, v) for k, v in info.get("key", [])) for info in final_info.values()]
+        # Grouped, not keyed: MongoDB lets a unique and a non-unique index share
+        # a key pattern under different names, so collapsing them into a dict
+        # keeps whichever came last and makes the check below order-dependent.
+        by_keys = {}
+        for info in final_info.values():
+            by_keys.setdefault(tuple((k, v) for k, v in info.get("key", [])), []).append(info)
+        present = list(by_keys)
 
         for index_info in index_keys_list:
             keys_dict = index_info.get("keys", {})
             want = tuple((k, v) for k, v in keys_dict.items())
+
+            # An index with the right keys but the wrong options is the same
+            # failure wearing a disguise: createIndexes refuses to change them
+            # (IndexOptionsConflict), the ensure loop above logs a warning, and a
+            # keys-only check then reports success over a constraint that is not
+            # being enforced.
+            if want in present and index_info.get("unique") and not any(i.get("unique") for i in by_keys[want]):
+                # The keys are there and the uniqueness is not. Left to the check
+                # below, this reads as satisfied - a constraint the system relies
+                # on, reported as present while nothing enforces it.
+                blocking = ""
+                duplicates = await find_blocking_duplicates_async(
+                    db, collection_name, keys_dict, index_info.get("partialFilterExpression")
+                )
+                if duplicates:
+                    listed = "; ".join(f"{d.get('_id')} x{d.get('n')}" for d in duplicates)
+                    blocking = f" Documents sharing this key (showing up to {BLOCKING_DUPLICATE_SAMPLE}): {listed}"
+                raise DatabaseException(
+                    f"Index {want} on {collection_name} exists but no index on those keys is unique, "
+                    f"so the uniqueness relied on here is not enforced.{blocking}",
+                    logger,
+                )
+
             if want not in present:
                 # Say what is actually in the way. "Likely existing data
                 # violates a new unique constraint" was a guess, and left the

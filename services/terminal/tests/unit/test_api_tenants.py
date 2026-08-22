@@ -140,6 +140,42 @@ class TestCreateTenant:
         assert "tenants" in detail, "the response did not say which service failed"
 
     @pytest.mark.asyncio
+    async def test_a_downstream_error_page_is_truncated(self):
+        """What answers is not always one of our services saying something short.
+
+        A proxy in between returns a whole HTML page, and that would otherwise
+        arrive intact in the response.
+        """
+        from app.api.v1.tenant import DOWNSTREAM_ERROR_CHARS
+
+        app = make_app()
+        mock_service = AsyncMock()
+        with (
+            patch("app.api.v1.tenant.database_setup") as mock_db_setup,
+            patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service),
+            patch("app.api.v1.tenant.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_db_setup.execute = AsyncMock()
+            mock_client_instance = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.is_error = True
+            mock_response.status_code = 502
+            mock_response.text = "<html>" + ("x" * 50_000) + "</html>"
+            mock_client_instance.post.return_value = mock_response
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/tenants",
+                    json={"tenant_id": TENANT_ID, "tenant_name": "Test Tenant", "tags": ["test"]},
+                )
+
+        assert resp.status_code == 500
+        assert len(resp.text) < DOWNSTREAM_ERROR_CHARS * 3, f"the whole page was echoed ({len(resp.text)} chars)"
+        assert "truncated" in resp.text, "the response did not say it had been cut"
+
+    @pytest.mark.asyncio
     async def test_tenant_id_mismatch(self):
         app = make_app()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

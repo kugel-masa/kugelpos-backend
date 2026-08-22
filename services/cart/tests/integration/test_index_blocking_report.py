@@ -129,3 +129,65 @@ class TestWhatTheSetupSays:
 
         present = [tuple(tuple(k) for k in i["key"]) for i in (await db[name].index_information()).values()]
         assert tuple(KEYS.items()) in present
+
+
+class TestAnIndexWithTheRightKeysAndTheWrongOptions:
+    async def test_a_non_unique_index_on_the_required_keys_is_reported(self, collection):
+        """The same failure wearing a disguise.
+
+        `createIndexes` will not change an existing index's options - it refuses
+        with IndexOptionsConflict, which the ensure loop logs as a warning. A
+        check that only compares keys then reports success over a uniqueness
+        constraint that is not being enforced: exactly the fail-open this
+        verification exists to close.
+        """
+        db_name, name, db = collection
+        # Both halves are needed for the fail-open: the duplicates stop the unique
+        # index being built, and the non-unique index leaves the keys present so a
+        # keys-only check finds nothing wrong. MongoDB lets the two coexist under
+        # different names, so this is not hypothetical.
+        await db[name].insert_many([_tranlog(1), _tranlog(1), _tranlog(2)])
+        await db[name].create_index(list(KEYS.items()), name="already_here", unique=False)
+
+        with pytest.raises(DatabaseException) as caught:
+            await create_collection_with_indexes_async(
+                db_name=db_name,
+                collection_name=name,
+                index_keys_list=[{"keys": KEYS, "unique": True}],
+                index_name="probe_index",
+            )
+
+        message = str(caught.value)
+        assert "is unique" in message, f"the mismatch was not reported: {message}"
+        assert "x2" in message, "the failure did not say what is keeping it non-unique"
+        assert name in message
+
+    async def test_a_non_unique_index_is_fine_when_none_was_required(self, collection):
+        db_name, name, db = collection
+        await db[name].create_index(list(KEYS.items()), name="already_here", unique=False)
+
+        await create_collection_with_indexes_async(
+            db_name=db_name,
+            collection_name=name,
+            index_keys_list=[{"keys": KEYS}],
+            index_name="probe_index",
+        )
+
+    async def test_a_unique_index_is_found_whatever_order_it_is_listed_in(self, collection):
+        """MongoDB lets a unique and a non-unique index share a key pattern.
+
+        Both are then reported for the same keys, so a check that keeps only one
+        of them decides by listing order - and fails a collection whose
+        constraint is present and enforced.
+        """
+        db_name, name, db = collection
+        await db[name].insert_many([_tranlog(1), _tranlog(2)])
+        await db[name].create_index(list(KEYS.items()), name="the_unique_one", unique=True)
+        await db[name].create_index(list(KEYS.items()), name="listed_after_it", unique=False)
+
+        await create_collection_with_indexes_async(
+            db_name=db_name,
+            collection_name=name,
+            index_keys_list=[{"keys": KEYS, "unique": True}],
+            index_name="probe_index",
+        )
