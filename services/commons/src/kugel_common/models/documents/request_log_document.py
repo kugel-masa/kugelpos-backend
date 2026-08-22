@@ -15,30 +15,34 @@ from pydantic import BaseModel
 from typing import Optional, Any, Union
 from kugel_common.models.documents.abstract_document import AbstractDocument
 
+
 class RequestLog(AbstractDocument):
     """
     API Request Log Document Model
-    
+
     This class extends AbstractDocument to provide a comprehensive data structure
-    for recording details of API requests and responses. It stores information 
+    for recording details of API requests and responses. It stores information
     about the request source, content, response, and processing time, used for
     auditing and debugging purposes.
     """
+
     class ClientInfo(BaseModel):
         """
         Client Information Model
-        
+
         Stores information about the client that sent the API request.
         """
+
         ip_address: str
 
     class RequestInfo(BaseModel):
         """
         Request Information Model
-        
+
         Stores details about the received API request, including method,
         URL, body content, and acceptance time.
         """
+
         method: str
         url: str
         body: Optional[Union[list[Any], dict[str, Any]]] = None
@@ -47,10 +51,11 @@ class RequestLog(AbstractDocument):
     class ResponseInfo(BaseModel):
         """
         Response Information Model
-        
+
         Stores details about the API response, including status code,
         processing time, and response body.
         """
+
         status_code: int
         process_time_ms: int
         body: Optional[Union[list[Any], dict[str, Any]]] = None
@@ -58,18 +63,20 @@ class RequestLog(AbstractDocument):
     class StaffInfo(BaseModel):
         """
         Staff Information Model
-        
+
         Stores identification information of the staff member who processed the request.
         """
+
         id: str
         name: str
 
     class UserInfo(BaseModel):
         """
         User Information Model
-        
+
         Stores identification and permission information of the user who sent the request.
         """
+
         tenant_id: str
         username: str
         is_superuser: bool
@@ -77,16 +84,17 @@ class RequestLog(AbstractDocument):
     class TerminalInfo(BaseModel):
         """
         Terminal Information Model
-        
-        Stores identification and status information of the terminal from which 
+
+        Stores identification and status information of the terminal from which
         the request was sent.
         """
+
         tenant_id: str
         store_code: str
         terminal_no: int
         business_date: str
         open_counter: int
-    
+
     class SnapshotInfo(BaseModel):
         """
         Marks from a client-carried snapshot (issue #165).
@@ -111,3 +119,9 @@ class RequestLog(AbstractDocument):
     user_info: Optional[UserInfo] = None
     terminal_info: Optional[TerminalInfo] = None
     snapshot_info: Optional[SnapshotInfo] = None
+    # Which service handled the request. Passed in by the middleware since the
+    # beginning and silently discarded, because the field was never declared -
+    # Pydantic ignores what it does not know. Every service writes to the same
+    # {prefix}_commons collection, so without it a reader cannot tell which one
+    # answered.
+    service_name: Optional[str] = None
