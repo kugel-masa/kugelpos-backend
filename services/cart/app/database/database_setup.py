@@ -260,8 +260,7 @@ async def backfill_status_tran_business_counter(tenant_id: str) -> None:
 
     if filled or unresolved:
         logger.info(
-            f"status_tran business_counter backfill for tenant {tenant_id}: "
-            f"filled={filled} unresolved={unresolved}"
+            f"status_tran business_counter backfill for tenant {tenant_id}: filled={filled} unresolved={unresolved}"
         )
 
 
@@ -330,27 +329,24 @@ async def create_cart_restore_log_collection(tenant_id: str):
 
 
 async def create_collections(tenant_id: str):
+    """Create every collection this service needs for a tenant.
+
+    Through run_setup_steps_async so that one blocked collection does not stop
+    the rest from being created, and so a failure names every blocked collection
+    at once rather than one restart at a time (issue #185).
     """
-    Creates all required collections for the Cart service.
-
-    This function is a convenience wrapper that calls all the individual
-    collection creation functions.
-
-    Args:
-        tenant_id: The tenant identifier used to create the database name
-
-    Returns:
-        None
-    """
-    await create_cache_cart_collection(tenant_id)
-    await create_terminal_counter_collection(tenant_id)
-    await create_tran_log_collection(tenant_id)
-    await create_request_log_collection(tenant_id)
-    await create_tran_log_delivery_status_collection(tenant_id)
-    await create_status_tran_collection(tenant_id)
-    await create_cart_restore_log_collection(tenant_id)
-
-    # add more collections here
+    await db_helper.run_setup_steps_async(
+        tenant_id,
+        [
+            create_cache_cart_collection,
+            create_terminal_counter_collection,
+            create_tran_log_collection,
+            create_request_log_collection,
+            create_tran_log_delivery_status_collection,
+            create_status_tran_collection,
+            create_cart_restore_log_collection,
+        ],
+    )
 
 
 async def execute(tenant_id: str):
