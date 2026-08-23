@@ -22,6 +22,7 @@ from kugel_common.middleware.http_compression import (
     add_gzip_response_middleware,
     add_request_decompression_middleware,
 )
+from kugel_common.middleware.request_body_limit import add_request_body_limit_middleware
 from app.middleware.snapshot_envelope import SnapshotEnvelopePeelMiddleware
 from app.exceptions.cart_error_codes import CartErrorCode
 from kugel_common.exceptions import register_exception_handlers
@@ -145,6 +146,17 @@ add_request_decompression_middleware(
 # Registered after log_requests so compression runs outermost and the
 # request log still observes the uncompressed body.
 add_gzip_response_middleware(app)
+
+# Bound the request body cart will hold (issue #195). Registered LAST so it runs
+# OUTERMOST: FastAPI reads the body before it resolves a route's dependencies, so
+# a body that never reaches the peel - a non-JSON content type, any method - was
+# still buffered in full for an unauthenticated caller. Cart's own ceiling
+# governs, so the wire size and the expanded size are held to one number.
+add_request_body_limit_middleware(
+    app,
+    max_bytes=settings.REQUEST_DECOMPRESS_MAX_BYTES,
+    error_code=CartErrorCode.REQUEST_BODY_TOO_LARGE,
+)
 
 # Register global exception handlers for consistent error responses
 register_exception_handlers(app)
