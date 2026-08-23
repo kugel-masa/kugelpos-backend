@@ -75,12 +75,15 @@ class CartSettings(BaseSettings):
         default="DUAL",
         description="Per-request snapshot mode: 'DUAL' (accept snapshot-less) or 'REQUIRED' (reject snapshot-less).",
     )
-    # Max decompressed request-body size (bytes) for the request-decompression
-    # middleware; bodies exceeding this are rejected before being fully expanded
-    # (zip-bomb guard). Kept in line with SNAPSHOT_SIZE_WARN_BYTES.
+    # Max request-body size (bytes) the service will hold. The decompression
+    # middleware rejects a body exceeding it before it is fully expanded
+    # (zip-bomb guard), and the snapshot-envelope peel rejects one that simply
+    # arrives that large uncompressed (issue #195), so the same ceiling applies
+    # whether or not the caller compressed. Kept in line with
+    # SNAPSHOT_SIZE_WARN_BYTES.
     REQUEST_DECOMPRESS_MAX_BYTES: int = Field(
         default=1048576,
-        description="Maximum decompressed request body size in bytes; larger is rejected (zip-bomb guard).",
+        description="Maximum request body size in bytes, compressed or not; larger is rejected.",
     )
 
     # gRPC settings

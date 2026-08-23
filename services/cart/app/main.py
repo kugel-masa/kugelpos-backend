@@ -122,7 +122,14 @@ app.middleware("http")(log_requests("cart"))
 # envelope onto scope["cart_snapshot"] and forward the inner payload. Registered
 # after log_requests so it runs OUTSIDE it — the request log observes only the
 # peeled payload, not the (large) carried snapshot (NFR-005 / issue #155).
-app.add_middleware(SnapshotEnvelopePeelMiddleware)
+# The peel buffers the whole body and runs ahead of the route's dependencies, so
+# it reads under the same ceiling as the decompression middleware (issue #195):
+# an uncompressed body must not slip past a limit a compressed one is held to.
+app.add_middleware(
+    SnapshotEnvelopePeelMiddleware,
+    max_bytes=settings.REQUEST_DECOMPRESS_MAX_BYTES,
+    error_code=CartErrorCode.REQUEST_BODY_TOO_LARGE,
+)
 
 # Accept compressed request bodies (issue #156, FR-009). Registered after the
 # peel middleware so it runs OUTSIDE it: the peel JSON-parses the body, and a

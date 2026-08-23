@@ -15,12 +15,15 @@ a small forged body must not be able to expand into an out-of-memory condition.
 
 import gzip
 import json
+import os
 import zlib
 
 import pytest
 
 from kugel_common.middleware.http_compression import (
+    RequestBodyTooLarge,
     RequestDecompressionMiddleware,
+    read_body_capped,
     replace_body_headers,
 )
 
@@ -300,3 +303,63 @@ async def test_disconnect_mid_body_does_not_invoke_the_app():
     await middleware(_scope([(b"content-encoding", b"gzip")]), receive, None)
 
     assert app.body is None
+
+
+# =========================================================================
+# The read itself is bounded (issue #195)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_returns_the_whole_body_within_the_ceiling():
+    body = b"x" * 100
+    assert await read_body_capped(_receive_for(body), 100) == body
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_reassembles_chunks():
+    assert await read_body_capped(_receive_chunks([b"ab", b"cd", b"ef"]), 16) == b"abcdef"
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_stops_at_the_chunk_that_crosses_the_ceiling():
+    """Refusing after reading to the end would mean holding what we refuse."""
+    delivered = 0
+
+    async def receive():
+        nonlocal delivered
+        delivered += 1
+        return {"type": "http.request", "body": b"x" * 8, "more_body": True}
+
+    with pytest.raises(RequestBodyTooLarge):
+        await read_body_capped(receive, 16)
+    assert delivered == 3, "the read continued past the chunk that crossed the limit"
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_reports_a_disconnect_as_none():
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    assert await read_body_capped(receive, 16) is None
+
+
+@pytest.mark.asyncio
+async def test_oversized_compressed_body_is_refused_before_expansion():
+    """A compressed body larger than the largest expansion we would allow.
+
+    It cannot be within policy once expanded, so it is refused as it arrives
+    rather than held while we find that out.
+    """
+    middleware = RequestDecompressionMiddleware(_Recorder(), max_bytes=1024)
+    # Random bytes barely compress, so the compressed form stays over the ceiling.
+    compressed = gzip.compress(os.urandom(4096))
+    assert len(compressed) > 1024
+
+    messages = await _collect_response(
+        middleware,
+        _scope([(b"content-encoding", b"gzip")]),
+        _receive_for(compressed),
+    )
+
+    assert messages[0]["status"] == 413

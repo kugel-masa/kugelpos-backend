@@ -238,3 +238,77 @@ async def test_peel_skips_non_json_content_types():
 
     assert app.body == body
     assert app.snapshot is None
+
+
+# =========================================================================
+# The read is bounded (issue #195)
+# =========================================================================
+
+
+async def _collect_response(middleware, scope, receive):
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await middleware(scope, receive, send)
+    return messages
+
+
+@pytest.mark.asyncio
+async def test_oversized_uncompressed_body_is_refused_with_413():
+    """Not compressing must not be a way past the ceiling.
+
+    The decompression middleware refuses a body that expands past the ceiling,
+    but it passes an uncompressed body straight through. If the peel then
+    buffered without a limit, the same memory could be spent by simply sending
+    the bytes plainly.
+    """
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app, max_bytes=1024, error_code="401509")
+    oversized = json.dumps([{"pad": "x" * 4096}]).encode()
+
+    messages = await _collect_response(middleware, _json_scope(), _receive_for(oversized))
+
+    assert messages[0]["status"] == 413
+    assert app.snapshot == "<not called>", "the app should never have run"
+    assert json.loads(messages[1]["body"])["userError"]["code"] == "401509"
+
+
+@pytest.mark.asyncio
+async def test_oversized_body_is_abandoned_mid_read():
+    """The ceiling is enforced during the read, not once the body is held.
+
+    A body arriving in chunks must be dropped at the chunk that crosses the
+    limit — reading to the end first would mean holding what we are refusing.
+    """
+    delivered = 0
+    chunk = b"x" * 512
+
+    async def receive():
+        nonlocal delivered
+        delivered += 1
+        return {"type": "http.request", "body": chunk, "more_body": True}
+
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app, max_bytes=1024)
+
+    messages = await _collect_response(middleware, _json_scope(), receive)
+
+    assert messages[0]["status"] == 413
+    # 3 chunks = 1536 bytes: the first that crosses 1024, and no more.
+    assert delivered == 3
+    assert app.snapshot == "<not called>"
+
+
+@pytest.mark.asyncio
+async def test_body_at_the_ceiling_is_accepted():
+    """The limit is a ceiling, not a threshold: a body exactly at it passes."""
+    payload = [{"a": 1}]
+    body = json.dumps(payload).encode()
+    app = _Recorder()
+    middleware = SnapshotEnvelopePeelMiddleware(app, max_bytes=len(body))
+
+    await middleware(_json_scope(), _receive_for(body), None)
+
+    assert json.loads(app.body) == payload
