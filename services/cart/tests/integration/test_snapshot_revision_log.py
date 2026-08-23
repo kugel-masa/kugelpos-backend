@@ -7,6 +7,7 @@ about how long a batch takes to land.
 """
 
 import base64
+import json
 import os
 
 import pytest
@@ -160,9 +161,16 @@ async def test_a_hostile_envelope_cannot_grow_the_log(http_client, snapshot_keys
         "tenantId": os.environ.get("TENANT_ID"),
         "storeCode": "5678",
         "terminalNo": 9,
-        "cartDocument": {"cartId": "A" * 1_000_000, "revision": 3},
+        "cartDocument": {"cartId": "A" * 200_000, "revision": 3},
         "signature": "x" * 44,
     }
+    # The body has to clear the log's cap by a wide margin — that is the
+    # amplification being tested — while staying under the ceiling the peel
+    # enforces (issue #195). Past that ceiling the request is refused before the
+    # logging middleware runs at all, and this would silently stop testing the
+    # log. Asserted so a change to either bound fails here rather than drifting.
+    _hostile_size = len(json.dumps(hostile))
+    assert settings.REQUEST_LOG_MAX_BODY_BYTES * 4 < _hostile_size < settings.REQUEST_DECOMPRESS_MAX_BYTES
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={_terminal_id()}",
