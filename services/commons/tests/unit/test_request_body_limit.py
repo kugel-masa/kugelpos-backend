@@ -82,8 +82,8 @@ async def test_declared_length_over_the_ceiling_is_refused_without_reading():
 
 
 @pytest.mark.asyncio
-async def test_declared_length_within_the_ceiling_streams_through_untouched():
-    """A normal request must not be buffered or rewritten on the way in."""
+async def test_declared_length_within_the_ceiling_reaches_the_app_intact():
+    """A normal request is delivered unchanged."""
     app = _Recorder()
     middleware = RequestBodySizeLimitMiddleware(app, max_bytes=1024)
     receive = _receive_for(b"x" * 100)
@@ -92,6 +92,32 @@ async def test_declared_length_within_the_ceiling_streams_through_untouched():
 
     assert app.called
     assert app.body == b"x" * 100
+
+
+@pytest.mark.asyncio
+async def test_a_body_exceeding_its_declared_length_is_still_refused():
+    """content-length refuses early; it never grants permission.
+
+    A declaration within the ceiling is not proof the bytes will be. That h11
+    truncates at the declared length is h11's behaviour, not a property of ASGI
+    (external review of #195), so the ceiling is enforced against what actually
+    arrives.
+    """
+    delivered = 0
+
+    async def receive():
+        nonlocal delivered
+        delivered += 1
+        return {"type": "http.request", "body": b"x" * 512, "more_body": True}
+
+    app = _Recorder()
+    middleware = RequestBodySizeLimitMiddleware(app, max_bytes=1024)
+
+    messages = await _collect(middleware, _scope([(b"content-length", b"100")]), receive)
+
+    assert messages[0]["status"] == 413, "a small declared length was taken at its word"
+    assert delivered == 3
+    assert not app.called
 
 
 @pytest.mark.asyncio

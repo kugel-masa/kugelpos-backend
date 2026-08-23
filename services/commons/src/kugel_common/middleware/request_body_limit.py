@@ -25,13 +25,13 @@ This is not specific to any one service or content type — it is what FastAPI
 does everywhere — so the ceiling is applied outermost, ahead of every other
 middleware, for all methods and all content types.
 
-A declared ``content-length`` over the ceiling is refused up front, before a
-byte is read: the server will not deliver more than it declares, so the header
-is a sound upper bound, and a body within it streams through untouched. Anything
-else — chunked framing, or a protocol that frames the body without either header
-— is read under the ceiling and abandoned at the chunk that crosses it. A
-request with no body simply yields empty bytes, so nothing has to guess in
-advance whether one is coming.
+A declared ``content-length`` over the ceiling is refused up front, without
+reading a byte — a body that size is refused whatever it turns out to contain.
+Every other request is measured as it is delivered and abandoned at the chunk
+that crosses the ceiling. The header is therefore used only to refuse early,
+never to permit: what is enforced is the bytes that actually arrive, so the
+guarantee does not rest on the server truncating at the declared length, on the
+framing headers being present, or on which HTTP version is in play.
 """
 
 from logging import getLogger
@@ -85,28 +85,29 @@ class RequestBodySizeLimitMiddleware:
                 length = int(declared)
             except ValueError:
                 # An unparseable length is the server's to reject, not ours to
-                # guess at. Fall through to reading under the ceiling.
+                # guess at; the read below bounds it regardless.
                 length = None
-            if length is not None:
-                if length > self.max_bytes:
-                    logger.warning("Rejected request declaring %d bytes, over the %d ceiling", length, self.max_bytes)
-                    await send_json_error(send, 413, "Request body too large", self.error_code)
-                    return
-                # Within the ceiling, and the server will deliver no more than
-                # was declared: leave the body streaming untouched.
-                await self.app(scope, receive, send)
+            if length is not None and length > self.max_bytes:
+                # Nothing to read: a body this size is refused whatever arrives.
+                logger.warning("Rejected request declaring %d bytes, over the %d ceiling", length, self.max_bytes)
+                await send_json_error(send, 413, "Request body too large", self.error_code)
                 return
 
-        # No length to trust. Do NOT infer "then there is no body" from the
-        # absence of chunked framing: that only holds because HTTP/1.1 requires
-        # one framing or the other and h11 enforces it. Under HTTP/2 a body
-        # arrives with neither header, and the inference would silently switch
-        # the ceiling off for every request. Read under it instead — a request
-        # that has no body yields empty bytes in one message and costs nothing.
+        # Measure what actually arrives, whatever the headers said.
+        #
+        # content-length is used above only to refuse early, never to permit: a
+        # declaration within the ceiling is not proof that the bytes will be.
+        # That h11 truncates a body at the declared length is h11's behaviour,
+        # not a property of ASGI, and an HTTP/2 server may hand DATA to the
+        # application before it reconciles the total. Nor is a missing framing
+        # header proof that no body is coming — that only holds because HTTP/1.1
+        # demands one framing or the other. Neither assumption is load-bearing
+        # here: the ceiling is enforced against delivered bytes, and a request
+        # with no body simply yields empty bytes in one message.
         try:
             body = await read_body_capped(receive, self.max_bytes)
         except RequestBodyTooLarge as e:
-            logger.warning("Rejected oversized undeclared-length request body: %s", e)
+            logger.warning("Rejected oversized request body: %s", e)
             await send_json_error(send, 413, "Request body too large", self.error_code)
             return
         if body is None:
