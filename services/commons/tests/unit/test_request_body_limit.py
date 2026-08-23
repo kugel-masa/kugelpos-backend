@@ -122,8 +122,8 @@ async def test_the_ceiling_does_not_depend_on_the_method():
 
 
 @pytest.mark.asyncio
-async def test_chunked_body_is_bounded_as_it_is_read():
-    """A chunked body declares no length, so it is held under the ceiling instead."""
+async def test_a_body_with_no_declared_length_is_bounded_as_it_is_read():
+    """Nothing to check in advance, so it is held under the ceiling instead."""
     delivered = 0
 
     async def receive():
@@ -155,21 +155,40 @@ async def test_chunked_body_within_the_ceiling_reaches_the_app():
 
 
 @pytest.mark.asyncio
-async def test_a_bodyless_request_is_not_read_at_all():
-    """No length and no chunked framing means no body — do not wait on one."""
+async def test_a_bodyless_request_reaches_the_app():
+    """A request with no body yields empty bytes; nothing has to guess first."""
     app = _Recorder()
     middleware = RequestBodySizeLimitMiddleware(app, max_bytes=1024)
-    read = False
 
-    async def receive():
-        nonlocal read
-        read = True
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    await middleware(_scope([], method="GET"), receive, None)
+    await middleware(_scope([], method="GET"), _receive_for(b""), None)
 
     assert app.called
-    assert read, "the app itself read; the middleware must not have read ahead of it"
+    assert app.body == b""
+
+
+@pytest.mark.asyncio
+async def test_a_body_framed_without_either_header_is_still_bounded():
+    """HTTP/2 frames a body with neither content-length nor chunked.
+
+    Reading the absence of both as "no body" would hold only because HTTP/1.1
+    requires one framing or the other — it would switch the ceiling off wholesale
+    on a server that speaks HTTP/2 (external review of #195).
+    """
+    delivered = 0
+
+    async def receive():
+        nonlocal delivered
+        delivered += 1
+        return {"type": "http.request", "body": b"x" * 512, "more_body": True}
+
+    app = _Recorder()
+    middleware = RequestBodySizeLimitMiddleware(app, max_bytes=1024)
+
+    messages = await _collect(middleware, _scope([]), receive)
+
+    assert messages[0]["status"] == 413
+    assert delivered == 3
+    assert not app.called
 
 
 @pytest.mark.asyncio
@@ -187,7 +206,7 @@ async def test_an_unparseable_length_falls_back_to_reading_under_the_ceiling():
     """A malformed header must not be read as permission to skip the ceiling."""
     app = _Recorder()
     middleware = RequestBodySizeLimitMiddleware(app, max_bytes=1024)
-    headers = [(b"content-length", b"not-a-number"), (b"transfer-encoding", b"chunked")]
+    headers = [(b"content-length", b"not-a-number")]
 
     messages = await _collect(middleware, _scope(headers), _receive_for(b"x" * 4096))
 

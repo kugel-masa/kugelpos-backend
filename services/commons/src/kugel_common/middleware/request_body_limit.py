@@ -25,12 +25,13 @@ This is not specific to any one service or content type — it is what FastAPI
 does everywhere — so the ceiling is applied outermost, ahead of every other
 middleware, for all methods and all content types.
 
-A body arrives either with a ``content-length`` or as ``transfer-encoding:
-chunked``. A declared length is refused up front, before a byte is read: the
-server will not deliver more than it declares, so the header is a sound upper
-bound. A chunked body has nothing to check in advance, so it is read under the
-ceiling and abandoned at the chunk that crosses it. Requests carrying no body
-at all are passed through untouched.
+A declared ``content-length`` over the ceiling is refused up front, before a
+byte is read: the server will not deliver more than it declares, so the header
+is a sound upper bound, and a body within it streams through untouched. Anything
+else — chunked framing, or a protocol that frames the body without either header
+— is read under the ceiling and abandoned at the chunk that crosses it. A
+request with no body simply yields empty bytes, so nothing has to guess in
+advance whether one is coming.
 """
 
 from logging import getLogger
@@ -84,7 +85,7 @@ class RequestBodySizeLimitMiddleware:
                 length = int(declared)
             except ValueError:
                 # An unparseable length is the server's to reject, not ours to
-                # guess at. Fall through to the chunked handling below.
+                # guess at. Fall through to reading under the ceiling.
                 length = None
             if length is not None:
                 if length > self.max_bytes:
@@ -96,17 +97,16 @@ class RequestBodySizeLimitMiddleware:
                 await self.app(scope, receive, send)
                 return
 
-        chunked = _header(scope, b"transfer-encoding")
-        if chunked is None or b"chunked" not in chunked.lower():
-            # No declared length and no chunked framing: there is no body.
-            await self.app(scope, receive, send)
-            return
-
-        # Chunked: nothing to check in advance, so hold it under the ceiling.
+        # No length to trust. Do NOT infer "then there is no body" from the
+        # absence of chunked framing: that only holds because HTTP/1.1 requires
+        # one framing or the other and h11 enforces it. Under HTTP/2 a body
+        # arrives with neither header, and the inference would silently switch
+        # the ceiling off for every request. Read under it instead — a request
+        # that has no body yields empty bytes in one message and costs nothing.
         try:
             body = await read_body_capped(receive, self.max_bytes)
         except RequestBodyTooLarge as e:
-            logger.warning("Rejected oversized chunked request body: %s", e)
+            logger.warning("Rejected oversized undeclared-length request body: %s", e)
             await send_json_error(send, 413, "Request body too large", self.error_code)
             return
         if body is None:
