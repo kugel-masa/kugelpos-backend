@@ -468,10 +468,7 @@ class CartService(ICartService):
         cart_doc = await self.__subtotal_async(cart_doc)
 
         # Checked before anything is committed, so a refusal leaves the cart
-        # exactly as it was and the basket stays workable (issue #200). Adding
-        # line items is the only way a cart grows without bound - discounts,
-        # payments and taxes are all bounded by the lines already present - so
-        # this is the one place the budget has to hold.
+        # exactly as it was and the basket stays workable (issue #200).
         self.__check_snapshot_size_budget(cart_doc)
 
         # Save to cache
@@ -482,6 +479,24 @@ class CartService(ICartService):
     def __check_snapshot_size_budget(self, cart_doc: CartDocument) -> None:
         """
         Refuse a cart that would outgrow the snapshot the client has to send back.
+
+        Applied to the paths that take a list from the request and append it:
+        adding line items, and adding discounts to a line or to the subtotal.
+        Nothing bounds how long those lists are or how often they are sent, and
+        they accumulate across requests.
+
+        Deliberately NOT applied to paying, billing, cancelling a line, or
+        changing a quantity or price. Those are how a cart is brought to a
+        close or made smaller, and refusing them is the deadlock this guard
+        exists to prevent - a basket that can be neither completed nor
+        cancelled. It also keeps a cart that is somehow already over budget
+        (opened before this guard, or after the ceiling was lowered) finishable
+        rather than stranded.
+
+        What keeps those paths from growing without bound instead: a payment is
+        refused once the balance reaches zero (BalanceZeroException), so the
+        number of them is bounded by the amount owed; cancelling and updating
+        change a line in place rather than adding one.
 
         The server issues the snapshot and the client presents it on the next
         mutating request, so MAX_REQUEST_BODY_BYTES bounds it - while the cart
@@ -664,6 +679,11 @@ class CartService(ICartService):
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)
 
+        # Same budget as the line-item path: a discount list is taken from the
+        # request and appended, with nothing bounding its length or how many
+        # times it is sent (issue #200).
+        self.__check_snapshot_size_budget(cart_doc)
+
         # Save to cache
         await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.NoUpdate)
 
@@ -748,6 +768,11 @@ class CartService(ICartService):
 
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)
+
+        # Same budget as the line-item path: a discount list is taken from the
+        # request and appended, with nothing bounding its length or how many
+        # times it is sent (issue #200).
+        self.__check_snapshot_size_budget(cart_doc)
 
         # Save to cache
         await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.NoUpdate)

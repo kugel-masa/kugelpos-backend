@@ -712,3 +712,75 @@ async def test_a_refused_line_leaves_the_cart_workable(http_client, snapshot_key
 
     assert after.status_code == status.HTTP_200_OK, after.text
     assert len(after.json()["data"]["lineItems"]) == line_count_before + 1, "the refused line was left behind"
+
+
+@pytest.mark.asyncio
+async def test_a_subtotal_discount_that_would_outgrow_the_snapshot_is_refused(
+    http_client, snapshot_keys, monkeypatch
+):
+    """Line items are not the only way a cart grows (#200, external review).
+
+    A discount list is taken from the request and appended, with nothing
+    bounding its length or how many times it is sent — so guarding only the
+    add-item path left the cart able to outgrow its snapshot by another route.
+    """
+    terminal_id = _terminal_id()
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    # A subtotal discount is only accepted once the cart has been subtotalled.
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=_api_headers(),
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    snapshot = r.json()["data"]["signedSnapshot"]
+
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/discounts?terminal_id={terminal_id}",
+        json={
+            "signedSnapshot": snapshot,
+            "payload": [{"discountType": "DiscountAmount", "discountValue": 1}],
+        },
+        headers=_api_headers(),
+    )
+
+    assert r.status_code == status.HTTP_409_CONFLICT, r.text
+    assert "401516" in r.text, r.text
+
+
+@pytest.mark.asyncio
+async def test_paying_is_not_refused_by_the_budget(http_client, snapshot_keys, monkeypatch):
+    """Refusing a payment would be the deadlock the budget exists to prevent.
+
+    Paying is how a cart is brought to a close. A cart that is over budget —
+    opened before this guard, or after the ceiling was lowered — has to remain
+    finishable, so the completion paths are deliberately exempt.
+    """
+    terminal_id = _terminal_id()
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=_api_headers(),
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    data = r.json()["data"]
+    balance, snapshot = data["balanceAmount"], data["signedSnapshot"]
+
+    # Budget far below what this cart already weighs: paying must still work.
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json={
+            "signedSnapshot": snapshot,
+            "payload": [{"paymentCode": "01", "amount": balance}],
+        },
+        headers=_api_headers(),
+    )
+
+    assert r.status_code == status.HTTP_200_OK, r.text
