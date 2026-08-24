@@ -78,7 +78,16 @@ async def create_item_book(
     service = await get_item_book_service_async(tenant_id)
 
     try:
-        new_item_book = await service.create_item_book_async(title=item_book.title, categories=item_book.categories)
+        # Serialised here, not handed over as models: create_item_book_async
+        # takes list[dict] and builds ItemBookCategory(**category) from each
+        # entry, so passing the request's own models raised TypeError and the
+        # route answered an unhandled 500 for any book carrying a category
+        # (issue #197). The update route below has always serialised first,
+        # which is why only create was affected.
+        new_item_book = await service.create_item_book_async(
+            title=item_book.title,
+            categories=[category.model_dump() for category in item_book.categories],
+        )
         transformer = SchemasTransformerV1()
         return_item_book = transformer.transform_item_book(new_item_book)
         logger.debug(f"return_item_book: {return_item_book}")
@@ -318,7 +327,7 @@ async def update_item_book(
     service = await get_item_book_service_async(tenant_id)
 
     try:
-        updated_item_book = await service.update_item_book_async(item_book_id, item_book.dict())
+        updated_item_book = await service.update_item_book_async(item_book_id, item_book.model_dump())
         transformer = SchemasTransformerV1()
         return_item_book = transformer.transform_item_book(updated_item_book)
     except Exception as e:

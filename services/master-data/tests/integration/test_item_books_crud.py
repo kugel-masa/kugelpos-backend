@@ -230,3 +230,101 @@ async def test_item_book_button_put_delete(http_client, admin_header, category_n
         headers=admin_header,
     )
     assert response.status_code == status.HTTP_200_OK
+
+
+# =========================================================================
+# Creating with a populated tree (issue #197)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_item_book_with_a_populated_tree(http_client, admin_header):
+    """The create request carries categories -> tabs -> buttons in one body.
+
+    Every other test here creates with `"categories": []` and builds the tree
+    afterwards through the sub-resource endpoints, so nothing exercised the
+    shape the schema actually declares. The route handed the request's own
+    Pydantic models to a service that builds ItemBookCategory(**category) from
+    dicts, and answered an unhandled 500 for any book carrying a category.
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    await _ensure_tenant(http_client, admin_header, tenant_id)
+
+    payload = {
+        "title": "Spring Menu",
+        "categories": [
+            {
+                "categoryNumber": 1,
+                "title": "Drinks",
+                "color": "#9AA5B1",
+                "tabs": [
+                    {
+                        "tabNumber": 1,
+                        "title": "Hot",
+                        "color": "#E4E7EB",
+                        "buttons": [
+                            {
+                                "posX": 0,
+                                "posY": 0,
+                                "size": "Single",
+                                "imageUrl": "https://cdn.example.co.jp/coffee.webp",
+                                "colorText": "#1F2933",
+                                "itemCode": "49-01",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = await http_client.post(
+        f"/api/v1/tenants/{tenant_id}/item_books", json=payload, headers=admin_header
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    item_book_id = response.json()["data"]["itemBookId"]
+
+    # Read it back: the tree has to survive the round trip, not merely be accepted.
+    response = await http_client.get(
+        f"/api/v1/tenants/{tenant_id}/item_books/{item_book_id}", headers=admin_header
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+    data = response.json()["data"]
+    assert data["title"] == "Spring Menu"
+    category = data["categories"][0]
+    assert category["categoryNumber"] == 1
+    assert category["title"] == "Drinks"
+    tab = category["tabs"][0]
+    assert tab["tabNumber"] == 1
+    button = tab["buttons"][0]
+    assert button["itemCode"] == "49-01"
+    assert button["posX"] == 0
+    assert button["size"] == "Single"
+
+
+@pytest.mark.asyncio
+async def test_create_item_book_with_several_categories(http_client, admin_header):
+    """More than one category, so the per-entry conversion is exercised as a list."""
+    tenant_id = os.environ.get("TENANT_ID")
+    await _ensure_tenant(http_client, admin_header, tenant_id)
+
+    categories = [
+        {
+            "categoryNumber": n,
+            "title": f"Category {n}",
+            "color": "#9AA5B1",
+            "tabs": [{"tabNumber": 1, "title": "T", "color": "#E4E7EB", "buttons": []}],
+        }
+        for n in (1, 2, 3)
+    ]
+
+    response = await http_client.post(
+        f"/api/v1/tenants/{tenant_id}/item_books",
+        json={"title": "Multi", "categories": categories},
+        headers=admin_header,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    assert [c["categoryNumber"] for c in response.json()["data"]["categories"]] == [1, 2, 3]
