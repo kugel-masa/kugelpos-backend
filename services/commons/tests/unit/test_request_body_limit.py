@@ -245,3 +245,80 @@ def test_the_default_ceiling_matches_the_decompression_ceiling():
     from kugel_common.middleware.http_compression import DEFAULT_MAX_DECOMPRESSED_BYTES
 
     assert DEFAULT_MAX_REQUEST_BODY_BYTES == DEFAULT_MAX_DECOMPRESSED_BYTES
+
+
+# =========================================================================
+# The ceiling is configuration, not a compiled-in constant (issue #195)
+# =========================================================================
+
+
+def test_services_configure_the_ceiling_from_settings():
+    """Outermost enforcement makes this one number per service, not per route.
+
+    It therefore has to fit the largest legitimate request a service receives,
+    which differs per service — so it must be settable rather than compiled in.
+    """
+    from kugel_common.config.settings_http import HttpRequestSettings
+
+    assert HttpRequestSettings().MAX_REQUEST_BODY_BYTES == DEFAULT_MAX_REQUEST_BODY_BYTES
+
+
+def test_the_ceiling_can_be_raised_from_the_environment(monkeypatch):
+    """A service whose traffic outgrows the default must not need a code change.
+
+    Measured against the running stack: a 999-line transaction sends an 894 KB
+    cart snapshot and publishes a 552 KB tranlog, so cart and report/journal
+    each run above the default.
+    """
+    from kugel_common.config.settings_http import HttpRequestSettings
+
+    monkeypatch.setenv("MAX_REQUEST_BODY_BYTES", str(4 * 1024 * 1024))
+
+    assert HttpRequestSettings().MAX_REQUEST_BODY_BYTES == 4 * 1024 * 1024
+
+
+def test_a_ceiling_of_zero_is_refused_at_startup():
+    """Zero is not "no limit" — it refuses every request that carries a body.
+
+    Enforced outermost, a ceiling of 0 answers 413 to every write while bodyless
+    health checks still pass, so the service reads as alive and serves nothing.
+    An operator reaching for a way to disable the limit is one plausible typo
+    away from it, so it has to fail at startup rather than on the first sale.
+    """
+    import pytest as _pytest
+
+    from kugel_common.config.settings_http import HttpRequestSettings
+
+    with _pytest.raises(ValueError):
+        HttpRequestSettings(MAX_REQUEST_BODY_BYTES=0)
+
+
+def test_a_negative_ceiling_is_refused_at_startup():
+    """Negative is worse than zero: even a bodyless request is refused."""
+    import pytest as _pytest
+
+    from kugel_common.config.settings_http import HttpRequestSettings
+
+    with _pytest.raises(ValueError):
+        HttpRequestSettings(MAX_REQUEST_BODY_BYTES=-1)
+
+
+def test_the_guard_survives_a_service_overriding_the_field():
+    """The services that tune the ceiling are the ones that must keep the guard.
+
+    cart, master-data, report and journal all redefine the field with a bare
+    Field(default=...). In Pydantic v2 that replaces the FieldInfo, so a
+    Field(gt=0) constraint declared on the mixin would be dropped by exactly
+    those four — leaving it only where nobody changes the value.
+    """
+    import pytest as _pytest
+    from pydantic import Field
+
+    from kugel_common.config.settings_http import HttpRequestSettings
+
+    class ServiceSettings(HttpRequestSettings):
+        MAX_REQUEST_BODY_BYTES: int = Field(default=4 * 1024 * 1024)
+
+    assert ServiceSettings().MAX_REQUEST_BODY_BYTES == 4 * 1024 * 1024
+    with _pytest.raises(ValueError):
+        ServiceSettings(MAX_REQUEST_BODY_BYTES=0)

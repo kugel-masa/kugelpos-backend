@@ -17,7 +17,11 @@ import httpx
 import pytest
 
 
-# Comfortably past the 1 MB ceiling every service carries.
+# Comfortably past every service's ceiling. Services size it to their own
+# traffic (issue #195): 1 MB by default, 4 MB where the largest legitimate body
+# is bigger — cart carries the whole cart document on every mutating request,
+# report/journal serve the Dapr tranlog subscriber from the same app, and
+# master-data takes a whole item book or settings collection in one body.
 OVERSIZED = 8 * 1024 * 1024
 
 SERVICES = [

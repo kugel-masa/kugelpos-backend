@@ -25,6 +25,13 @@ This is not specific to any one service or content type — it is what FastAPI
 does everywhere — so the ceiling is applied outermost, ahead of every other
 middleware, for all methods and all content types.
 
+Being outermost also means it cannot be a per-route decision: the one number
+has to fit the largest legitimate request the service ever receives. Services
+set it from ``HttpRequestSettings.MAX_REQUEST_BODY_BYTES``
+(``kugel_common.config.settings_http``), which carries the measurements behind
+each value; the constant here is only the fallback for a service that passes
+nothing.
+
 A declared ``content-length`` over the ceiling is refused up front, without
 reading a byte — a body that size is refused whatever it turns out to contain.
 Every other request is measured as it is delivered and abandoned at the chunk
@@ -47,8 +54,9 @@ from kugel_common.middleware.http_compression import (
 
 logger = getLogger(__name__)
 
-# Bodies larger than this are refused. Services override it from their own
-# settings; this default only bounds one that forgets to.
+# Bodies larger than this are refused. Services pass their own
+# MAX_REQUEST_BODY_BYTES; this default only bounds one that forgets to, and is
+# deliberately the same number as HttpRequestSettings' own default.
 DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
 
 

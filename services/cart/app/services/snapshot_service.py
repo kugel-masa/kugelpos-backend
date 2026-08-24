@@ -237,6 +237,25 @@ def get_snapshot_signer() -> Optional[HmacSigner]:
     return _signer
 
 
+# A snapshot is warned about at this fraction of the request-body ceiling.
+#
+# Derived rather than configured (issue #195): the snapshot is handed to the
+# client to send back on the next mutating request, so the only size that means
+# anything is the one that will refuse it. A standalone threshold was a number
+# with nothing to relate it to, and had to be kept in step with the ceiling by
+# hand. At 75% of a 4 MB ceiling this fires around 3,500 line items, leaving
+# roughly a thousand more before the 413 - enough runway to raise the ceiling
+# or split the basket.
+#
+# Nothing is refused here: generation degrades rather than fails (NFR-004).
+SNAPSHOT_SIZE_WARN_FRACTION = 0.75
+
+
+def _snapshot_size_warn_bytes() -> int:
+    """Warn-at size for an issued snapshot, in bytes."""
+    return int(settings.MAX_REQUEST_BODY_BYTES * SNAPSHOT_SIZE_WARN_FRACTION)
+
+
 def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) -> Optional[dict]:
     """
     Build and sign a snapshot envelope for the given cart.
@@ -264,12 +283,17 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
             "cart_document": cart_doc.model_dump(mode="json"),
         }
         raw_size = len(canonical_json_bytes(payload))
-        if raw_size > settings.SNAPSHOT_SIZE_WARN_BYTES:
+        warn_at = _snapshot_size_warn_bytes()
+        if raw_size > warn_at:
             logger.warning(
-                "Snapshot for cart %s is %d bytes raw (threshold %d); consider revisiting the size budget (R-008)",
+                "Snapshot for cart %s is %d bytes raw, past %d (%.0f%% of the %d byte request ceiling): "
+                "the client will be refused with 413 once it can no longer send this back. "
+                "Raise MAX_REQUEST_BODY_BYTES or split the basket (R-008, issue #195)",
                 cart_doc.cart_id,
                 raw_size,
-                settings.SNAPSHOT_SIZE_WARN_BYTES,
+                warn_at,
+                SNAPSHOT_SIZE_WARN_FRACTION * 100,
+                settings.MAX_REQUEST_BODY_BYTES,
             )
         else:
             logger.debug("Snapshot for cart %s: %d bytes raw", cart_doc.cart_id, raw_size)

@@ -1,4 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -56,10 +58,6 @@ class CartSettings(BaseSettings):
         default=False,
         description="Allow starting with the signing key published in this repository (local development only).",
     )
-    SNAPSHOT_SIZE_WARN_BYTES: int = Field(
-        default=262144,
-        description="Raw snapshot size threshold in bytes that triggers a warning log.",
-    )
 
     # Client-carried cart phase 2 (issue #156).
     # Per-request snapshot handling mode (service-wide migration switch):
@@ -75,15 +73,13 @@ class CartSettings(BaseSettings):
         default="DUAL",
         description="Per-request snapshot mode: 'DUAL' (accept snapshot-less) or 'REQUIRED' (reject snapshot-less).",
     )
-    # Max request-body size (bytes) the service will hold. The decompression
-    # middleware rejects a body exceeding it before it is fully expanded
-    # (zip-bomb guard), and the snapshot-envelope peel rejects one that simply
-    # arrives that large uncompressed (issue #195), so the same ceiling applies
-    # whether or not the caller compressed. Kept in line with
-    # SNAPSHOT_SIZE_WARN_BYTES.
-    REQUEST_DECOMPRESS_MAX_BYTES: int = Field(
-        default=1048576,
-        description="Maximum request body size in bytes, compressed or not; larger is rejected.",
+    # Deprecated name for MAX_REQUEST_BODY_BYTES (issue #195). The ceiling no
+    # longer applies only to decompression: it bounds every request body,
+    # compressed or not. Kept so a deployment that set the old name is honoured
+    # rather than silently ignored - see the validator on Settings.
+    REQUEST_DECOMPRESS_MAX_BYTES: Optional[int] = Field(
+        default=None,
+        description="Deprecated alias for MAX_REQUEST_BODY_BYTES; set the new name instead.",
     )
 
     # gRPC settings

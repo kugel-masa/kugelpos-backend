@@ -596,7 +596,7 @@ async def test_oversized_compressed_request_is_refused(http_client, snapshot_key
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
 
     # Small on the wire, far past the guard once expanded.
-    bomb = gzip_module.compress(b"a" * (settings.REQUEST_DECOMPRESS_MAX_BYTES + 1024))
+    bomb = gzip_module.compress(b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024))
     headers = {**_api_headers(), "Content-Encoding": "gzip"}
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
@@ -623,7 +623,7 @@ async def test_oversized_uncompressed_request_is_refused(http_client, snapshot_k
     cart_id, _, _ = await _create_cart_with_items(http_client)
 
     # Plainly over the guard, with no compression to expand.
-    oversized = b'[{"itemCode": "' + b"a" * (settings.REQUEST_DECOMPRESS_MAX_BYTES + 1024) + b'"}]'
+    oversized = b'[{"itemCode": "' + b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024) + b'"}]'
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
         content=oversized,
@@ -642,7 +642,7 @@ async def test_oversized_request_is_refused_without_credentials(http_client, sna
     caller reaches the buffer before any 401 could be raised. The body must be
     refused on size, not read in full and then rejected on credentials.
     """
-    oversized = b'[{"itemCode": "' + b"a" * (settings.REQUEST_DECOMPRESS_MAX_BYTES + 1024) + b'"}]'
+    oversized = b'[{"itemCode": "' + b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024) + b'"}]'
     r = await http_client.post(
         f"/api/v1/carts/no-such-cart/lineItems?terminal_id={_terminal_id()}",
         content=oversized,

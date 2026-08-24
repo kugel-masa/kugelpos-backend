@@ -120,10 +120,10 @@ async def test_large_gzipped_request_survives_chunked_delivery(http_client, api_
 
     # Incompressible padding, so the body stays large after gzip too. Sized from
     # the service's own ceiling — a fixed size would start failing with 413 the
-    # moment REQUEST_DECOMPRESS_MAX_BYTES is lowered.
+    # moment MAX_REQUEST_BODY_BYTES is lowered.
     from app.config.settings import settings
 
-    padding = os.urandom(settings.REQUEST_DECOMPRESS_MAX_BYTES // 4).hex()
+    padding = os.urandom(settings.MAX_REQUEST_BODY_BYTES // 4).hex()
     wrapped = {
         "signedSnapshot": snapshot,
         "payload": [{"itemCode": "49-01", "quantity": 1}],
@@ -147,7 +147,11 @@ async def test_zip_bomb_is_refused_over_the_wire(http_client, api_header, opened
     """A tiny body expanding past the ceiling is refused with 413."""
     terminal_id = opened_terminal_id
 
-    bomb = gzip.compress(b"a" * (2 * 1024 * 1024))
+    # Sized from the service's own ceiling: a fixed size stops being a bomb the
+    # moment MAX_REQUEST_BODY_BYTES is raised (issue #195).
+    from app.config.settings import settings
+
+    bomb = gzip.compress(b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024))
     assert len(bomb) < 50 * 1024, "the point is that the compressed form is small"
 
     response = await http_client.post(

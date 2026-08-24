@@ -128,7 +128,7 @@ app.middleware("http")(log_requests("cart"))
 # an uncompressed body must not slip past a limit a compressed one is held to.
 app.add_middleware(
     SnapshotEnvelopePeelMiddleware,
-    max_bytes=settings.REQUEST_DECOMPRESS_MAX_BYTES,
+    max_bytes=settings.MAX_REQUEST_BODY_BYTES,
     error_code=CartErrorCode.REQUEST_BODY_TOO_LARGE,
 )
 
@@ -138,7 +138,7 @@ app.add_middleware(
 # with no snapshot and silently take the cache-authoritative path.
 add_request_decompression_middleware(
     app,
-    max_bytes=settings.REQUEST_DECOMPRESS_MAX_BYTES,
+    max_bytes=settings.MAX_REQUEST_BODY_BYTES,
     error_code=CartErrorCode.REQUEST_BODY_TOO_LARGE,
 )
 
@@ -154,7 +154,7 @@ add_gzip_response_middleware(app)
 # governs, so the wire size and the expanded size are held to one number.
 add_request_body_limit_middleware(
     app,
-    max_bytes=settings.REQUEST_DECOMPRESS_MAX_BYTES,
+    max_bytes=settings.MAX_REQUEST_BODY_BYTES,
     error_code=CartErrorCode.REQUEST_BODY_TOO_LARGE,
 )
 

@@ -170,7 +170,7 @@ async def test_a_hostile_envelope_cannot_grow_the_log(http_client, snapshot_keys
     # logging middleware runs at all, and this would silently stop testing the
     # log. Asserted so a change to either bound fails here rather than drifting.
     _hostile_size = len(json.dumps(hostile))
-    assert settings.REQUEST_LOG_MAX_BODY_BYTES * 4 < _hostile_size < settings.REQUEST_DECOMPRESS_MAX_BYTES
+    assert settings.REQUEST_LOG_MAX_BODY_BYTES * 4 < _hostile_size < settings.MAX_REQUEST_BODY_BYTES
 
     response = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={_terminal_id()}",

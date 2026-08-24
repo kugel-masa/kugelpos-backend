@@ -312,3 +312,74 @@ async def test_body_at_the_ceiling_is_accepted():
     await middleware(_json_scope(), _receive_for(body), None)
 
     assert json.loads(app.body) == payload
+
+
+# =========================================================================
+# The body ceiling cart runs with (issue #195)
+# =========================================================================
+
+
+def _cart_settings(**env):
+    """Build a fresh Settings so the env under test is the one that is read."""
+    import os
+
+    from app.config.settings import Settings
+
+    keys = ("MAX_REQUEST_BODY_BYTES", "REQUEST_DECOMPRESS_MAX_BYTES")
+    saved = {k: os.environ.pop(k, None) for k in keys}
+    try:
+        os.environ.update({k: str(v) for k, v in env.items()})
+        return Settings()
+    finally:
+        for k in keys:
+            os.environ.pop(k, None)
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_cart_runs_above_the_default_ceiling():
+    """A 999-line transaction measures 894 KB carried, so 1 MB is not enough.
+
+    Cart puts the whole cart document on every mutating request (issue #156),
+    which makes its largest legitimate body far bigger than a plain API call's.
+    Measured against the running stack, the 1 MB default refused that
+    transaction at 1,221 lines.
+    """
+    from kugel_common.middleware.request_body_limit import DEFAULT_MAX_REQUEST_BODY_BYTES
+
+    settings = _cart_settings()
+    assert settings.MAX_REQUEST_BODY_BYTES == 4 * 1024 * 1024
+    assert settings.MAX_REQUEST_BODY_BYTES > DEFAULT_MAX_REQUEST_BODY_BYTES
+
+
+def test_the_deprecated_name_still_governs_when_it_is_set():
+    """Renaming must not silently reset a deployment's override to the default."""
+    settings = _cart_settings(REQUEST_DECOMPRESS_MAX_BYTES=2 * 1024 * 1024)
+
+    assert settings.MAX_REQUEST_BODY_BYTES == 2 * 1024 * 1024
+
+
+def test_the_two_names_agree_when_only_the_new_one_is_set():
+    """Anything still reading the old name sees the ceiling actually in force."""
+    settings = _cart_settings(MAX_REQUEST_BODY_BYTES=3 * 1024 * 1024)
+
+    assert settings.MAX_REQUEST_BODY_BYTES == 3 * 1024 * 1024
+    assert settings.REQUEST_DECOMPRESS_MAX_BYTES == 3 * 1024 * 1024
+
+
+def test_a_zero_ceiling_is_refused_through_the_deprecated_name_too():
+    """Assignment does not re-validate, so the alias needs its own guard.
+
+    The validator normalises REQUEST_DECOMPRESS_MAX_BYTES onto
+    MAX_REQUEST_BODY_BYTES by assignment, and validate_assignment is off — so
+    without an explicit check the old name would be the one way to install a
+    ceiling of 0 and answer 413 to every request that carries a body.
+    """
+    import pytest as _pytest
+
+    with _pytest.raises(Exception):
+        _cart_settings(REQUEST_DECOMPRESS_MAX_BYTES=0)
+
+    with _pytest.raises(Exception):
+        _cart_settings(REQUEST_DECOMPRESS_MAX_BYTES=-1)

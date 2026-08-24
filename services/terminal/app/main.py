@@ -97,7 +97,11 @@ add_gzip_response_middleware(app)
 # it runs OUTERMOST: FastAPI reads the body before it resolves a route's
 # dependencies, so without this an unauthenticated caller decides how much
 # memory the worker spends and the 401 arrives only after the body is held.
-add_request_body_limit_middleware(app, error_code=ErrorCode.REQUEST_BODY_TOO_LARGE)
+add_request_body_limit_middleware(
+    app,
+    max_bytes=settings.MAX_REQUEST_BODY_BYTES,
+    error_code=ErrorCode.REQUEST_BODY_TOO_LARGE,
+)
 
 # Register global exception handlers to ensure consistent error responses
 register_exception_handlers(app)
