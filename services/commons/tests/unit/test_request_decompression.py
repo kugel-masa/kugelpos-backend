@@ -363,3 +363,71 @@ async def test_oversized_compressed_body_is_refused_before_expansion():
     )
 
     assert messages[0]["status"] == 413
+
+
+# =========================================================================
+# The refusal itself has to be parseable (issue #195)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_an_unsupported_encoding_containing_a_quote_still_yields_valid_json():
+    """The refusal message carries a client-controlled header value.
+
+    h11 permits a double quote in a header value, so building the payload by
+    interpolation spliced it into the JSON and handed the client an unparseable
+    415 — hiding the very reason the request was refused.
+    """
+    import json as json_module
+
+    middleware = RequestDecompressionMiddleware(_Recorder(), max_bytes=1024, error_code="401509")
+
+    messages = await _collect_response(
+        middleware,
+        _scope([(b"content-encoding", b'x"y')]),
+        _receive_for(b""),
+    )
+
+    assert messages[0]["status"] == 415
+    parsed = json_module.loads(messages[-1]["body"])
+    assert parsed["userError"]["code"] == "401509"
+    assert 'x"y' in parsed["message"], "the offending value should survive intact, escaped"
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_without_an_error_code_reports_a_null_user_error():
+    """The shape is unchanged from the interpolated version, including null."""
+    import json as json_module
+
+    middleware = RequestDecompressionMiddleware(_Recorder(), max_bytes=1024)
+
+    messages = await _collect_response(
+        middleware,
+        _scope([(b"content-encoding", b"zstd")]),
+        _receive_for(b""),
+    )
+
+    parsed = json_module.loads(messages[-1]["body"])
+    assert parsed["success"] is False
+    assert parsed["code"] == 415
+    assert parsed["userError"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_payload_is_byte_identical_for_a_message_needing_no_escaping():
+    """Nothing already parsing these responses should see a difference."""
+    from kugel_common.middleware.http_compression import send_json_error
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await send_json_error(send, 413, "Request body too large", "401509")
+
+    expected = (
+        b'{"success": false, "code": 413, "message": "Request body too large", '
+        b'"userError": {"code": "401509", "message": "Request body too large"}}'
+    )
+    assert messages[-1]["body"] == expected
+    assert dict(messages[0]["headers"])[b"content-length"] == str(len(expected)).encode()

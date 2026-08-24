@@ -30,6 +30,7 @@ a bounded amount for a caller who has not been authenticated yet (issue #195).
 
 # zlib with wbits=47 auto-detects gzip and zlib framing, so the gzip module
 # itself is not needed here.
+import json
 import zlib
 from logging import getLogger
 
@@ -283,10 +284,23 @@ def replay_body(body: bytes):
 
 
 async def send_json_error(send, status_code: int, message: str, error_code: str = None) -> None:
-    """Emit a minimal JSON error without going through the app."""
-    user_error = "null" if error_code is None else '{"code": "%s", "message": "%s"}' % (error_code, message)
-    payload = (
-        '{"success": false, "code": %d, "message": "%s", "userError": %s}' % (status_code, message, user_error)
+    """
+    Emit a minimal JSON error without going through the app.
+
+    Serialised with ``json.dumps`` rather than string interpolation: the
+    message is not always ours. The unsupported-encoding refusal puts the
+    client's own Content-Encoding header in it, and a header value may contain
+    a double quote — h11 permits it — which interpolation would splice into the
+    payload and hand the client an unparseable 415, hiding the very reason the
+    request was refused.
+
+    The shape is byte-for-byte what interpolation produced for a message that
+    needed no escaping, so nothing that already parses these responses changes.
+    """
+    user_error = None if error_code is None else {"code": error_code, "message": message}
+    payload = json.dumps(
+        {"success": False, "code": status_code, "message": message, "userError": user_error},
+        ensure_ascii=False,
     ).encode()
     await send(
         {
