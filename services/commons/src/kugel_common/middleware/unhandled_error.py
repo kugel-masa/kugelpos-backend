@@ -47,6 +47,22 @@ from kugel_common.exceptions.exception_handlers import build_unexpected_error_re
 logger = getLogger(__name__)
 
 
+def _log(message: str, *args) -> None:
+    """
+    Log without letting the log break what it is reporting on.
+
+    `logging.callHandlers` does not guard the handlers it calls, so a handler
+    that raises propagates into the caller. Here that would cost the 500 this
+    middleware exists to deliver, or replace the original exception on the
+    already-started path with a logging error. Same reasoning as `_report` in
+    kugel_common.middleware.log_requests.
+    """
+    try:
+        logger.exception(message, *args)
+    except Exception:  # pragma: no cover - only a handler that raises reaches this
+        pass
+
+
 class UnhandledErrorMiddleware:
     """
     Pure-ASGI middleware turning an escaping exception into the structured 500.
@@ -80,10 +96,10 @@ class UnhandledErrorMiddleware:
                 # left to replace. Let it propagate the way Starlette's own
                 # ServerErrorMiddleware does, so the connection is torn down
                 # rather than a second response half-written over the first.
-                logger.exception("Unhandled exception after the response had started")
+                _log("Unhandled exception after the response had started")
                 raise
             response = build_unexpected_error_response(e, operation="unhandled_error_middleware")
-            logger.exception("Unhandled exception answered as %s", response.code)
+            _log("Unhandled exception answered as %s", response.code)
             # Emitted through JSONResponse, exactly as the handler does, so the
             # body is the one clients already parse - `user_error`, `data` and
             # `operation` included. The middleware error payloads elsewhere in

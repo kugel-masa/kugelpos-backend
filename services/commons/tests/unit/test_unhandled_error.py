@@ -150,3 +150,70 @@ async def test_a_non_http_scope_passes_through():
     await UnhandledErrorMiddleware(app)({"type": "lifespan"}, None, None)
 
     assert seen == ["lifespan"]
+
+
+# =========================================================================
+# The log must not cost the response it is reporting on
+# =========================================================================
+
+
+class _RaisingHandler(logging.Handler):
+    """A handler with no emit guard of its own.
+
+    `logging.callHandlers` does not wrap the handlers it calls, so such a
+    handler propagates into the caller — which here would be the failure path
+    that still owes the client a response.
+    """
+
+    def emit(self, record):
+        raise OSError("log destination is gone")
+
+
+@pytest.fixture
+def raising_log_handler():
+    from kugel_common.middleware import unhandled_error
+
+    handler = _RaisingHandler()
+    unhandled_error.logger.addHandler(handler)
+    try:
+        yield
+    finally:
+        unhandled_error.logger.removeHandler(handler)
+
+
+@pytest.mark.asyncio
+async def test_a_readable_500_survives_a_failing_log(raising_log_handler):
+    """Losing the log must not also lose what this middleware exists to deliver.
+
+    Asserted on the CORS header, not on the status: a logging error escaping
+    this layer still ends up as a 500, because ServerErrorMiddleware catches it
+    further out — but that is the unreadable 500 from outside CORS, which is
+    precisely the state #202 is about. Only the header tells the two apart.
+    """
+    response = await _get(_app(with_middleware=True), "/boom")
+
+    assert response.status_code == 500
+    assert response.json()["user_error"]["code"] == "900999"
+    assert response.headers.get("access-control-allow-origin") == ORIGIN
+
+
+@pytest.mark.asyncio
+async def test_a_failing_log_does_not_replace_the_original_exception(raising_log_handler):
+    """On the already-started path the exception is re-raised, and it must be *the* one.
+
+    A logging error surfacing here would bury the fault that actually broke the
+    request behind one from the reporting of it.
+    """
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        raise RuntimeError("the real fault")
+
+    async def send(message):
+        pass
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    with pytest.raises(RuntimeError, match="the real fault"):
+        await UnhandledErrorMiddleware(app)({"type": "http", "headers": []}, receive, send)
