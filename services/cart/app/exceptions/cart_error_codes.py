@@ -60,6 +60,7 @@ class CartErrorCode:
     TRANSACTION_AMBIGUOUS = "401513"  # transaction_no matches several open sessions; business_counter needed
     VOID_OUT_OF_SESSION = "401514"  # void is limited to the terminal's current business date and open session
     CART_PATH_MISMATCH = "401515"  # the cart was opened for the other path (issue #192)
+    CART_SIZE_BUDGET_EXCEEDED = "401516"  # the cart would no longer fit in a request the client can send back
 
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
@@ -108,6 +109,7 @@ class CartErrorMessage:
             CartErrorCode.SEQUENCE_ANOMALY: "取引連番の重複または欠番を検出しました",
             CartErrorCode.FINALIZE_CONFLICT: "このカートは別の取引として既に確定済みです",
             CartErrorCode.CART_PATH_MISMATCH: "このカートは別の経路で開始されています",
+            CartErrorCode.CART_SIZE_BUDGET_EXCEEDED: "この明細を追加すると取引が大きくなりすぎます。ここまでで会計を締めて、残りを別取引にしてください",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
             CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回数に該当します。business_counter を指定してください",
             CartErrorCode.VOID_OUT_OF_SESSION: "取消は当日かつ現在の営業回数の取引のみ可能です。過去の取引は返品で処理してください",
@@ -150,6 +152,7 @@ class CartErrorMessage:
             CartErrorCode.SEQUENCE_ANOMALY: "Transaction sequence duplicate or gap detected",
             CartErrorCode.FINALIZE_CONFLICT: "This cart was already finalized as a different transaction",
             CartErrorCode.CART_PATH_MISMATCH: "This cart was opened for the other request path",
+            CartErrorCode.CART_SIZE_BUDGET_EXCEEDED: "Adding this line would make the transaction too large to carry; settle what is in the cart and start another transaction for the rest",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "Carried snapshot addresses a different cart than the URL",
             CartErrorCode.TRANSACTION_AMBIGUOUS: "transaction_no matches more than one open session",
             CartErrorCode.VOID_OUT_OF_SESSION: "Void is limited to the current business date and open session",

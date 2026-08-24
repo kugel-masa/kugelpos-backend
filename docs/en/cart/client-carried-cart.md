@@ -358,10 +358,20 @@ convenience, the field goes out null, and the operation still succeeds.
 | `SNAPSHOT_HMAC_KEYS` | unset | Snapshot signing keys. **Required — the service does not start without one** (#192), and refuses a key shorter than 32 bytes. See the key rotation runbook, [available in Japanese only](../../ja/cart-snapshot-key-rotation.md) |
 | `SNAPSHOT_ALLOW_INSECURE_KEY` | `false` | Allows startup with the signing key committed to this repository. Local development only: that key signs and verifies, so anyone who can read the repository can mint a snapshot with any prices in it |
 | `CART_REQUEST_SNAPSHOT_MODE` | `DUAL` | Migration mode (above) |
-| `MAX_REQUEST_BODY_BYTES` | `4194304` | Request body ceiling, compressed or not. Above the 1MB default every other service carries, because the carried cart document is cart's largest legitimate body (#195) |
+| `MAX_REQUEST_BODY_BYTES` | `4194304` | Request body ceiling, compressed or not. Also sizes the cart's own budget (below). Above the 1MB default every other service carries, because the carried cart document is cart's largest legitimate body (#195) |
 | `REQUEST_DECOMPRESS_MAX_BYTES` | unset | Deprecated name for the above. Still honoured if set, and wins over the new name, so an existing deployment is not silently reset to the default |
 | `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Shared (commons) setting: body fields the request log replaces with a metadata marker, so the carried snapshot is not stored on every request (#155) |
 | `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | Shared (commons) setting: size ceiling for a logged body |
+
+## The cart is bounded by what the client can send back
+
+The snapshot is issued by the server and presented by the client on its next mutating request, so `MAX_REQUEST_BODY_BYTES` bounds it. The cart itself had no bound, so a large enough basket left the terminal holding an envelope it could not return: every following request answered `413`, and under `REQUIRED` the cart could be neither completed nor cancelled (#200).
+
+A line item that would take the snapshot past **60% of `MAX_REQUEST_BODY_BYTES`** is refused with `409` (code `401516`) — measured on the snapshot that would actually be issued, not estimated from a line count, because what a line costs depends on the item masters carried with it. The refusal happens *before* anything is committed, so the cart is left exactly as it was and the basket can still be settled; the rest goes in another transaction.
+
+A warning is logged at 80% of that budget, so the log says so before the till does.
+
+At the 4 MB default that is roughly 2,800 line items of distinct SKUs, with the warning around 2,260. Measured: a 999-line transaction carries 894 KB, well inside it.
 
 ## Removed APIs
 

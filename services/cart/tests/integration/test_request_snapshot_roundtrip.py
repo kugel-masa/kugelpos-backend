@@ -650,3 +650,65 @@ async def test_oversized_request_is_refused_without_credentials(http_client, sna
     )
 
     assert r.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, r.text
+
+
+@pytest.mark.asyncio
+async def test_a_line_that_would_outgrow_the_snapshot_is_refused(http_client, snapshot_keys, monkeypatch):
+    """The server must never issue a snapshot the client cannot send back (#200).
+
+    The snapshot rides in the request body on every mutating call, so the
+    request ceiling bounds it — while the cart itself had no bound. Past that
+    point the terminal holds an envelope it cannot return: every following
+    request is answered 413, and under CART_REQUEST_SNAPSHOT_MODE=REQUIRED the
+    cart can be neither completed nor cancelled.
+
+    The budget is lowered rather than adding thousands of line items; what is
+    being tested is the refusal, not the arithmetic.
+    """
+    terminal_id = _terminal_id()
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    # Below what the cart already weighs, so the next add crosses it.
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
+        headers=_api_headers(),
+    )
+
+    assert r.status_code == status.HTTP_409_CONFLICT, r.text
+    assert "401516" in r.text, r.text
+
+
+@pytest.mark.asyncio
+async def test_a_refused_line_leaves_the_cart_workable(http_client, snapshot_keys, monkeypatch):
+    """Refused at the add, so the basket can still be settled.
+
+    Committing the line and refusing the next request instead would reproduce
+    the very state #200 is about: a cart already too big to carry. The operator
+    has to be able to settle what is in the cart and start another transaction
+    for the rest.
+    """
+    terminal_id = _terminal_id()
+    cart_id, snapshot, line_count_before = await _create_cart_with_items(http_client)
+
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+    refused = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
+        headers=_api_headers(),
+    )
+    assert refused.status_code == status.HTTP_409_CONFLICT, refused.text
+
+    # The snapshot the client still holds is the one from before the refusal,
+    # and it must still be good: nothing was committed against it.
+    monkeypatch.undo()
+    after = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
+        headers=_api_headers(),
+    )
+
+    assert after.status_code == status.HTTP_200_OK, after.text
+    assert len(after.json()["data"]["lineItems"]) == line_count_before + 1, "the refused line was left behind"

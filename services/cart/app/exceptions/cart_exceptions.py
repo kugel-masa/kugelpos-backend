@@ -555,3 +555,28 @@ class AlreadyRefundedException(ServiceException):
             CartErrorMessage.get_message(CartErrorCode.ALREADY_REFUNDED),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+
+
+class CartSizeBudgetExceededException(ServiceException):
+    """Raised when adding a line would grow the cart past what the client can send back.
+
+    The snapshot is issued by the server and presented by the client on the next
+    mutating request, so it is bounded by MAX_REQUEST_BODY_BYTES — while the cart
+    itself had no bound at all (issue #200). Past that point the server hands the
+    terminal an envelope it cannot return, every following request is answered 413,
+    and under CART_REQUEST_SNAPSHOT_MODE=REQUIRED the cart has no way back.
+
+    Refused at the add rather than at the next request: the cart is left exactly as
+    it was, so the basket is still workable — settle it and start another
+    transaction for the rest.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.CART_SIZE_BUDGET_EXCEEDED,
+            CartErrorMessage.get_message(CartErrorCode.CART_SIZE_BUDGET_EXCEEDED),
+            status_code=status.HTTP_409_CONFLICT,
+        )
