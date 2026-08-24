@@ -431,3 +431,42 @@ async def test_the_payload_is_byte_identical_for_a_message_needing_no_escaping()
     )
     assert messages[-1]["body"] == expected
     assert dict(messages[0]["headers"])[b"content-length"] == str(len(expected)).encode()
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_accepts_a_body_of_exactly_the_ceiling():
+    """The ceiling is inclusive — pins the boundary the pre-append check moved."""
+    assert await read_body_capped(_receive_for(b"x" * 16), 16) == b"x" * 16
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_refuses_one_message_larger_than_the_ceiling():
+    """A whole oversized body can arrive as a single message.
+
+    ASGI puts no bound on one http.request; httpx's ASGI transport — what the
+    integration tier runs on — delivers the entire body at once. The refusal
+    must not depend on the body arriving in server-sized pieces.
+    """
+    with pytest.raises(RequestBodyTooLarge):
+        await read_body_capped(_receive_for(b"x" * 4096), 1024)
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_measures_a_chunk_before_appending_it():
+    """The buffer never holds a chunk it is about to refuse.
+
+    Both orderings refuse the same requests, so the difference is peak memory
+    and nothing an ordinary input can show. It is observable through a chunk
+    that can be measured but not appended: measuring first reaches the refusal,
+    appending first hits the concatenation and raises TypeError instead.
+    """
+
+    class _MeasurableButNotAppendable:
+        def __len__(self):
+            return 4096
+
+    async def receive():
+        return {"type": "http.request", "body": _MeasurableButNotAppendable(), "more_body": False}
+
+    with pytest.raises(RequestBodyTooLarge):
+        await read_body_capped(receive, 1024)

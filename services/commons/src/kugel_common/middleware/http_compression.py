@@ -115,9 +115,18 @@ async def read_body_capped(receive, max_bytes: int) -> bytes | None:
     while True:
         message = await receive()
         if message["type"] == "http.request":
-            body += message.get("body", b"")
-            if len(body) > max_bytes:
+            chunk = message.get("body", b"")
+            # Measured before the append, not after: appending first would copy
+            # a chunk we are about to refuse into the buffer. ASGI puts no bound
+            # on a single http.request message — uvicorn happens to pause reading
+            # at 64 KB, but an ASGI transport that delivers the whole body in one
+            # message (httpx's, which the integration tier uses) would hand over
+            # the entire oversized body and have it copied before the raise.
+            # Checking first keeps the buffer under the ceiling at all times,
+            # without resting on any server's flow control.
+            if len(body) + len(chunk) > max_bytes:
                 raise RequestBodyTooLarge(f"request body exceeds {max_bytes} bytes")
+            body += chunk
             if not message.get("more_body", False):
                 break
         elif message["type"] == "http.disconnect":
