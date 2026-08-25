@@ -8,25 +8,37 @@ The procedure refers to this file for baseline comparison. It did not exist unti
 now — the only stored results were a 40-user run from 2026-06-15, which is not
 comparable at 300 users.
 
-## Before running: two traps
+## Before running: four ways to measure the wrong thing
 
-**`docker-compose.prod.yaml` needs `SNAPSHOT_HMAC_KEYS`.** It is declared
-`${SNAPSHOT_HMAC_KEYS:?...}`, there is no `services/.env` in a fresh checkout, and
-`docker compose up` therefore fails outright. Export it first.
+Every one of these fails quietly, with all seven health checks green.
 
-**Building an image does not replace a running container.** `build.sh` moves the
-`:latest` tag; containers keep the image they started with. If the compose restart
-silently failed, the stack keeps serving the *previous* build and every health
-check still passes — so a run can look valid while measuring the wrong code.
+**1. `docker-compose.prod.yaml` needs `SNAPSHOT_HMAC_KEYS`.** Declared
+`${SNAPSHOT_HMAC_KEYS:?...}`, with no `services/.env` in a fresh checkout, so
+`docker compose up` fails outright. Check the exit status — if containers from an
+earlier run are still up, they answer every health check.
 
-Check the image id, not the health endpoint:
+**2. Building an image does not replace a running container.** `build.sh` moves the
+tag; containers keep the image they started with. Compare image ids, not health:
 
 ```bash
-docker inspect services-cart-1 --format '{{.Image}}'
-docker image inspect masakugel/kugelpos.cart:latest --format '{{.Id}}'
+docker inspect kugelpos-cart-prod --format '{{.Image}}'
+docker image inspect kugelpos-cart:prod --format '{{.Id}}'
 ```
 
-They must match. See the retracted run below for what happens when they do not.
+**3. `build.sh` alone does not build the images this compose file uses.** It
+produces `masakugel/kugelpos.cart:latest`; `docker-compose.prod.yaml` runs
+`kugelpos-cart:prod`. Only `build.sh --prod` produces those. Without it the stack
+serves whatever `:prod` images happen to be on the machine — in one case, images
+twelve days old.
+
+**4. Cart refuses to start on the development key.** The key committed to this
+repository is rejected unless `SNAPSHOT_ALLOW_INSECURE_KEY=true`; cart crash-loops
+while the other six stay healthy, and setup fails with a 500 from the terminal
+service that reads as a connection error. Generate a real key:
+
+```bash
+export SNAPSHOT_HMAC_KEYS="$(python3 -c "import base64,os;print('perf-v1:'+base64.b64encode(os.urandom(32)).decode())")"
+```
 
 ## Environment
 
@@ -38,33 +50,48 @@ the same way can be compared.
 Variability quoted by the procedure, for repeated runs of the same build:
 average ±15–19%, req/s ±0.5%.
 
-## 2026-08-25 — request-body ceiling (#195): RETRACTED, invalid
+## 2026-08-25 — request-body ceiling (#195) and everything stacked on it
 
-An attempt to answer whether buffering every request body outermost costs
-throughput. **The results were not measuring what they claimed and are withdrawn.**
+Does buffering every request body outermost, ahead of authentication, cost
+throughput? `RequestBodySizeLimitMiddleware` reads each body in full before the
+application sees it, on all seven services.
 
-`docker compose -f docker-compose.prod.yaml up -d` failed on the missing
-`SNAPSHOT_HMAC_KEYS` for both runs, with its output discarded and its exit status
-unchecked. The containers left running from an earlier `start.sh` answered every
-health check, so both runs proceeded — against the same containers, started at
-02:41 from an image built before either run:
+Measured `main` (008223d) against every change stacked on it — #195, #197, #199,
+#200, #202 — with the preconditions below checked mechanically on both runs.
 
-```
-container started : 02:41:29   image sha256:a7c06f92...
-run 1 ("before")  : 02:52      same container
-run 2 ("after")   : 02:59      same container
-```
+| metric | main | with the changes | delta |
+|---|---:|---:|---:|
+| requests | 16,531 | 16,534 | +0.0% |
+| **failures** | **0** | **0** | — |
+| average | 241.3 ms | 240.2 ms | −0.4% |
+| p50 | 98 ms | 110 ms | +12.2% |
+| p95 | 920 ms | 900 ms | −2.2% |
+| p99 | 1,700 ms | 1,700 ms | +0.0% |
+| **req/s** | **92.15** | **92.24** | **+0.1%** |
 
-So both numbers came from one build, and the +3.9% req/s reported at the time was
-run-to-run variance and nothing else. The run also used `docker-compose.yaml`
-rather than the `docker-compose.prod.yaml` the procedure specifies.
+Raw results: `services/cart/performance_tests/results/Custom_300users_20260825_063023_*`
+(main) and `Custom_300users_20260825_062044_*` (with the changes).
 
-Raw files remain at `services/cart/performance_tests/results/Custom_300users_20260825_024915_*`
-and `Custom_300users_20260825_025619_*`. They are two samples of one build, which
-is the only thing they can honestly be used for.
+### Reading
 
-Kept rather than deleted because the failure mode is the useful part: a health
-check cannot tell you which build it is talking to.
+**No measurable cost.** req/s within 0.1%, average within 0.4%, p99 identical, and
+the two runs completed 16,531 and 16,534 requests. The p50 gap (98 → 110 ms) is
+12 ms at the bottom of the distribution while nothing else moves, which reads as
+noise rather than signal.
+
+**Zero failures.** Every request buffered outermost, cart running with a 4 MB
+ceiling and the cart size budget active, CORS relocated and the unhandled-500
+middleware in place on all seven services — and not one legitimate request
+answered 413 or 409.
+
+### An earlier attempt at this was invalid
+
+Before the preconditions above were checked, a run reported +3.9% req/s at
+33–34 req/s. Both of its samples came from one build, and from the wrong compose
+file — that is roughly a third of the throughput measured here, because
+`docker-compose.prod.yaml` runs cart with four uvicorn workers and the dev compose
+runs one. The raw files (`Custom_300users_20260825_024915_*` and
+`..._025619_*`) are two samples of a single build and nothing more.
 
 ## What is measured, separately from this
 
@@ -84,10 +111,11 @@ would say little about the large-body case.
 
 ```bash
 export SNAPSHOT_HMAC_KEYS='dev-v1:a3VnZWxwb3MtZGV2LXNuYXBzaG90LWtleS0zMmJ5dGU='
+./scripts/build.sh --prod                                  # note --prod
 cd services
-docker compose -f docker-compose.prod.yaml down
-docker compose -f docker-compose.prod.yaml up -d          # check the exit status
-docker inspect services-cart-1 --format '{{.Image}}'       # must match :latest
+docker compose -f docker-compose.prod.yaml down            # check the exit status
+docker compose -f docker-compose.prod.yaml up -d           # check the exit status
+docker inspect kugelpos-cart-prod --format '{{.Image}}'    # must equal kugelpos-cart:prod
 # wait for all seven /health to report healthy
 cd cart/performance_tests/scripts && bash run_perf_test.sh setup 310
 docker exec redis redis-cli FLUSHALL
