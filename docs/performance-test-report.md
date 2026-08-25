@@ -8,9 +8,9 @@ The procedure refers to this file for baseline comparison. It did not exist unti
 now — the only stored results were a 40-user run from 2026-06-15, which is not
 comparable at 300 users.
 
-## Before running: four ways to measure the wrong thing
+## Before running: five ways to get the wrong answer
 
-Every one of these fails quietly, with all seven health checks green.
+The first four fail quietly, with all seven health checks green.
 
 **1. `docker-compose.prod.yaml` needs `SNAPSHOT_HMAC_KEYS`.** Declared
 `${SNAPSHOT_HMAC_KEYS:?...}`, with no `services/.env` in a fresh checkout, so
@@ -39,6 +39,13 @@ service that reads as a connection error. Generate a real key:
 ```bash
 export SNAPSHOT_HMAC_KEYS="$(python3 -c "import base64,os;print('perf-v1:'+base64.b64encode(os.urandom(32)).decode())")"
 ```
+
+**5. `--prod` and a plain build do not compose.** The `--prod` path copies
+`commons/dist` into each service directory for build context and deletes it
+afterwards; the plain path expects that copy to already be there. So a plain
+`build.sh` straight after a `build.sh --prod` fails on `pipenv install --deploy`
+with a missing wheel. Run `./scripts/run_copy_common.sh` in between. This one at
+least fails loudly.
 
 ## Environment
 
