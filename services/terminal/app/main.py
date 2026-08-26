@@ -20,6 +20,7 @@ from kugel_common.database import database as db_helper
 from kugel_common.middleware.log_requests import log_requests
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
 from kugel_common.middleware.request_body_limit import add_request_body_limit_middleware
+from kugel_common.middleware.unhandled_error import add_unhandled_error_middleware
 from kugel_common.exceptions.error_codes import ErrorCode
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
@@ -76,15 +77,6 @@ app.include_router(v1_tenant_router, prefix="/api/v1")
 app.include_router(v1_terminal_router, prefix="/api/v1")
 app.include_router(v1_auth_router, prefix="/api/v1")
 
-# Configure CORS (Cross-Origin Resource Sharing)  # This allows the API to be accessed from different domains/origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Add middleware to log all HTTP requests to the application
 app.middleware("http")(log_requests("terminal"))
 
@@ -101,6 +93,49 @@ add_request_body_limit_middleware(
     app,
     max_bytes=settings.MAX_REQUEST_BODY_BYTES,
     error_code=ErrorCode.REQUEST_BODY_TOO_LARGE,
+)
+
+# Answer an unhandled exception from inside CORS (issue #202). Registered
+# immediately before CORS so it runs just inside it: Starlette builds
+# ServerErrorMiddleware around the whole user stack, so without this the 500
+# is emitted outside CORS and a browser is given nothing to read.
+add_unhandled_error_middleware(app)
+
+# CORS must be registered LAST so it runs OUTERMOST (Starlette's add_middleware
+# inserts at index 0, so the last registration is the outermost layer).
+#
+# Registered first, it ran innermost, and every response generated outside it
+# bypassed it - the request-body 413 (issue #195) above all. A browser is
+# handed an opaque network failure rather than the status it actually got, so
+# a client cannot tell a permanent 413 (split the payload) from a transient
+# error (retry).
+#
+# Outermost here means outermost among the USER middleware. Starlette builds
+# ServerErrorMiddleware outside all of it, so an unhandled 500 still bypasses
+# CORS - including this service's own generic handler, which Starlette lifts
+# out of ExceptionMiddleware because it is keyed on Exception. Tracked in
+# issue #202; not fixed by this ordering.
+#
+# Safe to sit outside the body ceiling: CORSMiddleware never touches `receive`,
+# so nothing buffers ahead of the limit. Preflight OPTIONS now short-circuits
+# before the body is read at all.
+# allow_credentials stays off (issue #199). It governs cookies and TLS client
+# certificates — what a browser attaches by itself — and this system has
+# neither: authentication is an Authorization bearer token or an X-API-KEY
+# header, which a page has to set explicitly and a hostile one cannot obtain.
+# Turning it on bought nothing and cost the wildcard its meaning: the CORS spec
+# forbids "*" together with credentials, and Starlette resolves that by echoing
+# the caller's own Origin instead — so every origin was allowed to send
+# credentials, which is exactly what the rule exists to prevent.
+#
+# Narrowing allow_origins is a separate question, open until a browser client
+# exists and its origin is known (issue #199).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register global exception handlers to ensure consistent error responses
