@@ -10,6 +10,7 @@ from kugel_common.config.settings import (
     DatetimeSettings,
     WebServiceSettings,
 )
+from kugel_common.config.settings_http import HttpRequestSettings
 from app.config.settings_database import DBCollectionSettings
 
 """
@@ -21,7 +22,13 @@ please use the settings master
 
 
 class Settings(
-    DBSettings, DBCollectionSettings, DBCollectionCommonSettings, DatetimeSettings, AuthSettings, WebServiceSettings
+    DBSettings,
+    DBCollectionSettings,
+    DBCollectionCommonSettings,
+    DatetimeSettings,
+    AuthSettings,
+    WebServiceSettings,
+    HttpRequestSettings,
 ):
     # Override required fields with defaults
     MONGODB_URI: str = Field(default="mongodb://localhost:27017/?replicaSet=rs0")

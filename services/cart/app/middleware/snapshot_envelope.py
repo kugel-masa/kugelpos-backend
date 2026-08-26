@@ -33,7 +33,14 @@ only the peeled payload.
 from logging import getLogger
 import json
 
-from kugel_common.middleware.http_compression import replace_body_headers, replay_body
+from kugel_common.middleware.http_compression import (
+    DEFAULT_MAX_DECOMPRESSED_BYTES,
+    RequestBodyTooLarge,
+    read_body_capped,
+    replace_body_headers,
+    replay_body,
+    send_json_error,
+)
 from kugel_common.middleware.log_requests import SNAPSHOT_SCOPE_KEY
 
 from app.services import snapshot_service
@@ -89,10 +96,22 @@ class SnapshotEnvelopePeelMiddleware:
     """
     Pure-ASGI middleware that peels the phase 2 snapshot envelope (see module
     docstring). Registered outside the request-logging middleware.
+
+    Peeling means buffering the whole body, and this middleware runs ahead of the
+    route's dependencies: its entry condition is method and content type only, so
+    an unauthenticated caller reaches the buffer and the 401 arrives after. The
+    body is therefore read under the same ceiling the decompression middleware
+    applies to an expanded body (issue #195) — a size refused after decompression
+    is refused when it arrives that size to begin with, which is the case a
+    caller reaches simply by not compressing.
     """
 
-    def __init__(self, app):
+    def __init__(self, app, max_bytes: int = DEFAULT_MAX_DECOMPRESSED_BYTES, error_code: str = None):
         self.app = app
+        self.max_bytes = max_bytes
+        # Service-specific code for the refusal: the middleware sits outside the
+        # app, so it cannot raise through the normal exception handlers.
+        self.error_code = error_code
 
     async def __call__(self, scope, receive, send):
         if (
@@ -103,19 +122,19 @@ class SnapshotEnvelopePeelMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Buffer the full request body so we can inspect and rewrite it.
-        body = b""
-        while True:
-            message = await receive()
-            if message["type"] == "http.request":
-                body += message.get("body", b"")
-                if not message.get("more_body", False):
-                    break
-            elif message["type"] == "http.disconnect":
-                # The client is gone mid-body. Do not hand the app a receive
-                # channel we have already drained past the disconnect — it would
-                # wait on a message that never comes. There is nothing to serve.
-                return
+        # Buffer the full request body so we can inspect and rewrite it, under a
+        # ceiling: whoever sends it has not been authenticated yet.
+        try:
+            body = await read_body_capped(receive, self.max_bytes)
+        except RequestBodyTooLarge as e:
+            logger.warning("Rejected oversized request body: %s", e)
+            await send_json_error(send, 413, "Request body too large", self.error_code)
+            return
+        if body is None:
+            # The client is gone mid-body. Do not hand the app a receive channel
+            # we have already drained past the disconnect — it would wait on a
+            # message that never comes. There is nothing to serve.
+            return
 
         snapshot, new_body = peel_snapshot_envelope(body)
 

@@ -53,7 +53,7 @@ class CartErrorCode:
 
     # Client-carried cart phase 2 (4015xx, issue #156)
     SNAPSHOT_REQUIRED = "401508"  # Snapshot-less mutating request rejected (REQUIRED mode)
-    REQUEST_BODY_TOO_LARGE = "401509"  # Decompressed request body exceeds the size guard
+    REQUEST_BODY_TOO_LARGE = "401509"  # Request body exceeds the size guard (compressed or not)
     SEQUENCE_ANOMALY = "401510"  # Transaction sequence duplicate/gap detected (audit)
     FINALIZE_CONFLICT = "401511"  # cart_id already finalized as a different transaction
     SNAPSHOT_CART_ID_MISMATCH = "401512"  # Carried snapshot addresses a different cart than the URL

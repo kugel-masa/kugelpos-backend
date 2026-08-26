@@ -596,7 +596,7 @@ async def test_oversized_compressed_request_is_refused(http_client, snapshot_key
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
 
     # Small on the wire, far past the guard once expanded.
-    bomb = gzip_module.compress(b"a" * (settings.REQUEST_DECOMPRESS_MAX_BYTES + 1024))
+    bomb = gzip_module.compress(b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024))
     headers = {**_api_headers(), "Content-Encoding": "gzip"}
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
@@ -606,3 +606,47 @@ async def test_oversized_compressed_request_is_refused(http_client, snapshot_key
 
     assert r.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, r.text
     assert "401509" in r.text, r.text
+
+
+@pytest.mark.asyncio
+async def test_oversized_uncompressed_request_is_refused(http_client, snapshot_keys):
+    """Not compressing must not be a way past the ceiling (issue #195).
+
+    The decompression middleware passes an uncompressed body straight through,
+    so the ceiling has to be applied where the envelope peel buffers the body.
+    Driven through the real middleware stack, so it also covers the peel being
+    registered with a ceiling at all — the unit tests build it directly. It does
+    not pin down WHICH ceiling: the service setting and the library default are
+    the same 1 MB, so a missing max_bytes would still refuse here.
+    """
+    terminal_id = _terminal_id()
+    cart_id, _, _ = await _create_cart_with_items(http_client)
+
+    # Plainly over the guard, with no compression to expand.
+    oversized = b'[{"itemCode": "' + b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024) + b'"}]'
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        content=oversized,
+        headers=_api_headers(),
+    )
+
+    assert r.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, r.text
+    assert "401509" in r.text, r.text
+
+
+@pytest.mark.asyncio
+async def test_oversized_request_is_refused_without_credentials(http_client, snapshot_keys):
+    """The refusal does not wait for authentication.
+
+    The peel runs ahead of the route's dependencies, so an unauthenticated
+    caller reaches the buffer before any 401 could be raised. The body must be
+    refused on size, not read in full and then rejected on credentials.
+    """
+    oversized = b'[{"itemCode": "' + b"a" * (settings.MAX_REQUEST_BODY_BYTES + 1024) + b'"}]'
+    r = await http_client.post(
+        f"/api/v1/carts/no-such-cart/lineItems?terminal_id={_terminal_id()}",
+        content=oversized,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert r.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, r.text

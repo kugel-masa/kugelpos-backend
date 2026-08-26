@@ -49,4 +49,4 @@ kid は世代が分かる短い識別子（例: `v1`, `v2`, `2026q3`）。
 - 起動ログ: `Snapshot signing keys loaded: kids=[...]`（鍵ロード成功）/ `SNAPSHOT_HMAC_KEYS is not set`（縮退）/ `malformed`（設定ミス）。
 - **起動ログ（ERROR）: `SNAPSHOT_HMAC_KEYS contains key material published in this repository`**。開発用 compose の既定鍵（`dev-v1:...`）やテスト鍵が本番に紛れ込んだ場合に出る。この鍵は公開されているため、**署名は実質的に無効**（任意の金額のカートを誰でも署名できる）。検知したら緊急ローテーション手順で即時交換すること。
 - 検証失敗はセキュリティイベントとして warning ログ + `log_cart_restore`（`result=rejected`）に記録される。`cart_id` で全履歴を追跡できる。
-- スナップショットの raw サイズが `SNAPSHOT_SIZE_WARN_BYTES`（既定 256KB）を超えると warning が出る（サイズ予算 R-008 の見直しシグナル）。
+- スナップショットの raw サイズが `MAX_REQUEST_BODY_BYTES` の 75%（既定 4MB に対し 3MB）を超えると warning が出る（サイズ予算 R-008 の見直しシグナル）。設定値ではなく上限からの導出で、「クライアントが送り返せなくなる 413 に近づいている」ことを意味する。上限を上げるか、バスケットを分割する。

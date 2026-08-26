@@ -115,10 +115,31 @@ class TestBuildEnvelope:
         assert any("Snapshot generation failed" in r.message for r in caplog.records)
 
     def test_size_warning_over_threshold(self, signer_enabled, monkeypatch, caplog):
-        monkeypatch.setattr(settings, "SNAPSHOT_SIZE_WARN_BYTES", 10)
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 12)
         import logging
 
         with caplog.at_level(logging.WARNING):
             envelope = snapshot_service.build_envelope(_make_cart(), _make_terminal_info())
         assert envelope is not None  # warn only, never drop the snapshot
-        assert any("bytes raw" in r.getMessage() and "threshold" in r.getMessage() for r in caplog.records)
+        assert any("bytes raw" in r.getMessage() and "413" in r.getMessage() for r in caplog.records)
+
+    def test_the_warning_tracks_the_ceiling_that_will_refuse_the_snapshot(self, signer_enabled, monkeypatch, caplog):
+        """One number, not two kept in step by hand (issue #195).
+
+        The snapshot is warned about because the client has to send it back, so
+        the size worth warning at is a fraction of the request ceiling. Raising
+        the ceiling must move the warning with it, not leave a stale threshold
+        firing on every large basket.
+        """
+        import logging
+
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 12)
+        with caplog.at_level(logging.WARNING):
+            assert snapshot_service.build_envelope(_make_cart(), _make_terminal_info()) is not None
+        assert caplog.records, "a snapshot past 75% of a 12 byte ceiling should warn"
+
+        caplog.clear()
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 4 * 1024 * 1024)
+        with caplog.at_level(logging.WARNING):
+            assert snapshot_service.build_envelope(_make_cart(), _make_terminal_info()) is not None
+        assert not caplog.records, "the same snapshot must be silent once the ceiling is raised"

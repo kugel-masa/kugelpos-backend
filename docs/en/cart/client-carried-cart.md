@@ -31,11 +31,13 @@ Carrying the snapshot makes uploads large enough to be worth compressing, so com
 |---|---|
 | Encodings | `gzip` / `deflate` / `br` (all standard in .NET 8) |
 | Header | `Content-Encoding: gzip` |
-| Decompressed ceiling | `REQUEST_DECOMPRESS_MAX_BYTES` (default 1MB) |
-| Over the ceiling | `413` (code `401509`). Enforced *during* expansion, so a small forged body cannot exhaust memory |
+| Body ceiling | `MAX_REQUEST_BODY_BYTES` (default 4MB in cart) |
+| Over the ceiling | `413` (code `401509`). Enforced *during* expansion, so a small forged body cannot exhaust memory — and against the uncompressed body too, so not compressing is not a way past it (#195) |
 | Unsupported encoding | `415`, including chained values such as `gzip, br` |
 
 Compression is optional; uncompressed requests behave as before. Measured, a 50-line cart is 50KB raw, 3.6KB gzipped, 2.9KB with brotli.
+
+Compression saves bandwidth, not ceiling: the limit is enforced against the decompressed size, so a transaction refused uncompressed is refused at the same size when it travels compressed. Measured against the running stack, a 999-line transaction with distinct SKUs carries an 894KB snapshot (55% of it copies of the item masters) and gzips to 19KB; under a 1MB ceiling it was refused at 1,221 lines whether or not it was compressed.
 
 ## Migration mode
 
@@ -356,8 +358,8 @@ convenience, the field goes out null, and the operation still succeeds.
 | `SNAPSHOT_HMAC_KEYS` | unset | Snapshot signing keys. **Required — the service does not start without one** (#192), and refuses a key shorter than 32 bytes. See the key rotation runbook, [available in Japanese only](../../ja/cart-snapshot-key-rotation.md) |
 | `SNAPSHOT_ALLOW_INSECURE_KEY` | `false` | Allows startup with the signing key committed to this repository. Local development only: that key signs and verifies, so anyone who can read the repository can mint a snapshot with any prices in it |
 | `CART_REQUEST_SNAPSHOT_MODE` | `DUAL` | Migration mode (above) |
-| `REQUEST_DECOMPRESS_MAX_BYTES` | `1048576` | Decompressed request body ceiling |
-| `SNAPSHOT_SIZE_WARN_BYTES` | `262144` | Snapshot size warning threshold |
+| `MAX_REQUEST_BODY_BYTES` | `4194304` | Request body ceiling, compressed or not. Above the 1MB default every other service carries, because the carried cart document is cart's largest legitimate body (#195) |
+| `REQUEST_DECOMPRESS_MAX_BYTES` | unset | Deprecated name for the above. Still honoured if set, and wins over the new name, so an existing deployment is not silently reset to the default |
 | `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Shared (commons) setting: body fields the request log replaces with a metadata marker, so the carried snapshot is not stored on every request (#155) |
 | `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | Shared (commons) setting: size ceiling for a logged body |
 

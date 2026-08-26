@@ -25,6 +25,8 @@ from kugel_common.utils.health_check import HealthChecker
 from kugel_common.exceptions import register_exception_handlers
 from kugel_common.middleware.log_requests import log_requests
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
+from kugel_common.middleware.request_body_limit import add_request_body_limit_middleware
+from kugel_common.exceptions.error_codes import ErrorCode
 from kugel_common.config.service_urls import verify_service_urls
 from app.api.v1.stock import router as v1_stock_router
 from app.api.v1.tenant import router as v1_tenant_router
@@ -92,6 +94,16 @@ app.middleware("http")(log_requests("stock"))
 # Registered after log_requests so compression runs outermost and the
 # request log still observes the uncompressed body.
 add_gzip_response_middleware(app)
+
+# Bound the request body this service will hold (issue #195). Registered LAST so
+# it runs OUTERMOST: FastAPI reads the body before it resolves a route's
+# dependencies, so without this an unauthenticated caller decides how much
+# memory the worker spends and the 401 arrives only after the body is held.
+add_request_body_limit_middleware(
+    app,
+    max_bytes=settings.MAX_REQUEST_BODY_BYTES,
+    error_code=ErrorCode.REQUEST_BODY_TOO_LARGE,
+)
 
 # Register global exception handlers for consistent error responses
 register_exception_handlers(app)

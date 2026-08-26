@@ -61,6 +61,7 @@ class ErrorCode:
     REQUIRED_FIELD_MISSING = "300002"  # Required field missing
     INVALID_FIELD_FORMAT = "300003"  # Invalid field format
     INVALID_OPERATION = "300004"  # Invalid operation
+    REQUEST_BODY_TOO_LARGE = "300005"  # Request body exceeds the size ceiling (issue #195)
     
     # Business rule errors (40YYZZ)
     # 401xx-404xx: Reserved for Cart service
