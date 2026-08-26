@@ -26,6 +26,7 @@ from kugel_common.exceptions import register_exception_handlers
 from kugel_common.middleware.log_requests import log_requests
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
 from kugel_common.middleware.request_body_limit import add_request_body_limit_middleware
+from kugel_common.middleware.unhandled_error import add_unhandled_error_middleware
 from kugel_common.exceptions.error_codes import ErrorCode
 from kugel_common.config.service_urls import verify_service_urls
 from app.api.v1.stock import router as v1_stock_router
@@ -95,6 +96,12 @@ add_request_body_limit_middleware(
     max_bytes=settings.MAX_REQUEST_BODY_BYTES,
     error_code=ErrorCode.REQUEST_BODY_TOO_LARGE,
 )
+
+# Answer an unhandled exception from inside CORS (issue #202). Registered
+# immediately before CORS so it runs just inside it: Starlette builds
+# ServerErrorMiddleware around the whole user stack, so without this the 500
+# is emitted outside CORS and a browser is given nothing to read.
+add_unhandled_error_middleware(app)
 
 # CORS must be registered LAST so it runs OUTERMOST (Starlette's add_middleware
 # inserts at index 0, so the last registration is the outermost layer).
