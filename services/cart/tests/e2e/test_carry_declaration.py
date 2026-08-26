@@ -75,6 +75,8 @@ class TestACartOpenedToBeCarried:
         assert response.status_code == status.HTTP_200_OK, response.text
         assert len(response.json()["data"]["lineItems"]) == 1
 
+    @pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
+
     @pytest.mark.asyncio
     async def test_a_request_without_its_snapshot_is_refused(self, http_client, api_header, opened_terminal_id):
         """The defect, closed. Nothing was cached, so there is nothing to continue from."""
@@ -93,6 +95,7 @@ class TestACartOpenedToBeCarried:
 
 
 class TestACartOpenedForTheCache:
+    @pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
     @pytest.mark.asyncio
     async def test_requests_without_a_snapshot_work(self, http_client, api_header, opened_terminal_id):
         cart_id, _ = await _create(http_client, opened_terminal_id, api_header, carry_snapshot=False)
@@ -100,6 +103,8 @@ class TestACartOpenedForTheCache:
         response = await _add_plain(http_client, opened_terminal_id, api_header, cart_id)
 
         assert response.status_code == status.HTTP_200_OK, response.text
+
+    @pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 
     @pytest.mark.asyncio
     async def test_carrying_it_is_refused(self, http_client, api_header, opened_terminal_id):
@@ -119,6 +124,7 @@ class TestACartOpenedForTheCache:
 
 
 class TestSayingNothing:
+    @pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
     @pytest.mark.asyncio
     async def test_it_means_the_cache_path(self, http_client, api_header, opened_terminal_id):
         # What a client that predates the field means by omitting it. Its

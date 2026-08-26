@@ -237,23 +237,85 @@ def get_snapshot_signer() -> Optional[HmacSigner]:
     return _signer
 
 
-# A snapshot is warned about at this fraction of the request-body ceiling.
+# A snapshot is warned about at this fraction of the budget above - not of the
+# request-body ceiling.
 #
-# Derived rather than configured (issue #195): the snapshot is handed to the
-# client to send back on the next mutating request, so the only size that means
-# anything is the one that will refuse it. A standalone threshold was a number
-# with nothing to relate it to, and had to be kept in step with the ceiling by
-# hand. At 75% of a 4 MB ceiling this fires around 3,500 line items, leaving
-# roughly a thousand more before the 413 - enough runway to raise the ceiling
-# or split the basket.
+# Expressed against the budget on purpose: two independent fractions of the
+# ceiling can be set the wrong way round, and a warning above the refusal never
+# fires at all. Against the budget the reading is direct - at 0.80, a fifth of
+# the headroom is left.
 #
-# Nothing is refused here: generation degrades rather than fails (NFR-004).
-SNAPSHOT_SIZE_WARN_FRACTION = 0.75
+# Nothing is refused here: this is the notice, the budget is the limit.
+SNAPSHOT_SIZE_WARN_FRACTION = 0.80
 
 
 def _snapshot_size_warn_bytes() -> int:
     """Warn-at size for an issued snapshot, in bytes."""
-    return int(settings.MAX_REQUEST_BODY_BYTES * SNAPSHOT_SIZE_WARN_FRACTION)
+    return int(snapshot_size_refuse_bytes() * SNAPSHOT_SIZE_WARN_FRACTION)
+
+
+
+def _envelope_payload(cart_doc: CartDocument, terminal_info: TerminalInfoDocument, kid: str) -> dict:
+    """
+    The signed part of an envelope for this cart.
+
+    Shared by issuing and by measuring, so the size the size guard checks is the
+    size of the thing that would actually be issued (issue #200) rather than an
+    estimate that can drift from it.
+    """
+    return {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "issued_at": get_app_time_str(),
+        "kid": kid,
+        "tenant_id": terminal_info.tenant_id,
+        "store_code": terminal_info.store_code,
+        "terminal_no": terminal_info.terminal_no,
+        "cart_document": cart_doc.model_dump(mode="json"),
+    }
+
+
+# A cart is refused further growth once its snapshot would pass this fraction of
+# the request-body ceiling.
+#
+# The snapshot is issued by the server and presented by the client on its next
+# mutating request, so the ceiling bounds it - while the cart itself had no bound
+# at all. Past that point the server hands the terminal an envelope it cannot
+# send back: every following request is answered 413, and under
+# CART_REQUEST_SNAPSHOT_MODE=REQUIRED the cart cannot be completed or cancelled
+# (issue #200).
+#
+# Below the 75% warning, so the log says so before the till does. The remaining
+# 40% covers the request payload alongside the envelope, the signature, and the
+# growth of the very line being added.
+SNAPSHOT_SIZE_REFUSE_FRACTION = 0.60
+
+
+def snapshot_size_refuse_bytes() -> int:
+    """Snapshot size past which a cart is refused further growth, in bytes."""
+    return int(settings.MAX_REQUEST_BODY_BYTES * SNAPSHOT_SIZE_REFUSE_FRACTION)
+
+
+def measure_envelope_bytes(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) -> Optional[int]:
+    """
+    Size of the snapshot this cart would produce, without issuing one.
+
+    Returns None when no signing key is configured: nothing is issued in that
+    case, so there is no envelope to bound. Measured rather than estimated from
+    a line count, because what a line costs depends on the item masters carried
+    with it - a basket of distinct SKUs weighs more than twice one of repeats.
+
+    Args:
+        cart_doc: The cart as it would stand
+        terminal_info: The terminal the envelope would be issued to
+
+    Returns:
+        Size in bytes, or None when snapshots are not being issued.
+    """
+    signer = get_snapshot_signer()
+    if signer is None:
+        return None
+    # Deliberately does not bump revision: measuring must not consume one.
+    return len(canonical_json_bytes(_envelope_payload(cart_doc, terminal_info, signer.current_kid)))
 
 
 def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) -> Optional[dict]:
@@ -273,27 +335,20 @@ def build_envelope(cart_doc: CartDocument, terminal_info: TerminalInfoDocument) 
         # handed therefore always carries a higher revision than the one it
         # presented; replaying an older one is visible as a lower number.
         cart_doc.revision = (cart_doc.revision or 0) + 1
-        payload = {
-            "schema_version": SNAPSHOT_SCHEMA_VERSION,
-            "issued_at": get_app_time_str(),
-            "kid": signer.current_kid,
-            "tenant_id": terminal_info.tenant_id,
-            "store_code": terminal_info.store_code,
-            "terminal_no": terminal_info.terminal_no,
-            "cart_document": cart_doc.model_dump(mode="json"),
-        }
+        payload = _envelope_payload(cart_doc, terminal_info, signer.current_kid)
         raw_size = len(canonical_json_bytes(payload))
         warn_at = _snapshot_size_warn_bytes()
         if raw_size > warn_at:
             logger.warning(
-                "Snapshot for cart %s is %d bytes raw, past %d (%.0f%% of the %d byte request ceiling): "
-                "the client will be refused with 413 once it can no longer send this back. "
-                "Raise MAX_REQUEST_BODY_BYTES or split the basket (R-008, issue #195)",
+                "Snapshot for cart %s is %d bytes raw, past %d (%.0f%% of the %d byte budget): "
+                "further line items are refused once the budget is reached, so the client is never "
+                "handed a snapshot it cannot send back. Raise MAX_REQUEST_BODY_BYTES if real baskets "
+                "reach this (R-008, issues #195 / #200)",
                 cart_doc.cart_id,
                 raw_size,
                 warn_at,
                 SNAPSHOT_SIZE_WARN_FRACTION * 100,
-                settings.MAX_REQUEST_BODY_BYTES,
+                snapshot_size_refuse_bytes(),
             )
         else:
             logger.debug("Snapshot for cart %s: %d bytes raw", cart_doc.cart_id, raw_size)

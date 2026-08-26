@@ -62,6 +62,51 @@ pipenv run pytest --cov=app tests/
 `./scripts/run_all_tests_with_progress.sh` still works and runs every
 service's full suite (unit + integration + e2e) sequentially.
 
+## Cart: DUAL and REQUIRED mode
+
+Cart is mid-migration from a server-held cart to one the client carries on every
+mutating request (#156). `CART_REQUEST_SNAPSHOT_MODE` selects which clients are
+accepted, and it changes which e2e tests can pass.
+
+| mode | a request that carries its snapshot | one that does not |
+|---|---|---|
+| `DUAL` (default) | accepted | accepted, served from the cache |
+| `REQUIRED` | accepted | **refused, 422 / `401508`** |
+
+That refusal is the point of REQUIRED, not a failure. But 45 of cart's 85 e2e
+tests were written against the cache path and hit it, so a plain run under
+REQUIRED looks like half the suite broke.
+
+Those 45 carry a `dual_only` mark, so the two runs are:
+
+```bash
+# DUAL - the default, nothing special
+cd services/cart && pipenv run pytest tests/e2e            # 85 passed
+
+# REQUIRED - deselect what needs the fallback
+echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
+./scripts/stop.sh && ./scripts/start.sh                    # REQUIRED
+cd services/cart && pipenv run pytest tests/e2e -m "not dual_only"
+                                                           # 40 passed, 45 deselected
+```
+
+**The restart is the step that gets skipped.** A container reads its environment
+once, at start; editing `.env` under a running stack changes nothing, the suite
+passes as DUAL, and the run gets recorded as a REQUIRED verification it never
+was. Confirm before trusting a result:
+
+```bash
+docker exec services-cart-1 printenv CART_REQUEST_SNAPSHOT_MODE
+```
+
+Revert by deleting the line and restarting. `services/cart/.env` is gitignored,
+so this is a local change; the setting is documented in `.env.sample`.
+
+REQUIRED is not part of routine work — run it when moving #156 forward, after
+rewriting a `dual_only` test, or before switching a deployment over. The count of
+`dual_only` marks is what the migration has left to do, and the end state is that
+the mark disappears entirely.
+
 ## Event Loop Closure Issue
 
 ### Symptom
@@ -96,6 +141,9 @@ For unit tests, this is overridden to a no-op (no DB to reset).
 - Test ordering for e2e (e.g. `test_setup_data` first) is enforced via
   `pytest_collection_modifyitems` in the tier's conftest, NOT by an
   explicit shell-level file list
+- `dual_only` (cart e2e only): the test drives the cart without carrying its
+  snapshot, so it needs the phase 1 fallback and cannot pass under
+  `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` - see the mode section above
 - Async: `pytest-asyncio`
 - Cross-service HTTP in integration: mock with `respx`
 - JWT in integration: generate locally with `kugel_common`'s helpers

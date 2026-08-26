@@ -130,6 +130,49 @@ pipenv run pytest -m integration
 
 `./scripts/run_all_tests.sh` および `./scripts/run_all_tests_with_progress.sh` は、unit → integration → e2e を順次叩く薄いラッパとして残してある。サービスごとの `run_all_tests.sh` も同様。tier ごとに走らせたい場合は上の3スクリプトを直接使うこと。
 
+## cart の e2e: DUAL と REQUIRED
+
+cart は「サーバがカートを保持する方式」から「クライアントが毎リクエスト運ぶ方式」へ
+移行中で(#156)、`CART_REQUEST_SNAPSHOT_MODE` がどちらのクライアントを受け付けるかを
+決める。これが e2e の通り方を変える。
+
+| モード | 携行するリクエスト | 携行しないリクエスト |
+|---|---|---|
+| `DUAL`(既定) | 通る | 通る(キャッシュ経路) |
+| `REQUIRED` | 通る | **422 / `401508` で拒否** |
+
+この拒否は REQUIRED の目的そのものであって不具合ではない。ただし cart の e2e 85 本の
+うち 45 本はキャッシュ経路を前提に書かれているため、REQUIRED でそのまま全量を走らせると
+「半分壊れた」ように見える。
+
+その 45 本には `dual_only` マーカーが付いている。
+
+```bash
+# DUAL(既定) - 特別な指定は不要
+cd services/cart && pipenv run pytest tests/e2e            # 85 passed
+
+# REQUIRED - フォールバック依存を除外する
+echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
+./scripts/stop.sh && ./scripts/start.sh                    # 再起動が必須
+cd services/cart && pipenv run pytest tests/e2e -m "not dual_only"
+                                                           # 40 passed, 45 deselected
+```
+
+**抜けやすいのは再起動。**コンテナは起動時にしか環境変数を読まないので、動いている
+スタックの `.env` を書き換えても何も変わらない。テストは DUAL のまま全部通り、
+「REQUIRED で確認した」という記録だけが残る。結果を信じる前に確認する。
+
+```bash
+docker exec services-cart-1 printenv CART_REQUEST_SNAPSHOT_MODE
+```
+
+戻すときは `.env` の該当行を消して再起動する。`services/cart/.env` は gitignore 対象
+なのでローカル限定の変更で、設定項目自体は `.env.sample` に記載がある。
+
+REQUIRED は日常的に回すものではない。#156 の移行を進めるとき、`dual_only` のテストを
+書き直したとき、本番を切り替える前に回す。`dual_only` の本数がそのまま移行の残作業量で、
+移行が終わればマーカーごと消えるのが正しい終わり方になる。
+
 ## 書き分けの判断フロー
 
 新規テストを書くとき:

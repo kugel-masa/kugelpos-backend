@@ -150,6 +150,9 @@ async def test_carried_cancel_does_not_collide_with_a_sale(http_client, api_head
     assert cancelled["receiptNo"] == RECEIPT_NO_START + 10
 
 
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
+
+
 @pytest.mark.asyncio
 async def test_legacy_cancel_is_unaffected(http_client, api_header, opened_terminal_id):
     """A phase 1 client cancels with no snapshot and no context, as before.

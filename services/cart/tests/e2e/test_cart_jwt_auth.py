@@ -10,6 +10,14 @@ import os
 from fastapi import status
 from httpx import AsyncClient
 
+# Every test in this module drives the cart without carrying its snapshot, so it
+# depends on the phase 1 cache-authoritative fallback and cannot pass under
+# CART_REQUEST_SNAPSHOT_MODE=REQUIRED (issue #156). Deselected there with
+# `-m "not dual_only"`; the mark is also the inventory of what the migration to
+# REQUIRED still has to rewrite.
+pytestmark = pytest.mark.dual_only
+
+
 
 async def get_terminal_jwt(terminal_id: str, api_key: str) -> str:
     """Get a terminal JWT token via POST /auth/token."""
