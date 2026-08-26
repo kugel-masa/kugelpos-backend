@@ -121,10 +121,21 @@ add_unhandled_error_middleware(app)
 # Safe to sit outside the body ceiling: CORSMiddleware never touches `receive`,
 # so nothing buffers ahead of the limit. Preflight OPTIONS now short-circuits
 # before the body is read at all.
+# allow_credentials stays off (issue #199). It governs cookies and TLS client
+# certificates — what a browser attaches by itself — and this system has
+# neither: authentication is an Authorization bearer token or an X-API-KEY
+# header, which a page has to set explicitly and a hostile one cannot obtain.
+# Turning it on bought nothing and cost the wildcard its meaning: the CORS spec
+# forbids "*" together with credentials, and Starlette resolves that by echoing
+# the caller's own Origin instead — so every origin was allowed to send
+# credentials, which is exactly what the rule exists to prevent.
+#
+# Narrowing allow_origins is a separate question, open until a browser client
+# exists and its origin is known (issue #199).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow requests from any origin
-    allow_credentials=True,  # Allow cookies to be sent with requests
+    allow_credentials=False,  # No cookie auth here - see the note above (issue #199)
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
     allow_headers=["*"],  # Allow all HTTP headers
 )
