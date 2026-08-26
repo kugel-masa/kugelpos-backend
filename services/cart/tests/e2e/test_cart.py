@@ -138,6 +138,7 @@ async def close_terminal(tenant_id=None):
 
 
 # Main test - basic cart operations
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_cart_operations(http_client):
     """Basic cart operations test"""
@@ -187,6 +188,7 @@ async def test_cart_operations(http_client):
 
 
 # Test - line item operations
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_line_item_operations(http_client):
     """Line item operations test (add, change quantity, cancel)"""
@@ -276,6 +278,7 @@ async def test_line_item_operations(http_client):
 
 
 # Test - discount operations
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_discount_operations(http_client):
     """Discount operations test (line discount, subtotal discount)"""
@@ -381,6 +384,7 @@ async def test_discount_operations(http_client):
 
 
 # Test - payment + bill flow
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_payment_process(http_client):
     """Payment and bill test"""
@@ -462,6 +466,7 @@ async def test_payment_process(http_client):
 
 
 # Test - bill rejected when balance is unpaid
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_bill_with_insufficient_balance(http_client):
     """Bill must be rejected if there is still an unpaid balance"""
@@ -516,6 +521,7 @@ async def test_bill_with_insufficient_balance(http_client):
 
 
 # Test - stamp duty
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_stamp_duty(http_client):
     # Verify stamp duty applies when a transaction is >= 50,000 yen
@@ -572,6 +578,7 @@ async def test_stamp_duty(http_client):
 
 
 # Test - transaction operations (return, void, etc.)
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_transaction_operations(http_client):
     """Transaction operations test (return, void, etc.)"""
@@ -728,6 +735,7 @@ async def test_transaction_operations(http_client):
 
 
 # Test - "Others" payment method
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_payment_by_others(http_client):
     """Test for the 'Others' payment method"""
@@ -819,6 +827,7 @@ async def test_payment_by_others(http_client):
 
 
 # Test - multiple payment methods combined
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 @pytest.mark.asyncio
 async def test_multiple_payment_methods(http_client):
     """Test combining multiple payment methods (cash, cashless, others)"""

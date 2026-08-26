@@ -373,6 +373,25 @@ A warning is logged at 80% of that budget, so the log says so before the till do
 
 At the 4 MB default that is roughly 2,800 line items of distinct SKUs, with the warning around 2,260. Measured: a 999-line transaction carries 894 KB, well inside it.
 
+## Testing in REQUIRED mode
+
+`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` is where the migration ends up (FR-010), but the default is `DUAL` and much of the existing e2e drives the cart without carrying its snapshot, relying on the phase 1 fallback. Under REQUIRED those are refused with `422` (`401508`) — the designed behaviour, not a failure.
+
+Tests that depend on the fallback carry a `dual_only` marker. Running under REQUIRED is a matter of deselecting it:
+
+```bash
+# reaches the container through the env_file: ./cart/.env the compose file already has
+echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
+./scripts/stop.sh && ./scripts/start.sh
+
+cd services/cart
+pipenv run pytest tests/e2e -m "not dual_only"
+```
+
+Measured 2026-08-26: 40 passed, 45 deselected. The default `DUAL` run is unchanged — all 85 still selected.
+
+The `dual_only` marks double as the inventory of what the migration to REQUIRED still has to rewrite. The right end state is that the marker disappears entirely.
+
 ## Removed APIs
 
 | Removed | Replacement |

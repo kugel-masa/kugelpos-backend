@@ -313,6 +313,9 @@ async def test_an_identical_repeat_is_not_written_down(http_client, api_header, 
     assert await _divergence_rows(cart_id) == []
 
 
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
+
+
 @pytest.mark.asyncio
 async def test_a_server_numbered_race_is_not_written_down(http_client, api_header, opened_terminal_id, carts_created):
     """Two simultaneous bills with no snapshot, where the SERVER issues the numbers.

@@ -289,6 +289,29 @@ Finalize numbered from the server-side series while the terminal has its own
 
 既定の 4MB では、別 SKU で約 2,800 明細が上限、警告は約 2,260 明細。実測では 999 明細の取引が 894KB なので十分内側にある。
 
+## REQUIRED モードでテストする
+
+`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` は移行の到達点（FR-010）だが、既定は `DUAL` で、
+既存の e2e の多くはスナップショットを携行せずフェーズ 1 のフォールバックに依存している。
+REQUIRED ではそれらが `422`（`401508`）で拒否される — 設計どおりの挙動であってバグではない。
+
+フォールバックに依存するテストには `dual_only` マーカーが付いている。REQUIRED での実行は
+そのマーカーを外すだけでよい。
+
+```bash
+# cart のコンテナに渡す（compose には env_file: ./cart/.env が既にある）
+echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
+./scripts/stop.sh && ./scripts/start.sh
+
+cd services/cart
+pipenv run pytest tests/e2e -m "not dual_only"
+```
+
+実測（2026-08-26）: 40 passed / 45 deselected。既定の `DUAL` では全 85 本が対象のまま変わらない。
+
+`dual_only` の付いたテストは、そのまま **REQUIRED 移行で書き直しが必要な箇所の一覧**でもある。
+移行が完了した時点でマーカーごと消えるのが正しい終わり方になる。
+
 ## 撤去された API
 
 | 撤去 | 代替 |
