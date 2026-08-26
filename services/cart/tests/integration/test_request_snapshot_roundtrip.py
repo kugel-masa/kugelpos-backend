@@ -855,3 +855,140 @@ async def test_an_over_budget_cart_can_still_be_cancelled(http_client, snapshot_
     )
 
     assert r.status_code == status.HTTP_200_OK, f"cancel refused, the cart is stranded: {r.text}"
+
+
+# =========================================================================
+# REQUIRED mode, walked end to end (issue #156 / #200)
+# =========================================================================
+#
+# DUAL is the default and always has a way out: drop the snapshot and the
+# request falls back to the phase 1 cache-authoritative path. REQUIRED removes
+# that fallback, which is the mode the migration is heading for (FR-010) and the
+# only one in which a cart can be stranded with no way to clear the till.
+#
+# Most of these pass under DUAL too, because the carried flow works in both.
+# That is not a weakness: what they cover is that REQUIRED does not reject
+# something partway through a sale. Only the last one distinguishes the modes.
+
+
+@pytest.fixture
+def required_mode(monkeypatch):
+    """Run the cart service the way the phase 2 migration ends up (FR-010)."""
+    monkeypatch.setattr(settings, "CART_REQUEST_SNAPSHOT_MODE", "REQUIRED")
+    return "REQUIRED"
+
+
+async def _carry(http_client, cart_id, path, payload, snapshot):
+    """One mutating request with the snapshot carried, as REQUIRED demands."""
+    return await http_client.post(
+        f"/api/v1/carts/{cart_id}/{path}?terminal_id={_terminal_id()}",
+        json={"signedSnapshot": snapshot, "payload": payload},
+        headers=_api_headers(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_whole_transaction_completes_in_required_mode(http_client, snapshot_keys, required_mode):
+    """create -> add -> subtotal -> pay -> bill, carrying the snapshot throughout.
+
+    Existing coverage of REQUIRED asserts only that a snapshot-less request is
+    refused. That left the mode the migration is heading for without a single
+    test that a sale can actually be rung up in it.
+    """
+    cart_id, snapshot, line_count = await _create_cart_with_items(http_client)
+
+    r = await _carry(http_client, cart_id, "lineItems", [{"itemCode": "49-01", "quantity": 1}], snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"add refused in REQUIRED: {r.text}"
+    data = r.json()["data"]
+    assert len(data["lineItems"]) == line_count + 1
+    snapshot = data["signedSnapshot"]
+    assert snapshot is not None, "REQUIRED cannot continue without a fresh snapshot"
+
+    r = await _carry(http_client, cart_id, "subtotal", {}, snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"subtotal refused in REQUIRED: {r.text}"
+    data = r.json()["data"]
+    balance, snapshot = data["balanceAmount"], data["signedSnapshot"]
+    assert balance > 0
+
+    r = await _carry(http_client, cart_id, "payments", [{"paymentCode": "01", "amount": int(balance)}], snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"payment refused in REQUIRED: {r.text}"
+    snapshot = r.json()["data"]["signedSnapshot"]
+
+    r = await _carry(http_client, cart_id, "bill", {}, snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"bill refused in REQUIRED: {r.text}"
+    assert r.json()["data"].get("transactionNo"), "the sale did not complete"
+
+
+@pytest.mark.asyncio
+async def test_an_over_budget_cart_can_still_be_finished_in_required_mode(
+    http_client, snapshot_keys, required_mode, monkeypatch
+):
+    """#200's failure mode, exercised in the mode where it would actually bite.
+
+    The same walk is covered in DUAL above, but DUAL proves less: a request
+    refused there can be retried without the snapshot. In REQUIRED there is no
+    second path, so if the budget reached one of these calls the basket could be
+    neither completed nor cancelled.
+    """
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    # Over budget from here on, for every remaining request.
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    r = await _carry(http_client, cart_id, "lineItems", [{"itemCode": "49-01", "quantity": 1}], snapshot)
+    assert r.status_code == status.HTTP_409_CONFLICT, r.text
+    assert "401516" in r.text
+
+    r = await _carry(http_client, cart_id, "subtotal", {}, snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"subtotal refused: {r.text}"
+    data = r.json()["data"]
+    balance, snapshot = data["balanceAmount"], data["signedSnapshot"]
+
+    r = await _carry(http_client, cart_id, "payments", [{"paymentCode": "01", "amount": int(balance)}], snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"payment refused: {r.text}"
+    snapshot = r.json()["data"]["signedSnapshot"]
+
+    r = await _carry(http_client, cart_id, "bill", {}, snapshot)
+    assert r.status_code == status.HTTP_200_OK, f"bill refused, the till is stuck: {r.text}"
+    assert r.json()["data"].get("transactionNo")
+
+
+@pytest.mark.asyncio
+async def test_an_over_budget_cart_can_be_cancelled_in_required_mode(
+    http_client, snapshot_keys, required_mode, monkeypatch
+):
+    """Abandoning the sale is the other way to clear the till."""
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    r = await _carry(http_client, cart_id, "cancel", {}, snapshot)
+
+    assert r.status_code == status.HTTP_200_OK, f"cancel refused, the till is stuck: {r.text}"
+
+
+@pytest.mark.asyncio
+async def test_required_mode_still_refuses_a_snapshotless_request_mid_transaction(
+    http_client, snapshot_keys, required_mode
+):
+    """The guarantee REQUIRED exists for, checked partway through a sale.
+
+    The existing REQUIRED test refuses a snapshot-less *add*. This one gets the
+    cart to the paying state first, because that is where a client that has lost
+    its snapshot would most want the server to quietly fall back — and it must
+    not. This is the one test here that fails if the mode is DUAL.
+    """
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    r = await _carry(http_client, cart_id, "subtotal", {}, snapshot)
+    assert r.status_code == status.HTTP_200_OK, r.text
+    balance = r.json()["data"]["balanceAmount"]
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={_terminal_id()}",
+        json=[{"paymentCode": "01", "amount": int(balance)}],
+        headers=_api_headers(),
+    )
+
+    assert r.status_code != status.HTTP_200_OK, "a snapshot-less payment was accepted in REQUIRED"
+    assert "401508" in r.text, r.text
