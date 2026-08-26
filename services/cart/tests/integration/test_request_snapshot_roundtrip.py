@@ -784,3 +784,74 @@ async def test_paying_is_not_refused_by_the_budget(http_client, snapshot_keys, m
     )
 
     assert r.status_code == status.HTTP_200_OK, r.text
+
+
+@pytest.mark.asyncio
+async def test_a_cart_already_over_budget_can_still_be_finished(http_client, snapshot_keys, monkeypatch):
+    """The migration case: a cart that was already too big when the guard arrived.
+
+    A cart opened before this guard existed — or after the ceiling was lowered —
+    can be over budget from its first guarded request. Refusing it would strand a
+    basket at the till, which is the state #200 exists to prevent, so the guard
+    must not reach the paths that bring a cart to a close.
+
+    Walked end to end rather than asserted on one call: subtotal, pay and bill all
+    have to work, because a cart that can be paid but not billed is stranded just
+    the same.
+    """
+    terminal_id = _terminal_id()
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    # From here on the cart is over budget on every request.
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    # Adding is refused, as designed.
+    refused = await http_client.post(
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": [{"itemCode": "49-01", "quantity": 1}]},
+        headers=_api_headers(),
+    )
+    assert refused.status_code == status.HTTP_409_CONFLICT, refused.text
+
+    # Everything that closes the cart out must still work.
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=_api_headers(),
+    )
+    assert r.status_code == status.HTTP_200_OK, f"subtotal refused: {r.text}"
+    data = r.json()["data"]
+    balance, snapshot = data["balanceAmount"], data["signedSnapshot"]
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": [{"paymentCode": "01", "amount": balance}]},
+        headers=_api_headers(),
+    )
+    assert r.status_code == status.HTTP_200_OK, f"payment refused: {r.text}"
+    snapshot = r.json()["data"]["signedSnapshot"]
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=_api_headers(),
+    )
+    assert r.status_code == status.HTTP_200_OK, f"bill refused, the cart is stranded: {r.text}"
+    assert r.json()["data"].get("transactionNo"), "the transaction did not complete"
+
+
+@pytest.mark.asyncio
+async def test_an_over_budget_cart_can_still_be_cancelled(http_client, snapshot_keys, monkeypatch):
+    """The other way out. Refusing this strands the basket just as badly."""
+    terminal_id = _terminal_id()
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+
+    monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=_api_headers(),
+    )
+
+    assert r.status_code == status.HTTP_200_OK, f"cancel refused, the cart is stranded: {r.text}"
