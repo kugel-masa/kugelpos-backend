@@ -100,6 +100,51 @@ file — that is roughly a third of the throughput measured here, because
 runs one. The raw files (`Custom_300users_20260825_024915_*` and
 `..._025619_*`) are two samples of a single build and nothing more.
 
+## 2026-08-26 — does the ceiling actually stop the attack?
+
+Everything above shows an oversized body gets a 413. #195 claims more than that:
+
+> A handful of concurrent ones can exhaust the worker, and cart being down
+> means checkout is down.
+
+That is the claim the fix rests on, and nothing had tested it. 20 concurrent
+workers posting 100 MB bodies at cart for 60 seconds, sampling container memory
+and firing an ordinary request every 5 seconds to see whether the application
+still answers.
+
+| | declared `content-length` | chunked (read and abandoned) |
+|---|---:|---:|
+| bodies refused | 248 (24.8 GB) | 766 (76.6 GB) |
+| memory growth | +4 MiB | **+88 MiB** (peak 343, baseline 255) |
+| ordinary requests answered | 7/7 | 10/10 |
+| their latency | 1.2–2.5 s | 73–166 ms |
+| after | healthy, back to 255 MiB | healthy, back to 259 MiB |
+| connection errors | 0 | 0 |
+
+**The gap is closed.** 76.6 GB thrown at cart moves its memory by 88 MiB, which is
+the ceiling times the concurrency and nothing more. The service answered every
+ordinary request throughout and returned to baseline afterwards. For contrast,
+the figure recorded in #195 for the unfixed code is one 200 MB body taking the
+process from 108 MB to 357 MB.
+
+This also puts a number on the trade-off flagged when the ceiling was raised to
+4 MB: at 20 concurrent unauthenticated large bodies, the cost is +88 MiB.
+
+### The surprise
+
+The chunked variant treats ordinary traffic *better* — 73–166 ms against
+1.2–2.5 s — even though it is the path where the server has to read and abandon
+rather than refuse on the header without reading a byte. The delay on the
+`content-length` path is not server work: the client is trying to push 100 MB
+into a socket the server has stopped draining, and the ordinary request queues
+behind that congestion. Chunked sends in 1 MB pieces and congests less.
+
+Worth knowing when reading any latency number taken under this kind of load: it
+can be measuring the attacker's own backpressure rather than the service.
+
+Reproduce with `dos_probe.py` from the #195 work: body size, worker count,
+duration, and an optional `chunked` flag.
+
 ## What is measured, separately from this
 
 Large-body behaviour was measured directly for #195 and #200 and does not depend
