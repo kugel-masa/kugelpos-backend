@@ -63,6 +63,7 @@ from .cart_exceptions import (
     CartPathMismatchException,
     SnapshotGenerationFailedException,
     SnapshotCartIdMismatchException,
+    CartSizeBudgetExceededException,
     TransactionAmbiguousException,
     VoidOutOfSessionException,
 )

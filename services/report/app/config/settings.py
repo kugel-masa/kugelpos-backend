@@ -10,6 +10,7 @@ from kugel_common.config.settings import (
     DatetimeSettings,
     WebServiceSettings,
 )
+from kugel_common.config.settings_http import HttpRequestSettings
 from app.config.settings_database import DBCollectionSettings
 
 """
@@ -21,8 +22,21 @@ please use the settings master
 
 
 class Settings(
-    DBSettings, DBCollectionSettings, DBCollectionCommonSettings, DatetimeSettings, AuthSettings, WebServiceSettings
+    DBSettings,
+    DBCollectionSettings,
+    DBCollectionCommonSettings,
+    DatetimeSettings,
+    AuthSettings,
+    WebServiceSettings,
+    HttpRequestSettings,
 ):
+    # The Dapr pub/sub tranlog subscriber is served by this same app, and the
+    # body ceiling runs ahead of it (issue #195). A refused event is retried and
+    # then dead-lettered, so a ceiling set too low loses the sale silently. A
+    # measured 999-line transaction publishes a 552 KB tranlog; 4 MB leaves room
+    # for several times that.
+    MAX_REQUEST_BODY_BYTES: int = Field(default=4 * 1024 * 1024)
+
     # Override required fields with defaults
     MONGODB_URI: str = Field(default="mongodb://localhost:27017/?replicaSet=rs0")
     DB_NAME_PREFIX: str = Field(default="db_report")

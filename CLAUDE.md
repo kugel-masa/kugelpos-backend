@@ -55,6 +55,10 @@ and run automatically after the per-service e2e suites.
 cd services/cart && pipenv run pytest -m unit     # Single service, single tier
 ```
 
+Cart's e2e depends on `CART_REQUEST_SNAPSHOT_MODE`. The default `DUAL` runs all
+85; under `REQUIRED` the 45 marked `dual_only` are refused by design and have to
+be deselected. See `/test-guide`.
+
 **Detailed guides:** `/test-guide` command, `docs/ja/testing-tiers.md`
 
 ### Code Quality
@@ -133,6 +137,8 @@ Format: XXYYZZ
 ### Testing
 - Files: `test_*.py`, organized into `tests/unit/`, `tests/integration/`, `tests/e2e/`
 - Per-tier conftests auto-mark tests; new tests just need to land in the right directory
+- A cart e2e test that does not carry the snapshot needs the `dual_only` mark,
+  or it will be read as a REQUIRED-mode failure (#156)
 - Test ordering for e2e is enforced via `pytest_collection_modifyitems` (e.g.
   `test_setup_data` runs first), no shell-level ordering required
 - Async tests use `pytest-asyncio`

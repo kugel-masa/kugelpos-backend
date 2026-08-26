@@ -17,6 +17,7 @@ from kugel_common.config.settings_database import DBSettings
 from kugel_common.config.settings_database import DBCollectionCommonSettings
 from kugel_common.config.settings_datetime import DatetimeSettings
 from kugel_common.config.settings_auth import AuthSettings
+from kugel_common.config.settings_http import HttpRequestSettings
 from app.config.settings_database import DBCollectionSettings
 from app.config.settings_terminal import TerminalSettings
 
@@ -29,6 +30,7 @@ class Settings(
     DatetimeSettings,
     AuthSettings,
     TerminalSettings,
+    HttpRequestSettings,
 ):
     """
     Terminal Service Settings
@@ -42,6 +44,7 @@ class Settings(
     - DBCollectionCommonSettings: Common collection names across services    - DatetimeSettings: Date and time format configuration
     - AuthSettings: Authentication and security parameters
     - TerminalSettings: Terminal-specific configurations
+    - HttpRequestSettings: Request body ceiling (issue #195)
 
     Additionally, it defines Terminal-specific settings like debugging options.
 

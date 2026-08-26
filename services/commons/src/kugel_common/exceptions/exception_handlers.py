@@ -30,6 +30,33 @@ from kugel_common.exceptions.error_codes import ErrorCode, ErrorMessage
 
 logger = getLogger(__name__)
 
+
+def build_unexpected_error_response(exc: Exception, operation: str = "exception_handler") -> ApiResponse:
+    """
+    Build the structured 500 for an exception nothing else handled.
+
+    Shared so the response does not depend on which layer catches it: the
+    handler above and UnhandledErrorMiddleware, which sits inside CORS so the
+    payload actually reaches a browser (issue #202), must produce the same body.
+
+    Args:
+        exc: The exception that escaped
+        operation: Name recorded on the response, for tracing which layer answered
+
+    Returns:
+        ApiResponse: The 500 payload
+    """
+    return ApiResponse(
+        success=False,
+        code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        message="Internal server error",
+        user_error=UserError(
+            code=ErrorCode.UNEXPECTED_ERROR, message=ErrorMessage.get_message(ErrorCode.UNEXPECTED_ERROR)
+        ),
+        data=str(exc),
+        operation=operation,
+    )
+
 def register_exception_handlers(app: FastAPI) -> None:
     """
     Register all exception handlers to the FastAPI application
@@ -162,19 +189,16 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     # Handler for general Exception
+    #
+    # Starlette lifts a handler keyed on Exception (or 500) out of
+    # ExceptionMiddleware and into ServerErrorMiddleware, which it builds around
+    # the whole user middleware stack - so this response is emitted outside CORS
+    # and a browser cannot read it (issue #202). UnhandledErrorMiddleware runs
+    # inside CORS and normally answers first; this stays as the backstop for
+    # anything raised outside it.
     @app.exception_handler(Exception)
     async def exception_handler(request: Request, exc: Exception):
-        error_response = ApiResponse(
-            success=False,
-            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Internal server error",
-            user_error=UserError(
-                code=ErrorCode.UNEXPECTED_ERROR,
-                message=ErrorMessage.get_message(ErrorCode.UNEXPECTED_ERROR)
-            ),
-            data=str(exc),
-            operation=f"{inspect.currentframe().f_code.co_name}"
-        )
+        error_response = build_unexpected_error_response(exc, operation=f"{inspect.currentframe().f_code.co_name}")
         logger.error(f"Exception: {error_response}")
         return JSONResponse(
             status_code=error_response.code, content=error_response.model_dump()

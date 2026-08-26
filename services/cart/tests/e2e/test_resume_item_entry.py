@@ -16,6 +16,14 @@ from fastapi import status
 from app.enums.cart_status import CartStatus
 from kugel_common.exceptions import EventBadSequenceException
 
+# Every test in this module drives the cart without carrying its snapshot, so it
+# depends on the phase 1 cache-authoritative fallback and cannot pass under
+# CART_REQUEST_SNAPSHOT_MODE=REQUIRED (issue #156). Deselected there with
+# `-m "not dual_only"`; the mark is also the inventory of what the migration to
+# REQUIRED still has to rewrite.
+pytestmark = pytest.mark.dual_only
+
+
 
 @pytest_asyncio.fixture
 async def async_client(set_env_vars):

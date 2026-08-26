@@ -31,11 +31,13 @@ Carrying the snapshot makes uploads large enough to be worth compressing, so com
 |---|---|
 | Encodings | `gzip` / `deflate` / `br` (all standard in .NET 8) |
 | Header | `Content-Encoding: gzip` |
-| Decompressed ceiling | `REQUEST_DECOMPRESS_MAX_BYTES` (default 1MB) |
-| Over the ceiling | `413` (code `401509`). Enforced *during* expansion, so a small forged body cannot exhaust memory |
+| Body ceiling | `MAX_REQUEST_BODY_BYTES` (default 4MB in cart) |
+| Over the ceiling | `413` (code `401509`). Enforced *during* expansion, so a small forged body cannot exhaust memory — and against the uncompressed body too, so not compressing is not a way past it (#195) |
 | Unsupported encoding | `415`, including chained values such as `gzip, br` |
 
 Compression is optional; uncompressed requests behave as before. Measured, a 50-line cart is 50KB raw, 3.6KB gzipped, 2.9KB with brotli.
+
+Compression saves bandwidth, not ceiling: the limit is enforced against the decompressed size, so a transaction refused uncompressed is refused at the same size when it travels compressed. Measured against the running stack, a 999-line transaction with distinct SKUs carries an 894KB snapshot (55% of it copies of the item masters) and gzips to 19KB; under a 1MB ceiling it was refused at 1,221 lines whether or not it was compressed.
 
 ## Migration mode
 
@@ -356,10 +358,39 @@ convenience, the field goes out null, and the operation still succeeds.
 | `SNAPSHOT_HMAC_KEYS` | unset | Snapshot signing keys. **Required — the service does not start without one** (#192), and refuses a key shorter than 32 bytes. See the key rotation runbook, [available in Japanese only](../../ja/cart-snapshot-key-rotation.md) |
 | `SNAPSHOT_ALLOW_INSECURE_KEY` | `false` | Allows startup with the signing key committed to this repository. Local development only: that key signs and verifies, so anyone who can read the repository can mint a snapshot with any prices in it |
 | `CART_REQUEST_SNAPSHOT_MODE` | `DUAL` | Migration mode (above) |
-| `REQUEST_DECOMPRESS_MAX_BYTES` | `1048576` | Decompressed request body ceiling |
-| `SNAPSHOT_SIZE_WARN_BYTES` | `262144` | Snapshot size warning threshold |
+| `MAX_REQUEST_BODY_BYTES` | `4194304` | Request body ceiling, compressed or not. Also sizes the cart's own budget (below). Above the 1MB default every other service carries, because the carried cart document is cart's largest legitimate body (#195) |
+| `REQUEST_DECOMPRESS_MAX_BYTES` | unset | Deprecated name for the above. Still honoured if set, and wins over the new name, so an existing deployment is not silently reset to the default |
 | `REQUEST_LOG_STRIP_FIELDS` | `signedSnapshot,signed_snapshot` | Shared (commons) setting: body fields the request log replaces with a metadata marker, so the carried snapshot is not stored on every request (#155) |
 | `REQUEST_LOG_MAX_BODY_BYTES` | `32768` | Shared (commons) setting: size ceiling for a logged body |
+
+## The cart is bounded by what the client can send back
+
+The snapshot is issued by the server and presented by the client on its next mutating request, so `MAX_REQUEST_BODY_BYTES` bounds it. The cart itself had no bound, so a large enough basket left the terminal holding an envelope it could not return: every following request answered `413`, and under `REQUIRED` the cart could be neither completed nor cancelled (#200).
+
+Adding a line item, or a discount to a line or to the subtotal, is refused with `409` (code `401516`) when it would take the snapshot past **60% of `MAX_REQUEST_BODY_BYTES`**. Those are the paths that take a list from the request and append it, with nothing bounding its length or how often it is sent. Paying, billing, cancelling a line and changing a quantity or price are deliberately exempt — they are how a cart is brought to a close or made smaller, and refusing them is the deadlock this guard exists to prevent. The refusal is — measured on the snapshot that would actually be issued, not estimated from a line count, because what a line costs depends on the item masters carried with it. The refusal happens *before* anything is committed, so the cart is left exactly as it was and the basket can still be settled; the rest goes in another transaction.
+
+A warning is logged at 80% of that budget, so the log says so before the till does.
+
+At the 4 MB default that is roughly 2,800 line items of distinct SKUs, with the warning around 2,260. Measured: a 999-line transaction carries 894 KB, well inside it.
+
+## Testing in REQUIRED mode
+
+`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` is where the migration ends up (FR-010), but the default is `DUAL` and much of the existing e2e drives the cart without carrying its snapshot, relying on the phase 1 fallback. Under REQUIRED those are refused with `422` (`401508`) — the designed behaviour, not a failure.
+
+Tests that depend on the fallback carry a `dual_only` marker. Running under REQUIRED is a matter of deselecting it:
+
+```bash
+# reaches the container through the env_file: ./cart/.env the compose file already has
+echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
+./scripts/stop.sh && ./scripts/start.sh
+
+cd services/cart
+pipenv run pytest tests/e2e -m "not dual_only"
+```
+
+Measured 2026-08-26: 40 passed, 45 deselected. The default `DUAL` run is unchanged — all 85 still selected.
+
+The `dual_only` marks double as the inventory of what the migration to REQUIRED still has to rewrite. The right end state is that the marker disappears entirely.
 
 ## Removed APIs
 

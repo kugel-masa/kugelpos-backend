@@ -22,10 +22,15 @@ client-carried cart (issue #156, FR-009): carrying the cart snapshot on every
 mutating request makes the upload large enough to be worth compressing. It
 enforces a decompressed-size ceiling so a small forged body cannot expand into
 an out-of-memory condition.
+
+The same ceiling is what :func:`read_body_capped` applies, so any middleware
+that has to buffer a body — here, or the cart's snapshot-envelope peel — holds
+a bounded amount for a caller who has not been authenticated yet (issue #195).
 """
 
 # zlib with wbits=47 auto-detects gzip and zlib framing, so the gzip module
 # itself is not needed here.
+import json
 import zlib
 from logging import getLogger
 
@@ -78,7 +83,55 @@ _DECOMPRESS_CHUNK_BYTES = 64 * 1024
 
 
 class RequestBodyTooLarge(Exception):
-    """Raised when a decompressed request body exceeds the configured ceiling."""
+    """Raised when a request body exceeds the configured ceiling."""
+
+
+async def read_body_capped(receive, max_bytes: int) -> bytes | None:
+    """
+    Buffer a whole request body, refusing to hold more than ``max_bytes``.
+
+    Any ASGI middleware that needs the full body has to buffer it, and buffering
+    without a ceiling lets an unauthenticated caller decide how much memory the
+    worker spends: middleware runs ahead of the route's dependencies, so the body
+    is already read by the time a 401 could be raised. The ceiling is checked as
+    each chunk arrives, so an oversized body is abandoned mid-read rather than
+    measured once it is already held.
+
+    Accumulates into a ``bytearray``: ``bytes`` concatenation would recopy
+    everything read so far on every chunk, making the cost quadratic in the
+    body size — which is itself attacker-chosen.
+
+    Args:
+        receive: The ASGI receive callable
+        max_bytes: Ceiling in bytes; a body exceeding it is refused
+
+    Returns:
+        The body bytes, or None if the client disconnected mid-body.
+
+    Raises:
+        RequestBodyTooLarge: The body grew past ``max_bytes``.
+    """
+    body = bytearray()
+    while True:
+        message = await receive()
+        if message["type"] == "http.request":
+            chunk = message.get("body", b"")
+            # Measured before the append, not after: appending first would copy
+            # a chunk we are about to refuse into the buffer. ASGI puts no bound
+            # on a single http.request message — uvicorn happens to pause reading
+            # at 64 KB, but an ASGI transport that delivers the whole body in one
+            # message (httpx's, which the integration tier uses) would hand over
+            # the entire oversized body and have it copied before the raise.
+            # Checking first keeps the buffer under the ceiling at all times,
+            # without resting on any server's flow control.
+            if len(body) + len(chunk) > max_bytes:
+                raise RequestBodyTooLarge(f"request body exceeds {max_bytes} bytes")
+            body += chunk
+            if not message.get("more_body", False):
+                break
+        elif message["type"] == "http.disconnect":
+            return None
+    return bytes(body)
 
 
 def _decompress_gzip(raw: bytes, max_bytes: int) -> bytes:
@@ -162,7 +215,7 @@ class RequestDecompressionMiddleware:
             # and silently take the legacy path. That includes a comma-separated
             # chain such as "gzip, br", which we deliberately do not support.
             logger.warning("Rejected unsupported Content-Encoding: %s", encoding.decode(errors="replace"))
-            await _send_json_error(
+            await send_json_error(
                 send,
                 415,
                 f"Unsupported Content-Encoding: {encoding.decode(errors='replace')}",
@@ -170,25 +223,27 @@ class RequestDecompressionMiddleware:
             )
             return
 
-        body = b""
-        while True:
-            message = await receive()
-            if message["type"] == "http.request":
-                body += message.get("body", b"")
-                if not message.get("more_body", False):
-                    break
-            elif message["type"] == "http.disconnect":
-                return
+        # The compressed bytes are capped too. A body that arrives larger than the
+        # largest expansion we would allow cannot be within policy once expanded,
+        # so there is no reason to hold it while finding that out.
+        try:
+            body = await read_body_capped(receive, self.max_bytes)
+        except RequestBodyTooLarge as e:
+            logger.warning("Rejected oversized compressed request body: %s", e)
+            await send_json_error(send, 413, "Request body too large", self.error_code)
+            return
+        if body is None:
+            return
 
         try:
             body = _DECOMPRESSORS[encoding](body, self.max_bytes)
         except RequestBodyTooLarge as e:
             logger.warning("Rejected oversized compressed request body: %s", e)
-            await _send_json_error(send, 413, "Request body too large", self.error_code)
+            await send_json_error(send, 413, "Request body too large", self.error_code)
             return
         except Exception as e:
             logger.warning("Rejected undecodable %s request body: %s", encoding.decode(), e)
-            await _send_json_error(send, 400, "Malformed compressed request body", self.error_code)
+            await send_json_error(send, 400, "Malformed compressed request body", self.error_code)
             return
 
         scope = dict(scope)
@@ -237,11 +292,24 @@ def replay_body(body: bytes):
     return receive
 
 
-async def _send_json_error(send, status_code: int, message: str, error_code: str = None) -> None:
-    """Emit a minimal JSON error without going through the app."""
-    user_error = "null" if error_code is None else '{"code": "%s", "message": "%s"}' % (error_code, message)
-    payload = (
-        '{"success": false, "code": %d, "message": "%s", "userError": %s}' % (status_code, message, user_error)
+async def send_json_error(send, status_code: int, message: str, error_code: str = None) -> None:
+    """
+    Emit a minimal JSON error without going through the app.
+
+    Serialised with ``json.dumps`` rather than string interpolation: the
+    message is not always ours. The unsupported-encoding refusal puts the
+    client's own Content-Encoding header in it, and a header value may contain
+    a double quote — h11 permits it — which interpolation would splice into the
+    payload and hand the client an unparseable 415, hiding the very reason the
+    request was refused.
+
+    The shape is byte-for-byte what interpolation produced for a message that
+    needed no escaping, so nothing that already parses these responses changes.
+    """
+    user_error = None if error_code is None else {"code": error_code, "message": message}
+    payload = json.dumps(
+        {"success": False, "code": status_code, "message": message, "userError": user_error},
+        ensure_ascii=False,
     ).encode()
     await send(
         {

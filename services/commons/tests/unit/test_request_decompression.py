@@ -15,12 +15,15 @@ a small forged body must not be able to expand into an out-of-memory condition.
 
 import gzip
 import json
+import os
 import zlib
 
 import pytest
 
 from kugel_common.middleware.http_compression import (
+    RequestBodyTooLarge,
     RequestDecompressionMiddleware,
+    read_body_capped,
     replace_body_headers,
 )
 
@@ -300,3 +303,170 @@ async def test_disconnect_mid_body_does_not_invoke_the_app():
     await middleware(_scope([(b"content-encoding", b"gzip")]), receive, None)
 
     assert app.body is None
+
+
+# =========================================================================
+# The read itself is bounded (issue #195)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_returns_the_whole_body_within_the_ceiling():
+    body = b"x" * 100
+    assert await read_body_capped(_receive_for(body), 100) == body
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_reassembles_chunks():
+    assert await read_body_capped(_receive_chunks([b"ab", b"cd", b"ef"]), 16) == b"abcdef"
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_stops_at_the_chunk_that_crosses_the_ceiling():
+    """Refusing after reading to the end would mean holding what we refuse."""
+    delivered = 0
+
+    async def receive():
+        nonlocal delivered
+        delivered += 1
+        return {"type": "http.request", "body": b"x" * 8, "more_body": True}
+
+    with pytest.raises(RequestBodyTooLarge):
+        await read_body_capped(receive, 16)
+    assert delivered == 3, "the read continued past the chunk that crossed the limit"
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_reports_a_disconnect_as_none():
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    assert await read_body_capped(receive, 16) is None
+
+
+@pytest.mark.asyncio
+async def test_oversized_compressed_body_is_refused_before_expansion():
+    """A compressed body larger than the largest expansion we would allow.
+
+    It cannot be within policy once expanded, so it is refused as it arrives
+    rather than held while we find that out.
+    """
+    middleware = RequestDecompressionMiddleware(_Recorder(), max_bytes=1024)
+    # Random bytes barely compress, so the compressed form stays over the ceiling.
+    compressed = gzip.compress(os.urandom(4096))
+    assert len(compressed) > 1024
+
+    messages = await _collect_response(
+        middleware,
+        _scope([(b"content-encoding", b"gzip")]),
+        _receive_for(compressed),
+    )
+
+    assert messages[0]["status"] == 413
+
+
+# =========================================================================
+# The refusal itself has to be parseable (issue #195)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_an_unsupported_encoding_containing_a_quote_still_yields_valid_json():
+    """The refusal message carries a client-controlled header value.
+
+    h11 permits a double quote in a header value, so building the payload by
+    interpolation spliced it into the JSON and handed the client an unparseable
+    415 — hiding the very reason the request was refused.
+    """
+    import json as json_module
+
+    middleware = RequestDecompressionMiddleware(_Recorder(), max_bytes=1024, error_code="401509")
+
+    messages = await _collect_response(
+        middleware,
+        _scope([(b"content-encoding", b'x"y')]),
+        _receive_for(b""),
+    )
+
+    assert messages[0]["status"] == 415
+    parsed = json_module.loads(messages[-1]["body"])
+    assert parsed["userError"]["code"] == "401509"
+    assert 'x"y' in parsed["message"], "the offending value should survive intact, escaped"
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_without_an_error_code_reports_a_null_user_error():
+    """The shape is unchanged from the interpolated version, including null."""
+    import json as json_module
+
+    middleware = RequestDecompressionMiddleware(_Recorder(), max_bytes=1024)
+
+    messages = await _collect_response(
+        middleware,
+        _scope([(b"content-encoding", b"zstd")]),
+        _receive_for(b""),
+    )
+
+    parsed = json_module.loads(messages[-1]["body"])
+    assert parsed["success"] is False
+    assert parsed["code"] == 415
+    assert parsed["userError"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_payload_is_byte_identical_for_a_message_needing_no_escaping():
+    """Nothing already parsing these responses should see a difference."""
+    from kugel_common.middleware.http_compression import send_json_error
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await send_json_error(send, 413, "Request body too large", "401509")
+
+    expected = (
+        b'{"success": false, "code": 413, "message": "Request body too large", '
+        b'"userError": {"code": "401509", "message": "Request body too large"}}'
+    )
+    assert messages[-1]["body"] == expected
+    assert dict(messages[0]["headers"])[b"content-length"] == str(len(expected)).encode()
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_accepts_a_body_of_exactly_the_ceiling():
+    """The ceiling is inclusive — pins the boundary the pre-append check moved."""
+    assert await read_body_capped(_receive_for(b"x" * 16), 16) == b"x" * 16
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_refuses_one_message_larger_than_the_ceiling():
+    """A whole oversized body can arrive as a single message.
+
+    ASGI puts no bound on one http.request; httpx's ASGI transport — what the
+    integration tier runs on — delivers the entire body at once. The refusal
+    must not depend on the body arriving in server-sized pieces.
+    """
+    with pytest.raises(RequestBodyTooLarge):
+        await read_body_capped(_receive_for(b"x" * 4096), 1024)
+
+
+@pytest.mark.asyncio
+async def test_read_body_capped_measures_a_chunk_before_appending_it():
+    """The buffer never holds a chunk it is about to refuse.
+
+    Both orderings refuse the same requests, so the difference is peak memory
+    and nothing an ordinary input can show. It is observable through a chunk
+    that can be measured but not appended: measuring first reaches the refusal,
+    appending first hits the concatenation and raises TypeError instead.
+    """
+
+    class _MeasurableButNotAppendable:
+        def __len__(self):
+            return 4096
+
+    async def receive():
+        return {"type": "http.request", "body": _MeasurableButNotAppendable(), "more_body": False}
+
+    with pytest.raises(RequestBodyTooLarge):
+        await read_body_capped(receive, 1024)

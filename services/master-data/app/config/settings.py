@@ -8,6 +8,7 @@ from kugel_common.config.settings_database import DBSettings, DBCollectionCommon
 from kugel_common.config.settings_datetime import DatetimeSettings
 from kugel_common.config.settings_web import WebServiceSettings
 from kugel_common.config.settings_tax import TaxSettings
+from kugel_common.config.settings_http import HttpRequestSettings
 
 from app.config.settings_general import RepositorySettings
 from app.config.settings_database import DBCollectionSettings
@@ -29,7 +30,18 @@ class Settings(
     AuthSettings,
     TaxSettings,
     WebServiceSettings,
+    HttpRequestSettings,
 ):
+    # Two endpoints take a whole collection in one body, so master-data's
+    # largest legitimate request is far bigger than a single-record write
+    # (issue #195):
+    #   POST/PUT /item_books  - the entire categories -> tabs -> buttons tree.
+    #     Measured at 176 B per button with a real image URL, so 1 MB refused
+    #     the book at 5,950 buttons - reachable for a large chain's PLU menu.
+    #   POST/PUT /settings    - one value per store/terminal. 3,000 stores x 5
+    #     terminals is 750 KB; 5,000 x 8 is already 2 MB.
+    MAX_REQUEST_BODY_BYTES: int = Field(default=4 * 1024 * 1024)
+
     # Override required fields with defaults
     MONGODB_URI: str = Field(default="mongodb://localhost:27017/?replicaSet=rs0")
     DB_NAME_PREFIX: str = Field(default="db_master_data")

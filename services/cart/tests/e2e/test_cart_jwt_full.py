@@ -55,6 +55,9 @@ async def ensure_terminal_ready():
                 await client.post(f"/terminals/{terminal_id}/open", json={"initial_amount": 500000}, headers=header)
 
 
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
+
+
 @pytest.mark.asyncio
 async def test_jwt_cart_operations(http_client):
     """Cart CRUD with JWT: create, get, cancel."""
@@ -78,6 +81,9 @@ async def test_jwt_cart_operations(http_client):
     assert response.status_code == status.HTTP_200_OK
     assert response.json().get("data").get("cartStatus") == CartStatus.Cancelled.value
     print("JWT cart operations: PASS")
+
+
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 
 
 @pytest.mark.asyncio
@@ -144,6 +150,9 @@ async def test_jwt_line_item_operations(http_client):
     print("JWT line item operations: PASS")
 
 
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
+
+
 @pytest.mark.asyncio
 async def test_jwt_discount_operations(http_client):
     """Discount operations with JWT: line discount, subtotal discount."""
@@ -204,6 +213,9 @@ async def test_jwt_discount_operations(http_client):
     print("JWT discount operations: PASS")
 
 
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
+
+
 @pytest.mark.asyncio
 async def test_jwt_payment_process(http_client):
     """Full payment process with JWT: add items, subtotal, partial payment, bill."""
@@ -254,6 +266,9 @@ async def test_jwt_payment_process(http_client):
     assert res.get("data").get("cartStatus") == CartStatus.Completed.value
     assert res.get("data").get("changeAmount") > 0
     print(f"JWT payment process: PASS (total={total_amount}, change={res.get('data').get('changeAmount')})")
+
+
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 
 
 @pytest.mark.asyncio
@@ -329,6 +344,9 @@ async def test_jwt_transaction_operations(http_client):
     assert response.status_code == status.HTTP_200_OK
     void_no = response.json().get("data").get("transactionNo")
     print(f"JWT void completed: void_no={void_no}")
+
+
+@pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 
 
 @pytest.mark.asyncio
