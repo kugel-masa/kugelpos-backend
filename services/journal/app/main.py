@@ -66,15 +66,6 @@ app.include_router(v1_journal_router, prefix="/api/v1")  # Journal generation en
 app.include_router(v1_tenant_router, prefix="/api/v1")  # Tenant management endpoints
 app.include_router(v1_tran_router, prefix="/api/v1")  # Transaction processing endpoints
 
-# Add CORS middleware to allow cross-origin requests  # Currently configured to allow any origin, method, and header
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow requests from any origin
-    allow_credentials=True,  # Allow cookies to be sent with requests
-    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all HTTP headers
-)
-
 # Add middleware to log all HTTP requests with service name "journal"
 app.middleware("http")(log_requests("journal"))
 
@@ -91,6 +82,32 @@ add_request_body_limit_middleware(
     app,
     max_bytes=settings.MAX_REQUEST_BODY_BYTES,
     error_code=ErrorCode.REQUEST_BODY_TOO_LARGE,
+)
+
+# CORS must be registered LAST so it runs OUTERMOST (Starlette's add_middleware
+# inserts at index 0, so the last registration is the outermost layer).
+#
+# Registered first, it ran innermost, and every response generated outside it
+# bypassed it - the request-body 413 (issue #195) above all. A browser is
+# handed an opaque network failure rather than the status it actually got, so
+# a client cannot tell a permanent 413 (split the payload) from a transient
+# error (retry).
+#
+# Outermost here means outermost among the USER middleware. Starlette builds
+# ServerErrorMiddleware outside all of it, so an unhandled 500 still bypasses
+# CORS - including this service's own generic handler, which Starlette lifts
+# out of ExceptionMiddleware because it is keyed on Exception. Tracked in
+# issue #202; not fixed by this ordering.
+#
+# Safe to sit outside the body ceiling: CORSMiddleware never touches `receive`,
+# so nothing buffers ahead of the limit. Preflight OPTIONS now short-circuits
+# before the body is read at all.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow requests from any origin
+    allow_credentials=True,  # Allow cookies to be sent with requests
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all HTTP headers
 )
 
 # Register global exception handlers for consistent error responses
