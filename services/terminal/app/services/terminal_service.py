@@ -425,7 +425,13 @@ class TerminalService:
                 await self.cash_in_out_log_repo.commit_transaction()
             except Exception as e:
                 await self.cash_in_out_log_repo.abort_transaction()
-                message = f"Cannot cash in/out. terminal_id: {self.terminal_id}, terminal: {terminal}"
+                # ServiceException, so this message reaches the ERROR log AND the
+                # API error response - and `terminal` is the live document, with
+                # its api_key and the staff's pin (issue #211).
+                message = (
+                    f"Cannot cash in/out. terminal_id: {self.terminal_id}, "
+                    f"terminal: {mask_loggable(terminal)}"
+                )
                 raise CashInOutException(message=message, logger=logger, original_exception=e)
             finally:
                 # clear session
@@ -671,7 +677,11 @@ class TerminalService:
             except Exception as e:
                 # abort transaction
                 await self.open_close_log_repo.abort_transaction()
-                message = f"Cannot open terminal. terminal_id: {self.terminal_id}, terminal: {terminal}"
+                # The log embedded above is redacted; this failure path was not.
+                message = (
+                    f"Cannot open terminal. terminal_id: {self.terminal_id}, "
+                    f"terminal: {mask_loggable(terminal)}"
+                )
                 raise TerminalOpenException(message=message, logger=logger, original_exception=e)
             finally:
                 # clear session
@@ -824,7 +834,11 @@ class TerminalService:
             except Exception as e:
                 # abort transaction
                 await self.open_close_log_repo.abort_transaction()
-                message = f"Cannot close terminal. terminsl_id: {self.terminal_id}, terminal: {terminal}"
+                # The log embedded above is redacted; this failure path was not.
+                message = (
+                    f"Cannot close terminal. terminal_id: {self.terminal_id}, "
+                    f"terminal: {mask_loggable(terminal)}"
+                )
                 raise TerminalCloseException(message=message, logger=logger, original_exception=e)
             finally:
                 # clear session
@@ -836,7 +850,10 @@ class TerminalService:
             # publish open_close_log to message queue
             await self._publish_open_close_log(close_message)
         except Exception as e:
-            message = f"Cannot publish open_close_log. terminal_id: {self.terminal_id}, terminal: {terminal}"
+            message = (
+                f"Cannot publish open_close_log. terminal_id: {self.terminal_id}, "
+                f"terminal: {mask_loggable(terminal)}"
+            )
             raise TerminalCloseException(message=message, logger=logger, original_exception=e)
         return open_close_log
 

@@ -92,3 +92,22 @@ def test_both_paths_use_the_same_redaction(operation):
         "the open and close paths do not both redact the terminal they embed"
     )
     assert "open_close_log.terminal_info = terminal\n" not in source
+
+
+class TestTheFailurePaths:
+    """A failure reports the terminal, and that report reaches the caller."""
+
+    def test_no_failure_message_carries_the_live_terminal(self):
+        # These build `TerminalOpenException` / `TerminalCloseException` /
+        # `CashInOutException`, all ServiceException - so the message goes to
+        # the ERROR log AND into the API error response. Redacting the document
+        # embedded in the log left these untouched, a few dozen lines below.
+        import inspect
+
+        from app.services import terminal_service
+
+        source = inspect.getsource(terminal_service)
+        assert "terminal: {terminal}" not in source, (
+            "a failure message reports the live terminal, api_key and staff pin included"
+        )
+        assert source.count("terminal: {mask_loggable(terminal)}") == 4
