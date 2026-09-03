@@ -388,8 +388,12 @@ class RequestLogMiddleware:
 
 `mask_sensitive_data`（`utils/log_utils.py`）はボディをパースする箇所で
 適用する。ここ 1 箇所で両方の出力先を覆える。文書やヘッダ一式をログに出す
-他の呼び出し側（`security.py`、`http_client_helper.py`）にも適用する。
-規則は 3 つ。
+他の呼び出し側にも個別に適用する。`security.py`（端末文書は自身の `api_key`
+と、配下スタッフの平文 `pin` を持つ）、`http_client_helper.py`、および
+ヘッダを自前で組み立ててクライアントに渡す前にログへ出す web リポジトリ
+（`staff_master_web_repository.py`、report の `terminal_info_web_repository.py`
+と `category_master_web_repository.py`）である。共通クライアントだけを
+マスクしても後者は覆えない。規則は 3 つ。
 
 1. **秘密フィールド名** — `pin`、`password`、`token`、`secret`、`cardNo`、
    `pan`、`authorization`、`dapr-api-token` など — は大文字小文字と区切り

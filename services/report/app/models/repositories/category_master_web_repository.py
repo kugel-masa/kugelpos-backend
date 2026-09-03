@@ -4,6 +4,7 @@ import logging
 
 from kugel_common.utils.http_client_helper import get_service_client, HttpClientError
 from kugel_common.utils.service_auth import create_service_token
+from kugel_common.utils.log_utils import mask_sensitive_data
 from kugel_common.exceptions import ServiceException
 from app.exceptions import CategoryMasterDataNotFoundException
 
@@ -49,7 +50,8 @@ class CategoryMasterWebRepository:
                     "Authorization": f"Bearer {service_token}",
                     "X-Tenant-ID": self.tenant_id
                 }
-                logger.debug(f"Request headers: {headers}")
+                # The Authorization value is the service token itself (issue #211).
+                logger.debug(f"Request headers: {mask_sensitive_data(headers)}")
                 
                 url = f"{self.master_data_base_url}/tenants/{self.tenant_id}/categories"
                 logger.info(f"Requesting categories from URL: {url}")

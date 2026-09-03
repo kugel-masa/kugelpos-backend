@@ -359,9 +359,13 @@ in plain text in requests and responses alike, so without masking both sit in
 the audit collection.
 
 `mask_sensitive_data` (`utils/log_utils.py`) is applied where the body is
-parsed, which covers both sinks at once, and at the other call sites that log
-a whole document or header mapping (`security.py`, `http_client_helper.py`).
-Three rules:
+parsed, which covers both sinks at once, and at every other call site that
+logs a whole document or header mapping: `security.py` (the terminal document
+carries its `api_key` and its staff's plaintext `pin`), `http_client_helper.py`,
+and the web repositories that build their own headers and log them before
+handing them to the client (`staff_master_web_repository.py`, and report's
+`terminal_info_web_repository.py` / `category_master_web_repository.py`) -
+masking the shared client alone does not cover those. Three rules:
 
 1. **Secret field names** - `pin`, `password`, `token`, `secret`, `cardNo`,
    `pan`, `authorization`, `dapr-api-token` and the rest - are matched case-

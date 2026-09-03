@@ -412,13 +412,15 @@ def sanitize_log_body(
         max_bytes: Size ceiling in bytes for the sanitized body; 0 disables
         raw: The body as received, when available. Read as a measurement only,
             never as content - it is the UNMASKED body (issue #211), so nothing
-            sliced out of it may be returned. Both uses survive masking because
-            masking replaces values and keeps keys: a byte scan for a stripped
-            field name still answers for the masked body, and a body whose raw
-            form is within `max_bytes` is within it after masking too, give or
-            take the difference between a secret and four asterisks. Both are
-            worth skipping: the walk costs ~2 ms on a 280 KB body, and it runs
-            on every request of every service.
+            sliced out of it may be returned. It is also only a valid
+            measurement while it still describes `body`: masking can GROW a
+            body (`"pin": ""` is two bytes of value, `"pin": "****"` is six),
+            so the caller withholds it when masking changed anything - see
+            `_sizing_bytes` in the logging middleware. The byte scan for a
+            stripped field name needs no such care, because masking replaces
+            values and keeps keys. Both skips are worth having: the walk costs
+            ~2 ms on a 280 KB body, and it runs on every request of every
+            service.
 
     Returns:
         The sanitized body, or a marker dictionary when it was truncated

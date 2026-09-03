@@ -23,6 +23,7 @@ from kugel_common.utils.http_client_helper import get_service_client
 from kugel_common.exceptions import NotFoundException, RepositoryException
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.log_utils import mask_sensitive_data
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -79,7 +80,9 @@ class StaffMasterWebRepository():
                 params = {"terminal_id": self.terminal_info.terminal_id}
             endpoint = f"/tenants/{self.tenant_id}/staff/{id}"
             
-            logger.debug(f"endpoint: {endpoint}, params: {params}, headers: {headers}")
+            # Whichever branch above ran, `headers` holds the credential
+            # itself - a bearer token or the terminal's api_key (issue #211).
+            logger.debug(f"endpoint: {endpoint}, params: {params}, headers: {mask_sensitive_data(headers)}")
             
             try:
                 response_data = await client.get(endpoint, params=params, headers=headers)

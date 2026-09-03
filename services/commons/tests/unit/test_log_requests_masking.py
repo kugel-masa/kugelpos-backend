@@ -13,6 +13,8 @@ was given, so a plain read would put it in the log even if no request ever
 carried it.
 """
 
+import inspect
+import json
 import logging
 
 import pytest
@@ -21,6 +23,7 @@ from fastapi.testclient import TestClient
 
 from kugel_common.middleware import log_requests as log_requests_module
 from kugel_common.middleware.log_requests import log_requests
+from kugel_common.models.repositories import staff_master_web_repository
 
 
 class _CapturingBuffer:
@@ -128,6 +131,54 @@ class TestTheTruncationPreview:
         body = captured.logs[0].request_info.body
         assert body["_truncated"] is True
         assert "hunter2" not in body["_preview"]
+
+
+class TestTheSizeBudgetSurvivesMasking:
+    """Masking runs before the budget, and unlike stripping it can GROW a body."""
+
+    def test_a_body_that_masking_pushes_over_the_budget_is_truncated(self, captured, monkeypatch):
+        # The budget's shortcut reads the bytes as received to decide a body is
+        # small enough to store as-is. That held while the only step was
+        # stripping, which can only shrink. `"pin": ""` is two bytes of value
+        # and `"pin": "****"` is six, so a body inside the budget on the wire
+        # can be outside it once stored.
+        raw = json.dumps({f"entry{i}": {"pin": ""} for i in range(50)}, separators=(",", ":")).encode()
+        # The budget is exactly what arrived, so the shortcut is taken: the
+        # body IS within it as received. Only the stored form is not.
+        monkeypatch.setattr(log_requests_module.settings, "REQUEST_LOG_MAX_BODY_BYTES", len(raw))
+        client = TestClient(_build_app())
+        client.post("/staff", content=raw, headers={"content-type": "application/json"})
+
+        stored = captured.logs[0].request_info.body
+        assert stored.get("_truncated") is True, (
+            f"a masked body of {len(json.dumps(stored).encode())} bytes was stored "
+            f"under a {len(raw)} byte budget"
+        )
+
+    def test_a_body_with_no_secrets_still_takes_the_shortcut(self, captured, monkeypatch):
+        # The shortcut is why the budget costs nothing on the requests that
+        # carry no credential, which is nearly all of them. Withholding the raw
+        # bytes for every request would put a second serialization of every body
+        # on every service.
+        monkeypatch.setattr(log_requests_module.settings, "REQUEST_LOG_MAX_BODY_BYTES", 900)
+        client = TestClient(_build_app())
+        client.post("/staff", json={"id": "S001", "name": "Ann"})
+
+        assert captured.logs[0].request_info.body == {"id": "S001", "name": "Ann"}
+
+
+class TestTheHeaderLogsOutsideTheHttpClient:
+    """A caller that logs its own headers is the same sink one level up."""
+
+    def test_the_staff_repository_does_not_print_its_credential(self):
+        # `get_service_client` is what HttpClientHelper masks; this repository
+        # builds the headers itself and logs them before handing them over, so
+        # masking the client alone left the credential in app.log.
+        source = inspect.getsource(staff_master_web_repository)
+        assert "headers: {headers}" not in source, (
+            "the staff repository logs its Authorization / X-API-KEY header verbatim"
+        )
+        assert "mask_sensitive_data(headers)" in source
 
 
 class TestThe422HandedBackToTheCaller:
