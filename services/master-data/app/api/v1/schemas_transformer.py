@@ -2,7 +2,7 @@
 from logging import getLogger
 
 from app.models.documents.staff_master_document import StaffMasterDocument
-from kugel_common.utils.log_utils import mask_sensitive_data
+from kugel_common.utils.log_utils import mask_loggable
 from app.api.common.schemas import BasePaymentResponse, BaseStaffResponse, BasePromotionResponse
 from app.api.common.schemas_transformer import SchemasTransformer
 from app.models.documents.payment_master_document import PaymentMasterDocument
@@ -17,7 +17,7 @@ class SchemasTransformerV1(SchemasTransformer):
 
     def transform_staff(self, staff_doc: StaffMasterDocument) -> BaseStaffResponse:
         # The staff document carries its `pin` in plain text (issue #211).
-        logger.debug(f"Transforming staff document: {mask_sensitive_data(staff_doc.model_dump())}")
+        logger.debug(f"Transforming staff document: {mask_loggable(staff_doc)}")
         try:
             return super().transform_staff(staff_doc)
         except Exception as e:

@@ -4,7 +4,7 @@ from typing import TypeVar, Generic, Type
 from logging import getLogger
 
 from kugel_common.utils.misc import get_app_time
-from kugel_common.utils.log_utils import mask_sensitive_data
+from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.exceptions import (
     RepositoryException,
     CannotCreateException,
@@ -98,12 +98,14 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 raise CannotCreateException(message, self.collection_name, document, logger)
             # Generic over every master, so it prints a staff record's
             # plaintext `pin` too - and at INFO rather than DEBUG (issue #211).
-            logger.info(f"Document created in database: {mask_sensitive_data(document.model_dump())}")
+            logger.info(f"Document created in database: {mask_loggable(document)}")
             return document
         except CannotCreateException as e:
             raise e
         except Exception as e:
-            message = f"Failed to save document to database: {document}"
+            # Same reach as the CannotCreateException above: this message is
+            # logged and returned in the response (issue #211).
+            message = f"Failed to save document to database: {mask_loggable(document)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def get_list_async(self, filter: dict, max: int = 0) -> list[Tdocument]:

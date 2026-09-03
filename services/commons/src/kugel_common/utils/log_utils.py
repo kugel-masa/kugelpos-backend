@@ -219,6 +219,37 @@ def _mask_all_values(value: Any) -> Any:
     return None if value is None else "****"
 
 
+def mask_loggable(value: Any) -> Any:
+    """
+    Mask any value on its way into a log line or an exception message.
+
+    `mask_sensitive_data` walks parsed JSON. Most of what a service prints is
+    not that - it is a Pydantic document, and a document's `repr` shows every
+    field, `pin` and `api_key` included. So this converts one to a dict first
+    and masks that.
+
+    Never raises and never hides the value's shape: something that is neither
+    a model nor a container comes back untouched, and a model that refuses to
+    serialize comes back as itself rather than taking the caller down. This
+    runs on logging and error paths, which do not get a vote on the request.
+
+    Args:
+        value: Anything about to be interpolated into a message
+
+    Returns:
+        A masked copy where that is possible, else `value`
+    """
+    if hasattr(value, "model_dump"):
+        try:
+            value = value.model_dump()
+        except Exception:
+            return value
+    try:
+        return mask_sensitive_data(value)
+    except Exception:
+        return value
+
+
 def mask_validation_error_details(errors: Any) -> list:
     """
     Mask the `input` echo in Pydantic validation errors.

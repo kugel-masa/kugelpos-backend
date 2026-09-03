@@ -12,6 +12,7 @@ from kugel_common.exceptions import (
     CannotDeleteException,
 )
 from kugel_common.utils.misc import get_app_time
+from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.schemas.pagination import PaginatedResult
 
 from app.config.settings import settings
@@ -125,7 +126,9 @@ class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
 
         resutl = await self.create_async(terminal_info)
         if not resutl:
-            message = f"Cannot create terminal info: {terminal_info}"
+            # `api_key` was generated four lines up, and this message is both
+            # logged and returned to the caller (issue #211).
+            message = f"Cannot create terminal info: {mask_loggable(terminal_info)}"
             raise CannotCreateException(message, self.collection_name, terminal_info, logger)
 
         self.terminal_info = terminal_info

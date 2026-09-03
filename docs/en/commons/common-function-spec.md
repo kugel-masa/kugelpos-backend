@@ -385,6 +385,18 @@ was sent" from "a PIN was sent" without revealing either. The same masking is
 applied to validation-error details, which otherwise echo the rejected value
 into the ERROR log and back to the caller in the 422 response.
 
+`mask_loggable` is the same masking for a value that is not parsed JSON - a
+Pydantic document, whose `repr` shows every field. Use it wherever a whole
+document or response model reaches a log line or an exception message; it
+never raises, because it runs on paths that do not get a vote on the request.
+
+One of those paths reaches further than a log. `CannotCreateException` puts
+the document it was given into its message, and the exception handlers return
+`str(exc)` to the caller in the 400's `data` - so a staff record that fails to
+be created would hand back its plaintext `pin`, and a terminal the `api_key`
+just generated for it. The masking sits in the exception rather than at each
+`raise`: there are more than twenty call sites across the services.
+
 Masking is about secrecy and the budget below is about size; they are separate
 functions answering separate questions, and a field can need either or both.
 
