@@ -99,7 +99,7 @@ class SchemasTransformer:
 
     # transform OpenCloseLog to BaseTerminalOpenResponse
     def transform_open_log(self, open_close_log: OpenCloseLog) -> BaseTerminalOpenResponse:
-        logger.debug(f"OpenCloseLog: {open_close_log}")
+        logger.debug(f"OpenCloseLog: {mask_loggable(open_close_log)}")
 
         return BaseTerminalOpenResponse(
             terminal_id=open_close_log.terminal_info.terminal_id,
@@ -114,7 +114,7 @@ class SchemasTransformer:
 
     # tranform OpenCloseLog to BaseTerminalCloseResponseo
     def transform_close_log(self, open_close_log: OpenCloseLog) -> BaseTerminalCloseResponse:
-        logger.debug(f"OpenCloseLog: {open_close_log}")
+        logger.debug(f"OpenCloseLog: {mask_loggable(open_close_log)}")
 
         return BaseTerminalCloseResponse(
             terminal_id=open_close_log.terminal_info.terminal_id,

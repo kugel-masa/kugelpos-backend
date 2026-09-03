@@ -228,26 +228,28 @@ def mask_loggable(value: Any) -> Any:
     field, `pin` and `api_key` included. So this converts one to a dict first
     and masks that.
 
-    Never raises and never hides the value's shape: something that is neither
-    a model nor a container comes back untouched, and a model that refuses to
-    serialize comes back as itself rather than taking the caller down. This
-    runs on logging and error paths, which do not get a vote on the request.
+    Never raises: this runs on logging and error paths, which do not get a
+    vote on the request. But it never falls back to the value either - the
+    caller is about to interpolate whatever comes back into a message, and a
+    document's `repr` shows every field it has. When masking cannot be done,
+    the type name is all that comes back, which is enough to find the call
+    site and nothing more.
 
     Args:
         value: Anything about to be interpolated into a message
 
     Returns:
-        A masked copy where that is possible, else `value`
+        A masked copy, or a placeholder naming the type when masking failed
     """
     if hasattr(value, "model_dump"):
         try:
             value = value.model_dump()
         except Exception:
-            return value
+            return f"<unmaskable {type(value).__name__}>"
     try:
         return mask_sensitive_data(value)
     except Exception:
-        return value
+        return f"<unmaskable {type(value).__name__}>"
 
 
 def mask_validation_error_details(errors: Any) -> list:

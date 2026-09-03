@@ -52,6 +52,7 @@ from app.services.receipt_data.cash_in_out_receipt_data import CashInOutReceiptD
 from app.services.receipt_data.open_close_receipt_data import OpenCloseReceiptData
 
 from logging import getLogger
+from kugel_common.utils.log_utils import mask_loggable
 
 logger = getLogger(__name__)
 
@@ -60,6 +61,44 @@ logger = getLogger(__name__)
 # small enough that a malformed client cannot permanently burn the number space
 # through the irreversible max() reconcile.
 MAX_COUNTER_JUMP = 100_000
+
+
+
+# What the open/close log's embedded terminal is allowed to carry. The open
+# path already blanked the api_key with this literal before issue #211, so it
+# is kept rather than replaced - existing records read the same way.
+MASKED_API_KEY = "****-****-****-****"
+MASKED_PIN = "****"
+
+
+def _terminal_info_for_log(terminal: TerminalInfoDocument) -> TerminalInfoDocument:
+    """A copy of the terminal safe to embed in an open/close log.
+
+    That log is not only printed. It is stored in this service's database,
+    published to journal and report, and stored and printed by both - so
+    whatever it carries, all three carry. The `api_key` IS the terminal's
+    credential and the staff's `pin` is theirs, and neither is needed to read
+    an open/close record (issue #211).
+
+    The open path already blanked the api_key; the close path assigned the
+    live terminal straight through, so the key reached three databases in
+    plain text. Both go through here now.
+
+    The copy is DEEP on purpose. `model_copy()` is shallow, so `staff` would
+    still be the terminal's own object - blanking the pin on the copy would
+    blank it on the terminal the caller is still using.
+
+    Args:
+        terminal: The live terminal document
+
+    Returns:
+        A copy with the credential fields blanked
+    """
+    redacted = terminal.model_copy(deep=True)
+    redacted.api_key = MASKED_API_KEY
+    if redacted.staff is not None:
+        redacted.staff.pin = MASKED_PIN
+    return redacted
 
 
 class TerminalService:
@@ -574,8 +613,7 @@ class TerminalService:
         open_close_log.business_counter = terminal.business_counter
         open_close_log.operation = "open"
         open_close_log.generate_date_time = gen_datetime
-        open_close_log.terminal_info = terminal.model_copy()  # copy terminal info
-        open_close_log.terminal_info.api_key = "****-****-****-****"  # hide api_key
+        open_close_log.terminal_info = _terminal_info_for_log(terminal)
         # add receipt_text and journal_text to open_close_log
         receipt_maker = OpenCloseReceiptData(name="OpenReceiptData", width=32)
         receipt_data = receipt_maker.make_receipt_data(open_close_log)
@@ -743,7 +781,7 @@ class TerminalService:
         open_close_log.business_counter = terminal.business_counter
         open_close_log.operation = "close"
         open_close_log.generate_date_time = gen_datetime
-        open_close_log.terminal_info = terminal
+        open_close_log.terminal_info = _terminal_info_for_log(terminal)
         open_close_log.cart_transaction_count = tran_count
         open_close_log.cart_transaction_last_no = tran_last_no
         open_close_log.cash_in_out_count = cash_in_out_log_count
@@ -753,7 +791,7 @@ class TerminalService:
         open_close_log.receipt_text = receipt_data.receipt_text
         open_close_log.journal_text = receipt_data.journal_text
 
-        logger.debug(f"Terminal Close open_close_log: {open_close_log}")
+        logger.debug(f"Terminal Close open_close_log: {mask_loggable(open_close_log)}")
 
         # set event_id for open_close_log
         close_event_id = str(uuid.uuid4())

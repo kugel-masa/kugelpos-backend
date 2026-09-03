@@ -26,6 +26,7 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 import asyncio
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.utils.misc import get_app_time
+from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.exceptions import RepositoryException, CannotDeleteException, DuplicateKeyException
 from kugel_common.schemas.pagination import PaginatedResult, Metadata
 
@@ -205,11 +206,11 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 return False
             return True
         except DuplicateKeyError as e:
-            message = f"Duplicate key error: {e}, document: {document}"
+            message = f"Duplicate key error: {e}, document: {mask_loggable(document)}"
             key = e.details.get("key", None)
             raise DuplicateKeyException(message, self.collection_name, key, logger) from e
         except Exception as e:
-            message = f"Failed to save document to database: {document}"
+            message = f"Failed to save document to database: {mask_loggable(document)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def get_all_async(self, max: int = 0) -> list[Tdocument]:
@@ -438,7 +439,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 return False
             return True
         except Exception as e:
-            message = f"Failed to replace document in database: filter->{filter} document->{document}"
+            message = f"Failed to replace document in database: filter->{filter} document->{mask_loggable(document)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def update_one_async(self, filter: dict, new_values: dict, max_retries: int = 3, retry_interval: float = 0.1) -> bool:

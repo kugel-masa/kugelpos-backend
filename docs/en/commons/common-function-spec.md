@@ -397,6 +397,13 @@ be created would hand back its plaintext `pin`, and a terminal the `api_key`
 just generated for it. The masking sits in the exception rather than at each
 `raise`: there are more than twenty call sites across the services.
 
+Masking a log line is the last resort, not the first. Where a credential need
+not be in the value at all, it is removed at the source: an open/close log
+embeds a whole terminal document and is stored by three services and published
+between them, so the terminal service blanks the `api_key` and the staff `pin`
+on the copy it embeds (`_terminal_info_for_log`). What never enters cannot leak
+from any of the places that read it.
+
 Masking is about secrecy and the budget below is about size; they are separate
 functions answering separate questions, and a field can need either or both.
 

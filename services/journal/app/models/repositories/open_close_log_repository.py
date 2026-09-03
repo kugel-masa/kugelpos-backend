@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
+from kugel_common.utils.log_utils import mask_loggable
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
@@ -61,18 +62,20 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
                 "operation": open_close_log.operation,
             }
             if await self.get_one_async(filter=filter):
-                logger.warning(f"OpenCloseLog already exists. open_close_log: {open_close_log}")
+                logger.warning(f"OpenCloseLog already exists. open_close_log: {mask_loggable(open_close_log)}")
                 return open_close_log
 
             # Create a new open/close log
             open_close_log.shard_key = self.__get_shard_key(open_close_log)
-            logger.debug(f"OpenCloseLog.create_open_close_log: open_close_log->{open_close_log}")
+            logger.debug(f"OpenCloseLog.create_open_close_log: open_close_log->{mask_loggable(open_close_log)}")
             if not await self.create_async(open_close_log):
                 raise Exception()
             return open_close_log
 
         except Exception as e:
-            message = f"Cannot create open/close log: {open_close_log}"
+            # The document itself is appended by CannotCreateException, masked
+            # (issue #211); repeating it here would only repeat it in the clear.
+            message = "Cannot create open/close log"
             raise CannotCreateException(message, self.collection_name, open_close_log, logger, e) from e
 
     async def get_open_close_logs(

@@ -13,7 +13,7 @@ and the staff master carries `pin` in plain text in requests and responses
 alike.
 """
 
-from kugel_common.utils.log_utils import mask_sensitive_data, mask_validation_error_details
+from kugel_common.utils.log_utils import mask_loggable, mask_sensitive_data, mask_validation_error_details
 
 
 class TestWhatIsMasked:
@@ -176,3 +176,48 @@ class TestTheValidationErrorEcho:
         errors = [{"type": "string_type", "loc": ("body", "pin"), "msg": "…", "input": 9999}]
         mask_validation_error_details(errors)
         assert errors[0]["input"] == 9999
+
+
+class TestMaskingAnythingLoggable:
+    """`mask_loggable` is the form for what a service actually prints."""
+
+    def test_a_document_is_masked_rather_than_repr_ed(self):
+        # A Pydantic document is not parsed JSON, and its repr shows every
+        # field it has.
+        class Staff:
+            def model_dump(self):
+                return {"id": "S001", "pin": "1234"}
+
+        assert mask_loggable(Staff()) == {"id": "S001", "pin": "****"}
+
+    def test_a_plain_value_comes_back_as_it_is(self):
+        # Several call sites pass an identifier rather than a document, and a
+        # message that names nothing is not worth logging.
+        assert mask_loggable("cart-0001") == "cart-0001"
+        assert mask_loggable({"quantity": 3}) == {"quantity": 3}
+        assert mask_loggable(None) is None
+
+    def test_a_document_that_cannot_be_dumped_does_not_leak_instead(self):
+        # The point of not raising is that logging must not fail the request.
+        # Returning the value would defeat the masking entirely: the caller is
+        # about to interpolate whatever comes back.
+        class Hostile:
+            pin = "1234"
+
+            def model_dump(self):
+                raise RuntimeError("no")
+
+            def __repr__(self):
+                return f"Hostile(pin={self.pin!r})"
+
+        result = mask_loggable(Hostile())
+
+        assert "1234" not in str(result)
+        assert result == "<unmaskable Hostile>"
+
+    def test_the_placeholder_names_the_type_so_the_call_site_is_findable(self):
+        class Odd:
+            def model_dump(self):
+                raise ValueError
+
+        assert "Odd" in mask_loggable(Odd())

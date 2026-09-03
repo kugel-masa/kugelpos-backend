@@ -32,11 +32,12 @@ def test_the_delete_path_does_not_print_the_staff_record():
     assert "mask_loggable(staff)" in source
 
 
-def test_neither_the_create_log_nor_the_failure_message_prints_the_document():
+def test_no_path_through_the_repository_prints_the_document_whole():
     # The create log is generic over every master, so it prints a staff
-    # record's pin too - and at INFO. The failure message beside it reaches
+    # record's pin too - and at INFO. The failure messages beside it reach
     # further still: the exception handlers return `str(exc)` to the caller.
     source = inspect.getsource(abstract_repository)
     assert "created in database: {document}" not in source
     assert "save document to database: {document}" not in source
-    assert source.count("mask_loggable(document)") == 2
+    assert "document->{document}" not in source, "the replace failure reports the document raw"
+    assert source.count("mask_loggable(document)") == 3

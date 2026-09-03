@@ -234,7 +234,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
         except ReplaceNotWorkException as e:
             raise e
         except Exception as e:
-            message = f"Failed to replace document in database: filter->{filter} document->{document}"
+            message = f"Failed to replace document in database: filter->{filter} document->{mask_loggable(document)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def update_one_async(self, filter: dict, new_values: dict) -> Tdocument:
