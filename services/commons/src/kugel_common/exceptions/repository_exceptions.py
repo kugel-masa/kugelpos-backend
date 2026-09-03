@@ -19,6 +19,7 @@ providing standardized error handling and appropriate HTTP status codes.
 """
 from .base_exceptions import RepositoryException
 from .error_codes import ErrorCode, ErrorMessage
+from kugel_common.utils.log_utils import mask_loggable
 from fastapi import status
 
 class NotFoundException(RepositoryException):
@@ -48,7 +49,14 @@ class CannotCreateException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, document, logger=None, original_exception=None):
-        message = f"{message}: document->{document}"
+        # Masked here rather than at each `raise`: this message is logged AND
+        # returned to the caller in the 400's `data` (`str(exc)` in the
+        # exception handlers), and the document is whatever failed to be
+        # created - a staff record carries a plaintext `pin`, a terminal its
+        # `api_key` (issue #211). There are more than twenty call sites across
+        # the services and there will be more, so the one place that builds the
+        # message is the place to stop it.
+        message = f"{message}: document->{mask_loggable(document)}"
         super().__init__(
             message, 
             collection_name, 

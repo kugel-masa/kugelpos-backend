@@ -24,7 +24,7 @@ from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
 from kugel_common.utils.http_client_helper import get_pooled_client, HttpClientError
-from kugel_common.utils.log_utils import mask_dict_api_key
+from kugel_common.utils.log_utils import mask_sensitive_data
 
 logger = getLogger(__name__)
 # Audit logger for security events. Uses the shared "audit" qualname so each
@@ -266,7 +266,9 @@ async def get_terminal_info_for_terminal_service(
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
     collection = db.get_collection(settings.DB_COLLECTION_NAME_TERMINAL_INFO)
     terminal_dict =  await collection.find_one({"terminal_id": terminal_id})
-    logger.debug(f"TerminalInfo: {mask_dict_api_key(terminal_dict) if terminal_dict else None}")
+    # `mask_dict_api_key` is shallow and covers only the document's own
+    # api_key; the embedded staff carries a plaintext pin (issue #211).
+    logger.debug(f"TerminalInfo: {mask_sensitive_data(terminal_dict) if terminal_dict else None}")
     # verify api_key
     if (terminal_dict is None) or (terminal_dict.get("api_key") != api_key):
         if api_key != settings.PUBSUB_NOTIFY_API_KEY:
@@ -282,7 +284,7 @@ async def get_terminal_info_for_terminal_service(
                 headers={"WWW-Authenticate": "API-Key"}
             )
     return_terminal = transform_terminal_info(terminal_dict)
-    logger.debug(f"return_terminal: {return_terminal}")
+    logger.debug(f"return_terminal: {mask_sensitive_data(return_terminal.model_dump())}")
     return return_terminal
 
 async def get_terminal_info_from_terminal_service(

@@ -12,6 +12,7 @@ from logging import getLogger
 
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
 from app.api.common.schemas import SnapshotEnvelope
 from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
@@ -153,7 +154,8 @@ async def __get_cart_service_async(
         StoreInfoWebRepository,
     )
 
-    logger.debug(f"terminal_info: {terminal_info}")
+    # `api_key`, and the staff's plaintext `pin` one level down (issue #211).
+    logger.debug(f"terminal_info: {mask_loggable(terminal_info)}")
 
     # db for tenant
     tenant_id = terminal_info.tenant_id

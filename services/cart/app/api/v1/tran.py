@@ -5,6 +5,7 @@ import inspect
 
 from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse
+from kugel_common.utils.log_utils import mask_sensitive_data
 from kugel_common.security import verify_pubsub_notification_auth
 from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
 from kugel_common.status_codes import StatusCodes
@@ -84,7 +85,9 @@ async def get_tran_service_for_pubsub_notification(
 
     try:
         response_data = await client.get(endpoint=f"/terminals/{terminal_id}", headers=headers)
-        logger.debug(f"Terminal service response: {response_data}")
+        # What comes back becomes a TerminalInfoDocument two lines down:
+        # `api_key`, and the staff's plaintext `pin` (issue #211).
+        logger.debug(f"Terminal service response: {mask_sensitive_data(response_data)}")
 
         # Transform the response to TerminalInfoDocument
         from kugel_common.security import transform_terminal_info

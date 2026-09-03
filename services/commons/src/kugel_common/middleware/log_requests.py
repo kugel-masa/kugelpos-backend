@@ -19,11 +19,19 @@ for auditing and debugging purposes. It captures request details, response infor
 user context, terminal information and authentication details, storing them both in
 log files and in the database.
 
-Logged bodies are bounded (issue #155): fields named in
-``REQUEST_LOG_STRIP_FIELDS`` - the signed cart snapshot by default, which
-carries a whole cart document on every mutating call - are replaced by a
-metadata marker, and a body still above ``REQUEST_LOG_MAX_BODY_BYTES`` is
-stored as a truncation marker instead.
+Logged bodies are masked and bounded, in that order, and the two are separate
+concerns (see ``kugel_common.utils.log_utils``):
+
+- **Masked** (issue #211): credential values - a staff PIN, an account
+  password, an Authorization header - are replaced where the body is parsed,
+  so they reach neither the ``RequestLog`` document nor ``app.log``. This
+  happens before FastAPI validates anything, which is exactly why it has to be
+  here: a request answered with a 422 is logged in full just the same.
+- **Bounded** (issue #155): fields named in ``REQUEST_LOG_STRIP_FIELDS`` - the
+  signed cart snapshot by default, which carries a whole cart document on
+  every mutating call - are replaced by a metadata marker, and a body still
+  above ``REQUEST_LOG_MAX_BODY_BYTES`` is stored as a truncation marker
+  instead.
 """
 
 from fastapi import Request, Response
@@ -44,7 +52,12 @@ from kugel_common.models.documents.terminal_info_document import TerminalInfoDoc
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.config.settings import settings
 from kugel_common.utils.misc import get_app_time_str
-from kugel_common.utils.log_utils import mask_api_key, parse_log_strip_fields, sanitize_log_body
+from kugel_common.utils.log_utils import (
+    mask_api_key,
+    mask_sensitive_data,
+    parse_log_strip_fields,
+    sanitize_log_body,
+)
 from kugel_common.middleware.request_log_buffer import get_request_log_buffer
 
 logger = getLogger(__name__)
@@ -368,7 +381,9 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
             )
             terminal_info = None
 
-    logger.debug(f"terminal_info: {terminal_info}")
+    # A TerminalInfoDocument carries its `api_key`, and its staff carries a
+    # plaintext `pin` - printing the document prints both (issue #211).
+    logger.debug(f"terminal_info: {mask_sensitive_data(terminal_info.model_dump()) if terminal_info else None}")
     return terminal_info
 
 
@@ -437,6 +452,32 @@ async def _get_current_user(request: Request) -> dict:
     return user_dict
 
 
+def _sizing_bytes(raw: bytes, masked, parsed):
+    """The body as received, but only while it still describes what is stored.
+
+    `sanitize_log_body` reads `raw` as a measurement - a body whose bytes are
+    within the budget needs no re-serializing to find that out. That held while
+    the only transformation was stripping, which can never grow a body. Masking
+    can: `"pin": ""` is two bytes of value and `"pin": "****"` is six, so a
+    masked body can cross a budget its raw form was inside (issue #211).
+
+    So the bytes are handed on only when masking changed nothing, which is
+    every request that carries no credential - the overwhelming majority, and
+    the ones the shortcut exists for. The comparison is a C-level walk of a
+    structure the masking pass has just built in Python, so it costs a fraction
+    of what it guards.
+
+    Args:
+        raw: The body as received
+        masked: The masked body, which is what will be stored
+        parsed: The body as parsed, before masking
+
+    Returns:
+        `raw`, or None when masking changed the body
+    """
+    return raw if masked == parsed else None
+
+
 async def _get_response_body(response):
     """
     Extract response body without consuming it
@@ -468,12 +509,18 @@ async def _parse_response_body(response_body: bytes):
         response_body: Response body as bytes
 
     Returns:
-        Parsed JSON object or None if parsing fails
+        Tuple of (masked body, body as parsed) - both None if parsing fails.
+        The unmasked form is returned only so the caller can tell whether
+        masking changed anything; it is never logged. See `_sizing_bytes`.
     """
     try:
-        return json.loads(response_body.decode())
+        # Masked for the same reason the request body is (issue #211), and the
+        # response is not the lesser half: the staff master returns the PIN it
+        # was given, so a plain GET puts it in the log.
+        parsed = json.loads(response_body.decode())
+        return mask_sensitive_data(parsed), parsed
     except Exception:
-        return None
+        return None, None
 
 
 async def _get_request_body(request: Request) -> tuple:
@@ -484,16 +531,22 @@ async def _get_request_body(request: Request) -> tuple:
         request: FastAPI request object
 
     Returns:
-        Tuple of (parsed JSON object or None if parsing fails, raw body bytes)
-        - the raw bytes let the log sanitizer skip work whose outcome they
-        already determine (see sanitize_log_body)
+        Tuple of (masked JSON object or None if parsing fails, raw body bytes
+        or None) - the raw bytes let the log sanitizer skip work whose outcome
+        they already determine (see sanitize_log_body), and are withheld when
+        they no longer describe the body (see `_sizing_bytes`)
     """
     body = b""
     try:
         body = await request.body()
-        json_body = json.loads(body)
+        # Masked here rather than at each sink: this is the one place the body
+        # is parsed, and both sinks are downstream of it - the DEBUG line just
+        # below, and the RequestLog document built by _make_request_info
+        # (issue #211).
+        parsed = json.loads(body)
+        json_body = mask_sensitive_data(parsed)
         logger.debug(f"request body: {json_body}")
-        return json_body, body
+        return json_body, _sizing_bytes(body, json_body, parsed)
     except Exception:
         logger.debug("Failed to get request body")
         return None, body
@@ -515,7 +568,7 @@ async def _make_tenant_id(terminal_info: TerminalInfoDocument, user_dict: dict) 
     tenant_id = None
     if terminal_info:
         tenant_id = terminal_info.tenant_id
-        logger.debug(f"terminal_info: {terminal_info}, tenant_id: {tenant_id}")
+        logger.debug(f"terminal_info: {mask_sensitive_data(terminal_info.model_dump())}, tenant_id: {tenant_id}")
     elif user_dict:
         tenant_id = user_dict.get("tenant_id")
         logger.debug(f"user_dict: {user_dict}, tenant_id: {tenant_id}")
@@ -583,7 +636,7 @@ async def _make_response_info(response: Response, process_time_ms: int) -> Reque
         return RequestLog.ResponseInfo(status_code=0, process_time_ms=0, body=None)
 
     response_body = await _get_response_body(response)
-    json_body = await _parse_response_body(response_body)
+    json_body, parsed = await _parse_response_body(response_body)
     return RequestLog.ResponseInfo(
         status_code=response.status_code,
         process_time_ms=process_time_ms,
@@ -591,7 +644,7 @@ async def _make_response_info(response: Response, process_time_ms: int) -> Reque
             json_body,
             strip_fields=_log_strip_fields(),
             max_bytes=_log_max_body_bytes(),
-            raw=response_body,
+            raw=_sizing_bytes(response_body, json_body, parsed),
         ),
     )
 

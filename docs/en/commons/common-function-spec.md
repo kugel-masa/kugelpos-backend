@@ -348,6 +348,73 @@ class RequestLogMiddleware:
 - **Error Handling**: Graceful handling of logging failures
 - **Privacy**: Sanitization of sensitive information
 
+#### Credential Masking (issue #211)
+
+A body reaches two sinks - the `request_log` collection and `app.log`, the
+latter through a DEBUG line with no filter in front of it - and it reaches
+them *before* FastAPI validates anything, so a request answered with a 422 is
+recorded in full just the same. `POST /register` takes a plaintext
+`password` that is hashed only afterwards, and the staff master carries `pin`
+in plain text in requests and responses alike, so without masking both sit in
+the audit collection.
+
+`mask_sensitive_data` (`utils/log_utils.py`) is applied where the body is
+parsed, which covers both sinks at once, and at every other call site that
+logs a whole document or header mapping: `security.py` (the terminal document
+carries its `api_key` and its staff's plaintext `pin`), `http_client_helper.py`,
+and the web repositories that build their own headers and log them before
+handing them to the client (`staff_master_web_repository.py`, and report's
+`terminal_info_web_repository.py` / `category_master_web_repository.py`) -
+masking the shared client alone does not cover those. Three rules:
+
+1. **Secret field names** - `pin`, `password`, `token`, `secret`, `cardNo`,
+   `pan`, `authorization`, `dapr-api-token` and the rest - are matched case-
+   and separator-insensitively, so `pin_code`, `pinCode` and `PIN_CODE` are
+   one name. Bodies are lowerCamelCase and the schemas snake_case, so both
+   spellings really do occur.
+2. **`apiKey` keeps its ends** (`abcd...5678`), matching what
+   `mask_dict_api_key` already established for troubleshooting.
+3. **Credential containers** (`credentials` / `credential`) have every value
+   beneath them masked regardless of key name, because a field whose schema
+   accepts arbitrary string keys can carry the secret under `cardN0` and no
+   name-based rule would match.
+
+The key is always kept and only the value is replaced, so the log still
+records what was supplied; a `None` stays `None`, which distinguishes "no PIN
+was sent" from "a PIN was sent" without revealing either. The same masking is
+applied to validation-error details, which otherwise echo the rejected value
+into the ERROR log and back to the caller in the 422 response.
+
+`mask_loggable` is the same masking for a value that is not parsed JSON - a
+Pydantic document, whose `repr` shows every field. Use it wherever a whole
+document or response model reaches a log line or an exception message; it
+never raises, because it runs on paths that do not get a vote on the request.
+
+One of those paths reaches further than a log. `CannotCreateException` puts
+the document it was given into its message, and the exception handlers return
+`str(exc)` to the caller in the 400's `data` - so a staff record that fails to
+be created would hand back its plaintext `pin`, and a terminal the `api_key`
+just generated for it. The masking sits in the exception rather than at each
+`raise`: there are more than twenty call sites across the services.
+
+Masking a log line is the last resort, not the first. Where a credential need
+not be in the value at all, it is removed at the source: an open/close log
+embeds a whole terminal document and is stored by three services and published
+between them, so the terminal service blanks the `api_key` and the staff `pin`
+on the copy it embeds (`_terminal_info_for_log`). What never enters cannot leak
+from any of the places that read it.
+
+None of this is checked by reading the code alone. `tests/e2e/test_credential_sentinels.py`
+plants credentials that could not be anything else, walks the system the way a
+store does - including the failure paths, which is where the last leaks were -
+and then reads back every container log and every collection looking for them.
+It assumes nothing about how a value might have been written, which is the
+point: the leak it found first was an attribute inside a multi-line call, a
+shape every text search had been blind to.
+
+Masking is about secrecy and the budget below is about size; they are separate
+functions answering separate questions, and a field can need either or both.
+
 #### Logged Body Budget (issue #155)
 
 Every body is stored twice - in the request log file and in the per-tenant

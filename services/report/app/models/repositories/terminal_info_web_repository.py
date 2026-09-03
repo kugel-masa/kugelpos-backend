@@ -4,6 +4,7 @@ from fastapi import Depends
 from kugel_common.exceptions import RepositoryException, NotFoundException
 from kugel_common.utils.http_client_helper import get_service_client
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.log_utils import mask_sensitive_data
 from app.config.settings import settings
 
 from logging import getLogger
@@ -64,7 +65,9 @@ class TerminalInfoWebRepository:
                 headers["Authorization"] = f"Bearer {self.token}"
 
             endpoint = "/terminals"
-            logger.debug(f"endpoint: {endpoint}, params: {params}, headers: {headers}")
+            # `headers` carries either the api_key or a bearer token, and
+            # printing the mapping prints the credential (issue #211).
+            logger.debug(f"endpoint: {endpoint}, params: {params}, headers: {mask_sensitive_data(headers)}")
 
             try:
                 response_data = await client.get(endpoint, params=params, headers=headers)
@@ -84,7 +87,9 @@ class TerminalInfoWebRepository:
                         message=message, collection_name="terminal web", logger=logger, original_exception=e
                     )
 
-            logger.debug(f"response: {response_data}")
+            # A terminal comes back with its `api_key` and its staff's
+            # plaintext `pin` (issue #211).
+            logger.debug(f"response: {mask_sensitive_data(response_data)}")
             return [TerminalInfoDocument(**terminal) for terminal in response_data.get("data")]
 
     async def get_terminal_info_async(self, terminal_no: str) -> TerminalInfoDocument:
@@ -134,6 +139,8 @@ class TerminalInfoWebRepository:
                         message=message, collection_name="terminal web", logger=logger, original_exception=e
                     )
 
-            logger.debug(f"response: {response_data}")
+            # A terminal comes back with its `api_key` and its staff's
+            # plaintext `pin` (issue #211).
+            logger.debug(f"response: {mask_sensitive_data(response_data)}")
 
             return TerminalInfoDocument(**response_data.get("data"))

@@ -1,6 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
-from kugel_common.utils.log_utils import mask_api_key
+from kugel_common.utils.log_utils import mask_api_key, mask_loggable
 from app.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.documents.tenant_info_document import TenantInfoDocument, StoreInfo
 from app.models.documents.open_close_log import OpenCloseLog
@@ -18,7 +18,9 @@ class SchemasTransformer:
     def transform_terminal(
         self, terminal_info: TerminalInfoDocument, include_api_key: bool = False
     ) -> BaseTerminal:
-        logger.debug(f"TerminalInfoDocument: {terminal_info}")
+        # The document carries its own `api_key` and, one level down, the
+        # staff's plaintext `pin` (issue #211).
+        logger.debug(f"TerminalInfoDocument: {mask_loggable(terminal_info)}")
 
         return_terminal = BaseTerminal(
             terminal_id=terminal_info.terminal_id,
@@ -46,7 +48,9 @@ class SchemasTransformer:
                 staff_id=terminal_info.staff.id, staff_name=terminal_info.staff.name, staff_pin=terminal_info.staff.pin
             )
 
-        logger.debug(f"return_terminal: {return_terminal}")
+        # The response model carries `api_key` and the staff's `staff_pin`,
+        # so masking the source document alone was not enough (issue #211).
+        logger.debug(f"return_terminal: {mask_loggable(return_terminal)}")
         return return_terminal
 
     # transform TeanantInfoDocument to Teanant
@@ -95,7 +99,7 @@ class SchemasTransformer:
 
     # transform OpenCloseLog to BaseTerminalOpenResponse
     def transform_open_log(self, open_close_log: OpenCloseLog) -> BaseTerminalOpenResponse:
-        logger.debug(f"OpenCloseLog: {open_close_log}")
+        logger.debug(f"OpenCloseLog: {mask_loggable(open_close_log)}")
 
         return BaseTerminalOpenResponse(
             terminal_id=open_close_log.terminal_info.terminal_id,
@@ -110,7 +114,7 @@ class SchemasTransformer:
 
     # tranform OpenCloseLog to BaseTerminalCloseResponseo
     def transform_close_log(self, open_close_log: OpenCloseLog) -> BaseTerminalCloseResponse:
-        logger.debug(f"OpenCloseLog: {open_close_log}")
+        logger.debug(f"OpenCloseLog: {mask_loggable(open_close_log)}")
 
         return BaseTerminalCloseResponse(
             terminal_id=open_close_log.terminal_info.terminal_id,

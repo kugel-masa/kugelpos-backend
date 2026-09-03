@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import logging
 
 from kugel_common.utils.misc import get_app_time_str
+from kugel_common.utils.log_utils import mask_loggable
 
 from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
@@ -218,7 +219,12 @@ class SalesReportMaker(IReportPlugin):
             return_doc.receipt_text = None
             return_doc.journal_text = None
 
-        logger.info(f"Sales report document: {return_doc}")
+        # `SalesReportDocument.staff` is a whole StaffMasterDocument, and its
+        # `pin` is plain text. Every maker sets it to None today, so this
+        # changes nothing now - it is here so that filling the field in (the
+        # HACK comment above says someone means to) does not silently put a
+        # pin into the log, the report database and the API response at once.
+        logger.info(f"Sales report document: {mask_loggable(return_doc)}")
         return return_doc
 
     def _summarize_cash_in_out_logs(self, results: list[CashInOutLog]) -> dict[str, Any]:

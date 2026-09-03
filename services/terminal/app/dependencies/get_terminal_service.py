@@ -12,6 +12,7 @@ from logging import getLogger
 from typing import Optional
 
 from kugel_common.database import database as db_helper
+from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.security import (
     get_tenant_id_with_security,
     get_tenant_id_with_security_by_query_optional,
@@ -76,8 +77,14 @@ async def get_terminal_service_async(
 
     staff_master_repo = StaffMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
     store_info_repo = StoreInfoWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
+    # The repository holds the whole terminal document - `api_key`, and the
+    # staff's plaintext `pin` one level down (issue #211). Found by planting
+    # sentinel credentials and running the stack: every static sweep had
+    # missed it, because it is an ATTRIBUTE inside a call that spans lines,
+    # and they all looked for a bare `{name}` on one line.
     logger.debug(
-        f"staff_master_repo.tenant_id: {staff_master_repo.tenant_id}, staff_master_repo.terminal_info: {staff_master_repo.terminal_info}"
+        f"staff_master_repo.tenant_id: {staff_master_repo.tenant_id}, "
+        f"staff_master_repo.terminal_info: {mask_loggable(staff_master_repo.terminal_info)}"
     )
     cash_in_out_log_repo = CashInOutLogRepository(db=db, tenant_id=tenant_id)
     open_close_log_repo = OpenCloseLogRepository(db=db, tenant_id=tenant_id)
