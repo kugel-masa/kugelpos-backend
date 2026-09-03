@@ -911,3 +911,154 @@ class TestOneDocumentDoesNotTakeTheBatch:
 
         # Two target databases, one attempt each - not one attempt per document.
         assert len(calls) == 2, f"a failure to reach the database was retried per document: {len(calls)} attempts"
+
+
+class TestTheLimitsOfTheCoercion:
+    """`_bson_safe` stops descending at a depth, and says so. Test what that means."""
+
+    @staticmethod
+    def _nest(depth, leaf):
+        top = current = {}
+        for _ in range(depth):
+            current["a"] = {}
+            current = current["a"]
+        current.update(leaf)
+        return top
+
+    def test_a_hostile_depth_does_not_exhaust_the_stack(self):
+        # The cap is there so that a body nested deeper than the interpreter
+        # can recurse does not turn a flush into a RecursionError. `json.loads`
+        # accepts bodies far deeper than this.
+        assert buffer_module._bson_safe(self._nest(3000, {"quantity": 1})) is not None
+
+    def test_a_wide_int_within_the_cap_is_coerced(self):
+        barcode = 12345678901234567890123456
+        safe = buffer_module._bson_safe(self._nest(30, {"barcode": barcode}))
+
+        current = safe
+        for _ in range(30):
+            current = current["a"]
+        assert current["barcode"] == str(barcode)
+
+    def test_a_wide_int_past_the_cap_is_left_for_the_rewrite(self):
+        # The honest limit: past the cap the value is returned as it is, so it
+        # is still unencodable. That is not an oversight - it is why
+        # `_rewrite_individually` exists, and why the cap's comment names it as
+        # the backstop. This pins the boundary so a future change to either
+        # side has to face the other.
+        barcode = 12345678901234567890123456
+        safe = buffer_module._bson_safe(self._nest(40, {"barcode": barcode}))
+
+        current = safe
+        for _ in range(40):
+            current = current["a"]
+        assert current["barcode"] == barcode, "past the cap the value is untouched, by design"
+
+    def test_the_boundary_is_where_it_says_it_is(self):
+        barcode = 2**64
+        deep_enough = buffer_module._bson_safe(self._nest(31, {"n": barcode}))
+        too_deep = buffer_module._bson_safe(self._nest(32, {"n": barcode}))
+
+        current = deep_enough
+        for _ in range(31):
+            current = current["a"]
+        assert current["n"] == str(barcode), "the last level inside the cap is still coerced"
+
+        current = too_deep
+        for _ in range(32):
+            current = current["a"]
+        assert current["n"] == barcode, "the first level past the cap is not"
+
+
+class TestCancellationDuringTheRewrite:
+    """The rewrite runs one write at a time, so there is more of it to cancel."""
+
+    async def test_a_cancelled_rewrite_keeps_every_entry(self, monkeypatch):
+        # A size-triggered flush runs on the request task, so a client
+        # disconnect cancels it - and the rewrite is the slowest part of that
+        # path, which makes it the likeliest place to be cancelled. The batch
+        # belongs to every request in the window, not to the one that left.
+        written = []
+
+        class _CancelledMidway:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                raise OverflowError("MongoDB can only handle up to 8-byte ints")
+
+            async def insert_one(self, doc):
+                await asyncio.sleep(0.01)
+                if len(written) >= 2:
+                    raise asyncio.CancelledError()
+                written.append(doc["request_info"]["url"])
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _CancelledMidway()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=5, flush_interval=60.0)
+
+        async def fill():
+            for i in range(5):
+                await buffer.add(_log(url=f"/{i}"))
+
+        task = asyncio.create_task(fill())
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # The rewrite really was under way when the cancellation landed - two
+        # documents had already been written one at a time. Without this the
+        # test would still pass if the cancellation arrived before the rewrite
+        # started, which is a different path and one already covered.
+        assert len(written) == 2, f"the rewrite was not reached: wrote {written}"
+
+        # CancelledError is a BaseException, so it passes through the
+        # per-document `except Exception` untouched and reaches the handler in
+        # _write_batches, which keeps what was in flight.
+        assert buffer._pending_total() > 0, "a cancelled rewrite dropped the batch"
+
+    async def test_what_the_cancelled_rewrite_kept_is_written_next_time(self, monkeypatch):
+        state = {"cancel": True, "written": []}
+
+        class _CancelsOnce:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                if state["cancel"]:
+                    raise OverflowError("MongoDB can only handle up to 8-byte ints")
+                state["written"].extend(d["request_info"]["url"] for d in docs)
+
+            async def insert_one(self, doc):
+                await asyncio.sleep(0.01)
+                raise asyncio.CancelledError()
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _CancelsOnce()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        async def fill():
+            await buffer.add(_log(url="/cancelled-1"))
+            await buffer.add(_log(url="/cancelled-2"))
+
+        task = asyncio.create_task(fill())
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # The backend recovers; the next flush must carry the earlier entries.
+        state["cancel"] = False
+        await buffer.add(_log(url="/later-1"))
+        await buffer.add(_log(url="/later-2"))
+
+        assert "/cancelled-1" in state["written"], (
+            f"the cancelled rewrite lost its entries: {sorted(set(state['written']))}"
+        )
