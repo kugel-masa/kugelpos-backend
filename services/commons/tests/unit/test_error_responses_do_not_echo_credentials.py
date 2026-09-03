@@ -115,3 +115,24 @@ def test_a_terminal_that_could_not_be_created_keeps_its_api_key():
 
     assert API_KEY not in str(exc)
     assert "T-1" in str(exc)
+
+
+def test_the_shared_unexpected_error_builder_does_not_echo_the_document():
+    """The 500 path that arrived in main after this work was cut (#202 / #204).
+
+    `build_unexpected_error_response` is what both the generic handler and the
+    new unhandled-error middleware answer with, and it puts `str(exc)` into
+    `data` like the handlers it replaced. It is covered because it is the same
+    shape: whatever an escaping exception carries in its message goes back to
+    the caller.
+    """
+    from kugel_common.exceptions.exception_handlers import build_unexpected_error_response
+
+    exc = CannotCreateException(
+        "inserted_id is None", "master_staff", StaffMasterDocument(id="S001", name="Ann", pin=PIN)
+    )
+
+    response = build_unexpected_error_response(exc, operation="test")
+
+    assert PIN not in str(response.model_dump()), "the document came back through the 500 path"
+    assert "master_staff" in str(response.model_dump())
