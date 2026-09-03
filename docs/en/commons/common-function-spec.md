@@ -404,6 +404,14 @@ between them, so the terminal service blanks the `api_key` and the staff `pin`
 on the copy it embeds (`_terminal_info_for_log`). What never enters cannot leak
 from any of the places that read it.
 
+None of this is checked by reading the code alone. `tests/e2e/test_credential_sentinels.py`
+plants credentials that could not be anything else, walks the system the way a
+store does - including the failure paths, which is where the last leaks were -
+and then reads back every container log and every collection looking for them.
+It assumes nothing about how a value might have been written, which is the
+point: the leak it found first was an attribute inside a multi-line call, a
+shape every text search had been blind to.
+
 Masking is about secrecy and the budget below is about size; they are separate
 functions answering separate questions, and a field can need either or both.
 
