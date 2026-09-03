@@ -42,14 +42,19 @@ stating because neither is obvious from the code alone:
   values known to cause it are made encodable on the way in (``_bson_safe``),
   and a batch refused as a batch is offered again one document at a time
   (``_rewrite_individually``), which loses only what is genuinely unwritable
-  and names it.
+  and names it. That rewrite applies only while the failure distinguishes
+  between documents (``_is_document_specific``): a backend that has gone away,
+  or a server refusing the command itself, would otherwise be rediscovered
+  once per remaining entry - and at the configured 5 s server-selection
+  timeout, a batch of 100 is eight minutes of a request waiting on its own
+  audit record.
 """
 
 import asyncio
 from logging import getLogger
 from typing import Any, List
 
-from pymongo.errors import BulkWriteError, ConnectionFailure, DuplicateKeyError
+from pymongo.errors import BulkWriteError, ConnectionFailure, DuplicateKeyError, OperationFailure, WriteError
 
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.request_log_document import RequestLog
@@ -142,6 +147,35 @@ def _is_transient(error: BaseException) -> bool:
         seen.add(id(error))
         error = error.__cause__
     return False
+
+
+def _is_document_specific(error: BaseException) -> bool:
+    """Whether a failed write is about the document it was given.
+
+    The per-document rewrite below is worth doing only for failures that
+    distinguish between documents. Two do not, and both have to stop it rather
+    than be repeated once per remaining entry:
+
+    - **A connection failure.** Every remaining write would spend a server
+      selection timeout finding that out - at the configured 5 s, a batch of
+      100 is over eight minutes. A size-triggered flush runs on the request
+      task that filled the buffer, so that is eight minutes of a request
+      waiting on the audit log it was only supposed to leave a note in. See
+      `_write` for why this module refuses to be that.
+    - **An `OperationFailure` that is not a `WriteError`.** The server refused
+      the command rather than the document - an authorization failure, a
+      collection option it will not accept - and it will refuse each of the
+      others identically. `WriteError` (and `DuplicateKeyError` under it) is
+      excluded because those ARE about one document.
+
+    Everything else counts as this document's own problem, which is the point:
+    the loss is bounded to the entry that caused it, whatever the cause.
+    """
+    if _is_transient(error):
+        return False
+    if isinstance(error, OperationFailure) and not isinstance(error, WriteError):
+        return False
+    return True
 
 
 class RequestLogBuffer:
@@ -383,25 +417,54 @@ class RequestLogBuffer:
         lost: list[tuple[dict, BaseException]] = []
         retry: list[dict] = []
         written = 0
-        for doc in docs:
+        stopped: tuple[int, BaseException] | None = None
+
+        for index, doc in enumerate(docs):
             try:
                 await collection.insert_one(doc)
-                written += 1
             except DuplicateKeyError:
                 # `insert_many` stamps `_id` in place, so a document the server
                 # did take before the batch failed comes back as a duplicate.
                 # It is in the database; that is the outcome we wanted.
                 written += 1
             except Exception as e:
-                if _is_transient(e):
-                    retry.append(doc)
-                else:
-                    lost.append((doc, e))
+                if not _is_document_specific(e):
+                    # Not this document's fault, so trying the rest would only
+                    # find that out again once each - see _is_document_specific
+                    # for what that costs.
+                    stopped = (index, e)
+                    break
+                lost.append((doc, e))
+            else:
+                written += 1
+
+        abandoned = 0
+        if stopped is not None:
+            index, error = stopped
+            remaining = docs[index:]
+            if _is_transient(error):
+                # Kept rather than lost: a restart or a failover ends, and the
+                # next flush carries them.
+                retry = remaining
+                logger.error(
+                    f"Request log backend became unreachable {index} documents into the rewrite "
+                    f"for {db_name}: {error}. Kept {len(remaining)} documents for the next flush.",
+                    exc_info=True,
+                )
+            else:
+                abandoned = len(remaining)
+                logger.error(
+                    f"Request log write to {db_name} was refused for the command rather than for a "
+                    f"document ({error}), so the remaining {abandoned} could not be rewritten "
+                    "individually and are lost.",
+                    exc_info=True,
+                )
+
         for doc, error in lost:
             logger.error(f"Request log entry cannot be written to {db_name} and is lost: {_describe(doc)}: {error}")
         logger.info(
             f"Request log rewrite for {db_name}: {written} written, "
-            f"{len(retry)} kept for the next flush, {len(lost)} lost."
+            f"{len(retry)} kept for the next flush, {len(lost) + abandoned} lost."
         )
         return [(db_name, retry)] if retry else []
 
@@ -443,7 +506,7 @@ class RequestLogBuffer:
                             f"Kept {len(docs)} documents for the next flush.",
                             exc_info=True,
                         )
-                    elif collection is not None and len(docs) > 1:
+                    elif collection is not None and len(docs) > 1 and _is_document_specific(e):
                         # The batch was refused as a batch, with no per-document
                         # answer to go on - so the documents that were fine are
                         # offered again one at a time, and only what actually
@@ -451,9 +514,11 @@ class RequestLogBuffer:
                         failed.extend(await self._rewrite_individually(db_name, collection, docs, e))
                     else:
                         # Either there was no collection to write to (the failure
-                        # was in reaching the database, and repeating it per
-                        # document would only repeat it 100 times), or the batch
-                        # was one document and has already had its chance.
+                        # was in reaching the database), or the batch was one
+                        # document and has already had its chance, or the failure
+                        # was not about any one document - see
+                        # _is_document_specific. In each case repeating the write
+                        # per document would only repeat it up to 100 times.
                         logger.error(
                             f"Request log write to {db_name} failed for {len(docs)} documents "
                             f"and cannot be repeated: {e}. Those entries are lost.",

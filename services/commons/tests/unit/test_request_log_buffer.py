@@ -779,6 +779,8 @@ class TestOneDocumentDoesNotTakeTheBatch:
         # reason a retry can fix is still owed the next flush.
         from pymongo.errors import ConnectionFailure
 
+        attempts = []
+
         class _DiesMidway:
             async def insert_many(self, docs, ordered=True):
                 await asyncio.sleep(0.01)
@@ -786,6 +788,7 @@ class TestOneDocumentDoesNotTakeTheBatch:
 
             async def insert_one(self, doc):
                 await asyncio.sleep(0.01)
+                attempts.append(doc["request_info"]["url"])
                 raise ConnectionFailure("backend went away")
 
         class _Db:
@@ -797,12 +800,95 @@ class TestOneDocumentDoesNotTakeTheBatch:
             return _Db()
 
         monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
-        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+        buffer = RequestLogBuffer(max_size=4, flush_interval=60.0)
 
-        await buffer.add(_log(url="/a"))
-        await buffer.add(_log(url="/b"))
+        for url in ("/a", "/b", "/c", "/d"):
+            await buffer.add(_log(url=url))
 
-        assert buffer._pending_total() > 0, "an outage during the rewrite lost the entries"
+        # Every entry is kept, including the one whose own write failed: it was
+        # the backend that went away, not the document.
+        assert buffer._pending_total() == 8, (  # 4 entries x 2 target databases
+            f"an outage during the rewrite lost entries: {buffer._pending_total()} of 8 kept"
+        )
+        # And the outage was believed the first time. Each further attempt would
+        # spend a server-selection timeout (5 s configured) discovering the same
+        # thing, on the request task that filled the buffer.
+        assert len(attempts) == 2, (  # one per target database
+            f"the rewrite kept trying an unreachable backend: {len(attempts)} attempts"
+        )
+
+    async def test_a_refusal_of_the_command_is_not_repeated_per_document(self, monkeypatch, caplog):
+        # An authorization failure is not about any one document - the server
+        # will refuse each of them identically. Expanding it into one write per
+        # entry buys nothing and costs a round trip and an ERROR line each.
+        from pymongo.errors import OperationFailure
+
+        attempts = []
+
+        class _RefusesTheCommand:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                raise OperationFailure("not authorized on db to execute command insert")
+
+            async def insert_one(self, doc):  # pragma: no cover - must not be reached
+                await asyncio.sleep(0.01)
+                attempts.append(doc)
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _RefusesTheCommand()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=50, flush_interval=60.0)
+
+        with caplog.at_level("ERROR"):
+            for i in range(50):
+                await buffer.add(_log(url=f"/{i}"))
+
+        assert attempts == [], f"a command-level refusal was retried per document: {len(attempts)} times"
+        assert len(caplog.records) == 2, (  # one per target database
+            f"a command-level refusal produced {len(caplog.records)} error lines, expected one per database"
+        )
+
+    async def test_a_refusal_of_one_document_by_the_server_is_still_rewritten(self, monkeypatch):
+        # The counterpart: a WriteError IS about the document it names, so the
+        # rewrite still applies. Issue #210 asks for the loss to be bounded to
+        # the offending entry "whatever the cause", not only for the encoding
+        # failure that found it.
+        from pymongo.errors import WriteError
+
+        sink = []
+
+        class _RefusesOneDocument:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                raise WriteError("document failed validation")
+
+            async def insert_one(self, doc):
+                await asyncio.sleep(0.01)
+                if doc["request_info"]["url"] == "/bad":
+                    raise WriteError("document failed validation")
+                sink.append(doc)
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _RefusesOneDocument()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=3, flush_interval=60.0)
+
+        for url in ("/a", "/bad", "/b"):
+            await buffer.add(_log(url=url))
+
+        assert sorted({d["request_info"]["url"] for d in sink}) == ["/a", "/b"]
 
     async def test_an_unreachable_database_is_not_rewritten_document_by_document(self, monkeypatch):
         # The rewrite exists for a batch the driver refused; when there was no
