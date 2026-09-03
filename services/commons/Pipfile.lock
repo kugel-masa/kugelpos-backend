@@ -1217,12 +1217,12 @@
         },
         "slack-sdk": {
             "hashes": [
-                "sha256:0553152e46c4259eb69f7464cdadc35ba4802ca10f9f5a849c92cf03d6c2ba07",
-                "sha256:4b6557c65577fc172f685af218b811f9f3b4909e24cddd839ada09565f10c585"
+                "sha256:3d0b5997acafacece907299fb387852233c3c0635762de1c2343ad6ebff2f911",
+                "sha256:e872acaf4e76ef22e9544af390b6e3896ce7198ad6bb26b3ce2630f3422f2ca3"
             ],
             "index": "pypi",
             "markers": "python_version >= '3.7'",
-            "version": "==3.43.0"
+            "version": "==3.44.0"
         },
         "starlette": {
             "hashes": [
