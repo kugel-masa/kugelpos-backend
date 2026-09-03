@@ -2,6 +2,7 @@
 from fastapi import APIRouter, status, Depends, Path, Request, HTTPException
 from pydantic import BaseModel
 from logging import getLogger
+import json
 import aiohttp
 import inspect
 from typing import Dict, Any
@@ -11,6 +12,7 @@ from kugel_common.exceptions import DuplicateKeyException
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
 from kugel_common.status_codes import StatusCodes
+from kugel_common.utils.log_utils import mask_loggable, mask_sensitive_data
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from kugel_common.utils.http_client_helper import get_service_client
 from kugel_common.utils.service_auth import create_service_token
@@ -116,7 +118,8 @@ async def get_log_service_from_request(request: Request) -> LogService:
 
     tenant_id = req_json.get("data", {}).get("tenant_id", "")
     if not tenant_id:
-        logger.error(f"tenant_id is required. request: {req_json}")
+        # The pub/sub envelope carries whatever the producer sent (issue #211).
+        logger.error(f"tenant_id is required. request: {mask_sensitive_data(req_json)}")
         raise HTTPException(status_code=400, detail="tenant_id is required in request data")
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
     return LogService(
@@ -153,7 +156,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         # Check if the message contains the required fields
         event_id = message.get("data", {}).get("event_id")
         if not event_id:
-            logger.error(f"event_id is missing in the message data. message: {message}")
+            logger.error(f"event_id is missing in the message data. message: {mask_sensitive_data(message)}")
             return {
                 "status": "DROP",
                 "message": "event_id is required",
@@ -161,7 +164,11 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
             }, status.HTTP_400_BAD_REQUEST
 
         log_data = log_model(**message["data"])
-        log_info = log_data.model_dump_json()  # Check if message already processed (idempotency check) using event_id
+        # Masked before serializing: `model_dump_json()` returns a string, and
+        # masking a string does nothing. An open/close log carries a whole
+        # terminal document (issue #211).
+        log_info = json.dumps(mask_loggable(log_data), default=str, ensure_ascii=False)
+        # Check if message already processed (idempotency check) using event_id
         result, error_msg = await state_store_manager.get_state(event_id)
         if error_msg:
             logger.error(
@@ -175,7 +182,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
             return {"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"}, status.HTTP_200_OK
 
         # Save log data to the database
-        logger.debug(f"Received {log_type} new message: {message}")
+        logger.debug(f"Received {log_type} new message: {mask_sensitive_data(message)}")
         await receive_method(log_data)
         logger.info(f"{log_type} received successfully. event_id: {event_id}, {log_type}: {log_info}")
 
@@ -215,7 +222,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
             "operation": f"{inspect.currentframe().f_code.co_name}",
         }, status.HTTP_200_OK
     except Exception as e:
-        err_message = f"Error processing {log_type}. message: {message}, Error: {e}"
+        err_message = f"Error processing {log_type}. message: {mask_sensitive_data(message)}, Error: {e}"
         logger.error(err_message)
         await _notify_pubsub_status(log_type=log_type, data_dict=message["data"], status="failed", message=err_message)
         return {
