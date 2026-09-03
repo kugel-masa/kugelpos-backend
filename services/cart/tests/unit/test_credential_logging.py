@@ -7,9 +7,17 @@ fetches from elsewhere and then prints whole. A staff record carries a
 plaintext `pin`; a terminal document carries its `api_key` and that same `pin`
 one level down.
 
-Each check reads the source rather than the log, because the defect is the
-shape of the call - an object interpolated raw - and that is what must not
-come back.
+Both checks read the source rather than the log, and that is a compromise
+rather than a preference. Reaching either line means building a cart service:
+a dependency that resolves a terminal over HTTP and then stands up a dozen
+repositories against a database. The equivalent checks in terminal and
+master-data ARE behavioural, because those call sites can be reached with a
+document and nothing else; these two are covered for real by the end-to-end
+sentinel scan, which walks both on every run.
+
+A source check is weaker than it looks: it passes on a call that masks one
+value and leaves another beside it, and it fails on a rename that changed
+nothing. Read it as a reminder, not as proof.
 """
 
 import inspect
