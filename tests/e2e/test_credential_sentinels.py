@@ -46,11 +46,13 @@ PLANTED = {
     "updated staff pin": "PIN-SENTINEL-updated-2e6d",
 }
 
-# Collections that hold a credential by design rather than by accident: the
-# terminal master IS where the api_key lives (security.py compares against it)
-# and the staff master IS where the pin lives. Finding them there is not a
-# leak; finding them anywhere else is.
-CREDENTIAL_OF_RECORD = ("info_terminal", "master_staff", "info_tenant", "info_store")
+# The only two collections that hold a credential by design rather than by
+# accident: the terminal master IS where the api_key lives (`security.py`
+# compares against it) and the staff master IS where the pin lives. Finding
+# them there is not a leak; finding them anywhere else is - including in the
+# tenant and store masters, which carry no credential and so must stay in
+# scope rather than be waved through.
+CREDENTIAL_OF_RECORD = ("info_terminal", "master_staff")
 
 
 def _client(url_env: str) -> httpx.Client:
@@ -203,12 +205,39 @@ def _scan_container_logs(sentinels: dict) -> list:
     return hits
 
 
-def _scan_mongo(sentinels: dict) -> list:
-    """Look through every collection, except the ones that hold the value by design."""
+def _mongo():
     pymongo = pytest.importorskip("pymongo", reason="pymongo is needed to scan the databases")
     uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/?directConnection=true")
-    client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=10000)
+    return pymongo.MongoClient(uri, serverSelectionTimeoutMS=10000)
 
+
+def _await_the_fanout(tenant_id: str, wait_for) -> None:
+    """Wait until the open/close log has reached journal and report for real."""
+    client = _mongo()
+
+    def arrived():
+        return all(
+            "log_open_close" in client[f"db_{service}_{tenant_id}"].list_collection_names()
+            and client[f"db_{service}_{tenant_id}"]["log_open_close"].count_documents({}) > 0
+            for service in ("journal", "report")
+        )
+
+    wait_for(arrived, timeout=30.0, interval=0.5,
+             description="the open/close log reaching journal and report")
+
+
+def _scan_mongo(sentinels: dict, tenant_id: str) -> tuple:
+    """Look through every collection, except the ones that hold the value by design.
+
+    Newest first, because a shared collection - `db_*_commons.log_request` -
+    accumulates across every run this machine has ever done, and reading an
+    arbitrary 3000 of those can miss the ones this run just wrote.
+
+    Returns (records seen from this run, hits).
+    """
+    client = _mongo()
+
+    seen_from_this_run = 0
     hits = []
     for db_name in client.list_database_names():
         if db_name in ("admin", "config", "local"):
@@ -217,12 +246,14 @@ def _scan_mongo(sentinels: dict) -> list:
         for coll_name in db.list_collection_names():
             if coll_name in CREDENTIAL_OF_RECORD:
                 continue
-            blob = json.dumps(list(db[coll_name].find({}, limit=3000)),
-                              default=str, ensure_ascii=False)
+            docs = list(db[coll_name].find({}, limit=3000).sort("_id", -1))
+            blob = json.dumps(docs, default=str, ensure_ascii=False)
+            if tenant_id in db_name or tenant_id in blob:
+                seen_from_this_run += len(docs)
             for label, value in sentinels.items():
                 if value and value in blob:
                     hits.append(f"{db_name}.{coll_name}: {label}")
-    return hits
+    return seen_from_this_run, hits
 
 
 def test_no_credential_is_readable_in_anything_written_down(wait_for):
@@ -233,11 +264,18 @@ def test_no_credential_is_readable_in_anything_written_down(wait_for):
     sentinels.update(issued)
     assert "api key" in sentinels, "precondition: the terminal never issued an api_key"
 
-    # The open/close log reaches journal and report through Dapr; give the
-    # fan-out a moment or the scan reads a database that has not been written
-    # to yet and passes for the wrong reason.
-    wait_for(lambda: True, timeout=3.0, interval=3.0, description="pub/sub fan-out")
+    # The open/close log reaches journal and report through Dapr, and it is the
+    # document that embeds a whole terminal - so scanning before it lands is
+    # how this test passes for the wrong reason. It has already happened once:
+    # an earlier run reported journal and report clean while their collections
+    # held nothing at all, because the Dapr sidecars were not up.
+    _await_the_fanout(tenant_id, wait_for)
 
-    hits = _scan_container_logs(sentinels) + _scan_mongo(sentinels)
+    scanned, hits = _scan_mongo(sentinels, tenant_id)
+    hits += _scan_container_logs(sentinels)
+
+    # A scan that looked at nothing proves nothing. This run's own records must
+    # be among what was read, or the result below is an accident.
+    assert scanned > 0, "the scan did not see a single record from this run"
 
     assert hits == [], "a credential is readable in:\n  " + "\n  ".join(hits)
