@@ -35,13 +35,21 @@ stating because neither is obvious from the code alone:
 - **Only retry what a retry can fix.** An unreachable backend is transient and
   the batch is kept; documents the server actively refused are not, and
   repeating them just repeats the refusal.
+- **One document must not take the batch with it.** Issue #210: a number too
+  wide for BSON fails to encode client-side, ahead of the wire, so
+  ``ordered=False`` spares nothing and a single request discards up to
+  ``max_size`` unrelated audit records. Two things keep that bounded - the
+  values known to cause it are made encodable on the way in (``_bson_safe``),
+  and a batch refused as a batch is offered again one document at a time
+  (``_rewrite_individually``), which loses only what is genuinely unwritable
+  and names it.
 """
 
 import asyncio
 from logging import getLogger
-from typing import List
+from typing import Any, List
 
-from pymongo.errors import BulkWriteError, ConnectionFailure
+from pymongo.errors import BulkWriteError, ConnectionFailure, DuplicateKeyError
 
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.request_log_document import RequestLog
@@ -54,6 +62,62 @@ logger = getLogger(__name__)
 # window of the most recent documents: during an ongoing outage those are the
 # ones an operator is looking for, and no bound can keep the trail complete.
 MAX_PENDING_DOCS = 1000
+
+# BSON stores an integer in eight bytes; a Python int has no width at all. So a
+# request body carrying a 26-digit number - a barcode, in the case that found
+# this - parses into a perfectly ordinary `int` and then cannot be encoded
+# (issue #210). The encoding happens client-side, ahead of the wire, which is
+# what makes it a batch-level failure: `ordered=False` has nothing to order
+# because no document reached the server at all.
+_BSON_INT_MIN = -(2**63)
+_BSON_INT_MAX = 2**63 - 1
+
+# Nesting depth past which coercion stops descending, on the same reasoning as
+# the logging middleware's own cap: a body deeper than this is not something the
+# audit path needs to walk, and the cap keeps a hostile payload from turning the
+# flush into a RecursionError. What the cap leaves unencodable is not lost -
+# `_rewrite_individually` is the backstop for it, and for every other reason a
+# document may refuse to encode.
+_MAX_COERCE_DEPTH = 32
+
+
+def _bson_safe(value: Any, depth: int = 0) -> Any:
+    """Return `value` with every integer BSON cannot encode replaced by its text.
+
+    A request log is an audit record - nothing does arithmetic on it - so a
+    26-digit barcode is just as readable as the string "12345678901234567890123456",
+    and keeping it that way is what lets the other 99 documents in the batch be
+    written (issue #210).
+
+    Args:
+        value: A document, or any value within one
+        depth: Current nesting depth
+
+    Returns:
+        A copy with out-of-range integers rendered as decimal strings
+    """
+    # bool is a subclass of int and always encodable, so it has to be answered
+    # before the range test - otherwise True would be measured as 1.
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value if _BSON_INT_MIN <= value <= _BSON_INT_MAX else str(value)
+    if depth >= _MAX_COERCE_DEPTH:
+        return value
+    if isinstance(value, dict):
+        return {key: _bson_safe(member, depth + 1) for key, member in value.items()}
+    if isinstance(value, list):
+        return [_bson_safe(member, depth + 1) for member in value]
+    return value
+
+
+def _describe(doc: dict) -> str:
+    """Name one document well enough for an operator to find what was lost."""
+    request = doc.get("request_info") or {}
+    return (
+        f"{request.get('method', '?')} {request.get('url', '?')} "
+        f"at {request.get('accept_time', '?')} (tenant={doc.get('tenant_id')})"
+    )
 
 
 def _is_transient(error: BaseException) -> bool:
@@ -220,7 +284,10 @@ class RequestLogBuffer:
             for db_name in targets:
                 if db_name not in db_docs:
                     db_docs[db_name] = []
-                db_docs[db_name].append(log.model_dump())
+                # Coerced per target rather than once: `insert_many` stamps `_id`
+                # into the document in place, so the two copies have to stay
+                # separate objects.
+                db_docs[db_name].append(_bson_safe(log.model_dump()))
 
         return db_docs
 
@@ -286,6 +353,58 @@ class RequestLogBuffer:
             if task is not None:
                 self._inflight.discard(task)
 
+    async def _rewrite_individually(
+        self, db_name: str, collection, docs: list[dict], batch_error: BaseException
+    ) -> list[tuple[str, list[dict]]]:
+        """Offer a batch-refused set of documents again, one at a time.
+
+        The `BulkWriteError` branch can say *"the rest were written"* because
+        the server answered per document. When the driver refuses the batch
+        before the wire - a document BSON cannot encode (issue #210) - there is
+        no per-document answer, and the batch becomes all-or-nothing: one bad
+        document discards up to `max_size` unrelated audit records. Writing them
+        individually restores the distinction the bulk error already had, and
+        bounds the loss to the entries that are genuinely unwritable, naming
+        each one.
+
+        Args:
+            db_name: Target database, for the report
+            collection: The request-log collection to write to
+            docs: The documents the batch write refused
+            batch_error: Why the batch was refused, for the report
+
+        Returns:
+            `[(db_name, docs)]` for documents worth another flush, else `[]`
+        """
+        logger.warning(
+            f"Request log batch of {len(docs)} documents was refused by {db_name} as a batch "
+            f"({batch_error}); rewriting them individually so one document does not discard the rest."
+        )
+        lost: list[tuple[dict, BaseException]] = []
+        retry: list[dict] = []
+        written = 0
+        for doc in docs:
+            try:
+                await collection.insert_one(doc)
+                written += 1
+            except DuplicateKeyError:
+                # `insert_many` stamps `_id` in place, so a document the server
+                # did take before the batch failed comes back as a duplicate.
+                # It is in the database; that is the outcome we wanted.
+                written += 1
+            except Exception as e:
+                if _is_transient(e):
+                    retry.append(doc)
+                else:
+                    lost.append((doc, e))
+        for doc, error in lost:
+            logger.error(f"Request log entry cannot be written to {db_name} and is lost: {_describe(doc)}: {error}")
+        logger.info(
+            f"Request log rewrite for {db_name}: {written} written, "
+            f"{len(retry)} kept for the next flush, {len(lost)} lost."
+        )
+        return [(db_name, retry)] if retry else []
+
     async def _write_batches(self, db_docs: dict[str, list[dict]]) -> None:
         """The write itself; see _write for why it runs outside the lock."""
         items = list(db_docs.items())
@@ -296,6 +415,7 @@ class RequestLogBuffer:
                 if not docs:
                     attempted += 1
                     continue
+                collection = None
                 try:
                     database = await db_helper.get_db_async(db_name)
                     collection = database[settings.DB_COLLECTION_NAME_REQUEST_LOG]
@@ -323,7 +443,17 @@ class RequestLogBuffer:
                             f"Kept {len(docs)} documents for the next flush.",
                             exc_info=True,
                         )
+                    elif collection is not None and len(docs) > 1:
+                        # The batch was refused as a batch, with no per-document
+                        # answer to go on - so the documents that were fine are
+                        # offered again one at a time, and only what actually
+                        # fails is lost (issue #210).
+                        failed.extend(await self._rewrite_individually(db_name, collection, docs, e))
                     else:
+                        # Either there was no collection to write to (the failure
+                        # was in reaching the database, and repeating it per
+                        # document would only repeat it 100 times), or the batch
+                        # was one document and has already had its chance.
                         logger.error(
                             f"Request log write to {db_name} failed for {len(docs)} documents "
                             f"and cannot be repeated: {e}. Those entries are lost.",

@@ -42,6 +42,15 @@ class _FakeCollection:
             raise self._fail_with
         self._sink.extend(docs)
 
+    async def insert_one(self, doc):
+        # The per-document rewrite a batch-level refusal falls back to (#210).
+        # It fails the same way insert_many does, because the arming knob is
+        # about the backend rather than about one document.
+        await asyncio.sleep(0.01)
+        if self._fail_with is not None:
+            raise self._fail_with
+        self._sink.append(doc)
+
 
 class _FakeDb:
     def __init__(self, sink, fail_with=None):
@@ -646,3 +655,173 @@ class TestOverlappingFlushes:
         # Each entry goes to the commons and the tenant database, and no more.
         for url in expected:
             assert urls.count(url) == 2, f"{url} written {urls.count(url)} times, expected 2"
+
+
+class TestOneDocumentDoesNotTakeTheBatch:
+    """Issue #210.
+
+    BSON stores an integer in eight bytes and a Python int has no width, so a
+    26-digit barcode in a request body parses fine and then refuses to encode.
+    That happens client-side, ahead of the wire, so `ordered=False` has nothing
+    to order: without a fix, one request discards every other audit record in
+    the batch, and the only trace is an ERROR line naming a count.
+    """
+
+    async def test_a_number_too_wide_for_bson_is_written_as_text(self, written):
+        # The value known to cause it, made encodable on the way in. A request
+        # log is an audit record - nothing does arithmetic on it - so the
+        # barcode survives as its own digits, just typed as a string.
+        barcode = 12345678901234567890123456
+        buffer = RequestLogBuffer(max_size=1, flush_interval=60.0)
+
+        log = _log()
+        log.request_info.body = {"barcode": barcode, "lines": [{"itemCode": barcode}]}
+        await buffer.add(log)
+
+        stored = written[0]["request_info"]["body"]
+        assert stored["barcode"] == str(barcode), f"a wide int reached the driver: {stored['barcode']!r}"
+        assert stored["lines"][0]["itemCode"] == str(barcode), "nested values were not coerced"
+
+    async def test_ordinary_values_are_left_alone(self, written):
+        # The coercion must not rewrite the log it is protecting. In particular
+        # bool is a subclass of int, so a True measured as 1 would come back as
+        # the string "True" and change what the audit trail says.
+        buffer = RequestLogBuffer(max_size=1, flush_interval=60.0)
+
+        log = _log()
+        log.request_info.body = {"qty": 3, "unitPrice": 1.5, "isVoid": True, "code": "0001", "note": None}
+        await buffer.add(log)
+
+        assert written[0]["request_info"]["body"] == {
+            "qty": 3,
+            "unitPrice": 1.5,
+            "isVoid": True,
+            "code": "0001",
+            "note": None,
+        }
+
+    async def test_a_batch_refused_as_a_batch_loses_only_the_bad_document(self, monkeypatch, caplog):
+        # The class of the problem rather than the case: whatever makes one
+        # document unencodable, the other 99 were fine and must still be written.
+        sink = []
+
+        class _RefusesTheBatch:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                raise OverflowError("MongoDB can only handle up to 8-byte ints")
+
+            async def insert_one(self, doc):
+                await asyncio.sleep(0.01)
+                if doc["request_info"]["url"] == "/bad":
+                    raise OverflowError("MongoDB can only handle up to 8-byte ints")
+                sink.append(doc)
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _RefusesTheBatch()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=4, flush_interval=60.0)
+
+        with caplog.at_level("INFO"):
+            for url in ("/a", "/bad", "/b", "/c"):
+                await buffer.add(_log(url=url))
+
+        urls = sorted({d["request_info"]["url"] for d in sink})
+        assert urls == ["/a", "/b", "/c"], f"unrelated entries were discarded with the bad one: {urls}"
+        assert buffer._pending_total() == 0, "an unencodable document was held for a retry it cannot survive"
+        # A count is not enough to chase: the entry that was actually lost is named.
+        assert any("/bad" in r.message for r in caplog.records if r.levelname == "ERROR"), (
+            "the lost entry was not named"
+        )
+
+    async def test_a_document_already_written_is_not_counted_as_lost(self, monkeypatch, caplog):
+        # insert_many stamps _id in place, so a document the server took before
+        # the batch failed comes back from the rewrite as a duplicate. It is in
+        # the database - reporting it as lost would send an operator hunting for
+        # an entry that is right there.
+        from pymongo.errors import DuplicateKeyError
+
+        class _AlreadyHasThem:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                raise OverflowError("MongoDB can only handle up to 8-byte ints")
+
+            async def insert_one(self, doc):
+                await asyncio.sleep(0.01)
+                raise DuplicateKeyError("E11000 duplicate key error")
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _AlreadyHasThem()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        with caplog.at_level("INFO"):
+            await buffer.add(_log(url="/a"))
+            await buffer.add(_log(url="/b"))
+
+        assert not [r for r in caplog.records if r.levelname == "ERROR"], (
+            "a document already in the database was reported lost"
+        )
+
+    async def test_an_outage_during_the_rewrite_keeps_the_entries(self, monkeypatch):
+        # The rewrite is not a licence to drop: a document that failed for a
+        # reason a retry can fix is still owed the next flush.
+        from pymongo.errors import ConnectionFailure
+
+        class _DiesMidway:
+            async def insert_many(self, docs, ordered=True):
+                await asyncio.sleep(0.01)
+                raise OverflowError("MongoDB can only handle up to 8-byte ints")
+
+            async def insert_one(self, doc):
+                await asyncio.sleep(0.01)
+                raise ConnectionFailure("backend went away")
+
+        class _Db:
+            def __getitem__(self, _name):
+                return _DiesMidway()
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            return _Db()
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=2, flush_interval=60.0)
+
+        await buffer.add(_log(url="/a"))
+        await buffer.add(_log(url="/b"))
+
+        assert buffer._pending_total() > 0, "an outage during the rewrite lost the entries"
+
+    async def test_an_unreachable_database_is_not_rewritten_document_by_document(self, monkeypatch):
+        # The rewrite exists for a batch the driver refused; when there was no
+        # collection to write to at all, repeating it per document would only
+        # repeat the same failure once per entry.
+        from bson.errors import InvalidDocument
+
+        calls = []
+
+        async def get_db_async(db_name):
+            await asyncio.sleep(0)
+            calls.append(db_name)
+            raise InvalidDocument("no database for you")
+
+        monkeypatch.setattr(buffer_module.db_helper, "get_db_async", get_db_async)
+        buffer = RequestLogBuffer(max_size=50, flush_interval=60.0)
+
+        for i in range(50):
+            await buffer.add(_log(url=f"/{i}"))
+
+        # Two target databases, one attempt each - not one attempt per document.
+        assert len(calls) == 2, f"a failure to reach the database was retried per document: {len(calls)} attempts"
