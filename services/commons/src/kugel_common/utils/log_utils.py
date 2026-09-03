@@ -138,6 +138,22 @@ _PARTIAL_MASK_FIELD_NAMES = frozenset({"apikey"})
 _CREDENTIAL_CONTAINER_FIELD_NAMES = frozenset({"credentials", "credential"})
 
 
+# Nesting depth past which masking stops descending. The sanitizer below caps
+# itself at the same depth and says why - "the cap keeps a hostile payload from
+# turning the middleware into a RecursionError" - and masking, which runs in
+# front of it, needs the cap for the same reason and one more: it also runs in
+# the 422 handler, on the value that was rejected. Without it a body nested
+# deeper than the interpreter's recursion limit turns a validation error into a
+# 500, which a client can do at will.
+#
+# Unlike the sanitizer, what lies past the cap is REPLACED rather than kept.
+# The sanitizer may return a value it did not walk because its question is
+# size; this function's question is whether the value is safe to write down,
+# and it has not looked.
+_MAX_MASK_DEPTH = 32
+_DEPTH_CAPPED = "<depth capped>"
+
+
 def _normalize_key(key: Any) -> str:
     """Fold a field name to its comparison form (lowercase, no separators)."""
     if not isinstance(key, str):
@@ -145,7 +161,7 @@ def _normalize_key(key: Any) -> str:
     return key.replace("_", "").replace("-", "").lower()
 
 
-def mask_sensitive_data(data: Any) -> Any:
+def mask_sensitive_data(data: Any, depth: int = 0) -> Any:
     """
     Recursively mask credential fields in an arbitrarily shaped JSON value.
 
@@ -162,25 +178,30 @@ def mask_sensitive_data(data: Any) -> Any:
 
     Args:
         data: Parsed JSON value (dict / list / scalar), or None
+        depth: Current nesting depth; anything past `_MAX_MASK_DEPTH` is
+            replaced rather than walked
 
     Returns:
         A masked copy; the input is never modified.
     """
+    if depth >= _MAX_MASK_DEPTH:
+        return _DEPTH_CAPPED
+
     if isinstance(data, dict):
-        return {key: _mask_field(key, value) for key, value in data.items()}
+        return {key: _mask_field(key, value, depth + 1) for key, value in data.items()}
 
     if isinstance(data, list):
-        return [mask_sensitive_data(item) for item in data]
+        return [mask_sensitive_data(item, depth + 1) for item in data]
 
     return data
 
 
-def _mask_field(key: Any, value: Any) -> Any:
+def _mask_field(key: Any, value: Any, depth: int = 0) -> Any:
     """Mask one field according to its name, recursing into containers."""
     normalized = _normalize_key(key)
 
     if normalized in _CREDENTIAL_CONTAINER_FIELD_NAMES:
-        return _mask_all_values(value)
+        return _mask_all_values(value, depth)
 
     if normalized in _PARTIAL_MASK_FIELD_NAMES:
         # `mask_api_key` measures len(), so it only accepts str (or None).
@@ -195,10 +216,10 @@ def _mask_field(key: Any, value: Any) -> Any:
     if normalized in _SECRET_FIELD_NAMES:
         return None if value is None else "****"
 
-    return mask_sensitive_data(value)
+    return mask_sensitive_data(value, depth)
 
 
-def _mask_all_values(value: Any) -> Any:
+def _mask_all_values(value: Any, depth: int = 0) -> Any:
     """
     Blank every scalar beneath `value`, independent of key names.
 
@@ -208,14 +229,17 @@ def _mask_all_values(value: Any) -> Any:
 
     Args:
         value: The container's contents
+        depth: Current nesting depth; see `_MAX_MASK_DEPTH`
 
     Returns:
         A copy with the same shape and no values
     """
+    if depth >= _MAX_MASK_DEPTH:
+        return _DEPTH_CAPPED
     if isinstance(value, dict):
-        return {key: _mask_all_values(item) for key, item in value.items()}
+        return {key: _mask_all_values(item, depth + 1) for key, item in value.items()}
     if isinstance(value, list):
-        return [_mask_all_values(item) for item in value]
+        return [_mask_all_values(item, depth + 1) for item in value]
     return None if value is None else "****"
 
 

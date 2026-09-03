@@ -221,3 +221,52 @@ class TestMaskingAnythingLoggable:
                 raise ValueError
 
         assert "Odd" in mask_loggable(Odd())
+
+
+class TestADeeplyNestedBody:
+    """A client chooses how deep its JSON is; masking runs before validation."""
+
+    @staticmethod
+    def _nest(depth, leaf=None):
+        top = current = {}
+        for _ in range(depth):
+            current["a"] = {}
+            current = current["a"]
+        if leaf:
+            current.update(leaf)
+        return top
+
+    def test_masking_does_not_exhaust_the_stack(self):
+        # `json.loads` accepts this, and `sanitize_log_body` survives it
+        # because it caps at 32. Masking runs in front of the sanitizer, so
+        # without a cap of its own the whole logging path raised instead.
+        assert mask_sensitive_data(self._nest(3000)) is not None
+
+    def test_a_422_on_a_deep_body_stays_a_422(self):
+        # The handler masks the value it rejected, so an unbounded walk there
+        # turned a validation error into a 500 - reachable by any client, at
+        # will, by nesting a body it knows will be rejected.
+        errors = [{"type": "model_attributes_type", "loc": ("body",), "msg": "…", "input": self._nest(3000)}]
+        assert mask_validation_error_details(errors) is not None
+
+    def test_what_is_past_the_cap_is_replaced_rather_than_kept(self):
+        # The sanitizer returns a value it did not walk, because its question
+        # is size. This function's question is whether the value is safe to
+        # write down, and past the cap it has not looked - so it must not
+        # hand back what it did not check.
+        import json
+
+        masked = mask_sensitive_data(self._nest(3000, {"pin": "DEEP-SECRET"}))
+        assert "DEEP-SECRET" not in json.dumps(masked)
+
+    def test_a_credential_container_is_capped_too(self):
+        import json
+
+        masked = mask_sensitive_data({"credentials": self._nest(3000, {"cardNo": "DEEP-PAN"})})
+        assert "DEEP-PAN" not in json.dumps(masked)
+
+    def test_the_cap_is_deeper_than_any_real_body(self):
+        # 32 is the sanitizer's own cap, kept the same so the two agree about
+        # what counts as "too deep to be worth walking".
+        body = self._nest(20, {"pin": "1234"})
+        assert "1234" not in str(mask_sensitive_data(body)), "a real body must still be masked in full"
