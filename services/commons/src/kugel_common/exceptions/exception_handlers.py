@@ -27,6 +27,7 @@ import inspect
 from kugel_common.schemas.api_response import ApiResponse, UserError
 from kugel_common.exceptions.base_exceptions import AppException
 from kugel_common.exceptions.error_codes import ErrorCode, ErrorMessage
+from kugel_common.utils.log_utils import mask_validation_error_details
 
 logger = getLogger(__name__)
 
@@ -112,7 +113,10 @@ def register_exception_handlers(app: FastAPI) -> None:
             errors.append(f"{loc}: {msg}")
         
         detail = "Invalid input data: " + "; ".join(errors)
-        
+
+        # Each error carries the raw `input` that failed, and this string goes
+        # to the ERROR log AND back to the caller in `data`. At a secret
+        # location that value IS the credential (issue #211).
         error_response = ApiResponse(
             success=False,
             code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -121,7 +125,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 code=ErrorCode.VALIDATION_ERROR,
                 message=ErrorMessage.get_message(ErrorCode.VALIDATION_ERROR)
             ),
-            data=str(exc),
+            data=str(mask_validation_error_details(exc.errors())),
             operation=f"{inspect.currentframe().f_code.co_name}"
         )
         logger.error(f"RequestValidationError: {error_response}")
@@ -141,7 +145,8 @@ def register_exception_handlers(app: FastAPI) -> None:
                 code=ErrorCode.VALIDATION_ERROR,
                 message=ErrorMessage.get_message(ErrorCode.VALIDATION_ERROR)
             ),
-            data=str(exc),
+            # Same input echo as RequestValidationError above.
+            data=str(mask_validation_error_details(exc.errors())),
             operation=f"{inspect.currentframe().f_code.co_name}"
         )
         logger.error(f"ValidationError: {error_response}")

@@ -348,6 +348,42 @@ class RequestLogMiddleware:
 - **Error Handling**: Graceful handling of logging failures
 - **Privacy**: Sanitization of sensitive information
 
+#### Credential Masking (issue #211)
+
+A body reaches two sinks - the `request_log` collection and `app.log`, the
+latter through a DEBUG line with no filter in front of it - and it reaches
+them *before* FastAPI validates anything, so a request answered with a 422 is
+recorded in full just the same. `POST /register` takes a plaintext
+`password` that is hashed only afterwards, and the staff master carries `pin`
+in plain text in requests and responses alike, so without masking both sit in
+the audit collection.
+
+`mask_sensitive_data` (`utils/log_utils.py`) is applied where the body is
+parsed, which covers both sinks at once, and at the other call sites that log
+a whole document or header mapping (`security.py`, `http_client_helper.py`).
+Three rules:
+
+1. **Secret field names** - `pin`, `password`, `token`, `secret`, `cardNo`,
+   `pan`, `authorization`, `dapr-api-token` and the rest - are matched case-
+   and separator-insensitively, so `pin_code`, `pinCode` and `PIN_CODE` are
+   one name. Bodies are lowerCamelCase and the schemas snake_case, so both
+   spellings really do occur.
+2. **`apiKey` keeps its ends** (`abcd...5678`), matching what
+   `mask_dict_api_key` already established for troubleshooting.
+3. **Credential containers** (`credentials` / `credential`) have every value
+   beneath them masked regardless of key name, because a field whose schema
+   accepts arbitrary string keys can carry the secret under `cardN0` and no
+   name-based rule would match.
+
+The key is always kept and only the value is replaced, so the log still
+records what was supplied; a `None` stays `None`, which distinguishes "no PIN
+was sent" from "a PIN was sent" without revealing either. The same masking is
+applied to validation-error details, which otherwise echo the rejected value
+into the ERROR log and back to the caller in the 422 response.
+
+Masking is about secrecy and the budget below is about size; they are separate
+functions answering separate questions, and a field can need either or both.
+
 #### Logged Body Budget (issue #155)
 
 Every body is stored twice - in the request log file and in the per-tenant

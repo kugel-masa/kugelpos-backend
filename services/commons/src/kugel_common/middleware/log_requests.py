@@ -19,11 +19,19 @@ for auditing and debugging purposes. It captures request details, response infor
 user context, terminal information and authentication details, storing them both in
 log files and in the database.
 
-Logged bodies are bounded (issue #155): fields named in
-``REQUEST_LOG_STRIP_FIELDS`` - the signed cart snapshot by default, which
-carries a whole cart document on every mutating call - are replaced by a
-metadata marker, and a body still above ``REQUEST_LOG_MAX_BODY_BYTES`` is
-stored as a truncation marker instead.
+Logged bodies are masked and bounded, in that order, and the two are separate
+concerns (see ``kugel_common.utils.log_utils``):
+
+- **Masked** (issue #211): credential values - a staff PIN, an account
+  password, an Authorization header - are replaced where the body is parsed,
+  so they reach neither the ``RequestLog`` document nor ``app.log``. This
+  happens before FastAPI validates anything, which is exactly why it has to be
+  here: a request answered with a 422 is logged in full just the same.
+- **Bounded** (issue #155): fields named in ``REQUEST_LOG_STRIP_FIELDS`` - the
+  signed cart snapshot by default, which carries a whole cart document on
+  every mutating call - are replaced by a metadata marker, and a body still
+  above ``REQUEST_LOG_MAX_BODY_BYTES`` is stored as a truncation marker
+  instead.
 """
 
 from fastapi import Request, Response
@@ -44,7 +52,12 @@ from kugel_common.models.documents.terminal_info_document import TerminalInfoDoc
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.config.settings import settings
 from kugel_common.utils.misc import get_app_time_str
-from kugel_common.utils.log_utils import mask_api_key, parse_log_strip_fields, sanitize_log_body
+from kugel_common.utils.log_utils import (
+    mask_api_key,
+    mask_sensitive_data,
+    parse_log_strip_fields,
+    sanitize_log_body,
+)
 from kugel_common.middleware.request_log_buffer import get_request_log_buffer
 
 logger = getLogger(__name__)
@@ -368,7 +381,9 @@ async def _get_terminal_info(request: Request, is_terminal_service: bool = False
             )
             terminal_info = None
 
-    logger.debug(f"terminal_info: {terminal_info}")
+    # A TerminalInfoDocument carries its `api_key`, and its staff carries a
+    # plaintext `pin` - printing the document prints both (issue #211).
+    logger.debug(f"terminal_info: {mask_sensitive_data(terminal_info.model_dump()) if terminal_info else None}")
     return terminal_info
 
 
@@ -471,7 +486,10 @@ async def _parse_response_body(response_body: bytes):
         Parsed JSON object or None if parsing fails
     """
     try:
-        return json.loads(response_body.decode())
+        # Masked for the same reason the request body is (issue #211), and the
+        # response is not the lesser half: the staff master returns the PIN it
+        # was given, so a plain GET puts it in the log.
+        return mask_sensitive_data(json.loads(response_body.decode()))
     except Exception:
         return None
 
@@ -491,7 +509,11 @@ async def _get_request_body(request: Request) -> tuple:
     body = b""
     try:
         body = await request.body()
-        json_body = json.loads(body)
+        # Masked here rather than at each sink: this is the one place the body
+        # is parsed, and both sinks are downstream of it - the DEBUG line just
+        # below, and the RequestLog document built by _make_request_info
+        # (issue #211).
+        json_body = mask_sensitive_data(json.loads(body))
         logger.debug(f"request body: {json_body}")
         return json_body, body
     except Exception:
@@ -515,7 +537,7 @@ async def _make_tenant_id(terminal_info: TerminalInfoDocument, user_dict: dict) 
     tenant_id = None
     if terminal_info:
         tenant_id = terminal_info.tenant_id
-        logger.debug(f"terminal_info: {terminal_info}, tenant_id: {tenant_id}")
+        logger.debug(f"terminal_info: {mask_sensitive_data(terminal_info.model_dump())}, tenant_id: {tenant_id}")
     elif user_dict:
         tenant_id = user_dict.get("tenant_id")
         logger.debug(f"user_dict: {user_dict}, tenant_id: {tenant_id}")

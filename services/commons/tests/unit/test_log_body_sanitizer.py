@@ -201,13 +201,28 @@ class TestMarkerMetadataBudget:
         assert "blob" not in marker
 
 
-class TestRawBytesReuse:
-    def test_untouched_oversized_body_is_measured_from_raw(self):
+class TestRawBytesAreAMeasurementNotContent:
+    """`raw` is the body as RECEIVED - which is to say, unmasked (issue #211).
+
+    It may be read to decide how much work to do, and never sliced into
+    something that gets stored.
+    """
+
+    def test_an_oversized_body_reports_its_encoded_size(self):
         body = {"blob": "x" * 100_000}
         raw = json.dumps(body).encode()
         result = sanitize_log_body(body, max_bytes=1024, raw=raw)
         assert result["_encoded_bytes"] == len(raw)
         assert result["_preview"].startswith('{"blob": "xxx')
+
+    def test_the_preview_comes_from_the_body_rather_than_the_raw_bytes(self):
+        # The body handed in has been masked; `raw` still carries the secret.
+        # Slicing the preview out of `raw` would put it straight back.
+        body = {"password": "****", "blob": "x" * 100_000}
+        raw = json.dumps({"password": "hunter2", "blob": "x" * 100_000}).encode()
+        result = sanitize_log_body(body, max_bytes=1024, raw=raw)
+        assert result["_truncated"] is True
+        assert "hunter2" not in result["_preview"]
 
     def test_multibyte_preview_is_not_broken_by_a_byte_slice(self):
         body = {"名前": "あ" * 20_000}

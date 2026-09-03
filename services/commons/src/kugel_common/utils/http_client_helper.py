@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Union, Tuple, Awaitable, AsyncIterator
 from contextlib import asynccontextmanager
 
 from kugel_common.config.settings import settings
+from kugel_common.utils.log_utils import mask_sensitive_data
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,13 @@ class HttpClientHelper:
         headers = {**self.headers, **kwargs.pop('headers', {})}
         params = kwargs.pop('params', {})
         payload = kwargs.pop('json', None)
-        logger.debug(f"Request URL: {url}, Headers: {headers}, Params: {params}, Json: {payload}")
+        # Headers carry the credential itself (X-API-Key, and an
+        # "Authorization: Bearer <jwt>" value IS the token) and the payload is
+        # a request body like any other (issue #211).
+        logger.debug(
+            f"Request URL: {url}, Headers: {mask_sensitive_data(headers)}, "
+            f"Params: {mask_sensitive_data(params)}, Json: {mask_sensitive_data(payload)}"
+        )
         
         # Use default timeout if not specified
         if 'timeout' not in kwargs:
