@@ -40,13 +40,18 @@ class BaseStaffResponse(BaseSchemaModel):
     Base Staff Response Schema
 
     Defines all fields required for staff master responses.
-    Includes staff ID, name, PIN code, list of roles, creation datetime,
-    and last update datetime.
+    Includes staff ID, name, list of roles, creation datetime, and last
+    update datetime.
+
+    The PIN is deliberately absent (issue #136). It is a credential, and a
+    response is the one place a credential travels to someone who did not
+    already have it - from there into their logs, their storage and their
+    screenshots. It is still accepted on create and update, because that is
+    how it gets set.
     """
 
     id: str
     name: str
-    pin: str
     roles: Optional[list[str]] = []
     entry_datetime: str
     last_update_datetime: Optional[str] = None

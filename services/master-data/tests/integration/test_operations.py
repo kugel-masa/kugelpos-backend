@@ -79,7 +79,8 @@ async def test_operations(http_client, admin_header):
     assert res.get("code") == status.HTTP_200_OK
     assert res.get("data").get("id") == "1234"
     assert res.get("data").get("name") == "ushi"
-    assert res.get("data").get("pin") == "8888"
+    # The PIN is accepted on update and no longer echoed back (issue #136).
+    assert "pin" not in res.get("data")
 
     # update staff_master with invalid data
     staff_master = {
