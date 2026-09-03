@@ -39,12 +39,22 @@ STORE = "9001"
 TERMINAL_NO = 1
 ITEM = "ITEM-SENTINEL"
 
-# Values a log could not contain by chance.
-PLANTED = {
-    "staff pin": "PIN-SENTINEL-7f3a91",
-    "account password": "PW-SENTINEL-4c8b20",
-    "updated staff pin": "PIN-SENTINEL-updated-2e6d",
-}
+def _planted(run: str) -> dict:
+    """Values a log could not contain by chance - and could not carry over.
+
+    Unique per run, not a fixed string. The database this scans is shared with
+    every earlier run, and a run against vulnerable code leaves real leaked
+    records behind: the main-branch baseline for this work left three tenants'
+    worth. A fixed sentinel makes every later run find those and fail, which is
+    a false alarm on a test whose whole value is that a failure means something.
+
+    It also sharpens the result: a hit can only have come from this run.
+    """
+    return {
+        "staff pin": f"PIN-SENTINEL-{run}-7f3a91",
+        "account password": f"PW-SENTINEL-{run}-4c8b20",
+        "updated staff pin": f"PIN-SENTINEL-{run}-updated-2e6d",
+    }
 
 # The only two collections that hold a credential by design rather than by
 # accident: the terminal master IS where the api_key lives (`security.py`
@@ -72,7 +82,7 @@ def _try(label: str, fn):
         return None
 
 
-def _exercise(tenant_id: str) -> dict:
+def _exercise(tenant_id: str, planted: dict) -> dict:
     """Use the system as a store does, then break it on purpose.
 
     Returns the credentials the server issued along the way.
@@ -81,9 +91,9 @@ def _exercise(tenant_id: str) -> dict:
 
     with _client("URL_ACCOUNT") as c:
         c.post("/api/v1/accounts/register", json={
-            "username": "admin", "password": PLANTED["account password"], "tenant_id": tenant_id})
+            "username": "admin", "password": planted["account password"], "tenant_id": tenant_id})
         resp = c.post("/api/v1/accounts/token", data={
-            "username": "admin", "password": PLANTED["account password"], "client_id": tenant_id})
+            "username": "admin", "password": planted["account password"], "client_id": tenant_id})
         resp.raise_for_status()
         issued["admin jwt"] = resp.json()["access_token"]
     h = {"Authorization": f"Bearer {issued['admin jwt']}"}
@@ -98,18 +108,18 @@ def _exercise(tenant_id: str) -> dict:
         base = f"/api/v1/tenants/{tenant_id}"
         # The pin travels in the request and comes back in the response.
         _try("staff create", lambda: m.post(f"{base}/staff", headers=h, json={
-            "id": "S001", "name": "Sentinel Staff", "pin": PLANTED["staff pin"], "roles": ["staff"]}))
+            "id": "S001", "name": "Sentinel Staff", "pin": planted["staff pin"], "roles": ["staff"]}))
         _try("staff read", lambda: m.get(f"{base}/staff/S001", headers=h))
         _try("staff list", lambda: m.get(f"{base}/staff", headers=h))
         _try("staff update", lambda: m.put(f"{base}/staff/S001", headers=h, json={
-            "name": "Sentinel Staff", "pin": PLANTED["updated staff pin"], "roles": ["staff"]}))
+            "name": "Sentinel Staff", "pin": planted["updated staff pin"], "roles": ["staff"]}))
         # Failure path: the same id again. CannotCreateException puts the
         # document into its message, and the handler returns that message.
         _try("duplicate staff", lambda: m.post(f"{base}/staff", headers=h, json={
-            "id": "S001", "name": "Dup", "pin": PLANTED["staff pin"], "roles": ["staff"]}))
+            "id": "S001", "name": "Dup", "pin": planted["staff pin"], "roles": ["staff"]}))
         # Failure path: a 422, whose detail echoes the value it rejected.
         _try("rejected staff", lambda: m.post(f"{base}/staff", headers=h, json={
-            "id": "S002", "name": "Bad", "pin": {"nested": PLANTED["staff pin"]}, "roles": ["staff"]}))
+            "id": "S002", "name": "Bad", "pin": {"nested": planted["staff pin"]}, "roles": ["staff"]}))
 
         _try("category", lambda: m.post(f"{base}/categories", headers=h, json={
             "categoryCode": "001", "description": "C", "descriptionShort": "C", "taxCode": "01"}))
@@ -258,9 +268,10 @@ def _scan_mongo(sentinels: dict, tenant_id: str) -> tuple:
 
 def test_no_credential_is_readable_in_anything_written_down(wait_for):
     tenant_id = "S" + uuid.uuid4().hex[:3].upper()
-    issued = _exercise(tenant_id)
+    planted = _planted(tenant_id)
+    issued = _exercise(tenant_id, planted)
 
-    sentinels = dict(PLANTED)
+    sentinels = dict(planted)
     sentinels.update(issued)
     assert "api key" in sentinels, "precondition: the terminal never issued an api_key"
 
