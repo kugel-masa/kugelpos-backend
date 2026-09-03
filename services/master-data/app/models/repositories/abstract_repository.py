@@ -4,6 +4,7 @@ from typing import TypeVar, Generic, Type
 from logging import getLogger
 
 from kugel_common.utils.misc import get_app_time
+from kugel_common.utils.log_utils import mask_sensitive_data
 from kugel_common.exceptions import (
     RepositoryException,
     CannotCreateException,
@@ -95,7 +96,9 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             if response.inserted_id is None:
                 message = "inserted_id is None"
                 raise CannotCreateException(message, self.collection_name, document, logger)
-            logger.info(f"Document created in database: {document}")
+            # Generic over every master, so it prints a staff record's
+            # plaintext `pin` too - and at INFO rather than DEBUG (issue #211).
+            logger.info(f"Document created in database: {mask_sensitive_data(document.model_dump())}")
             return document
         except CannotCreateException as e:
             raise e

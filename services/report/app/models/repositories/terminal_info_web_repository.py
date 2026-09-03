@@ -87,7 +87,9 @@ class TerminalInfoWebRepository:
                         message=message, collection_name="terminal web", logger=logger, original_exception=e
                     )
 
-            logger.debug(f"response: {response_data}")
+            # A terminal comes back with its `api_key` and its staff's
+            # plaintext `pin` (issue #211).
+            logger.debug(f"response: {mask_sensitive_data(response_data)}")
             return [TerminalInfoDocument(**terminal) for terminal in response_data.get("data")]
 
     async def get_terminal_info_async(self, terminal_no: str) -> TerminalInfoDocument:
@@ -137,6 +139,8 @@ class TerminalInfoWebRepository:
                         message=message, collection_name="terminal web", logger=logger, original_exception=e
                     )
 
-            logger.debug(f"response: {response_data}")
+            # A terminal comes back with its `api_key` and its staff's
+            # plaintext `pin` (issue #211).
+            logger.debug(f"response: {mask_sensitive_data(response_data)}")
 
             return TerminalInfoDocument(**response_data.get("data"))

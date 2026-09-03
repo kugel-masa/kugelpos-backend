@@ -180,6 +180,15 @@ class TestTheHeaderLogsOutsideTheHttpClient:
         )
         assert "mask_sensitive_data(headers)" in source
 
+    def test_the_staff_repository_does_not_print_the_response_whole(self):
+        # The staff API answers with the plaintext pin it was given, so masking
+        # only the outgoing header left it in the log a few lines later.
+        source = inspect.getsource(staff_master_web_repository)
+        assert 'logger.debug(f"response: {response_data}")' not in source, (
+            "the staff response is logged raw, pin included"
+        )
+        assert "mask_sensitive_data(response_data)" in source
+
 
 class TestThe422HandedBackToTheCaller:
     """`register_exception_handlers` puts `str(exc.errors())` in `data`."""

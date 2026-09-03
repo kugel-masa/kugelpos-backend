@@ -105,7 +105,8 @@ class StaffMasterWebRepository():
                         original_exception=e
                     )
                 
-            logger.debug(f"response: {response_data}")
+            # The staff record comes back with its plaintext `pin` (issue #211).
+            logger.debug(f"response: {mask_sensitive_data(response_data)}")
             return StaffMasterDocument(**response_data.get("data"))
 
 
