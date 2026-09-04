@@ -11,9 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, Field
 from typing import Optional, Any, Union
 from kugel_common.models.documents.abstract_document import AbstractDocument
+from kugel_common.utils.misc import get_app_time
 
 
 class RequestLog(AbstractDocument):
@@ -110,6 +113,17 @@ class RequestLog(AbstractDocument):
         revision: Optional[int] = None
         schema_version: Optional[int] = None
         kid: Optional[str] = None
+
+    # Stamped here rather than by a repository (issue #221). `AbstractRepository`
+    # sets `created_at` on the documents it writes, and the request-log buffer
+    # deliberately does not go through it: it batches across tenants and writes
+    # with `insert_many`, which is what keeps request logging off the latency
+    # path (issue #17). So every request log was written with `created_at` null -
+    # invisible until a TTL index was wanted, because MongoDB never expires a
+    # document whose indexed field is not a date. A default_factory rather than
+    # a line at each call site: there are two constructions in the middleware
+    # today and a third would silently be born without a date.
+    created_at: Optional[datetime] = Field(default_factory=get_app_time)
 
     tenant_id: Optional[str] = None
     client_info: ClientInfo

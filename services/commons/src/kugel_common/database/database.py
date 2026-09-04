@@ -364,6 +364,92 @@ async def run_setup_steps_async(tenant_id: str, steps: list) -> None:
 
 
 @with_connection_retry
+async def _apply_retention_async(db, collection_name: str, index_name: str, live_ttl, wanted_ttl) -> None:
+    """
+    Put the declared retention on an existing TTL index (issue #221).
+
+    `createIndexes` will not change the options of an index that already exists —
+    it answers IndexOptionsConflict, which the provisioning swallows with a
+    warning — so an operator who shortens retention because a disk is filling
+    otherwise gets no error and no effect. `collMod` is the documented way to
+    change it in place.
+
+    Not fatal on failure: the collection still expires, at the old value. Said at
+    ERROR because the setting in force is not the one that was asked for.
+
+    Args:
+        db: Database handle
+        collection_name: Collection holding the index
+        index_name: Name of the TTL index to modify
+        live_ttl: Retention the index currently carries, for the message
+        wanted_ttl: Retention the declaration asks for
+    """
+    try:
+        await db.command(
+            {
+                "collMod": collection_name,
+                "index": {"name": index_name, "expireAfterSeconds": int(wanted_ttl)},
+            }
+        )
+        logger.info(f"Retention on {collection_name}.{index_name} changed from {live_ttl}s to {wanted_ttl}s")
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        raise
+    except Exception as e:
+        logger.error(
+            f"Retention on {collection_name}.{index_name} is still {live_ttl}s; "
+            f"the declared {wanted_ttl}s could not be applied: {e}"
+        )
+
+
+async def backfill_created_at_from_id_async(db_name: str, collection_name: str) -> int:
+    """
+    Give documents written before `created_at` existed a date, so a TTL can see them.
+
+    A TTL index removes nothing from a document whose indexed field is missing or
+    is not a date. The request log was written by the buffer rather than by a
+    repository and so carried `created_at: null` from the beginning (issue #221),
+    which means declaring the index does not touch the millions of rows that are
+    the reason for declaring it.
+
+    The date comes from `_id`: an ObjectId embeds the second it was generated,
+    and these documents are inserted within seconds of the request they record.
+    Preferred over parsing `request_info.accept_time`, which is a free-form
+    string that has changed shape before and is absent on a record the middleware
+    could only assemble in part.
+
+    One server-side update rather than a cursor: on the collection sizes this
+    exists for (6.4M documents measured downstream) a per-document round trip
+    would not finish inside a tenant setup.
+
+    Never blocks setup. A collection that does not exist yet, a permission the
+    deployment withholds, an `_id` that is not an ObjectId - each leaves the rows
+    as they were, which is the state this function was written to improve, not a
+    state it can make worse.
+
+    Args:
+        db_name: Database holding the collection
+        collection_name: Collection to backfill
+
+    Returns:
+        int: Number of documents given a date (0 on any failure)
+    """
+    try:
+        db = await get_db_async(db_name)
+        result = await db[collection_name].update_many(
+            {"created_at": None},
+            [{"$set": {"created_at": {"$convert": {"input": "$_id", "to": "date", "onError": None}}}}],
+        )
+        filled = result.modified_count
+        if filled:
+            logger.info(f"Backfilled created_at on {filled} documents in {db_name}.{collection_name}")
+        return filled
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        raise
+    except Exception as e:
+        logger.warning(f"created_at backfill skipped on {db_name}.{collection_name}: {e}")
+        return 0
+
+
 async def create_collection_with_indexes_async(
     db_name: str,
     collection_name: str,
@@ -483,6 +569,116 @@ async def create_collection_with_indexes_async(
                     f"so the uniqueness relied on here is not enforced.{blocking}",
                     logger,
                 )
+
+            # A TTL whose retention changed is the one option `createIndexes`
+            # will not update: it answers IndexOptionsConflict, the ensure loop
+            # above logs a warning, and the keys-only check below then reports
+            # success over the value the index was FIRST created with. An
+            # operator who shortens retention because a disk is filling gets no
+            # error and no effect (issue #221). `collMod` is the documented way
+            # to change it in place, so it is issued here when the live value
+            # differs from the declared one.
+            wanted_ttl = index_info.get("expireAfterSeconds")
+            if wanted_ttl is not None and want in present:
+                for info in by_keys[want]:
+                    live_ttl = info.get("expireAfterSeconds")
+                    if live_ttl is None:
+                        # Same keys, no expiry: `createIndexes` refused to add it
+                        # (IndexOptionsConflict, swallowed above) and the
+                        # keys-only check below would call that a success - a
+                        # collection reported as expiring while nothing expires.
+                        # `collMod` cannot turn a plain index into a TTL one, so
+                        # the plain one is dropped and rebuilt from the
+                        # declaration.
+                        idx_name = next((n for n, i in final_info.items() if i is info), None)
+                        if idx_name is None or idx_name == "_id_":
+                            continue
+
+                        # Only when the live index constrains nothing the
+                        # declaration does not. Rebuilding from the declaration
+                        # would otherwise drop a `unique` or a
+                        # `partialFilterExpression` that something relies on -
+                        # silently widening a constraint while adding an expiry,
+                        # which is the same class of quiet loss this whole block
+                        # exists to prevent. Said, and left for a person.
+                        lost = [
+                            option
+                            for option in ("unique", "partialFilterExpression")
+                            if info.get(option) and not index_info.get(option)
+                        ]
+                        if lost:
+                            raise DatabaseException(
+                                f"Index {want} on {collection_name} carries {', '.join(lost)} that the "
+                                f"declaration does not, and adding the declared expiry means rebuilding it. "
+                                f"Rebuilding would drop the constraint, so it is left alone and nothing "
+                                f"expires. Resolve the index by hand.",
+                                logger,
+                            )
+
+                        try:
+                            await db[collection_name].drop_index(idx_name)
+                            await execute_command_async(
+                                command=create_indexes_command(
+                                    collection_name=collection_name,
+                                    index_keys=keys_dict,
+                                    index_name=idx_name,
+                                    unique=index_info.get("unique", False),
+                                    partial_filter_expression=index_info.get("partialFilterExpression"),
+                                    expire_after_seconds=int(wanted_ttl),
+                                ),
+                                db=db,
+                            )
+                            logger.info(f"Rebuilt {collection_name}.{idx_name} with expiry {wanted_ttl}s")
+                        except (ConnectionFailure, ServerSelectionTimeoutError):
+                            raise
+                        except Exception as e:
+                            # Another process provisioning the same collection is
+                            # not a failure: it may have dropped the index between
+                            # the read above and the drop here (IndexNotFound), or
+                            # rebuilt it before this one could. What matters is the
+                            # state now, so it is re-read rather than inferred from
+                            # who raised.
+                            rebuilt = await db[collection_name].index_information()
+                            settled = next(
+                                (
+                                    (n, i)
+                                    for n, i in rebuilt.items()
+                                    if [(k, v) for k, v in i.get("key", [])] == list(want)
+                                    and i.get("expireAfterSeconds") is not None
+                                ),
+                                None,
+                            )
+                            if settled is None:
+                                raise DatabaseException(
+                                    f"Index {want} on {collection_name} exists without the declared expiry and "
+                                    f"could not be rebuilt with it, so nothing expires: {e}",
+                                    logger,
+                                ) from e
+
+                            settled_name, settled_info = settled
+                            settled_ttl = settled_info.get("expireAfterSeconds")
+                            if int(settled_ttl) == int(wanted_ttl):
+                                logger.info(
+                                    f"{collection_name}.{settled_name} was rebuilt with an expiry by another "
+                                    f"process while this one was doing the same: {e}"
+                                )
+                            else:
+                                # It built the index with ITS declared retention,
+                                # which during a rolling update is not necessarily
+                                # this one's. Accepting an expiry merely because
+                                # one exists would leave an operator's shortened
+                                # retention quietly unapplied, so the declared
+                                # value is put on the index the winner left behind.
+                                await _apply_retention_async(db, collection_name, settled_name, settled_ttl, wanted_ttl)
+                        continue
+                    if int(live_ttl) != int(wanted_ttl):
+                        idx_name = next(
+                            (n for n, i in final_info.items() if i is info),
+                            None,
+                        )
+                        if idx_name is None:
+                            continue
+                        await _apply_retention_async(db, collection_name, idx_name, live_ttl, wanted_ttl)
 
             if want not in present:
                 # Say what is actually in the way. "Likely existing data
