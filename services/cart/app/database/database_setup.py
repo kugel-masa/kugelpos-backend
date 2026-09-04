@@ -192,24 +192,41 @@ async def create_request_log_collection(tenant_id: str):
             "unique": False,
             "partialFilterExpression": {"snapshot_info.cart_id": {"$type": "string"}},
         },
-        # Retention (issue #221). Nothing in this tree reads the request log and
-        # nothing removed one either: measured downstream at 6.4M documents /
-        # 23.8 GiB, 97% of the database, on a store PC. Keyed on `created_at`
-        # alone - deliberately a different key pattern from the indexes above,
-        # because MongoDB will not swap options on an existing key pattern, and
-        # `request_info.accept_time` is a string, which a TTL never expires.
-        {
-            "keys": {"created_at": 1},
-            "unique": False,
-            "expireAfterSeconds": settings.REQUEST_LOG_TTL_SECONDS,
-        },
     ]
+    # Retention (issue #221). Nothing in this tree reads the request log and
+    # nothing removed one either: measured downstream at 6.4M documents /
+    # 23.8 GiB, 97% of the database, on a store PC. Keyed on `created_at` alone -
+    # deliberately a different key pattern from the index(es) above, because
+    # MongoDB will not swap options on an existing key pattern, and
+    # `request_info.accept_time` is a string, which a TTL never expires.
+    #
+    # Declared only when retention is positive: `expireAfterSeconds: 0` is not
+    # "no expiry" to MongoDB, it means "expire AT the stored date", which would
+    # delete each request log almost as soon as it is written. 0 therefore means
+    # "do not declare it" - an index already created stays until it is dropped by
+    # hand, which is the conservative direction for a switch that only ever
+    # removes data.
+    if settings.REQUEST_LOG_TTL_SECONDS > 0:
+        index_key_list.append(
+            {
+                "keys": {"created_at": 1},
+                "unique": False,
+                "expireAfterSeconds": settings.REQUEST_LOG_TTL_SECONDS,
+            }
+        )
     # Both copies (issue #221). The buffer writes every request log twice - to the
     # tenant database and to `{prefix}_commons` - but provisioning only ever ran
     # for the tenant, so the commons copy had no index at all beyond `_id_`, and
     # no way to shrink, while receiving exactly the same volume. `tenant_id=None`
     # is how create_some_collection addresses the commons database.
     for target in (tenant_id, None):
+        # Pre-#221 documents carry no date, and a TTL index never expires those.
+        # Before the index, so the rows the index exists for are already covered
+        # by the time it starts running.
+        await db_helper.backfill_created_at_from_id_async(
+            db_name=f"{settings.DB_NAME_PREFIX}_commons" if target is None else f"{settings.DB_NAME_PREFIX}_{target}",
+            collection_name=name,
+        )
         await create_some_collection(
             tenant_id=target,
             collection_name=name,

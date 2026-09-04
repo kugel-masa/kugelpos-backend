@@ -15,6 +15,10 @@ looking installed.
 """
 
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from kugel_common.models.documents.request_log_document import RequestLog
 
@@ -45,3 +49,41 @@ class TestTheDateTheTtlNeeds:
     def test_an_explicit_date_is_still_honoured(self):
         stamped = datetime(2026, 1, 2, 3, 4, 5)
         assert _log().model_copy(update={"created_at": stamped}).created_at == stamped
+
+
+class TestGivingTheOldRowsADate:
+    """A TTL removes nothing from a document whose indexed field is not a date.
+
+    The rows this whole issue is about were written before anything stamped
+    `created_at`, so declaring the index leaves the 23.8 GiB exactly where it is.
+    The date is recovered from `_id`: an ObjectId embeds the second it was
+    generated, and these documents are inserted within seconds of the request.
+    """
+
+    @pytest.mark.asyncio
+    async def test_only_the_dateless_rows_are_touched_and_the_date_comes_from_the_id(self):
+        from kugel_common.database import database as db_helper
+
+        collection = MagicMock()
+        collection.update_many = AsyncMock(return_value=SimpleNamespace(modified_count=7))
+        db = {"log_request": collection}
+
+        with patch.object(db_helper, "get_db_async", AsyncMock(return_value=db)):
+            filled = await db_helper.backfill_created_at_from_id_async("db_cart_commons", "log_request")
+
+        assert filled == 7
+        query, pipeline = collection.update_many.await_args.args
+        # `{"created_at": None}` matches a null value AND a missing field; a row
+        # that already has a date must not be rewritten.
+        assert query == {"created_at": None}
+        assert pipeline[0]["$set"]["created_at"]["$convert"]["input"] == "$_id"
+        assert pipeline[0]["$set"]["created_at"]["$convert"]["onError"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_failure_leaves_setup_running(self):
+        # Tenant setup must not fail because an audit collection could not be
+        # improved. The rows stay as they were, which is where they started.
+        from kugel_common.database import database as db_helper
+
+        with patch.object(db_helper, "get_db_async", AsyncMock(side_effect=RuntimeError("no permission"))):
+            assert await db_helper.backfill_created_at_from_id_async("db_cart_commons", "log_request") == 0

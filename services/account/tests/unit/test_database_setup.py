@@ -71,6 +71,30 @@ async def test_create_user_account_collection(mock_create_some):
 
 @pytest.mark.asyncio
 @patch("app.database.database_setup.db_helper")
+@patch("app.database.database_setup.create_some_collection", new_callable=AsyncMock)
+async def test_retention_of_zero_declares_no_ttl_at_all(mock_create_some, mock_db_helper, monkeypatch):
+    """0 has to mean "no expiry", and to MongoDB it does not (issue #221).
+
+    `expireAfterSeconds: 0` on a date field means "expire AT the stored date",
+    so passing the setting straight through would delete each request log almost
+    as soon as it was written - the opposite of what an operator setting 0 is
+    asking for.
+    """
+    from app.database.database_setup import create_request_log_collection
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "REQUEST_LOG_TTL_SECONDS", 0)
+    mock_db_helper.backfill_created_at_from_id_async = AsyncMock(return_value=0)
+
+    await create_request_log_collection(tenant_id=TENANT_ID)
+
+    for call in mock_create_some.await_args_list:
+        for index in call.kwargs["index_keys_list"]:
+            assert "expireAfterSeconds" not in index, index
+
+
+@pytest.mark.asyncio
+@patch("app.database.database_setup.db_helper")
 async def test_the_commons_target_is_the_commons_database(mock_db_helper):
     """`tenant_id=None` means the shared commons database, not a tenant of that name.
 
@@ -93,11 +117,16 @@ async def test_the_commons_target_is_the_commons_database(mock_db_helper):
 
 
 @pytest.mark.asyncio
+@patch("app.database.database_setup.db_helper")
 @patch("app.database.database_setup.create_some_collection", new_callable=AsyncMock)
-async def test_create_request_log_collection(mock_create_some):
+async def test_create_request_log_collection(mock_create_some, mock_db_helper):
     """Test create_request_log_collection creates collection with correct index config."""
     from app.database.database_setup import create_request_log_collection
     from app.config.settings import settings
+
+    # Patched, not merely mocked out: the backfill this now runs first would
+    # otherwise reach a real MongoDB from a unit test.
+    mock_db_helper.backfill_created_at_from_id_async = AsyncMock(return_value=0)
 
     await create_request_log_collection(tenant_id=TENANT_ID)
 

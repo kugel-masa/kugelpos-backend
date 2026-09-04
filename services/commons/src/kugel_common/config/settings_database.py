@@ -70,7 +70,10 @@ class DBCollectionCommonSettings(BaseSettings):
     # 30 days by default. The collection has no reader in the tree - it is an
     # audit trail somebody queries out of band - so retention is a disk decision,
     # not a correctness one. Raise it where the disk allows and the audit window
-    # needs it; 0 turns expiry off and restores the old unbounded behaviour.
+    # needs it; 0 means the TTL index is not declared at all, restoring the old
+    # unbounded behaviour. It is NOT passed to MongoDB as a retention of zero -
+    # `expireAfterSeconds: 0` means "expire at the stored date", which would
+    # delete each request log almost as soon as it was written.
     # The downstream fork runs 7 days on store hardware, where the disk is the
     # binding constraint; upstream also serves server deployments, so the longer
     # window is the default here and the difference is deliberate.
