@@ -322,9 +322,21 @@ def mock_outbound(admin_token, mock_grpc_item_lookup):
             "success": True, "code": 200, "data": [], "metadata": None,
         }))
 
-        # Master-data settings single value — used by cart for things like
-        # RECEIPT_NO_START_VALUE. The repo extracts `data.value` and uses it
-        # as the doc's default_value, so return a sane numeric string here.
+        # The printed receipt-number range. Answered separately from the
+        # catch-all below, because the carried path derives the printed number
+        # from the range and the carried counter (issue #208) — a range of
+        # 1..1 would map every counter onto 1 and the assertions would hold
+        # for any counter at all.
+        for name, value in (("RECEIPT_NO_START_VALUE", "5000"), ("RECEIPT_NO_END_VALUE", "5999")):
+            respx_mock.get(
+                re.compile(rf"{re.escape(base_master)}/tenants/{tenant_id}/settings/{name}/value")
+            ).mock(return_value=httpx.Response(200, json={
+                "success": True, "code": 200, "message": "ok", "data": {"value": value},
+            }))
+
+        # Master-data settings single value — everything else. The repo extracts
+        # `data.value` and uses it as the doc's default_value, so return a sane
+        # numeric string here.
         respx_mock.get(
             re.compile(rf"{re.escape(base_master)}/tenants/{tenant_id}/settings/[^/]+/value")
         ).mock(return_value=httpx.Response(200, json={

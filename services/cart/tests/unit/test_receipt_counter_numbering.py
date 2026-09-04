@@ -1,9 +1,14 @@
 # Copyright 2026 masa@kugel
-"""Carried receipt numbering (issue #166).
+"""Carried receipt numbering (issues #166, #208).
 
 The terminal carries a running receipt counter; the printed number is derived
-from it and the configured range. Before this, the carried path recorded
+from it and the configured range. Before #166, the carried path recorded
 whatever number the client sent and the configured range was ignored entirely.
+
+Since #208 the printed number is not accepted at all. The counter and the range
+are sufficient, and accepting a number as well meant the request body could name
+what got printed - which the signed envelope exists to prevent for the rest of
+the numbering. What the client sends is a counter; what it gets is derived.
 """
 
 import pytest
@@ -60,74 +65,93 @@ class TestDerivation:
     async def test_first_transaction_prints_the_configured_start(self):
         # Before #166 this printed 1: the range was never consulted.
         svc = _with_range(_make_tran_service())
-        assert await svc._carried_receipt_no_async(1, None) == 111111
+        assert await svc._carried_receipt_no_async(1) == 111111
 
     @pytest.mark.asyncio
     async def test_counts_up_inside_the_range(self):
         svc = _with_range(_make_tran_service())
-        assert [await svc._carried_receipt_no_async(n, None) for n in (1, 2, 3)] == [111111, 111112, 111113]
+        assert [await svc._carried_receipt_no_async(n) for n in (1, 2, 3)] == [111111, 111112, 111113]
 
     @pytest.mark.asyncio
     async def test_wraps_at_the_configured_end(self):
         svc = _with_range(_make_tran_service())
-        assert await svc._carried_receipt_no_async(5, None) == 111115
-        assert await svc._carried_receipt_no_async(6, None) == 111111
+        assert await svc._carried_receipt_no_async(5) == 111115
+        assert await svc._carried_receipt_no_async(6) == 111111
 
     @pytest.mark.asyncio
     async def test_settings_are_read_as_strings(self):
         # master-data /settings/{name}/value returns the value as-is.
         svc = _with_range(_make_tran_service(), start="200", end="204")
-        assert await svc._carried_receipt_no_async(6, None) == 200
+        assert await svc._carried_receipt_no_async(6) == 200
 
 
-class TestCarriedValueWins:
-    @pytest.mark.asyncio
-    async def test_agreeing_client_value_is_kept(self):
-        svc = _with_range(_make_tran_service())
-        assert await svc._carried_receipt_no_async(2, 111112) == 111112
+class TestTheClientDoesNotNameTheNumber:
+    """The counter decides; a named number has nowhere to enter (issue #208)."""
 
     @pytest.mark.asyncio
-    async def test_disagreement_keeps_the_number_the_customer_holds(self):
-        # The client printed it on paper before the backend saw the transaction,
-        # so the server records that and reports the disagreement.
-        svc = _with_range(_make_tran_service())
-        assert await svc._carried_receipt_no_async(2, 999) == 999
+    async def test_the_derivation_takes_the_counter_and_nothing_else(self):
+        # The signature is the guarantee: no argument is left through which a
+        # request body could name the printed number.
+        import inspect
+
+        params = list(inspect.signature(TranService._carried_receipt_no_async).parameters)
+
+        assert params == ["self", "receipt_counter"], f"a second input reappeared: {params}"
 
     @pytest.mark.asyncio
-    async def test_disagreement_is_logged(self, caplog):
-        svc = _with_range(_make_tran_service())
-        with caplog.at_level("WARNING"):
-            await svc._carried_receipt_no_async(2, 999)
-        assert "does not match the configured range" in caplog.text
+    async def test_the_context_schema_has_no_printed_number(self):
+        from app.api.v1.schemas import FinalizeContext
 
-
-class TestCompatibilityAndFailure:
-    @pytest.mark.asyncio
-    async def test_pre_166_client_without_a_counter_is_passed_through(self):
-        svc = _with_range(_make_tran_service())
-        assert await svc._carried_receipt_no_async(None, 55) == 55
+        assert "receipt_no" not in FinalizeContext.model_fields, "the schema accepts a printed number again"
 
     @pytest.mark.asyncio
-    async def test_misconfigured_range_keeps_the_carried_number(self):
-        # An inverted range must not cost the customer their receipt number.
+    async def test_a_context_naming_only_the_number_is_refused(self):
+        # What a pre-#166 terminal sends. It no longer supplies a usable
+        # context, and a 422 tells it so - rather than its number being
+        # recorded as the one printed.
+        import pydantic
+
+        from app.api.v1.schemas import FinalizeContext
+
+        with pytest.raises(pydantic.ValidationError):
+            FinalizeContext(seq=1, receipt_no=999, transaction_datetime="2026-08-30T10:00:00")
+
+    @pytest.mark.asyncio
+    async def test_a_context_carrying_the_counter_is_accepted(self):
+        from app.api.v1.schemas import FinalizeContext
+
+        context = FinalizeContext(seq=1, receipt_counter=2, transaction_datetime="2026-08-30T10:00:00")
+
+        assert context.receipt_counter == 2
+
+
+class TestWhenTheRangeCannotBeHad:
+    """No carried number to fall back on now, so the counter is recorded raw.
+
+    Failing the sale is worse: payment has already been taken. A number that is
+    visibly outside the range, said loudly, is the lesser harm.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_misconfigured_range_records_the_counter(self):
         svc = _with_range(_make_tran_service(), start="999999", end="111111")
-        assert await svc._carried_receipt_no_async(3, 77) == 77
+        assert await svc._carried_receipt_no_async(3) == 3
 
     @pytest.mark.asyncio
-    async def test_unavailable_range_keeps_the_number_the_terminal_printed(self):
+    async def test_a_misconfigured_range_is_reported(self, caplog):
+        svc = _with_range(_make_tran_service(), start="999999", end="111111")
+        with caplog.at_level("ERROR"):
+            await svc._carried_receipt_no_async(3)
+        assert "Cannot derive receipt_no" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_an_unavailable_range_records_the_counter_and_says_so(self, caplog):
         # The settings read is a cached master-data call; when it degrades the
-        # derived number would leave the configured range, so the carried number
-        # wins - which is why a client should send both.
-        svc = _make_tran_service()
-        svc._get_setting_value_async = AsyncMock(return_value=None)
-        assert await svc._carried_receipt_no_async(3, 111113) == 111113
-
-    @pytest.mark.asyncio
-    async def test_unavailable_range_with_no_carried_number_is_reported(self, caplog):
+        # derived number would leave the configured range entirely.
         svc = _make_tran_service()
         svc._get_setting_value_async = AsyncMock(return_value=None)
         with caplog.at_level("ERROR"):
-            assert await svc._carried_receipt_no_async(3, None) == 3
+            assert await svc._carried_receipt_no_async(3) == 3
         assert "Receipt number range unavailable" in caplog.text
         assert "outside the configured range" in caplog.text
 

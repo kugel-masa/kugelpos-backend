@@ -179,22 +179,33 @@ class FinalizeContext(BaseSchemmaModel):
     Client-carried finalize context for the bill endpoint (issue #156).
 
     On the stateless (snapshot-present) path the terminal stamps the
-    transaction's number, receipt number, and time at bill and supplies them
+    transaction's number, receipt counter, and time at bill and supplies them
     here so a retried finalize on any backend yields the same values
     (deterministic finalize, FR-012). Absent on the cache-authoritative path,
     where the server assigns them. The context is all-or-nothing (a partial one
-    would write a null transaction_no/receipt_no), where the receipt number may
-    be the printed value, the running counter it derives from, or both; accepts
-    camelCase (seq / receiptNo / receiptCounter / transactionDatetime) via the
-    alias generator.
+    would write a null transaction_no or receipt_no); accepts camelCase
+    (seq / receiptCounter / transactionDatetime) via the alias generator.
+
+    The PRINTED receipt number is not accepted (issue #208). It is derived from
+    the counter and the configured range, which is all `derive_receipt_no`
+    needs. Accepting it let a request body put any number on the transaction
+    log and on the receipt, whatever the terminal's configured range - a
+    mismatch was a warning and the finalize succeeded.
+
+    The old behaviour was defensible while the terminal printed: the paper
+    existed before the request did, and renumbering it would contradict
+    something the customer is holding. It stops being defensible the moment the
+    SERVER builds the receipt, because `make_receipt_data` runs on the tranlog
+    after this number is decided - so the number the client named is the number
+    that gets printed, and there is no paper to contradict. Signing the
+    envelope so numbering cannot be forged, and then letting the printed number
+    be named in the request body, is not a coherent position.
     """
 
     seq: Optional[int] = None
-    receipt_no: Optional[int] = None
-    # Running receipt counter (issue #166). Optional: a pre-#166 terminal sends
-    # only receipt_no and its number is recorded as sent. When present the server
-    # derives the printed number from it and the configured range, so a terminal
-    # that wraps prints inside the range.
+    # Running receipt counter (issue #166). The printed number is derived from
+    # this and the configured range, so a terminal that wraps prints inside the
+    # range rather than counting 1, 2, 3.
     receipt_counter: Optional[int] = None
     transaction_datetime: Optional[str] = None
 
@@ -230,16 +241,17 @@ class FinalizeContext(BaseSchemmaModel):
     @model_validator(mode="after")
     def _all_or_none(self):
         # A partial context would write a null transaction_no or receipt_no, so
-        # the context is all-or-nothing. The receipt number may arrive as the
-        # printed value, as the running counter it is derived from (issue #166),
-        # or both — but at least one of them has to be there.
-        receipt = self.receipt_no is not None or self.receipt_counter is not None
-        provided = [self.seq is not None, receipt, self.transaction_datetime is not None]
+        # the context is all-or-nothing. Since #208 the counter is the only
+        # receipt input, so a pre-#166 terminal that sends the printed number
+        # alone no longer supplies a usable context - which is the point, and
+        # what a 422 here is telling it.
+        provided = [
+            self.seq is not None,
+            self.receipt_counter is not None,
+            self.transaction_datetime is not None,
+        ]
         if any(provided) and not all(provided):
-            raise ValueError(
-                "seq, transaction_datetime and a receipt number "
-                "(receipt_no and/or receipt_counter) must all be provided together"
-            )
+            raise ValueError("seq, receipt_counter and transaction_datetime must all be provided together")
         return self
 
 

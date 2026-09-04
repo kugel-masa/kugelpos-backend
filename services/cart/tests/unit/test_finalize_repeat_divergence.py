@@ -256,7 +256,12 @@ class TestTheConcurrentRaceReportsItToo:
         service.tranlog_repository.set_session = MagicMock()
         service.tranlog_delivery_status_repo.set_session = MagicMock()
         service.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
-        service._get_setting_value_async = AsyncMock(return_value=None)
+        # The printed number is derived from the carried counter and this
+        # range (issue #208), so the range has to resolve for the two sides
+        # to be comparable at all.
+        service._get_setting_value_async = AsyncMock(
+            side_effect=lambda name: {"RECEIPT_NO_START_VALUE": "111111", "RECEIPT_NO_END_VALUE": "111120"}.get(name)
+        )
         service._publish_tranlog_async = AsyncMock()
         service.receipt_data_strategy = MagicMock()
         service.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
@@ -270,8 +275,8 @@ class TestTheConcurrentRaceReportsItToo:
         winner.tenant_id = "test_tenant"
         winner.store_code = "S0001"
         winner.transaction_no = 7
-        winner.receipt_no = 111117
         winner.receipt_counter = 7
+        winner.receipt_no = 111117  # derive_receipt_no(7, 111111, 111120)
         winner.generate_date_time = "2026-08-22T10:00:00"
         winner.receipt_text = "R"
         winner.journal_text = "J"
@@ -288,7 +293,8 @@ class TestTheConcurrentRaceReportsItToo:
         cart.business_date = "20260822"
         cart.seq = 8
         cart.receipt_counter = counter
-        cart.receipt_no = 111118
+        # No printed number: the cart carries the counter, the server derives
+        # the number from it (issue #208).
         cart.transaction_datetime = "2026-08-22T10:00:07"
         cart.sales = CartDocument.SalesInfo()
         cart.sales.total_amount_with_tax = 110.0
@@ -326,7 +332,6 @@ class TestTheConcurrentRaceReportsItToo:
         service = self._armed(DuplicateKeyException("dup", "log_tran", {}, None), winner, audit)
         cart = self._cart_carrying(counter=winner.receipt_counter)
         cart.seq = winner.transaction_no
-        cart.receipt_no = winner.receipt_no
         cart.transaction_datetime = winner.generate_date_time
 
         await service.create_tranlog_async(cart)

@@ -221,7 +221,6 @@ async def cancel_transaction(
     try:
         cart_doc = await cart_service.cancel_transaction_async(
             seq=finalize.seq if finalize else None,
-            receipt_no=finalize.receipt_no if finalize else None,
             receipt_counter=finalize.receipt_counter if finalize else None,
             transaction_datetime=finalize.transaction_datetime if finalize else None,
         )
@@ -669,7 +668,6 @@ async def bill(
     try:
         cart_doc = await cart_service.bill_async(
             seq=finalize.seq if finalize else None,
-            receipt_no=finalize.receipt_no if finalize else None,
             receipt_counter=finalize.receipt_counter if finalize else None,
             transaction_datetime=finalize.transaction_datetime if finalize else None,
         )

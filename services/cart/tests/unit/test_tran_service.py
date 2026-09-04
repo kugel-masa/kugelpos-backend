@@ -219,14 +219,15 @@ class TestResolveCarriedFinalize:
 
     @pytest.mark.asyncio
     async def test_carried_path_uses_signed_context_not_counters(self, signer_enabled):
-        """A valid signed envelope -> carried cart_id/seq/receipt_no/time; counters untouched."""
+        """A valid signed envelope -> carried cart_id/seq/counter/time; counters untouched."""
         svc = _make_tran_service()
         svc.terminal_counter_repository.numbering_count = AsyncMock()
+        svc._get_setting_value_async = AsyncMock(side_effect=["111111", "111115"])
         terminal_info = SimpleNamespace(tenant_id="test_tenant", store_code="S0001", terminal_no=1)
         envelope = snapshot_service.build_finalize_context_envelope(
             cart_id="void-cart-77",
             seq=8,
-            receipt_no=55,
+            receipt_counter=2,
             transaction_datetime="2026-06-14T10:00:00",
             terminal_info=terminal_info,
         )
@@ -235,8 +236,10 @@ class TestResolveCarriedFinalize:
 
         assert cart_id == "void-cart-77"
         assert transaction_no == 8  # per-open seq, NOT a server counter
-        assert receipt_no == 55  # pre-#166 envelope: carried number taken as-is
-        assert receipt_counter is None
+        # Derived from the carried counter and the range; the envelope names
+        # no printed number to take as-is (issue #208).
+        assert receipt_no == 111112
+        assert receipt_counter == 2
         assert gen_dt == "2026-06-14T10:00:00"
         svc.terminal_counter_repository.numbering_count.assert_not_awaited()
 
@@ -250,10 +253,9 @@ class TestResolveCarriedFinalize:
         envelope = snapshot_service.build_finalize_context_envelope(
             cart_id="void-cart-78",
             seq=3,
-            receipt_no=111111,  # counter 6 wrapped back to the start of the range
             transaction_datetime="2026-06-14T10:00:00",
             terminal_info=terminal_info,
-            receipt_counter=6,
+            receipt_counter=6,  # wraps back to the start of the range
         )
 
         _, _, receipt_no, _, receipt_counter = await svc._resolve_carried_finalize(envelope)
@@ -270,7 +272,7 @@ class TestResolveCarriedFinalize:
         envelope = snapshot_service.build_finalize_context_envelope(
             cart_id="void-cart-77",
             seq=8,
-            receipt_no=55,
+            receipt_counter=2,
             transaction_datetime="2026-06-14T10:00:00",
             terminal_info=other_terminal,
         )

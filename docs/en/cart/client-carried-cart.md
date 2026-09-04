@@ -181,9 +181,22 @@ printed number cannot be ordered once the range wraps — `111115` says nothing
 about which cycle it belonged to. It is **not** a transaction identity: dedupe on
 `cart_id`.
 
-Pre-#166 clients keep working: they carry no counter, send their number under the
-old `receipt_no` name at open (numerically the same value — they counted 1, 2, 3
-with no wrap), and their receipt numbers are recorded as sent.
+**The printed number is not accepted from the request (#208).** The finalize
+context carries `receiptCounter`; the server derives the printed number from it
+and the configured range. It used to accept `receiptNo` as well, discarding what
+it had derived in favour of the number the body named — any number, whatever the
+configured range, with a warning and a successful finalize. That was defensible
+while the terminal printed: the paper existed before the request did. It stops
+being defensible once the SERVER builds the receipt, because `make_receipt_data`
+runs on this very transaction log — so the number the client named is the number
+that gets printed. Signing the envelope so numbering cannot be forged, and then
+letting the printed number be named in the body, is not a coherent position.
+
+Reconciliation at open is unchanged: a pre-#166 client that carries no counter
+still sends its number under the old `receipt_no` name there (numerically the
+same value — they counted 1, 2, 3 with no wrap). A bill / cancel / void finalize
+context, however, has to carry `receiptCounter`; one that carries only a printed
+number is refused with 422.
 
 ## Rollback is accepted, and visible afterwards (#165)
 

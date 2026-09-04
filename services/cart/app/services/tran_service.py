@@ -13,7 +13,7 @@ logger = getLogger(__name__)
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.models.documents.base_tranlog import BaseTransaction
-from kugel_common.utils.receipt_numbering import derive_receipt_no, receipt_cycle
+from kugel_common.utils.receipt_numbering import derive_receipt_no
 from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
 from kugel_common.enums import TransactionType
@@ -203,7 +203,7 @@ class TranService:
             tranlog.transaction_no = cart.seq
             tranlog.generate_date_time = cart.transaction_datetime
             tranlog.receipt_counter = cart.receipt_counter
-            tranlog.receipt_no = await self._carried_receipt_no_async(cart.receipt_counter, cart.receipt_no)
+            tranlog.receipt_no = await self._carried_receipt_no_async(cart.receipt_counter)
         else:
             tranlog.transaction_no = await self.terminal_counter_repository.numbering_count(
                 countType=CounterType.Transaction.value
@@ -575,17 +575,18 @@ class TranService:
             )
         cart_id = context.get("cart_id")
         seq = context.get("seq")
-        receipt_no = context.get("receipt_no")
         receipt_counter = context.get("receipt_counter")
         transaction_datetime = context.get("transaction_datetime")
-        if cart_id is None or seq is None or receipt_no is None or transaction_datetime is None:
+        # The printed number is not carried (issue #208); the counter it derives
+        # from is what has to be here.
+        if cart_id is None or seq is None or receipt_counter is None or transaction_datetime is None:
             raise SnapshotInvalidException(
-                "Finalize-context must carry cart_id, seq, receipt_no and transaction_datetime", logger
+                "Finalize-context must carry cart_id, seq, receipt_counter and transaction_datetime", logger
             )
         return (
             cart_id,
             seq,
-            await self._carried_receipt_no_async(receipt_counter, receipt_no),
+            await self._carried_receipt_no_async(receipt_counter),
             transaction_datetime,
             receipt_counter,
         )
@@ -1196,68 +1197,55 @@ class TranService:
         end = int(end_raw) if end_raw is not None else sys.maxsize
         return start, end, resolved
 
-    async def _carried_receipt_no_async(self, receipt_counter: int, carried_receipt_no: int) -> int:
+    async def _carried_receipt_no_async(self, receipt_counter: int) -> int:
         """
-        Printed receipt number for a client-carried finalize (issue #166).
+        Printed receipt number for a client-carried finalize (issues #166, #208).
 
-        Derived from the carried running counter and the configured range, so a
-        terminal that wraps prints inside the range instead of counting 1, 2, 3.
+        Derived here, from the carried running counter and the configured range,
+        so a terminal that wraps prints inside the range instead of counting
+        1, 2, 3.
 
-        The client printed its own number on paper before the backend ever saw
-        the transaction, so a carried number wins over the derived one; a
-        mismatch means the two disagree about the range (a setting changed
-        mid-session) and is reported rather than silently corrected.
+        **The client does not send a printed number** (issue #208). Accepting
+        one meant discarding what the server derived in favour of one the
+        request body named - any number, whatever the terminal's configured
+        range, with a warning and a successful finalize.
 
-        A pre-#166 client carries no counter at all; its number is taken as-is,
-        which is the phase 2 behaviour this issue is fixing.
+        That was defensible while the terminal printed: the paper existed before
+        the request did, and renumbering it would contradict what the customer
+        is holding. It stops being defensible when the server builds the
+        receipt, because `make_receipt_data` runs on this very tranlog after
+        this number is decided - so the named number is the printed number, and
+        there is no paper to contradict. Signing the envelope so numbering
+        cannot be forged, and then letting the printed number be named in the
+        body, is not a coherent position. The counter and the range are
+        sufficient in both shapes.
 
         Args:
-            receipt_counter: Carried running receipt counter, None for pre-#166 clients
-            carried_receipt_no: Receipt number the client printed, if any
+            receipt_counter: Carried running receipt counter
 
         Returns:
             The receipt number to record on the transaction log
         """
-        if receipt_counter is None:
-            return carried_receipt_no
-
         start, end, resolved = await self._receipt_range_async()
         if not resolved:
-            # The range is what maps the counter into printable territory. Without
-            # it the derived number would leave the configured range entirely, so
-            # prefer whatever the terminal printed and say so loudly.
+            # The range is what maps the counter into printable territory.
+            # Without it the number leaves the configured range entirely. There
+            # is no longer a carried number to fall back on, and failing the
+            # sale after payment is worse than a number that is visibly wrong,
+            # so it is recorded and said loudly.
             logger.error(
-                "Receipt number range unavailable (counter=%s); %s. Check master-data reachability.",
+                "Receipt number range unavailable (counter=%s); recording the raw counter, "
+                "which is outside the configured range. Check master-data reachability.",
                 receipt_counter,
-                (
-                    "recording the number the terminal printed"
-                    if carried_receipt_no is not None
-                    else "recording the raw counter, which is outside the configured range"
-                ),
             )
-            return carried_receipt_no if carried_receipt_no is not None else receipt_counter
+            return receipt_counter
 
         try:
-            derived = derive_receipt_no(receipt_counter, start, end)
+            return derive_receipt_no(receipt_counter, start, end)
         except ValueError as e:
-            # Misconfigured range: keep the number the customer holds.
+            # Misconfigured range. Same reasoning as above.
             logger.error("Cannot derive receipt_no (counter=%s): %s", receipt_counter, e)
-            return carried_receipt_no
-
-        if carried_receipt_no is not None and carried_receipt_no != derived:
-            logger.warning(
-                "Carried receipt_no %s does not match the configured range "
-                "(counter=%s cycle=%s range=%s..%s derives %s); recording the carried "
-                "value, which is what the customer received",
-                carried_receipt_no,
-                receipt_counter,
-                receipt_cycle(receipt_counter, start, end),
-                start,
-                end,
-                derived,
-            )
-            return carried_receipt_no
-        return derived
+            return receipt_counter
 
     async def _get_setting_value_async(self, name: str) -> Any:
         """
