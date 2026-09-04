@@ -342,7 +342,6 @@ class CartService(ICartService):
     async def cancel_transaction_async(
         self,
         seq: int = None,
-        receipt_no: int = None,
         transaction_datetime: str = None,
         receipt_counter: int = None,
     ) -> CartDocument:
@@ -362,10 +361,10 @@ class CartService(ICartService):
 
         Args:
             seq: Client-carried transaction sequence (issue #156).
-            receipt_no: Client-carried receipt number - the number the terminal
-                printed on the cancellation receipt.
             transaction_datetime: Client-stamped transaction time (issue #156).
             receipt_counter: Client-carried running receipt counter (issue #166).
+                The printed number is derived from it and the configured range;
+                the client does not name it (issue #208).
 
         Returns:
             CartDocument: The updated cart document with cancelled status
@@ -390,7 +389,8 @@ class CartService(ICartService):
 
         if transaction_datetime is not None and self._stateless:
             cart_doc.seq = seq
-            cart_doc.receipt_no = receipt_no
+            # The printed number is not carried (issue #208); it is derived from
+            # the counter when the transaction log is built.
             cart_doc.receipt_counter = receipt_counter
             cart_doc.transaction_datetime = transaction_datetime
         else:
@@ -850,7 +850,6 @@ class CartService(ICartService):
     async def bill_async(
         self,
         seq: int = None,
-        receipt_no: int = None,
         transaction_datetime: str = None,
         receipt_counter: int = None,
     ) -> CartDocument:
@@ -865,11 +864,9 @@ class CartService(ICartService):
                 stateless path the terminal supplies the finalize context so
                 the transaction number/receipt/time are deterministic across
                 retries; create_tranlog uses them instead of server counters.
-            receipt_no: Client-carried receipt number (issue #156). The number
-                the terminal printed.
             receipt_counter: Client-carried running receipt counter (issue #166),
-                from which the printed number is derived. None for pre-#166
-                terminals, whose receipt_no is then recorded as sent.
+                from which the printed number is derived. The client does not
+                name the printed number itself (issue #208).
             transaction_datetime: Client-stamped transaction time (issue #156).
                 Its presence is the signal that turns on carried numbering.
 
@@ -919,7 +916,8 @@ class CartService(ICartService):
         # non-stateless case is rejected at the top of this method, bug_006).
         if transaction_datetime is not None and self._stateless:
             cart_doc.seq = seq
-            cart_doc.receipt_no = receipt_no
+            # The printed number is not carried (issue #208); it is derived from
+            # the counter when the transaction log is built.
             cart_doc.receipt_counter = receipt_counter
             cart_doc.transaction_datetime = transaction_datetime
         else:

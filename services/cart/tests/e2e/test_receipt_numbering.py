@@ -230,8 +230,16 @@ async def test_last_number_of_a_cycle(http_client, api_header, opened_terminal_i
 
 
 @pytest.mark.asyncio
-async def test_pre_166_client_without_a_counter_is_unaffected(http_client, api_header, opened_terminal_id):
-    """A terminal that carries only receipt_no keeps working as before."""
+async def test_a_named_printed_number_does_not_reach_the_receipt(
+    http_client, api_header, opened_terminal_id, receipt_range
+):
+    """A body that names a printed number is not what gets printed (issue #208).
+
+    The server builds the receipt on this very tranlog, so the number the body
+    named would be the number on the paper. It is ignored; the counter and the
+    configured range decide.
+    """
+    start, _, _ = receipt_range
     cart_id, snapshot = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header)
 
     data = await _bill(
@@ -241,8 +249,36 @@ async def test_pre_166_client_without_a_counter_is_unaffected(http_client, api_h
         cart_id,
         snapshot,
         seq=9005,
-        receiptNo=4242,
+        receiptCounter=1,
+        receiptNo=4242,  # no longer part of the context
         transactionDatetime="2026-08-20T10:04:00",
     )
 
-    assert data["receiptNo"] == 4242
+    assert data["receiptNo"] == start
+    assert data["receiptNo"] != 4242
+
+
+@pytest.mark.asyncio
+async def test_a_context_carrying_only_a_printed_number_is_refused(http_client, api_header, opened_terminal_id):
+    """The counter is what the context has to carry now (issue #208).
+
+    A pre-#166 client that carries only receipt_no no longer supplies a usable
+    context, and the all-or-nothing rule refuses it rather than letting the
+    server number from its own series behind the terminal's back.
+    """
+    cart_id, snapshot = await _cart_ready_to_bill(http_client, opened_terminal_id, api_header)
+
+    response = await http_client.post(
+        f"/api/v1/carts/{cart_id}/bill?terminal_id={opened_terminal_id}",
+        json={
+            "signedSnapshot": snapshot,
+            "payload": {
+                "seq": 9006,
+                "receiptNo": 4242,
+                "transactionDatetime": "2026-08-20T10:05:00",
+            },
+        },
+        headers=api_header,
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, response.text

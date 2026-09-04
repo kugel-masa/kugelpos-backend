@@ -105,7 +105,6 @@ class TestARepeatCarryingOtherNumbers:
         [
             pytest.param(_tranlog(transaction_no=101), "transaction_no", id="the terminal counted another transaction"),
             pytest.param(_tranlog(receipt_counter=42), "receipt_counter", id="the running receipt counter moved"),
-            pytest.param(_tranlog(receipt_no=111142), "receipt_no", id="a different number was printed"),
             pytest.param(
                 _tranlog(when="2026-08-23T00:00:01"), "generate_date_time", id="across midnight, a different day"
             ),
@@ -123,6 +122,26 @@ class TestARepeatCarryingOtherNumbers:
         assert kwargs["cart_id"] == "cart-190"
         assert kwargs["diverged"] is True
         assert field in kwargs["reject_reason"], f"the reason does not name {field}: {kwargs['reject_reason']}"
+
+    async def test_a_number_the_server_derived_differently_is_not_the_terminal(self, caplog):
+        """Same carried counter, different printed number (issue #208).
+
+        The terminal stopped carrying the printed number; the server derives it
+        from the counter and the configured range. If the range moved, or
+        master-data was unreachable for one of the two attempts, the two
+        derivations disagree while the terminal has not moved at all. Filing that
+        as a divergence accuses the terminal of something the server did.
+        """
+        audit = _audit()
+        service = _make_service(audit)
+
+        with caplog.at_level("WARNING"):
+            await _report(service, _tranlog(receipt_no=111142), _tranlog(receipt_no=111117))
+
+        audit.add_record_async.assert_not_awaited()
+        # Said, though: a range that moves under a live terminal is worth knowing.
+        said = [r.getMessage() for r in caplog.records]
+        assert any("111142" in m and "111117" in m for m in said), said
 
     async def test_the_reason_carries_both_values(self):
         # A reader needs what was claimed and what is recorded; either alone says
@@ -256,7 +275,12 @@ class TestTheConcurrentRaceReportsItToo:
         service.tranlog_repository.set_session = MagicMock()
         service.tranlog_delivery_status_repo.set_session = MagicMock()
         service.tranlog_repository.get_existing_finalize_async = AsyncMock(return_value=winner)
-        service._get_setting_value_async = AsyncMock(return_value=None)
+        # The printed number is derived from the carried counter and this
+        # range (issue #208), so the range has to resolve for the two sides
+        # to be comparable at all.
+        service._get_setting_value_async = AsyncMock(
+            side_effect=lambda name: {"RECEIPT_NO_START_VALUE": "111111", "RECEIPT_NO_END_VALUE": "111120"}.get(name)
+        )
         service._publish_tranlog_async = AsyncMock()
         service.receipt_data_strategy = MagicMock()
         service.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
@@ -270,8 +294,8 @@ class TestTheConcurrentRaceReportsItToo:
         winner.tenant_id = "test_tenant"
         winner.store_code = "S0001"
         winner.transaction_no = 7
-        winner.receipt_no = 111117
         winner.receipt_counter = 7
+        winner.receipt_no = 111117  # derive_receipt_no(7, 111111, 111120)
         winner.generate_date_time = "2026-08-22T10:00:00"
         winner.receipt_text = "R"
         winner.journal_text = "J"
@@ -288,7 +312,8 @@ class TestTheConcurrentRaceReportsItToo:
         cart.business_date = "20260822"
         cart.seq = 8
         cart.receipt_counter = counter
-        cart.receipt_no = 111118
+        # No printed number: the cart carries the counter, the server derives
+        # the number from it (issue #208).
         cart.transaction_datetime = "2026-08-22T10:00:07"
         cart.sales = CartDocument.SalesInfo()
         cart.sales.total_amount_with_tax = 110.0
@@ -326,7 +351,6 @@ class TestTheConcurrentRaceReportsItToo:
         service = self._armed(DuplicateKeyException("dup", "log_tran", {}, None), winner, audit)
         cart = self._cart_carrying(counter=winner.receipt_counter)
         cart.seq = winner.transaction_no
-        cart.receipt_no = winner.receipt_no
         cart.transaction_datetime = winner.generate_date_time
 
         await service.create_tranlog_async(cart)

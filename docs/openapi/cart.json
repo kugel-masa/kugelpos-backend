@@ -136,6 +136,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -297,6 +316,25 @@
                   "code": 500,
                   "message": "Internal server error",
                   "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
@@ -467,6 +505,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -620,6 +677,25 @@
                   "code": 500,
                   "message": "Internal server error",
                   "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
@@ -795,6 +871,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -958,6 +1053,25 @@
                   "code": 500,
                   "message": "Internal server error",
                   "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
@@ -1137,6 +1251,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1281,6 +1414,25 @@
                   "code": 500,
                   "message": "Internal server error",
                   "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
@@ -1451,6 +1603,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1609,6 +1780,25 @@
                   "code": 500,
                   "message": "Internal server error",
                   "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
@@ -1782,6 +1972,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1926,6 +2135,25 @@
                   "code": 500,
                   "message": "Internal server error",
                   "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The cart is carried by the client and its snapshot could not be signed, so it cannot be returned. Repeat the identical request with the snapshot already held: a mutation wrote no cart state, and a finalize is idempotent by cart_id, so the repeat returns the transaction already recorded. Do NOT start a new cart - the transaction may already exist and a new one would be booked a second time.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 503,
+                  "message": "Cannot sign the snapshot for carried cart_id=...; the cart is held by the client alone and cannot be returned unsigned",
+                  "user_error": {
+                    "code": "401507",
+                    "message": "スナップショットの生成に失敗しました"
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
@@ -4074,6 +4302,18 @@
               }
             ],
             "title": "Username"
+          },
+          "carrySnapshot": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrysnapshot",
+            "default": false
           }
         },
         "type": "object",
@@ -4274,17 +4514,6 @@
             ],
             "title": "Seq"
           },
-          "receiptNo": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receiptno"
-          },
           "receiptCounter": {
             "anyOf": [
               {
@@ -4310,7 +4539,7 @@
         },
         "type": "object",
         "title": "FinalizeContext",
-        "description": "Client-carried finalize context for the bill endpoint (issue #156).\n\nOn the stateless (snapshot-present) path the terminal stamps the\ntransaction's number, receipt number, and time at bill and supplies them\nhere so a retried finalize on any backend yields the same values\n(deterministic finalize, FR-012). Absent on the cache-authoritative path,\nwhere the server assigns them. The context is all-or-nothing (a partial one\nwould write a null transaction_no/receipt_no), where the receipt number may\nbe the printed value, the running counter it derives from, or both; accepts\ncamelCase (seq / receiptNo / receiptCounter / transactionDatetime) via the\nalias generator."
+        "description": "Client-carried finalize context for the bill endpoint (issue #156).\n\nOn the stateless (snapshot-present) path the terminal stamps the\ntransaction's number, receipt counter, and time at bill and supplies them\nhere so a retried finalize on any backend yields the same values\n(deterministic finalize, FR-012). Absent on the cache-authoritative path,\nwhere the server assigns them. The context is all-or-nothing (a partial one\nwould write a null transaction_no or receipt_no); accepts camelCase\n(seq / receiptCounter / transactionDatetime) via the alias generator.\n\nThe PRINTED receipt number is not accepted (issue #208). It is derived from\nthe counter and the configured range, which is all `derive_receipt_no`\nneeds. Accepting it let a request body put any number on the transaction\nlog and on the receipt, whatever the terminal's configured range - a\nmismatch was a warning and the finalize succeeded.\n\nThe old behaviour was defensible while the terminal printed: the paper\nexisted before the request did, and renumbering it would contradict\nsomething the customer is holding. It stops being defensible the moment the\nSERVER builds the receipt, because `make_receipt_data` runs on the tranlog\nafter this number is decided - so the number the client named is the number\nthat gets printed, and there is no paper to contradict. Signing the\nenvelope so numbering cannot be forged, and then letting the printed number\nbe named in the request body, is not a coherent position."
       },
       "HTTPValidationError": {
         "properties": {

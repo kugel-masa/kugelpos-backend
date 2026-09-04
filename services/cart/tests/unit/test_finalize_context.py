@@ -21,13 +21,13 @@ from app.api.v1.schemas import FinalizeContext
 def test_empty_context_is_valid():
     """A body-less bill (no carried context) parses fine."""
     ctx = FinalizeContext()
-    assert ctx.seq is None and ctx.receipt_no is None and ctx.transaction_datetime is None
+    assert ctx.seq is None and ctx.receipt_counter is None and ctx.transaction_datetime is None
 
 
 def test_full_context_is_valid():
-    ctx = FinalizeContext(seq=5, receiptNo=10, transactionDatetime="2026-06-14T09:30:00")
+    ctx = FinalizeContext(seq=5, receiptCounter=10, transactionDatetime="2026-06-14T09:30:00")
     assert ctx.seq == 5
-    assert ctx.receipt_no == 10
+    assert ctx.receipt_counter == 10
     assert ctx.transaction_datetime == "2026-06-14T09:30:00"
 
 
@@ -36,13 +36,13 @@ def test_full_context_is_valid():
     [
         {"transactionDatetime": "2026-06-14T09:30:00"},  # only time
         {"seq": 5},  # only seq
-        {"seq": 5, "receiptNo": 10},  # missing time
-        {"seq": 5, "transactionDatetime": "2026-06-14T09:30:00"},  # missing receipt
+        {"seq": 5, "receiptCounter": 10},  # missing time
+        {"seq": 5, "transactionDatetime": "2026-06-14T09:30:00"},  # missing counter
     ],
 )
 def test_partial_context_is_rejected(kwargs):
     """M1: the three finalize fields are all-or-nothing — a partial context
-    would write a null transaction_no/receipt_no, so it must be rejected."""
+    would write a null transaction_no or receipt_no, so it must be rejected."""
     with pytest.raises(ValidationError):
         FinalizeContext(**kwargs)
 
@@ -60,4 +60,4 @@ def test_bad_datetime_is_rejected(bad_datetime):
     """M2: a non-ISO datetime would corrupt the generate_date_time / business
     bucketing (split on 'T'), so it must be rejected."""
     with pytest.raises(ValidationError):
-        FinalizeContext(seq=5, receiptNo=10, transactionDatetime=bad_datetime)
+        FinalizeContext(seq=5, receiptCounter=10, transactionDatetime=bad_datetime)

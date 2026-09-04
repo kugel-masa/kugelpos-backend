@@ -138,7 +138,7 @@ def finalize_envelope(monkeypatch):
     env = snapshot_service.build_finalize_context_envelope(
         cart_id="void-cart-0001",
         seq=7,
-        receipt_no=42,
+        receipt_counter=42,
         transaction_datetime="2026-06-14T09:30:00",
         terminal_info=_make_terminal_info(),
     )
@@ -152,13 +152,12 @@ class TestVerifyFinalizeContext:
 
     def test_valid_envelope_returns_context(self, finalize_envelope):
         ctx = snapshot_service.verify_finalize_context(finalize_envelope)
+        # The running counter is signed; the printed number is not carried at
+        # all - the server derives it from this counter (issue #208).
         assert ctx == {
             "cart_id": "void-cart-0001",
             "seq": 7,
-            "receipt_no": 42,
-            # Optional pre-#166 compatibility: absent from the caller, present
-            # in the signed payload as null (issue #166).
-            "receipt_counter": None,
+            "receipt_counter": 42,
             "transaction_datetime": "2026-06-14T09:30:00",
         }
 
@@ -170,7 +169,7 @@ class TestVerifyFinalizeContext:
                 snapshot_service.build_finalize_context_envelope(
                     cart_id="c1",
                     seq=1,
-                    receipt_no=1,
+                    receipt_counter=1,
                     transaction_datetime="2026-06-14T09:30:00",
                     terminal_info=_make_terminal_info(),
                 )

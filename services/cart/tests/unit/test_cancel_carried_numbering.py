@@ -79,12 +79,14 @@ class TestCarriedCancel:
         svc = _arm(_make_cart_service(), doc)
 
         await svc.cancel_transaction_async(
-            seq=7, receipt_no=111117, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
+            seq=7, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
         )
 
         assert doc.seq == 7
         assert doc.receipt_counter == 7
-        assert doc.receipt_no == 111117
+        # The printed number is derived when the tranlog is built, not carried
+        # onto the cart document (issue #208); the counter is what lands here.
+        assert doc.receipt_counter == 7
         assert doc.transaction_datetime == "2026-08-20T12:00:00"
 
     @pytest.mark.asyncio
@@ -93,7 +95,7 @@ class TestCarriedCancel:
         svc = _arm(_make_cart_service(), doc)
 
         await svc.cancel_transaction_async(
-            seq=7, receipt_no=111117, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
+            seq=7, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
         )
 
         svc.tran_service.create_tranlog_async.assert_awaited_once_with(doc)
@@ -136,7 +138,7 @@ class TestGuard:
 
         with pytest.raises(SnapshotInvalidException):
             await svc.cancel_transaction_async(
-                seq=7, receipt_no=111117, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
+                seq=7, receipt_counter=7, transaction_datetime="2026-08-20T12:00:00"
             )
 
 

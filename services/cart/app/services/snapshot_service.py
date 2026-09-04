@@ -369,10 +369,9 @@ def build_finalize_context_envelope(
     *,
     cart_id: str,
     seq: int,
-    receipt_no: int,
+    receipt_counter: int,
     transaction_datetime: str,
     terminal_info: TerminalInfoDocument,
-    receipt_counter: Optional[int] = None,
 ) -> Optional[dict]:
     """
     Build and sign a finalize-context envelope for a void/return (issue #156, B案).
@@ -380,8 +379,10 @@ def build_finalize_context_envelope(
     Unlike the cart snapshot, a void/return has no in-flight cart to carry; the
     terminal instead carries the new transaction's identity — a stable
     ``cart_id`` (so a lost-ACK retry converges via downstream cart_id dedupe) and
-    the per-open ``(seq, receipt_no, receipt_counter)`` / time it stamped —
-    signed so the numbers cannot be forged. Wire form is the canonical snake_case payload (the signed
+    the per-open ``(seq, receipt_counter)`` / time it stamped — signed so the
+    numbers cannot be forged. The PRINTED receipt number is not among them
+    (issue #208): it is derived from the counter and the configured range, and
+    signing the rest while letting that one be named would not be coherent. Wire form is the canonical snake_case payload (the signed
     bytes), transported as the ``signedSnapshot`` member of the request envelope.
 
     Returns None when signing is degraded (no keys configured).
@@ -399,10 +400,8 @@ def build_finalize_context_envelope(
         "finalize_context": {
             "cart_id": cart_id,
             "seq": seq,
-            "receipt_no": receipt_no,
-            # Running receipt counter (issue #166). Optional so a pre-#166
-            # terminal's envelope still verifies; when present the server derives
-            # the printed number from it and reports a disagreement.
+            # Running receipt counter (issue #166). The server derives the
+            # printed number from it and the configured range (issue #208).
             "receipt_counter": receipt_counter,
             "transaction_datetime": transaction_datetime,
         },
@@ -413,7 +412,7 @@ def build_finalize_context_envelope(
 def verify_finalize_context(envelope: dict) -> dict:
     """
     Verify a presented finalize-context envelope (issue #156, B案) and return its
-    ``finalize_context`` dict (``cart_id`` / ``seq`` / ``receipt_no`` /
+    ``finalize_context`` dict (``cart_id`` / ``seq`` / ``receipt_counter`` /
     ``transaction_datetime``).
 
     Mirrors :func:`verify_envelope` (shape → schema version → kid → signature),

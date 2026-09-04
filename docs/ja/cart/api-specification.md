@@ -144,13 +144,15 @@
 | `transactionType` | integer | No | - |
 | `userId` | string | No | - |
 | `userName` | string | No | - |
+| `carrySnapshot` | boolean | No | - |
 
 **リクエスト例:**
 ```json
 {
   "transactionType": 101,
   "userId": "string",
-  "userName": "string"
+  "userName": "string",
+  "carrySnapshot": false
 }
 ```
 
@@ -221,7 +223,6 @@
 ```json
 {
   "seq": 0,
-  "receiptNo": 0,
   "receiptCounter": 0,
   "transactionDatetime": "string"
 }
@@ -320,7 +321,6 @@
 ```json
 {
   "seq": 0,
-  "receiptNo": 0,
   "receiptCounter": 0,
   "transactionDatetime": "string"
 }

@@ -150,13 +150,15 @@ and transaction type.
 | `transactionType` | integer | No | - |
 | `userId` | string | No | - |
 | `userName` | string | No | - |
+| `carrySnapshot` | boolean | No | - |
 
 **Request Example:**
 ```json
 {
   "transactionType": 101,
   "userId": "string",
-  "userName": "string"
+  "userName": "string",
+  "carrySnapshot": false
 }
 ```
 
@@ -230,7 +232,6 @@ it for receipt generation and storage.
 ```json
 {
   "seq": 0,
-  "receiptNo": 0,
   "receiptCounter": 0,
   "transactionDatetime": "string"
 }
@@ -331,7 +332,6 @@ Marks the cart as cancelled, preventing further modifications or processing.
 ```json
 {
   "seq": 0,
-  "receiptNo": 0,
   "receiptCounter": 0,
   "transactionDatetime": "string"
 }
