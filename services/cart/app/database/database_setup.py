@@ -192,15 +192,32 @@ async def create_request_log_collection(tenant_id: str):
             "unique": False,
             "partialFilterExpression": {"snapshot_info.cart_id": {"$type": "string"}},
         },
+        # Retention (issue #221). Nothing in this tree reads the request log and
+        # nothing removed one either: measured downstream at 6.4M documents /
+        # 23.8 GiB, 97% of the database, on a store PC. Keyed on `created_at`
+        # alone - deliberately a different key pattern from the indexes above,
+        # because MongoDB will not swap options on an existing key pattern, and
+        # `request_info.accept_time` is a string, which a TTL never expires.
+        {
+            "keys": {"created_at": 1},
+            "unique": False,
+            "expireAfterSeconds": settings.REQUEST_LOG_TTL_SECONDS,
+        },
     ]
-    await create_some_collection(
-        tenant_id=tenant_id,
-        collection_name=name,
-        index_keys_list=index_key_list,
-        index_name=name + "_index",
-        # Retire the index keyed on fields that do not exist (issue #182).
-        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}],
-    )
+    # Both copies (issue #221). The buffer writes every request log twice - to the
+    # tenant database and to `{prefix}_commons` - but provisioning only ever ran
+    # for the tenant, so the commons copy had no index at all beyond `_id_`, and
+    # no way to shrink, while receiving exactly the same volume. `tenant_id=None`
+    # is how create_some_collection addresses the commons database.
+    for target in (tenant_id, None):
+        await create_some_collection(
+            tenant_id=target,
+            collection_name=name,
+            index_keys_list=index_key_list,
+            index_name=name + "_index",
+            # Retire the index keyed on fields that do not exist (issue #182).
+            drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}],
+        )
 
 
 async def create_tran_log_delivery_status_collection(tenant_id: str):

@@ -17,8 +17,13 @@ async def create_some_collection(
     index_name: str,
     drop_indexes_by_keys: list = None,
 ):
+    # `None` addresses the shared commons database, the convention cart and
+    # terminal already used for the collections written there (issue #221).
+    # Without this it produced a database literally named "<prefix>_None",
+    # which nothing reads and nothing would ever have noticed.
+    db_name = f"{settings.DB_NAME_PREFIX}_commons" if tenant_id is None else f"{settings.DB_NAME_PREFIX}_{tenant_id}"
     await db_helper.create_collection_with_indexes_async(
-        db_name=f"{settings.DB_NAME_PREFIX}_{tenant_id}",
+        db_name=db_name,
         collection_name=collection_name,
         index_keys_list=index_keys_list,
         index_name=index_name,
@@ -123,16 +128,33 @@ async def create_request_log_collection(tenant_id: str):
                 "request_info.accept_time": 1,
             },
             "unique": False,
-        }
+        },
+        # Retention (issue #221). Nothing in this tree reads the request log and
+        # nothing removed one either: measured downstream at 6.4M documents /
+        # 23.8 GiB, 97% of the database, on a store PC. Keyed on `created_at`
+        # alone - deliberately a different key pattern from the index above,
+        # because MongoDB will not swap options on an existing key pattern, and
+        # `request_info.accept_time` is a string, which a TTL never expires.
+        {
+            "keys": {"created_at": 1},
+            "unique": False,
+            "expireAfterSeconds": settings.REQUEST_LOG_TTL_SECONDS,
+        },
     ]
-    await create_some_collection(
-        tenant_id=tenant_id,
-        collection_name=name,
-        index_keys_list=index_key_list,
-        index_name=name + "_index",
-        # Retire the index keyed on fields that do not exist (issue #182).
-        drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}],
-    )
+    # Both copies (issue #221). The buffer writes every request log twice - to the
+    # tenant database and to `{prefix}_commons` - but provisioning only ever ran
+    # for the tenant, so the commons copy had no index at all beyond `_id_`, and
+    # no way to shrink, while receiving exactly the same volume. `tenant_id=None`
+    # is how create_some_collection addresses the commons database.
+    for target in (tenant_id, None):
+        await create_some_collection(
+            tenant_id=target,
+            collection_name=name,
+            index_keys_list=index_key_list,
+            index_name=name + "_index",
+            # Retire the index keyed on fields that do not exist (issue #182).
+            drop_indexes_by_keys=[{"tenant_id": 1, "store_code": 1, "terminal_no": 1, "request_info.accept_time": 1}],
+        )
 
 
 # create all collections

@@ -484,6 +484,46 @@ async def create_collection_with_indexes_async(
                     logger,
                 )
 
+            # A TTL whose retention changed is the one option `createIndexes`
+            # will not update: it answers IndexOptionsConflict, the ensure loop
+            # above logs a warning, and the keys-only check below then reports
+            # success over the value the index was FIRST created with. An
+            # operator who shortens retention because a disk is filling gets no
+            # error and no effect (issue #221). `collMod` is the documented way
+            # to change it in place, so it is issued here when the live value
+            # differs from the declared one.
+            wanted_ttl = index_info.get("expireAfterSeconds")
+            if wanted_ttl is not None and want in present:
+                for info in by_keys[want]:
+                    live_ttl = info.get("expireAfterSeconds")
+                    if live_ttl is not None and int(live_ttl) != int(wanted_ttl):
+                        idx_name = next(
+                            (n for n, i in final_info.items() if i is info),
+                            None,
+                        )
+                        if idx_name is None:
+                            continue
+                        try:
+                            await db.command(
+                                {
+                                    "collMod": collection_name,
+                                    "index": {"name": idx_name, "expireAfterSeconds": int(wanted_ttl)},
+                                }
+                            )
+                            logger.info(
+                                f"Retention on {collection_name}.{idx_name} changed from {live_ttl}s to {wanted_ttl}s"
+                            )
+                        except (ConnectionFailure, ServerSelectionTimeoutError):
+                            raise
+                        except Exception as e:
+                            # Not fatal: the collection still expires, at the old
+                            # value. Said loudly because the setting the operator
+                            # changed is not the one in force.
+                            logger.error(
+                                f"Retention on {collection_name}.{idx_name} is still {live_ttl}s; "
+                                f"the declared {wanted_ttl}s could not be applied: {e}"
+                            )
+
             if want not in present:
                 # Say what is actually in the way. "Likely existing data
                 # violates a new unique constraint" was a guess, and left the
