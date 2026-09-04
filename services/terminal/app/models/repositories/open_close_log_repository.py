@@ -50,8 +50,6 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
         Raises:
             CannotCreateException: If the document creation fails
         """
-        logger.debug("OpenCloseLogRepository.create_open_close_log: open_close_log->{open_close_log}")
-
         try:
             open_close_log.shard_key = self.__get_shard_key(open_close_log)
             logger.debug(f"OpenCloseLog.create_open_close_log: open_close_log->{mask_loggable(open_close_log)}")
