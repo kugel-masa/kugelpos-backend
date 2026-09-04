@@ -1026,7 +1026,15 @@ class TranService:
 
     # The finalize context a terminal carries (issue #156). What a repeat claims
     # for these is the whole question issue #190 is about.
-    CARRIED_FINALIZE_FIELDS = ("transaction_no", "receipt_no", "receipt_counter", "generate_date_time")
+    #
+    # The printed `receipt_no` is deliberately NOT here (issue #208). The terminal
+    # stopped carrying it: the server derives it from the carried counter and the
+    # configured range, so two attempts with an identical context can still
+    # produce different numbers if the range was changed or master-data was
+    # unreachable in between. That difference is the server's, and filing it as
+    # "the terminal carried different numbers" would accuse a terminal that had
+    # not moved. The counter it did carry is compared instead.
+    CARRIED_FINALIZE_FIELDS = ("transaction_no", "receipt_counter", "generate_date_time")
 
     @staticmethod
     def __same_instant(asked, holds) -> bool:
@@ -1090,6 +1098,21 @@ class TranService:
                 "answered with the transaction already recorded",
                 recorded.cart_id,
             )
+            if client_numbered and carried.receipt_no != recorded.receipt_no:
+                # Same carried counter, different derived number: the range moved
+                # or master-data was unreachable for one of the two attempts
+                # (issue #208). The recorded number stands - said here because a
+                # range that changes under a live terminal is worth knowing about,
+                # and not filed as a divergence because the terminal did not move.
+                logger.warning(
+                    "Finalize repeat for cart_id=%s derived receipt_no=%s from carried counter=%s "
+                    "while %s is recorded; the configured range changed or was unavailable. "
+                    "The recorded number stands.",
+                    recorded.cart_id,
+                    carried.receipt_no,
+                    carried.receipt_counter,
+                    recorded.receipt_no,
+                )
             return
 
         logger.error(

@@ -105,7 +105,6 @@ class TestARepeatCarryingOtherNumbers:
         [
             pytest.param(_tranlog(transaction_no=101), "transaction_no", id="the terminal counted another transaction"),
             pytest.param(_tranlog(receipt_counter=42), "receipt_counter", id="the running receipt counter moved"),
-            pytest.param(_tranlog(receipt_no=111142), "receipt_no", id="a different number was printed"),
             pytest.param(
                 _tranlog(when="2026-08-23T00:00:01"), "generate_date_time", id="across midnight, a different day"
             ),
@@ -123,6 +122,26 @@ class TestARepeatCarryingOtherNumbers:
         assert kwargs["cart_id"] == "cart-190"
         assert kwargs["diverged"] is True
         assert field in kwargs["reject_reason"], f"the reason does not name {field}: {kwargs['reject_reason']}"
+
+    async def test_a_number_the_server_derived_differently_is_not_the_terminal(self, caplog):
+        """Same carried counter, different printed number (issue #208).
+
+        The terminal stopped carrying the printed number; the server derives it
+        from the counter and the configured range. If the range moved, or
+        master-data was unreachable for one of the two attempts, the two
+        derivations disagree while the terminal has not moved at all. Filing that
+        as a divergence accuses the terminal of something the server did.
+        """
+        audit = _audit()
+        service = _make_service(audit)
+
+        with caplog.at_level("WARNING"):
+            await _report(service, _tranlog(receipt_no=111142), _tranlog(receipt_no=111117))
+
+        audit.add_record_async.assert_not_awaited()
+        # Said, though: a range that moves under a live terminal is worth knowing.
+        said = [r.getMessage() for r in caplog.records]
+        assert any("111142" in m and "111117" in m for m in said), said
 
     async def test_the_reason_carries_both_values(self):
         # A reader needs what was claimed and what is recorded; either alone says
