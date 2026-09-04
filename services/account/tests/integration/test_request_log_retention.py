@@ -182,6 +182,115 @@ async def test_a_row_that_already_has_a_date_is_left_alone(clean_log_request):
 
 
 @pytest.mark.asyncio
+async def test_a_constraint_the_declaration_lacks_is_not_silently_dropped(clean_log_request):
+    """Adding the expiry means rebuilding, and rebuilding from the declaration
+    would drop a `unique` the live index carries. Widening a constraint quietly
+    is the failure this whole path exists to prevent, so it stops instead.
+    """
+    from kugel_common.database import database as db_helper
+    # Two classes share this name; the database module raises its own.
+    from kugel_common.database.database_exceptions import DatabaseException
+    from app.database.database_setup import create_request_log_collection
+
+    db = await db_helper.get_db_async(_db_names()[0])
+    await db[COLLECTION].create_index([("created_at", 1)], name="log_request_index_created_at", unique=True)
+
+    with pytest.raises(DatabaseException, match="unique"):
+        await create_request_log_collection(tenant_id=os.environ.get("TENANT_ID"))
+
+    # And it is left as it was, rather than half-migrated.
+    info = await _indexes(_db_names()[0])
+    assert info["log_request_index_created_at"].get("unique") is True
+
+
+@pytest.mark.asyncio
+async def test_another_process_getting_there_first_is_not_a_failure(clean_log_request, monkeypatch):
+    """Two services provisioning the same collection at once both see the plain
+    index; the loser's `drop_index` finds nothing left to drop. What matters is
+    the state afterwards, so it is re-read rather than inferred from who raised.
+
+    The other process is simulated by a collection proxy: motor hands back a new
+    object for every `db[name]`, so an attribute set on one of them is not the
+    one the code under test uses.
+    """
+    from pymongo.errors import OperationFailure
+
+    from kugel_common.database import database as db_helper
+    from app.database.database_setup import create_request_log_collection
+    from app.config.settings import settings
+
+    db_name = _db_names()[0]
+    db = await db_helper.get_db_async(db_name)
+    await db[COLLECTION].create_index([("created_at", 1)], name="log_request_index_created_at")
+
+    raced = {"done": False}
+
+    class _Collection:
+        def __init__(self, real):
+            self._real = real
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        async def drop_index(self, index_name, *args, **kwargs):
+            # The winner: drops and rebuilds with the expiry. Then this one's own
+            # drop finds nothing, which is what the server answers in the race.
+            raced["done"] = True
+            await self._real.drop_index(index_name, *args, **kwargs)
+            await self._real.create_index(
+                [("created_at", 1)],
+                name=index_name,
+                expireAfterSeconds=settings.REQUEST_LOG_TTL_SECONDS,
+            )
+            raise OperationFailure(f"index not found with name [{index_name}]")
+
+    class _Database:
+        def __init__(self, real):
+            self._real = real
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        def __getitem__(self, name):
+            real = self._real[name]
+            return _Collection(real) if name == COLLECTION and not raced["done"] else real
+
+    original_get_db = db_helper.get_db_async
+
+    async def _proxied(name):
+        real = await original_get_db(name)
+        return _Database(real) if name == db_name else real
+
+    monkeypatch.setattr(db_helper, "get_db_async", _proxied)
+
+    await create_request_log_collection(tenant_id=os.environ.get("TENANT_ID"))
+
+    assert raced["done"], "the race was never reached"
+    monkeypatch.undo()
+    assert _ttl_of(await _indexes(db_name)) == [settings.REQUEST_LOG_TTL_SECONDS]
+
+
+@pytest.mark.asyncio
+async def test_retention_of_zero_backfills_nothing_either(clean_log_request, monkeypatch):
+    """With no expiry declared there is nothing for a date to feed, and walking a
+    collection of millions to prepare for an index that is never created is pure
+    cost.
+    """
+    from kugel_common.database import database as db_helper
+    from app.database.database_setup import create_request_log_collection
+    from app.config.settings import settings
+
+    db_name = _db_names()[0]
+    db = await db_helper.get_db_async(db_name)
+    await db[COLLECTION].insert_one({"_id": ObjectId(), "created_at": None})
+
+    monkeypatch.setattr(settings, "REQUEST_LOG_TTL_SECONDS", 0)
+    await create_request_log_collection(tenant_id=os.environ.get("TENANT_ID"))
+
+    assert await db[COLLECTION].count_documents({"created_at": None}) == 1
+
+
+@pytest.mark.asyncio
 async def test_retention_of_zero_declares_nothing(clean_log_request, monkeypatch):
     """0 has to mean no expiry.
 

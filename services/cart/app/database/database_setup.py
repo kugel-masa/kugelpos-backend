@@ -222,11 +222,18 @@ async def create_request_log_collection(tenant_id: str):
     for target in (tenant_id, None):
         # Pre-#221 documents carry no date, and a TTL index never expires those.
         # Before the index, so the rows the index exists for are already covered
-        # by the time it starts running.
-        await db_helper.backfill_created_at_from_id_async(
-            db_name=f"{settings.DB_NAME_PREFIX}_commons" if target is None else f"{settings.DB_NAME_PREFIX}_{target}",
-            collection_name=name,
-        )
+        # by the time it starts running - and only when there is an index to
+        # cover them for. With retention off the pass would walk the whole
+        # collection to prepare for an expiry that is never declared.
+        if settings.REQUEST_LOG_TTL_SECONDS > 0:
+            await db_helper.backfill_created_at_from_id_async(
+                db_name=(
+                    f"{settings.DB_NAME_PREFIX}_commons"
+                    if target is None
+                    else f"{settings.DB_NAME_PREFIX}_{target}"
+                ),
+                collection_name=name,
+            )
         await create_some_collection(
             tenant_id=target,
             collection_name=name,

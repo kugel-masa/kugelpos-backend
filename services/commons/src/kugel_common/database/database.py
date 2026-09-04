@@ -552,11 +552,32 @@ async def create_collection_with_indexes_async(
                         # collection reported as expiring while nothing expires.
                         # `collMod` cannot turn a plain index into a TTL one, so
                         # the plain one is dropped and rebuilt from the
-                        # declaration. Same keys either way; only the expiry is
-                        # added.
+                        # declaration.
                         idx_name = next((n for n, i in final_info.items() if i is info), None)
                         if idx_name is None or idx_name == "_id_":
                             continue
+
+                        # Only when the live index constrains nothing the
+                        # declaration does not. Rebuilding from the declaration
+                        # would otherwise drop a `unique` or a
+                        # `partialFilterExpression` that something relies on -
+                        # silently widening a constraint while adding an expiry,
+                        # which is the same class of quiet loss this whole block
+                        # exists to prevent. Said, and left for a person.
+                        lost = [
+                            option
+                            for option in ("unique", "partialFilterExpression")
+                            if info.get(option) and not index_info.get(option)
+                        ]
+                        if lost:
+                            raise DatabaseException(
+                                f"Index {want} on {collection_name} carries {', '.join(lost)} that the "
+                                f"declaration does not, and adding the declared expiry means rebuilding it. "
+                                f"Rebuilding would drop the constraint, so it is left alone and nothing "
+                                f"expires. Resolve the index by hand.",
+                                logger,
+                            )
+
                         try:
                             await db[collection_name].drop_index(idx_name)
                             await execute_command_async(
@@ -574,11 +595,29 @@ async def create_collection_with_indexes_async(
                         except (ConnectionFailure, ServerSelectionTimeoutError):
                             raise
                         except Exception as e:
-                            raise DatabaseException(
-                                f"Index {want} on {collection_name} exists without the declared expiry and "
-                                f"could not be rebuilt with it, so nothing expires: {e}",
-                                logger,
-                            ) from e
+                            # Another process provisioning the same collection is
+                            # not a failure: it may have dropped the index between
+                            # the read above and the drop here (IndexNotFound), or
+                            # rebuilt it before this one could. What matters is the
+                            # state now, so it is re-read rather than inferred from
+                            # who raised.
+                            rebuilt = await db[collection_name].index_information()
+                            settled = any(
+                                [(k, v) for k, v in i.get("key", [])] == list(want)
+                                and i.get("expireAfterSeconds") is not None
+                                for i in rebuilt.values()
+                            )
+                            if settled:
+                                logger.info(
+                                    f"{collection_name}.{idx_name} was rebuilt with an expiry by another "
+                                    f"process while this one was doing the same: {e}"
+                                )
+                            else:
+                                raise DatabaseException(
+                                    f"Index {want} on {collection_name} exists without the declared expiry and "
+                                    f"could not be rebuilt with it, so nothing expires: {e}",
+                                    logger,
+                                ) from e
                         continue
                     if int(live_ttl) != int(wanted_ttl):
                         idx_name = next(
