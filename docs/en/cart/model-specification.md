@@ -342,7 +342,7 @@ Cart creation response.
 | Field Name (JSON) | Type | Description |
 |-------------------|------|-------------|
 | cartId | string | Generated cart ID |
-| signedSnapshot | SnapshotEnvelope | Signed snapshot of the freshly created cart (#148) |
+| signedSnapshot | SnapshotEnvelope | Signed snapshot of the freshly created cart (#148). **Present only when `carrySnapshot=true`**; null on the default path |
 
 #### CartDeleteResponse
 Cart deletion response.
@@ -530,6 +530,7 @@ Event published during terminal open/close operations.
 | SNAPSHOT_HMAC_KEYS | string | "" (**required**) | `kid:base64key` CSV; the first entry signs, the rest are previous generations accepted for verification only (rotation grace) |
 | SNAPSHOT_ALLOW_INSECURE_KEY | boolean | false | Allow starting with the key published in this repository (local development only) |
 | CART_REQUEST_SNAPSHOT_MODE | string | "DUAL" | `DUAL` = accept snapshot-less requests; `REQUIRED` = mutating requests must carry one |
+| MAX_REQUEST_BODY_BYTES | integer | 4194304 (4 MiB) | Ceiling on the request body, compressed or not. This is the knob to raise when a carried snapshot is refused with 413 |
 | REQUEST_DECOMPRESS_MAX_BYTES | integer | None | **Deprecated** alias for `MAX_REQUEST_BODY_BYTES` (#195); kept so a deployment that set the old name is honoured rather than silently ignored |
 
 `SNAPSHOT_HMAC_KEYS` is required: the service **refuses to start** without a usable key (#192). A

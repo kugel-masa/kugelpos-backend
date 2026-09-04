@@ -345,7 +345,7 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 | フィールド名（JSON） | 型 | 説明 |
 |-------------------|------|-------------|
 | cartId | string | 生成されたカートID |
-| signedSnapshot | SnapshotEnvelope | 作成直後のカートの署名付きスナップショット（#148） |
+| signedSnapshot | SnapshotEnvelope | 作成直後のカートの署名付きスナップショット（#148）。**`carrySnapshot=true` のときだけ入る**。既定（false）では null |
 
 #### CartDeleteResponse
 カート削除レスポンス。
@@ -534,6 +534,7 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 | SNAPSHOT_HMAC_KEYS | string | ""（**必須**） | `kid:base64鍵` の CSV。先頭が署名鍵、以降は検証のみ受け付ける旧世代（ローテーション猶予） |
 | SNAPSHOT_ALLOW_INSECURE_KEY | boolean | false | 本リポジトリに公開されている鍵での起動を許す（ローカル開発専用） |
 | CART_REQUEST_SNAPSHOT_MODE | string | "DUAL" | `DUAL` = スナップショット非同梱も受け付ける／`REQUIRED` = 変更系は同梱必須 |
+| MAX_REQUEST_BODY_BYTES | integer | 4194304（4 MiB） | リクエストボディの上限。圧縮の有無を問わず全ボディに効く。持ち回りスナップショットが 413 になるときの調整先はここ |
 | REQUEST_DECOMPRESS_MAX_BYTES | integer | None | **非推奨**。`MAX_REQUEST_BODY_BYTES` の旧名（#195）。旧名を設定した配備が黙殺されないよう残してある |
 
 `SNAPSHOT_HMAC_KEYS` は必須で、使える鍵が無ければサービスは**起動を拒否する**（#192）。クライアントが
