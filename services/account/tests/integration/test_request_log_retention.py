@@ -224,6 +224,7 @@ async def test_another_process_getting_there_first_is_not_a_failure(clean_log_re
     await db[COLLECTION].create_index([("created_at", 1)], name="log_request_index_created_at")
 
     raced = {"done": False}
+    WINNER_TTL = 12345  # what the other process declared
 
     class _Collection:
         def __init__(self, real):
@@ -237,10 +238,14 @@ async def test_another_process_getting_there_first_is_not_a_failure(clean_log_re
             # drop finds nothing, which is what the server answers in the race.
             raced["done"] = True
             await self._real.drop_index(index_name, *args, **kwargs)
+            # Deliberately NOT this process's retention: during a rolling
+            # update the winner is a different version with a different
+            # setting, and accepting an expiry merely because one exists
+            # would leave the shortened retention quietly unapplied.
             await self._real.create_index(
                 [("created_at", 1)],
                 name=index_name,
-                expireAfterSeconds=settings.REQUEST_LOG_TTL_SECONDS,
+                expireAfterSeconds=WINNER_TTL,
             )
             raise OperationFailure(f"index not found with name [{index_name}]")
 
@@ -267,6 +272,7 @@ async def test_another_process_getting_there_first_is_not_a_failure(clean_log_re
 
     assert raced["done"], "the race was never reached"
     monkeypatch.undo()
+    # This process's declaration, not the winner's.
     assert _ttl_of(await _indexes(db_name)) == [settings.REQUEST_LOG_TTL_SECONDS]
 
 

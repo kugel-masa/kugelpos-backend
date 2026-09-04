@@ -364,6 +364,43 @@ async def run_setup_steps_async(tenant_id: str, steps: list) -> None:
 
 
 @with_connection_retry
+async def _apply_retention_async(db, collection_name: str, index_name: str, live_ttl, wanted_ttl) -> None:
+    """
+    Put the declared retention on an existing TTL index (issue #221).
+
+    `createIndexes` will not change the options of an index that already exists —
+    it answers IndexOptionsConflict, which the provisioning swallows with a
+    warning — so an operator who shortens retention because a disk is filling
+    otherwise gets no error and no effect. `collMod` is the documented way to
+    change it in place.
+
+    Not fatal on failure: the collection still expires, at the old value. Said at
+    ERROR because the setting in force is not the one that was asked for.
+
+    Args:
+        db: Database handle
+        collection_name: Collection holding the index
+        index_name: Name of the TTL index to modify
+        live_ttl: Retention the index currently carries, for the message
+        wanted_ttl: Retention the declaration asks for
+    """
+    try:
+        await db.command(
+            {
+                "collMod": collection_name,
+                "index": {"name": index_name, "expireAfterSeconds": int(wanted_ttl)},
+            }
+        )
+        logger.info(f"Retention on {collection_name}.{index_name} changed from {live_ttl}s to {wanted_ttl}s")
+    except (ConnectionFailure, ServerSelectionTimeoutError):
+        raise
+    except Exception as e:
+        logger.error(
+            f"Retention on {collection_name}.{index_name} is still {live_ttl}s; "
+            f"the declared {wanted_ttl}s could not be applied: {e}"
+        )
+
+
 async def backfill_created_at_from_id_async(db_name: str, collection_name: str) -> int:
     """
     Give documents written before `created_at` existed a date, so a TTL can see them.
@@ -602,22 +639,37 @@ async def create_collection_with_indexes_async(
                             # state now, so it is re-read rather than inferred from
                             # who raised.
                             rebuilt = await db[collection_name].index_information()
-                            settled = any(
-                                [(k, v) for k, v in i.get("key", [])] == list(want)
-                                and i.get("expireAfterSeconds") is not None
-                                for i in rebuilt.values()
+                            settled = next(
+                                (
+                                    (n, i)
+                                    for n, i in rebuilt.items()
+                                    if [(k, v) for k, v in i.get("key", [])] == list(want)
+                                    and i.get("expireAfterSeconds") is not None
+                                ),
+                                None,
                             )
-                            if settled:
-                                logger.info(
-                                    f"{collection_name}.{idx_name} was rebuilt with an expiry by another "
-                                    f"process while this one was doing the same: {e}"
-                                )
-                            else:
+                            if settled is None:
                                 raise DatabaseException(
                                     f"Index {want} on {collection_name} exists without the declared expiry and "
                                     f"could not be rebuilt with it, so nothing expires: {e}",
                                     logger,
                                 ) from e
+
+                            settled_name, settled_info = settled
+                            settled_ttl = settled_info.get("expireAfterSeconds")
+                            if int(settled_ttl) == int(wanted_ttl):
+                                logger.info(
+                                    f"{collection_name}.{settled_name} was rebuilt with an expiry by another "
+                                    f"process while this one was doing the same: {e}"
+                                )
+                            else:
+                                # It built the index with ITS declared retention,
+                                # which during a rolling update is not necessarily
+                                # this one's. Accepting an expiry merely because
+                                # one exists would leave an operator's shortened
+                                # retention quietly unapplied, so the declared
+                                # value is put on the index the winner left behind.
+                                await _apply_retention_async(db, collection_name, settled_name, settled_ttl, wanted_ttl)
                         continue
                     if int(live_ttl) != int(wanted_ttl):
                         idx_name = next(
@@ -626,26 +678,7 @@ async def create_collection_with_indexes_async(
                         )
                         if idx_name is None:
                             continue
-                        try:
-                            await db.command(
-                                {
-                                    "collMod": collection_name,
-                                    "index": {"name": idx_name, "expireAfterSeconds": int(wanted_ttl)},
-                                }
-                            )
-                            logger.info(
-                                f"Retention on {collection_name}.{idx_name} changed from {live_ttl}s to {wanted_ttl}s"
-                            )
-                        except (ConnectionFailure, ServerSelectionTimeoutError):
-                            raise
-                        except Exception as e:
-                            # Not fatal: the collection still expires, at the old
-                            # value. Said loudly because the setting the operator
-                            # changed is not the one in force.
-                            logger.error(
-                                f"Retention on {collection_name}.{idx_name} is still {live_ttl}s; "
-                                f"the declared {wanted_ttl}s could not be applied: {e}"
-                            )
+                        await _apply_retention_async(db, collection_name, idx_name, live_ttl, wanted_ttl)
 
             if want not in present:
                 # Say what is actually in the way. "Likely existing data
