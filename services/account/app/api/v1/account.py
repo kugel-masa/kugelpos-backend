@@ -18,6 +18,7 @@ from datetime import timedelta
 import inspect
 
 from kugel_common.status_codes import StatusCodes
+from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.utils.misc import get_app_time
 from kugel_common.utils.slack_notifier import send_info_notification
@@ -157,7 +158,11 @@ async def register_super_user(user: UserAccount, tenant_id: str = Depends(genera
         last_login=None,
     )
 
-    logger.debug(f"register_super_user: user_info->{user_info.model_dump()}")
+    # `UserAccountInDB` carries `hashed_password`, and a bcrypt hash in a log
+    # is offline-crackable material (issue #136). The plaintext is already
+    # `"*****"` by the time this runs, which is why the credential-sentinel
+    # scan does not see this line - it plants a plaintext password.
+    logger.debug(f"register_super_user: user_info->{mask_loggable(user_info)}")
 
     users_collection = await get_user_collection(user_info.tenant_id)
     await users_collection.insert_one(user_info.model_dump())
