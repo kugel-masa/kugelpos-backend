@@ -39,6 +39,21 @@ class TestWhatIsMasked:
         for key in ("pin_code", "pinCode", "PIN_CODE", "pin-code"):
             assert mask_sensitive_data({key: "1234"})[key] == "****", key
 
+    def test_a_hashed_credential_is_not_written_out_either(self):
+        # A bcrypt hash is not the plaintext, but it is offline-crackable and
+        # belongs in no log (the point issue #214 made for `hashed_password`).
+        # Matching is exact, so every hashed spelling has to be named: "secret"
+        # in the set does NOT cover "secret_hash".
+        for key in ("secret_hash", "secretHash", "hashed_secret", "password_hash", "pin_hash", "api_key_hash"):
+            assert mask_sensitive_data({key: "$2b$12$abcdefghijklmnopqrstuv"})[key] == "****", key
+
+    def test_the_api_key_rule_does_not_leak_through_its_hash(self):
+        # An api_key keeps its ends so troubleshooting can recognise it. A hash
+        # of one has no such workflow behind it and is blanked outright.
+        masked = mask_sensitive_data({"apiKey": "abcd1234efgh5678", "apiKeyHash": "$2b$12$abcdefghijkl"})
+        assert masked["apiKey"].startswith("abcd") and masked["apiKey"].endswith("5678")
+        assert masked["apiKeyHash"] == "****"
+
     def test_a_bearer_token_is_not_written_out(self):
         # The value of an Authorization header IS the credential.
         masked = mask_sensitive_data({"Authorization": "Bearer eyJhbGciOi.body.sig"})

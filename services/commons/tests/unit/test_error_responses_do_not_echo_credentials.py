@@ -7,11 +7,11 @@ carries the raw `input`, and the AppException path formats `str(exc)`, which
 for a repository failure carries the document that failed to be created. Both
 reach the ERROR log AND the response.
 
-There are two of these modules. `exceptions/exception_handlers.py` is the one
-every service registers; `utils/api_exception_handler.py` is a second
-implementation of the same handlers that nothing imports but its own tests.
-It is covered here anyway - it does not echo the input today, and this is what
-notices if someone makes it match its twin without carrying the masking over.
+There used to be two of these modules: `utils/api_exception_handler.py` was a
+second implementation of the same handlers that nothing imported but its own
+tests, and it carried none of this masking. It was deleted rather than kept in
+step, because a copy nobody runs is a copy nobody notices going wrong - and the
+one thing it was one edit away from becoming is the defect this file is about.
 """
 
 import logging
@@ -51,23 +51,8 @@ def _app_with(handlers) -> FastAPI:
     return app
 
 
-def _register_via_utils(app: FastAPI) -> None:
-    """Wire up the other module, whose handlers are factories rather than a setup call."""
-    from fastapi.exceptions import RequestValidationError
-
-    from kugel_common.exceptions.base_exceptions import AppException
-    from kugel_common.utils.api_exception_handler import (
-        create_app_exception_handler,
-        create_request_validation_exception_handler,
-    )
-
-    app.add_exception_handler(RequestValidationError, create_request_validation_exception_handler())
-    app.add_exception_handler(AppException, create_app_exception_handler())
-
-
 HANDLERS = {
     "registered by every service": register_exception_handlers,
-    "the unused twin": _register_via_utils,
 }
 
 

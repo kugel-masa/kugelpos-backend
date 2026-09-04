@@ -49,8 +49,6 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
         Raises:
             CannotCreateException: If the open/close log cannot be created
         """
-        logger.debug("OpenCloseLogRepository.create_open_close_log: open_close_log->{open_close_log}")
-
         try:
             # Check if the log is already created
             filter = {
