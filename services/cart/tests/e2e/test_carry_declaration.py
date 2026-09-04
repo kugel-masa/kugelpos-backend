@@ -57,6 +57,29 @@ async def _add_carried(http_client, terminal_id, header, cart_id, snapshot):
     )
 
 
+def _declared_not_carried(snapshot: dict) -> dict:
+    """The same envelope, saying its cart was opened for the cache.
+
+    Re-signed with the key the compose file gives the cart service, so the
+    request reaches the path guard rather than dying on a bad signature.
+
+    The envelope travels camelCase but is signed over its snake_case form
+    (`snapshot_service._envelope_payload`), so it is converted back before
+    signing and forward again to be sent.
+    """
+    from app.api.common.schemas import SnapshotEnvelope
+    from kugel_common.utils.hmac_signer import HmacSigner
+
+    payload = SnapshotEnvelope(**snapshot).model_dump(mode="json")
+    payload.pop("signature")
+    payload["cart_document"] = dict(payload["cart_document"])
+    payload["cart_document"]["carry_snapshot"] = False
+
+    spec = os.environ.get("SNAPSHOT_HMAC_KEYS", "dev-v1:a3VnZWxwb3MtZGV2LXNuYXBzaG90LWtleS0zMmJ5dGU=")
+    signature = HmacSigner.from_spec(spec).sign(payload)
+    return SnapshotEnvelope(**payload, signature=signature).model_dump(mode="json", by_alias=True)
+
+
 async def _add_plain(http_client, terminal_id, header, cart_id):
     return await http_client.post(
         f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
@@ -107,18 +130,40 @@ class TestACartOpenedForTheCache:
     @pytest.mark.dual_only  # no snapshot carried: needs the phase 1 fallback (#156)
 
     @pytest.mark.asyncio
+    async def test_a_cache_path_creation_hands_back_nothing_to_carry(
+        self, http_client, api_header, opened_terminal_id
+    ):
+        """The first reason carrying it cannot happen: there is no envelope.
+
+        Until #215 the server signed one into every mutating response, cache
+        path included, and then refused it on the way back. Now it does not
+        build one at all.
+        """
+        _, snapshot = await _create(http_client, opened_terminal_id, api_header, carry_snapshot=False)
+
+        assert snapshot is None, "a cache-path creation still hands out an envelope"
+
+    @pytest.mark.asyncio
     async def test_carrying_it_is_refused(self, http_client, api_header, opened_terminal_id):
         """The other direction, and it matters as much.
 
         Declaring the cache path and then carrying leaves the cache copy behind
         while the cart moves on — which is the same silent loss, reached from
         the other side.
+
+        The envelope has to be manufactured now. This test used to carry the
+        one the server handed back for a cache-path cart, which since #215 it
+        no longer does - so the request became an ordinary snapshot-less one
+        and was answered 200, testing nothing. A cart is opened carried
+        instead, and its own envelope is told it is not carried and re-signed:
+        the exact shape the guard exists to refuse.
         """
-        cart_id, snapshot = await _create(http_client, opened_terminal_id, api_header, carry_snapshot=False)
+        cart_id, snapshot = await _create(http_client, opened_terminal_id, api_header, carry_snapshot=True)
+        forged = _declared_not_carried(snapshot)
 
-        response = await _add_carried(http_client, opened_terminal_id, api_header, cart_id, snapshot)
+        response = await _add_carried(http_client, opened_terminal_id, api_header, cart_id, forged)
 
-        assert response.status_code != status.HTTP_200_OK, "a cache-path cart was carried"
+        assert response.status_code != status.HTTP_200_OK, "a cart declared for the cache was carried"
         assert response.status_code == status.HTTP_409_CONFLICT, response.text
         assert "401515" in response.text
 

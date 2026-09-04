@@ -74,17 +74,31 @@ def _cart_data_with_snapshot(cart_service: CartService, cart_doc) -> dict:
     """
     Transform a mutated cart into response data with a signed snapshot attached.
 
-    Every cart-mutating response carries a restorable copy of the cart
-    (issue #148). Generation is best-effort while the server holds the cart in
-    its cache: the field is null and the operation still succeeds.
+    A carried response carries a restorable copy of the cart (issue #148), and
+    for it the snapshot is not optional (issue #192): the server kept no copy,
+    so a response without one hands the client a cart it can no longer address.
+    The request has to fail instead, and the client repeats it with the
+    snapshot it still holds.
 
-    On the carried path it is not optional (issue #192). The server kept no
-    copy, so a response without a snapshot hands the client a cart it can no
-    longer address - the request has to fail instead, and the client repeats it
-    with the snapshot it still holds.
+    A cache-path response carries none (issue #215). #148 attached one to every
+    mutating response, which was right while there was one path; #192 split
+    them, and since then the envelope on this side is refused by this same
+    server - present it on the next request and `cart_service` answers 409,
+    because a cart opened without `carrySnapshot` is served from the cache and
+    cannot be carried. There is no restore endpoint either. So it was built,
+    signed and shipped with nowhere to be spent, at 74-85% of the response
+    body, and the clients paying for it are the ones that declined the feature.
+
+    `is_carried` is the right question to ask because it describes the REQUEST,
+    not the cart: true when this request arrived carrying a snapshot, or when
+    it creates a cart declared as carried. A client that wants to carry says so
+    by carrying, and gets an envelope back.
     """
+    if not cart_service.is_carried:
+        return SchemasTransformerV1().transform_cart(cart_doc=cart_doc, snapshot=None).model_dump()
+
     snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
-    if snapshot is None and cart_service.is_carried:
+    if snapshot is None:
         raise SnapshotGenerationFailedException(
             f"Cannot sign the snapshot for carried cart_id={cart_doc.cart_id}; "
             "the cart is held by the client alone and cannot be returned unsigned",
@@ -139,12 +153,12 @@ async def create_cart(
     except Exception as e:
         raise e
 
-    # Creation is a mutation, so its response also carries a signed snapshot
-    # (FR-001). `get_cart_async` serves the cart just created - from the cache
-    # for a cart the server keeps, from the pinned document for a carried one,
-    # which is never written (issue #192).
+    # A carried creation answers with a signed snapshot, because the cart is
+    # written nowhere else (issue #192). A cache-path creation does not: the
+    # server holds the cart, and an envelope for it is refused on the way back
+    # (issue #215). See `_cart_data_with_snapshot`.
     snapshot = None
-    if snapshot_service.get_snapshot_signer() is not None:
+    if cart_service.is_carried and snapshot_service.get_snapshot_signer() is not None:
         cart_doc = await cart_service.get_cart_async()
         snapshot = snapshot_service.build_envelope(cart_doc, cart_service.terminal_info)
     if snapshot is None and cart_service.is_carried:

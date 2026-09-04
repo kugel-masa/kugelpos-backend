@@ -5,12 +5,17 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
-"""Integration coverage for signed snapshot attachment (issue #148, T015).
+"""Integration coverage for signed snapshot attachment (issues #148, #215).
 
-Every cart-mutating response must carry a self-verifying signed snapshot
+A CARRIED cart-mutating response must carry a self-verifying signed snapshot
 of the full cart document (masters included). Query (GET) responses carry
-none, and with no signing keys configured the operation still succeeds
-with a null snapshot (degraded mode).
+none, and with no signing keys configured a cache-path operation still
+succeeds with a null snapshot (degraded mode).
+
+#148 attached one to every mutating response, which was right while there was
+one path. #192 split them and #215 narrowed this: a cache-path response
+carries none, because the envelope on that side is refused by this same server
+on the way back and there is no restore endpoint to spend it on either.
 """
 
 import base64
@@ -74,147 +79,164 @@ def _assert_valid_snapshot(data: dict, expected_cart_id: str | None = None) -> d
     return envelope
 
 
-async def _create_cart(http_client, user_id="9999"):
+async def _create_cart(http_client, user_id="9999", carry_snapshot=True):
+    """Create a cart. Carried by default - that is the path that attaches."""
+    body = {
+        "tenant_id": os.environ.get("TENANT_ID"),
+        "terminal_id": _terminal_id(),
+        "operator_code": user_id,
+        "operator_name": "Test Operator",
+    }
+    if carry_snapshot:
+        body["carrySnapshot"] = True
     response = await http_client.post(
         f"/api/v1/carts?terminal_id={_terminal_id()}",
-        json={
-            "tenant_id": os.environ.get("TENANT_ID"),
-            "terminal_id": _terminal_id(),
-            "operator_code": user_id,
-            "operator_name": "Test Operator",
-        },
+        json=body,
         headers=_api_headers(),
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
     return response.json()["data"]
 
 
+def _carrying(snapshot, payload=None):
+    """The request body shape a carried request uses."""
+    return {"signedSnapshot": snapshot, "payload": payload}
+
+
 @pytest.mark.asyncio
-async def test_all_mutating_endpoints_attach_snapshot(http_client, snapshot_keys):
-    """Walk the full mutating surface; every response carries a valid snapshot."""
+@pytest.mark.parametrize("carried", [True, False], ids=["carried", "cached"])
+async def test_every_mutating_endpoint_answers_the_way_its_path_says(http_client, snapshot_keys, carried):
+    """Walk the full mutating surface on BOTH paths and check what comes back.
+
+    One walk, two answers. A carried response must carry a valid, verifiable
+    envelope (#148, #192); a cache-path one must carry none (#215). Running the
+    same eleven mutations both ways is what makes the second half worth
+    anything: attaching an envelope on the cache path is a mistake that would
+    otherwise hide in whichever endpoint the shorter test did not visit.
+
+    Signing keys are configured for both. The cached run answers null because
+    of the path, not because the server cannot sign.
+
+    The carried run also proves the chain end to end. A carried cart is written
+    nowhere, so each request has to present the envelope the previous response
+    returned - eleven mutations, each spending the one before.
+    """
     terminal_id = _terminal_id()
     headers = _api_headers()
 
-    # POST /carts
-    create_data = await _create_cart(http_client)
+    create_data = await _create_cart(http_client, carry_snapshot=carried)
     cart_id = create_data["cartId"]
-    _assert_valid_snapshot(create_data, cart_id)
+    snapshot = None
+    if carried:
+        _assert_valid_snapshot(create_data, cart_id)
+        snapshot = create_data["signedSnapshot"]
+    else:
+        assert create_data.get("signedSnapshot") is None, "creation attached an envelope to a cached cart"
 
-    # POST /carts/{id}/lineItems
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
-        json=[{"itemCode": "49-01", "quantity": 2}, {"itemCode": "49-02", "quantity": 1}],
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    envelope = _assert_valid_snapshot(r.json()["data"], cart_id)
-    # Masters travel with the snapshot: the scanned item is embedded
-    master_item_codes = [i["item_code"] for i in envelope["cart_document"]["masters"]["items"]]
-    assert "49-01" in master_item_codes
+    async def step(method: str, path: str, payload=None):
+        """One mutation on whichever path this run is walking."""
+        nonlocal snapshot
+        body = _carrying(snapshot, payload) if carried else payload
+        kwargs = {"headers": headers}
+        if body is not None:
+            kwargs["json"] = body
+        r = await getattr(http_client, method)(f"/api/v1/carts/{cart_id}/{path}?terminal_id={terminal_id}", **kwargs)
+        assert r.status_code == status.HTTP_200_OK, f"{method.upper()} {path} -> {r.status_code} {r.text}"
+        data = r.json()["data"]
+        if carried:
+            _assert_valid_snapshot(data, cart_id)
+            snapshot = data["signedSnapshot"]
+        else:
+            assert data.get("signedSnapshot") is None, f"{method.upper()} {path} attached an envelope to a cached cart"
+        return data
 
-    # PATCH /carts/{id}/lineItems/{lineNo}/quantity
-    r = await http_client.patch(
-        f"/api/v1/carts/{cart_id}/lineItems/1/quantity?terminal_id={terminal_id}",
-        json={"quantity": 3},
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
+    data = await step("post", "lineItems", [{"itemCode": "49-01", "quantity": 2}, {"itemCode": "49-02", "quantity": 1}])
+    if carried:
+        # Masters travel with the snapshot: the scanned item is embedded.
+        envelope = SnapshotEnvelope(**data["signedSnapshot"]).model_dump(mode="json")
+        assert "49-01" in [i["item_code"] for i in envelope["cart_document"]["masters"]["items"]]
 
-    # PATCH /carts/{id}/lineItems/{lineNo}/unitPrice
-    r = await http_client.patch(
-        f"/api/v1/carts/{cart_id}/lineItems/1/unitPrice?terminal_id={terminal_id}",
-        json={"unitPrice": 120.0},
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
+    await step("patch", "lineItems/1/quantity", {"quantity": 3})
+    await step("patch", "lineItems/1/unitPrice", {"unitPrice": 120.0})
+    await step("post", "lineItems/1/discounts", [{"discountType": "DiscountAmount", "discountValue": 10}])
+    await step("post", "lineItems/2/cancel")
+    await step("post", "subtotal")
+    await step("post", "discounts", [{"discountType": "DiscountAmount", "discountValue": 5}])
+    await step("post", "resume-item-entry")
+    data = await step("post", "subtotal")
 
-    # POST /carts/{id}/lineItems/{lineNo}/discounts
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/lineItems/1/discounts?terminal_id={terminal_id}",
-        json=[{"discountType": "DiscountAmount", "discountValue": 10}],
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
-
-    # POST /carts/{id}/lineItems/{lineNo}/cancel (cancel line 2)
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/lineItems/2/cancel?terminal_id={terminal_id}",
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
-
-    # POST /carts/{id}/subtotal
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
-
-    # POST /carts/{id}/discounts
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/discounts?terminal_id={terminal_id}",
-        json=[{"discountType": "DiscountAmount", "discountValue": 5}],
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
-
-    # POST /carts/{id}/resume-item-entry
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/resume-item-entry?terminal_id={terminal_id}",
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
-
-    # subtotal again, then payments + bill
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    balance = r.json()["data"]["balanceAmount"]
-
-    # POST /carts/{id}/payments
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
-        json=[{"paymentCode": "01", "amount": int(balance)}],
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
-
-    # POST /carts/{id}/bill
-    r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
-        headers=headers,
-    )
-    assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
+    await step("post", "payments", [{"paymentCode": "01", "amount": int(data["balanceAmount"])}])
+    await step("post", "bill")
 
 
 @pytest.mark.asyncio
-async def test_cancel_endpoint_attaches_snapshot(http_client, snapshot_keys):
-    """POST /carts/{id}/cancel also carries a snapshot."""
-    create_data = await _create_cart(http_client)
-    cart_id = create_data["cartId"]
+async def test_the_envelope_a_cached_cart_would_have_had_is_refused_anyway(http_client, snapshot_keys):
+    """Why there is nothing to attach: this server will not take it back.
+
+    Pinned rather than assumed, because it is the whole argument for #215. If
+    a cache-path cart ever starts accepting a carried snapshot, the attachment
+    should come back.
+
+    The envelope has to be one for THIS cart, or the request fails earlier on a
+    cart_id mismatch (401512) and proves nothing about the path. So the cart is
+    opened carried - which is the only way to be handed an envelope for it -
+    and then told it is not carried, by flipping the flag inside the envelope
+    and re-signing it. That is exactly the shape the guard exists to refuse.
+    """
+    terminal_id = _terminal_id()
+    headers = _api_headers()
+
+    created = await _create_cart(http_client, carry_snapshot=True)
+    cart_id = created["cartId"]
+
+    envelope = SnapshotEnvelope(**created["signedSnapshot"]).model_dump(mode="json")
+    envelope.pop("signature")
+    envelope["cart_document"]["carry_snapshot"] = False
+    signer = HmacSigner.from_spec(KEY_SPEC)
+    envelope["signature"] = signer.sign(envelope)
+
     r = await http_client.post(
-        f"/api/v1/carts/{cart_id}/cancel?terminal_id={_terminal_id()}",
-        headers=_api_headers(),
+        f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+        json=_carrying(envelope, [{"itemCode": "49-01", "quantity": 1}]),
+        headers=headers,
     )
+    assert r.status_code == status.HTTP_409_CONFLICT, (
+        f"a cart declared as cache-path accepted a carried snapshot: {r.status_code} {r.text}"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("carried", [True, False], ids=["carried", "cached"])
+async def test_the_cancel_endpoint_answers_the_way_its_path_says(http_client, snapshot_keys, carried):
+    """The twelfth mutating endpoint, which the walk above cannot reach.
+
+    Cancel ends the cart, so it cannot sit in the middle of a walk. Both paths
+    all the same - a mistake here would be invisible to the walk either way.
+    """
+    create_data = await _create_cart(http_client, carry_snapshot=carried)
+    cart_id = create_data["cartId"]
+    kwargs = {"headers": _api_headers()}
+    if carried:
+        kwargs["json"] = _carrying(create_data["signedSnapshot"])
+    r = await http_client.post(f"/api/v1/carts/{cart_id}/cancel?terminal_id={_terminal_id()}", **kwargs)
     assert r.status_code == status.HTTP_200_OK, r.text
-    _assert_valid_snapshot(r.json()["data"], cart_id)
+
+    if carried:
+        _assert_valid_snapshot(r.json()["data"], cart_id)
+    else:
+        assert r.json()["data"].get("signedSnapshot") is None
 
 
 @pytest.mark.asyncio
 async def test_degraded_mode_mutation_succeeds_without_snapshot(http_client, snapshot_keys_unset):
-    """With no keys configured the operation succeeds and the field is null."""
-    create_data = await _create_cart(http_client)
+    """With no keys configured a CACHED cart's operation succeeds, field null.
+
+    Cache-path on purpose. A carried cart has no answer in degraded mode - the
+    test below is that one - and since #215 a cached response is null-snapshot
+    whether or not keys are configured. What this still pins is that a missing
+    signer does not turn a working mutation into a failure.
+    """
+    create_data = await _create_cart(http_client, carry_snapshot=False)
     cart_id = create_data["cartId"]
     assert create_data.get("signedSnapshot") is None
 
