@@ -202,12 +202,14 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### Caching Strategy
 
 **Redis Cache:**
-- Terminal info caching (Cart Service)
+- Master-data cache (Cart Service: items, payments, promotions, settings, tax)
 - Daily counter management
 - Session management
 
 **Dapr State Store:**
-- Cart state management
+- Cart state — only for requests that carry no snapshot. Since issue #156 the client holds the
+  cart as a signed snapshot and a carried request reads no store at all; a cart created with
+  `carrySnapshot=true` is never written here (#192)
 - Idempotency key storage
 - Transaction status tracking
 
@@ -308,7 +310,9 @@ services:
 ### Production Considerations
 
 **Scalability:**
-- Stateless design (except Cart)
+- Stateless design across all services, the Cart included: since issue #156 the client carries
+  the cart as a signed snapshot, so any backend can serve any request for it
+  ([Client-Carried Cart](../cart/client-carried-cart.md))
 - Horizontal scaling support
 - Load balancer support
 
