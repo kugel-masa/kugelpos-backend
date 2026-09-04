@@ -371,7 +371,10 @@ masking the shared client alone does not cover those. Three rules:
    `pan`, `authorization`, `dapr-api-token` and the rest - are matched case-
    and separator-insensitively, so `pin_code`, `pinCode` and `PIN_CODE` are
    one name. Bodies are lowerCamelCase and the schemas snake_case, so both
-   spellings really do occur.
+   spellings really do occur. The hashed spellings (`hashed_password`,
+   `secret_hash`, `pin_hash` and the rest) are named too: matching is exact
+   after normalization, so `secret` does not cover `secret_hash`, and a bcrypt
+   hash is offline-crackable material that belongs in no log.
 2. **`apiKey` keeps its ends** (`abcd...5678`), matching what
    `mask_dict_api_key` already established for troubleshooting.
 3. **Credential containers** (`credentials` / `credential`) have every value

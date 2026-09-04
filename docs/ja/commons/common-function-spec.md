@@ -399,7 +399,10 @@ class RequestLogMiddleware:
    `pan`、`authorization`、`dapr-api-token` など — は大文字小文字と区切り
    文字を無視して照合するため、`pin_code`・`pinCode`・`PIN_CODE` は同一の
    名前として扱う。ボディは lowerCamelCase、スキーマは snake_case なので、
-   両方の綴りが実際に現れる。
+   両方の綴りが実際に現れる。ハッシュ綴り（`hashed_password`、`secret_hash`、
+   `pin_hash` など）も個別に挙げてある。照合は正規化後の完全一致なので
+   `secret` では `secret_hash` を覆えず、bcrypt ハッシュはオフラインで
+   解ける資格情報そのものであってログに残してよいものではない。
 2. **`apiKey` は両端を残す**（`abcd...5678`）。`mask_dict_api_key` が既に
    確立した、調査用の形式に合わせる。
 3. **資格情報コンテナ**（`credentials` / `credential`）配下は、キー名に
