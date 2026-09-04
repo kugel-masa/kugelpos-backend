@@ -46,7 +46,6 @@ class SchemasTransformer:
         return BaseStaffResponse(
             id=staff_doc.id,
             name=staff_doc.name,
-            pin=staff_doc.pin,
             roles=staff_doc.roles,
             entry_datetime=staff_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if staff_doc.created_at else None,
             last_update_datetime=staff_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if staff_doc.updated_at else None,

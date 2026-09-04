@@ -137,7 +137,10 @@ class BaseStaff(BaseSchemmaModel):
 
     staff_id: str
     staff_name: str
-    staff_pin: Optional[str] = None
+    # No `staff_pin` (issue #136). It used to ride along here, and
+    # `transform_terminal_info` in commons copied it into every service's
+    # in-memory terminal - so one credential reached every service that ever
+    # asked who was signed in.
 
 
 # terminal

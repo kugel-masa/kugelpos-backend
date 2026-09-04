@@ -45,7 +45,7 @@ class SchemasTransformer:
 
         if terminal_info.staff is not None:
             return_terminal.staff = BaseStaff(
-                staff_id=terminal_info.staff.id, staff_name=terminal_info.staff.name, staff_pin=terminal_info.staff.pin
+                staff_id=terminal_info.staff.id, staff_name=terminal_info.staff.name
             )
 
         # The response model carries `api_key` and the staff's `staff_pin`,
