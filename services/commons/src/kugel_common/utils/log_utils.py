@@ -115,6 +115,18 @@ _SECRET_FIELD_NAMES = frozenset(
         "cardnumber",
         "pan",
         "maskedpan",
+        # A hash of a credential is still credential material - bcrypt output is
+        # offline-crackable, which is why issue #214 kept `hashed_password` out
+        # of the register log. Normalization is exact-match, so "secret" in this
+        # set does not cover "secret_hash" (a real field on the downstream fork's
+        # EdgeTerminal); each hashed spelling has to be named.
+        "secrethash",
+        "hashedsecret",
+        "passwordhash",
+        "pinhash",
+        "hashedpin",
+        "apikeyhash",
+        "hashedapikey",
         # HTTP header names, for call sites that log a whole header mapping
         # (an "Authorization: Bearer <jwt>" value is the credential itself).
         "authorization",
