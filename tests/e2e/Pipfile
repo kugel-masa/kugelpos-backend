@@ -6,7 +6,7 @@ name = "pypi"
 [packages]
 httpx = "*"
 python-dotenv = "*"
-pyjwt = ">=2.0.0"
+pyjwt = ">=2.15.1"
 # Reads the databases back for the credential-sentinel scan.
 pymongo = "*"
 
