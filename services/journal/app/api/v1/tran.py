@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from fastapi import APIRouter, status, Depends, Path, Request, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from logging import getLogger
 import json
@@ -154,7 +155,8 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         log_model: The Pydantic model for the log data
         receive_method: The method to call for processing the log data
     Returns:
-       None
+        JSONResponse: The Dapr subscription status (SUCCESS / RETRY / DROP)
+            with the HTTP status code Dapr acts on
     """
     try:
         message = await request.json()
@@ -162,17 +164,25 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         # Check if this is a health check message and handle it early
         if message.get("data", {}).get("test") == "health-check":
             logger.debug(f"Health check message received for {log_type}, ignoring")
-            return {"status": "SUCCESS", "operation": "health_check_drop"}, status.HTTP_200_OK
+            return JSONResponse(
+                content={"status": "SUCCESS", "operation": "health_check_drop"}, status_code=status.HTTP_200_OK
+            )
 
         # Check if the message contains the required fields
         event_id = message.get("data", {}).get("event_id")
         if not event_id:
             logger.error(f"event_id is missing in the message data. message: {mask_sensitive_data(message)}")
-            return {
-                "status": "DROP",
-                "message": "event_id is required",
-                "operation": f"{inspect.currentframe().f_code.co_name}",
-            }, status.HTTP_400_BAD_REQUEST
+            return JSONResponse(
+                content={
+                    "status": "DROP",
+                    "message": "event_id is required",
+                    "operation": f"{inspect.currentframe().f_code.co_name}",
+                },
+                # 200, not 400: Dapr retries any non-2xx response, so a 400
+                # would redeliver a message that can never succeed. DROP is
+                # honoured only on a 2xx.
+                status_code=status.HTTP_200_OK,
+            )
 
         log_data = log_model(**message["data"])
         # Masked before serializing: `model_dump_json()` returns a string, and
@@ -180,20 +190,14 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         # terminal document (issue #211).
         log_info = json.dumps(mask_loggable(log_data), default=str, ensure_ascii=False)
 
-        # Check if the event_id is present in the message
-        if not event_id:
-            logger.error(f"event_id is required in message data. message: {mask_sensitive_data(message)}")
-            return {
-                "status": "DROP",
-                "message": "event_id is required",
-                "operation": f"{inspect.currentframe().f_code.co_name}",
-            }, status.HTTP_400_BAD_REQUEST
-
         # Check if the message has already been processed
         result = await get_state(event_id)
         if result:
             logger.warning(f"Message already processed. event_id: {event_id}, {log_type}: {log_info}")
-            return {"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"}, status.HTTP_200_OK
+            return JSONResponse(
+                content={"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"},
+                status_code=status.HTTP_200_OK,
+            )
 
         # Process the log data
         logger.debug(f"Received {log_type} new message: {mask_sensitive_data(message)}")
@@ -209,7 +213,10 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         logger.info(f"Processed event id: {event_id}")
 
         # Return a success response
-        return {"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"}, status.HTTP_200_OK
+        return JSONResponse(
+            content={"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"},
+            status_code=status.HTTP_200_OK,
+        )
     except DuplicateKeyException as e:
         # The state-store idempotency check missed (state evicted, TTL
         # expired, or store unreachable) and the duplicate slipped through
@@ -217,8 +224,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         # as success — the data already exists, no further action needed.
         # Returning RETRY here would cause Dapr to redeliver indefinitely.
         logger.warning(
-            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). "
-            f"event_id: {event_id}, error: {e}"
+            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). event_id: {event_id}, error: {e}"
         )
         # Best-effort: persist the state so subsequent retries short-circuit
         # at the state-store check.
@@ -226,20 +232,26 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
             await save_state(event_id, {"event_id": event_id})
         except Exception as save_exc:
             logger.warning(f"Failed to save state after duplicate detection: {save_exc}")
-        return {
-            "status": "SUCCESS",
-            "message": "duplicate detected at DB layer; treated as already-processed",
-            "operation": f"{inspect.currentframe().f_code.co_name}",
-        }, status.HTTP_200_OK
+        return JSONResponse(
+            content={
+                "status": "SUCCESS",
+                "message": "duplicate detected at DB layer; treated as already-processed",
+                "operation": f"{inspect.currentframe().f_code.co_name}",
+            },
+            status_code=status.HTTP_200_OK,
+        )
     except Exception as e:
         err_message = f"Failed to receive {log_type}. message: {mask_sensitive_data(message)}, Error: {e}"
         logger.error(err_message)
         await _notify_pubsub_status(log_type=log_type, data_dict=message["data"], status="failed", message=err_message)
-        return {
-            "status": "RETRY",
-            "message": str(e),
-            "operation": f"{inspect.currentframe().f_code.co_name}",
-        }, status.HTTP_500_INTERNAL_SERVER_ERROR
+        return JSONResponse(
+            content={
+                "status": "RETRY",
+                "message": str(e),
+                "operation": f"{inspect.currentframe().f_code.co_name}",
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 async def _notify_pubsub_status(log_type: str, data_dict: dict, status: str, message: str = "") -> None:

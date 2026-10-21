@@ -658,8 +658,11 @@ async def handle_transaction_log(request: Request):
         event_id = data.get("event_id")
         if not event_id:
             logger.error("Missing event_id in transaction log")
+            # 200, not 400: Dapr retries any non-2xx response, so a 400
+            # would redeliver a message that can never succeed. DROP is
+            # honoured only on a 2xx (#135).
             return JSONResponse(
-                content={"status": "DROP", "message": "Missing event_id"}, status_code=status.HTTP_400_BAD_REQUEST
+                content={"status": "DROP", "message": "Missing event_id"}, status_code=status.HTTP_200_OK
             )
 
         # Extract tenant_id to create service instance
@@ -667,7 +670,7 @@ async def handle_transaction_log(request: Request):
         if not tenant_id:
             logger.error(f"Missing tenant_id in transaction log: {data}")
             return JSONResponse(
-                content={"status": "DROP", "message": "Missing tenant_id"}, status_code=status.HTTP_400_BAD_REQUEST
+                content={"status": "DROP", "message": "Missing tenant_id"}, status_code=status.HTTP_200_OK
             )
 
         # Create stock service instance

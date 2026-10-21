@@ -164,9 +164,7 @@ class TestHandleTranlog:
 
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        # Tuple-encoded response: [body_dict, status_code]
-        assert body[0]["status"] == "SUCCESS"
-        assert body[1] == 200
+        assert body["status"] == "SUCCESS"
         # Best-effort state save to short-circuit future redeliveries
         save_mock.assert_awaited()
 
@@ -213,3 +211,77 @@ class TestHandleOpenCloseLog:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "SUCCESS"
+
+
+# ---------------------------------------------------------------------------
+# Dapr status contract (issue #135)
+# ---------------------------------------------------------------------------
+# Dapr acts on the HTTP status: a non-2xx is retried (and dead-lettered once
+# the retries run out), a 2xx is acked. handle_log used to return a
+# ``(body, status)`` tuple, which FastAPI serialised as a JSON array under
+# 200, so every failed event was acked and lost.
+PUBSUB_ENDPOINTS = [
+    ("/api/v1/cashlog", "receive_cashlog_async"),
+    ("/api/v1/opencloselog", "receive_open_close_log_async"),
+]
+
+
+class TestDaprStatusContract:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("url,receive_method", PUBSUB_ENDPOINTS)
+    async def test_processing_failure_returns_500_retry(self, url, receive_method):
+        mock_service = AsyncMock()
+        getattr(mock_service, receive_method).side_effect = RuntimeError("db down")
+        app = make_app(mock_log_service=mock_service)
+
+        with patch(
+            "app.api.v1.tran.state_store_manager.get_state",
+            new_callable=AsyncMock,
+            return_value=(None, None),
+        ), patch(
+            "app.api.v1.tran.state_store_manager.save_state",
+            new_callable=AsyncMock,
+            return_value=(True, None),
+        ) as save_mock, patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(url, json={"data": {"event_id": "evt-fail-001", "tenant_id": "test-tenant"}})
+
+        assert resp.status_code == 500, resp.text
+        assert resp.json()["status"] == "RETRY"
+        # A failed event must not be marked as processed, or the retry is skipped
+        save_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("url,receive_method", PUBSUB_ENDPOINTS)
+    async def test_success_returns_200_success(self, url, receive_method):
+        mock_service = AsyncMock()
+        app = make_app(mock_log_service=mock_service)
+
+        with patch(
+            "app.api.v1.tran.state_store_manager.get_state",
+            new_callable=AsyncMock,
+            return_value=(None, None),
+        ), patch(
+            "app.api.v1.tran.state_store_manager.save_state",
+            new_callable=AsyncMock,
+            return_value=(True, None),
+        ), patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(url, json={"data": {"event_id": "evt-ok-001", "tenant_id": "test-tenant"}})
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "SUCCESS"
+        getattr(mock_service, receive_method).assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_missing_event_id_returns_200_drop(self):
+        """DROP is honoured only on a 2xx; a 400 would be redelivered forever."""
+        app = make_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/v1/cashlog", json={"data": {"tenant_id": "test-tenant"}})
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "DROP"

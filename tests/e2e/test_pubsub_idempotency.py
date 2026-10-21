@@ -57,6 +57,7 @@ def test_dapr_subscriber_health_check(url_env, path):
         ("URL_JOURNAL", "/api/v1/cashlog"),
         ("URL_JOURNAL", "/api/v1/opencloselog"),
         ("URL_REPORT", "/api/v1/tranlog"),
+        ("URL_STOCK", "/api/v1/tranlog"),
     ],
 )
 def test_dapr_subscriber_drops_missing_event_id(url_env, path):
@@ -77,11 +78,8 @@ def test_dapr_subscriber_drops_missing_event_id(url_env, path):
     }
     with _client(url_env) as c:
         resp = c.post(path, json={"data": payload_data})
-    # Endpoint may return 200 (with status:"DROP") or 400 depending on
-    # error path; both prove the contract is enforced.
-    assert resp.status_code in (200, 400), resp.text
+    # Dapr honours DROP only on a 2xx; any non-2xx is retried, so a 400
+    # would redeliver a message that can never succeed (#135).
+    assert resp.status_code == 200, resp.text
     body = resp.json()
-    if isinstance(body, list):
-        body = body[0]
-    text = (body.get("message") or "").lower() + (body.get("status") or "").lower()
-    assert "drop" in text or "event_id" in text or "required" in text, body
+    assert body.get("status") == "DROP", body
