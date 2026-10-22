@@ -342,19 +342,19 @@ async def test_tranlog_health_check(client):
 
 @pytest.mark.asyncio
 async def test_tranlog_missing_event_id(client):
-    """Missing event_id should return DROP with 400."""
+    """Missing event_id should return DROP with 200 — Dapr retries any non-2xx (#135)."""
     payload = {"data": {"tenant_id": TENANT}}
     resp = await client.post("/api/v1/tranlog", json=payload)
-    assert resp.status_code == 400
+    assert resp.status_code == 200
     assert resp.json()["status"] == "DROP"
 
 
 @pytest.mark.asyncio
 async def test_tranlog_missing_tenant_id(client):
-    """Missing tenant_id should return DROP with 400."""
+    """Missing tenant_id should return DROP with 200 — Dapr retries any non-2xx (#135)."""
     payload = {"data": {"event_id": "evt_001"}}
     resp = await client.post("/api/v1/tranlog", json=payload)
-    assert resp.status_code == 400
+    assert resp.status_code == 200
     assert resp.json()["status"] == "DROP"
 
 
