@@ -28,6 +28,7 @@ from app.exceptions import (
     AmountLessThanDiscountException,
     DiscountRestrictionException,
     BalanceLessThanDiscountException,
+    DiscountAllocationException,
 )
 from kugel_common.exceptions import ServiceException
 
@@ -596,6 +597,118 @@ class TestAddDiscountToCartRemainder:
             await add_discount_to_cart_async(cart, discounts)
 
         assert cart.subtotal_discounts[0].discount_amount == 33.0
+
+
+# ---------------------------------------------------------------------------
+# add_discount_to_cart_logic: allocation invariants (issue #137)
+# ---------------------------------------------------------------------------
+# Tax is computed from each line item's discounts_allocated, while the cart
+# total is computed from subtotal_discounts. Whatever the cart looks like, the
+# allocations of each discount must add up to exactly that discount.
+
+
+def _allocated(item, seq_no=None):
+    return sum(d.discount_amount for d in item.discounts_allocated if seq_no is None or d.seq_no == seq_no)
+
+
+def _amount_discount(value):
+    return {"discount_type": DiscountType.DiscountAmount.value, "discount_value": value, "discount_detail": ""}
+
+
+async def _apply(cart, discounts, round_method=RoundMethod.Floor.value):
+    with patch("app.services.logics.add_discount_to_cart_logic.settings") as mock_settings:
+        mock_settings.ROUND_METHOD_FOR_DISCOUNT = round_method
+        await add_discount_to_cart_async(cart, discounts)
+
+
+class TestAddDiscountToCartAllocation:
+    @pytest.mark.asyncio
+    async def test_every_subtotal_discount_is_allocated_not_only_the_last(self):
+        """Two subtotal discounts: both are allocated (the reset used to run per discount)."""
+        item1 = make_line_item(line_no=1, amount=600.0)
+        item2 = make_line_item(line_no=2, amount=400.0)
+        cart = make_cart(line_items=[item1, item2], subtotal_amount=1000.0, balance_amount=1000.0)
+
+        await _apply(cart, [_amount_discount(100.0), _amount_discount(50.0)])
+
+        for seq_no, value in ((1, 100.0), (2, 50.0)):
+            assert _allocated(item1, seq_no) + _allocated(item2, seq_no) == pytest.approx(value)
+        assert _allocated(item1) + _allocated(item2) == pytest.approx(150.0)
+        assert _allocated(item1) == pytest.approx(90.0)  # 60 + 30
+        assert _allocated(item2) == pytest.approx(60.0)  # 40 + 20
+
+    @pytest.mark.asyncio
+    async def test_remainder_is_settled_in_currency_units_not_quantity(self):
+        """The rounding remainder is money; it used to be moved in steps of line_item.quantity."""
+        item1 = make_line_item(line_no=1, amount=301.0, quantity=2)
+        item2 = make_line_item(line_no=2, amount=300.0, quantity=2)
+        item3 = make_line_item(line_no=3, amount=299.0, quantity=2)
+        cart = make_cart(line_items=[item1, item2, item3], subtotal_amount=900.0, balance_amount=900.0)
+
+        await _apply(cart, [_amount_discount(101.0)])
+
+        # floor: 33.78->33, 33.67->33, 33.56->33, remainder 2. One unit each to
+        # the two largest lines, not the whole quantity (2) to the first.
+        assert [_allocated(i) for i in (item1, item2, item3)] == [34.0, 34.0, 33.0]
+
+    @pytest.mark.asyncio
+    async def test_restricted_item_takes_no_share_and_does_not_crash(self):
+        """A discount-restricted line item is not allocated anything (used to IndexError)."""
+        restricted = make_line_item(line_no=1, amount=700.0, is_discount_restricted=True)
+        item1 = make_line_item(line_no=2, amount=200.0)
+        item2 = make_line_item(line_no=3, amount=101.0)
+        cart = make_cart(line_items=[restricted, item1, item2], subtotal_amount=1001.0, balance_amount=1001.0)
+
+        await _apply(cart, [_amount_discount(100.0)])
+
+        assert restricted.discounts_allocated == []
+        assert _allocated(item1) + _allocated(item2) == pytest.approx(100.0)
+        # Shares are of the eligible 301, not of the 1001 subtotal
+        assert _allocated(item1) == pytest.approx(67.0)  # floor(66.44) + remainder
+        assert _allocated(item2) == pytest.approx(33.0)  # floor(33.55)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_item_takes_no_share(self):
+        cancelled = make_line_item(line_no=1, amount=900.0, is_cancelled=True)
+        item = make_line_item(line_no=2, amount=300.0)
+        cart = make_cart(line_items=[cancelled, item], subtotal_amount=300.0, balance_amount=300.0)
+
+        await _apply(cart, [_amount_discount(30.0)])
+
+        assert cancelled.discounts_allocated == []
+        assert _allocated(item) == pytest.approx(30.0)
+
+    @pytest.mark.asyncio
+    async def test_ceil_over_allocation_is_given_back(self):
+        """Ceil rounding allocates too much; the excess is taken back one unit at a time."""
+        items = [make_line_item(line_no=n, amount=100.0) for n in (1, 2, 3)]
+        cart = make_cart(line_items=items, subtotal_amount=300.0, balance_amount=300.0)
+
+        await _apply(cart, [_amount_discount(100.0)], round_method=RoundMethod.Ceil.value)
+
+        # ceil(33.33) = 34 each = 102, two units given back
+        assert sum(_allocated(i) for i in items) == pytest.approx(100.0)
+        assert sorted(_allocated(i) for i in items) == [33.0, 33.0, 34.0]
+
+    @pytest.mark.asyncio
+    async def test_reapplying_with_an_empty_list_clears_allocations(self):
+        """Removing every subtotal discount must not leave the old allocations in the tax base."""
+        item = make_line_item(line_no=1, amount=1000.0)
+        cart = make_cart(line_items=[item], subtotal_amount=1000.0, balance_amount=1000.0)
+
+        await _apply(cart, [_amount_discount(100.0)])
+        assert _allocated(item) == pytest.approx(100.0)
+
+        await _apply(cart, [])
+        assert item.discounts_allocated == []
+
+    @pytest.mark.asyncio
+    async def test_no_eligible_line_item_raises_allocation_error(self):
+        restricted = make_line_item(line_no=1, amount=1000.0, is_discount_restricted=True)
+        cart = make_cart(line_items=[restricted], subtotal_amount=1000.0, balance_amount=1000.0)
+
+        with pytest.raises(DiscountAllocationException):
+            await _apply(cart, [_amount_discount(100.0)])
 
 
 # ---------------------------------------------------------------------------
