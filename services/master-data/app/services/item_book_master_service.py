@@ -720,10 +720,13 @@ class ItemBookMasterService:
             message = f"button with pos_x {pos_x} and pos_y {pos_y} not found in tab"
             raise DocumentNotFoundException(message, logger)
 
+        # Keep every button except the one at (pos_x, pos_y). The condition was
+        # `pos_x != x and pos_y != y`, which also dropped every button sharing
+        # its row or its column.
         target_tab.buttons = [
             item_book_button
             for item_book_button in target_tab.buttons
-            if item_book_button.pos_x != pos_x and item_book_button.pos_y != pos_y
+            if not (item_book_button.pos_x == pos_x and item_book_button.pos_y == pos_y)
         ]
 
         return await self.item_book_master_repo.replace_item_book_async(item_book_id, item_book)
