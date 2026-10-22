@@ -440,17 +440,20 @@ class TestProcessTransaction:
         with pytest.raises(RuntimeError, match="db failure"):
             await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
 
+    @staticmethod
+    def _record(item_code, update_type="sale"):
+        record = MagicMock()
+        record.item_code = item_code
+        record.update_type = update_type
+        return record
+
     @pytest.mark.asyncio
     async def test_already_processed_transaction_is_skipped(self):
-        """Issue #98: if find_by_transaction_async returns existing records,
-        the entire transaction is skipped — re-applying $inc would
-        double-decrement stock."""
+        """Issue #98: an item already recorded for this transaction is not
+        applied again — re-applying $inc would double-decrement stock."""
         svc, _, update_repo = make_service()
         svc.update_stock_async = AsyncMock()
-        # Simulate: a previous delivery of this same transaction already
-        # produced a stock_update record.
-        existing_record = MagicMock()
-        update_repo.find_by_transaction_async = AsyncMock(return_value=[existing_record])
+        update_repo.find_by_transaction_async = AsyncMock(return_value=[self._record("ITEM-01")])
 
         await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
 
@@ -458,6 +461,76 @@ class TestProcessTransaction:
             tenant_id="T001", store_code="S001", terminal_no=1, transaction_no=100
         )
         svc.update_stock_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_redelivery_applies_the_items_a_failed_delivery_did_not(self):
+        """Issue #137: the first delivery applied ITEM-01 and then failed.
+        The redelivery must apply ITEM-02 and ITEM-03, not skip the whole
+        transaction because ITEM-01 is on record."""
+        svc, _, update_repo = make_service()
+        svc.update_stock_async = AsyncMock()
+        update_repo.find_by_transaction_async = AsyncMock(return_value=[self._record("ITEM-01")])
+        items = [
+            {"item_code": "ITEM-01", "quantity": 1, "is_cancelled": False},
+            {"item_code": "ITEM-02", "quantity": 2, "is_cancelled": False},
+            {"item_code": "ITEM-03", "quantity": 3, "is_cancelled": False},
+        ]
+
+        await svc.process_transaction_async(self._make_tran_data(line_items=items))
+
+        applied = {c.kwargs["item_code"]: c.kwargs["quantity_change"] for c in svc.update_stock_async.call_args_list}
+        assert applied == {"ITEM-02": -2, "ITEM-03": -3}
+
+    @pytest.mark.asyncio
+    async def test_redelivery_by_cart_id_applies_the_remaining_items(self):
+        """The same, on the client-carried path keyed on cart_id."""
+        svc, _, update_repo = make_service()
+        svc.update_stock_async = AsyncMock()
+        update_repo.find_by_cart_id_async = AsyncMock(return_value=[self._record("ITEM-01")])
+        data = self._make_tran_data(
+            line_items=[
+                {"item_code": "ITEM-01", "quantity": 1, "is_cancelled": False},
+                {"item_code": "ITEM-02", "quantity": 2, "is_cancelled": False},
+            ]
+        )
+        data["cart_id"] = "cart-001"
+
+        await svc.process_transaction_async(data)
+
+        update_repo.find_by_cart_id_async.assert_awaited_once_with(
+            tenant_id="T001", store_code="S001", cart_id="cart-001"
+        )
+        assert [c.kwargs["item_code"] for c in svc.update_stock_async.call_args_list] == ["ITEM-02"]
+
+    @pytest.mark.asyncio
+    async def test_a_record_of_another_update_type_does_not_count(self):
+        """A recorded movement of a different type is not this one."""
+        svc, _, update_repo = make_service()
+        svc.update_stock_async = AsyncMock()
+        update_repo.find_by_transaction_async = AsyncMock(return_value=[self._record("ITEM-01", "void")])
+
+        await svc.process_transaction_async(self._make_tran_data(transaction_type=101))
+
+        svc.update_stock_async.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_the_same_item_on_two_lines_is_applied_once_with_both_quantities(self):
+        """The cart adds a line per scan. Two lines of one item used to be two
+        stock movements with the same (cart_id, item_code, update_type), so
+        the unique index rejected the second and its quantity was lost."""
+        svc, _, _ = make_service()
+        svc.update_stock_async = AsyncMock()
+        items = [
+            {"item_code": "ITEM-01", "quantity": 1, "is_cancelled": False},
+            {"item_code": "ITEM-02", "quantity": 1, "is_cancelled": False},
+            {"item_code": "ITEM-01", "quantity": 2, "is_cancelled": False},
+            {"item_code": "ITEM-01", "quantity": 5, "is_cancelled": True},
+        ]
+
+        await svc.process_transaction_async(self._make_tran_data(line_items=items))
+
+        applied = {c.kwargs["item_code"]: c.kwargs["quantity_change"] for c in svc.update_stock_async.call_args_list}
+        assert applied == {"ITEM-01": -3, "ITEM-02": -1}
 
     @pytest.mark.asyncio
     async def test_duplicate_at_db_layer_rolls_back_inc(self):
