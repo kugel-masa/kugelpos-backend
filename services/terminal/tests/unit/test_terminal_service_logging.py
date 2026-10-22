@@ -509,7 +509,7 @@ class TestTerminalServiceRepublishUndelivered:
         await svc.republish_undelivered_terminallog_async()
 
         mock_notify.assert_called_once()
-        repos["terminal_log_delivery_status_repo"].mark_warning_sent.assert_awaited_once_with(event_id="EVT-400")
+        repos["terminal_log_delivery_status_repo"].claim_warning.assert_awaited_once_with(event_id="EVT-400")
         for call in repos["terminal_log_delivery_status_repo"].update_delivery_status.await_args_list:
             assert call.kwargs.get("status", call.args[1] if len(call.args) > 1 else None) != "failed"
 
@@ -573,14 +573,15 @@ class TestTerminalServiceRepublishUndelivered:
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
-    async def test_republish_still_publishes_when_recording_the_warning_fails(self, mock_notify):
+    async def test_republish_still_publishes_when_claiming_the_warning_fails(self, mock_notify):
         """A log past the failed period is warned about before it is
-        republished. A database error on that bookkeeping must not skip the
-        republish of exactly the logs that most need it."""
+        republished. A database error on claiming the warning skips the warning
+        (it is claimed before it is sent, #230), but must not skip the republish
+        of exactly the logs that most need it."""
         from datetime import datetime, timedelta
         svc, repos = make_service()
         svc._publish_cash_in_out_log_async = AsyncMock()
-        repos["terminal_log_delivery_status_repo"].mark_warning_sent.side_effect = RuntimeError("db down")
+        repos["terminal_log_delivery_status_repo"].claim_warning.side_effect = RuntimeError("db down")
         old = self._status("EVT-OLD", {"event_type": "cash_in_out", "event_id": "EVT-OLD"})
         old.created_at = datetime.now() - timedelta(hours=1)
         repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [old]
@@ -588,7 +589,7 @@ class TestTerminalServiceRepublishUndelivered:
         await svc.republish_undelivered_terminallog_async()
 
         svc._publish_cash_in_out_log_async.assert_awaited_once_with(old.payload)
-        mock_notify.assert_awaited_once()
+        mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)

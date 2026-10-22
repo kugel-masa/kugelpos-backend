@@ -190,3 +190,17 @@ async def test_a_tranlog_no_consumer_read_past_is_left_to_the_queue(db):
 
     svc.pubsub_manager.publish_message_async.assert_not_awaited()
     assert (await repo.find_by_event_id(event_id)).republished_at is None
+
+
+@pytest.mark.asyncio
+async def test_two_workers_warn_about_an_undelivered_tranlog_once_between_them(db):
+    import asyncio
+
+    first, repo = await _service(db, publish_ok=True)
+    second, _ = await _service(db, publish_ok=True)
+    await _finalize_and_age(db, first, repo)
+
+    with patch("app.services.tran_service.send_warning_notification", new_callable=AsyncMock) as warn:
+        await asyncio.gather(first.republish_undelivered_tranlog_async(), second.republish_undelivered_tranlog_async())
+
+    assert warn.await_count == 1

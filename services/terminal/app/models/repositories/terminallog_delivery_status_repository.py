@@ -215,20 +215,30 @@ class TerminallogDeliveryStatusRepository(AbstractRepository[TerminallogDelivery
             logger.error(f"Failed to update service status: {e}")
             return False
 
-    async def mark_warning_sent(self, event_id: str) -> bool:
+    async def claim_warning(self, event_id: str) -> bool:
         """
-        Record that the undelivered warning for this log has been sent (issue #230)
+        Take on the undelivered warning for this log (issue #230)
 
-        Without the record the warning went out on every republish run, up to 285
-        times per log over the 24-hour window.
+        The warning is sent once per log. Without a record it went out on every
+        republish run, up to 285 times per log over the 24-hour window. The job
+        runs in every uvicorn worker, so the record is a conditional update that
+        only one worker can make, made before the warning is sent: a worker that
+        stops in between loses the warning, rather than every worker sending it.
 
         Args:
             event_id: Target event ID
 
         Returns:
-            bool: True if update was successful, False otherwise
+            bool: True if this caller holds the warning and should send it
         """
-        return await self.update_one_async({"event_id": event_id}, {"warning_sent_at": get_app_time()})
+        if self.dbcollection is None:
+            await self.initialize()
+        result = await self.dbcollection.update_one(
+            {"event_id": event_id, "warning_sent_at": None},
+            {"$set": {"warning_sent_at": get_app_time()}},
+            session=self.session,
+        )
+        return result.modified_count == 1
 
     async def mark_handed_off(self, event_id: str) -> bool:
         """

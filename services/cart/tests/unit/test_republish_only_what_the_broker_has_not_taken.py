@@ -42,12 +42,12 @@ def _status(status: str, minutes_old: int, warning_sent_at=None, **fields) -> Tr
     )
 
 
-async def _run(*statuses, read_up_to=None, claimed=True):
+async def _run(*statuses, read_up_to=None, claimed=True, claim_warning=True):
     svc = _make_tran_service()
     repo = svc.tranlog_delivery_status_repo
     repo.find_pending_deliveries = AsyncMock(return_value=list(statuses))
     repo.update_delivery_status = AsyncMock(return_value=True)
-    repo.mark_warning_sent = AsyncMock(return_value=True)
+    repo.claim_warning = AsyncMock(return_value=claim_warning)
     repo.mark_handed_off = AsyncMock(return_value=True)
     repo.find_latest_received_published_at = AsyncMock(return_value=read_up_to)
     repo.claim_republish = AsyncMock(return_value=claimed)
@@ -81,7 +81,7 @@ async def test_an_old_undelivered_tranlog_is_warned_about_once(status):
     _, repo, warn = await _run(_status(status, 180))
 
     warn.assert_awaited_once()
-    repo.mark_warning_sent.assert_awaited_once_with(event_id=f"evt-{status}-180")
+    repo.claim_warning.assert_awaited_once_with(event_id=f"evt-{status}-180")
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,30 @@ async def test_a_tranlog_already_warned_about_is_not_warned_about_again():
     _, repo, warn = await _run(_status("published", 180, warning_sent_at=datetime.now()))
 
     warn.assert_not_awaited()
-    repo.mark_warning_sent.assert_not_awaited()
+    repo.claim_warning.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_worker_that_does_not_hold_the_warning_does_not_send_it():
+    # Another worker claimed it first: the job runs in every uvicorn worker.
+    _, _, warn = await _run(_status("published", 180), claim_warning=False)
+
+    warn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failure_to_claim_the_warning_skips_the_warning_not_the_republish():
+    svc = _make_tran_service()
+    repo = svc.tranlog_delivery_status_repo
+    repo.find_pending_deliveries = AsyncMock(return_value=[_status("publish_failed", 180)])
+    repo.update_delivery_status = AsyncMock(return_value=True)
+    repo.mark_handed_off = AsyncMock(return_value=True)
+    repo.claim_warning = AsyncMock(side_effect=RuntimeError("db down"))
+    with patch("app.services.tran_service.send_warning_notification", new_callable=AsyncMock) as warn:
+        await svc.republish_undelivered_tranlog_async()
+
+    warn.assert_not_awaited()
+    svc.pubsub_manager.publish_message_async.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -223,7 +246,7 @@ async def test_a_send_the_broker_refuses_is_left_for_the_next_run():
     repo.claim_republish = AsyncMock(return_value=True)
     repo.mark_republished = AsyncMock()
     repo.update_delivery_status = AsyncMock()
-    repo.mark_warning_sent = AsyncMock()
+    repo.claim_warning = AsyncMock(return_value=False)
     with patch("app.services.tran_service.send_warning_notification", new_callable=AsyncMock):
         await svc.republish_undelivered_tranlog_async()
 

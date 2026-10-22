@@ -1156,9 +1156,16 @@ class TerminalService:
 
         The status is left as it is: overwriting it with "failed" mixed up "never
         reached the broker" and "not acknowledged", and the republish that followed
-        set it back. This is bookkeeping around the republish, not a precondition
-        for it: if recording the warning fails, the log is still republished.
+        set it back. Only the worker that claims the warning sends it. This is
+        bookkeeping around the republish, not a precondition for it: if claiming the
+        warning fails, the log is still republished.
         """
+        try:
+            if not await self.terminal_log_delivery_status_repo.claim_warning(event_id=status.event_id):
+                return
+        except Exception as e:
+            logger.error(f"Failed to claim the terminallog warning: event_id->{status.event_id}, error->{e}")
+            return
         reason = "not handed to the broker" if not_handed_to_broker else "handed to the broker, not acknowledged"
         await send_warning_notification(
             message=f"Undelivered terminallog found ({reason}): "
@@ -1170,10 +1177,6 @@ class TerminalService:
             service="terminal",
             context=status.model_dump(),
         )
-        try:
-            await self.terminal_log_delivery_status_repo.mark_warning_sent(event_id=status.event_id)
-        except Exception as e:
-            logger.error(f"Failed to record the terminallog warning: event_id->{status.event_id}, error->{e}")
 
     async def republish_undelivered_terminallog_async(self) -> None:
         """

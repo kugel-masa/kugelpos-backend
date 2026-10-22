@@ -1541,6 +1541,7 @@ class TranService:
             if (
                 status.created_at < datetime.now() - timedelta(minutes=failed_minutes)
                 and status.warning_sent_at is None
+                and await self._claim_undelivered_warning_async(status.event_id)
             ):
                 reason = (
                     "not handed to the broker" if not_handed_to_broker else "handed to the broker, not acknowledged"
@@ -1556,7 +1557,6 @@ class TranService:
                     service="cart",
                     context=status.model_dump(),
                 )
-                await self.tranlog_delivery_status_repo.mark_warning_sent(event_id=status.event_id)
 
             if not not_handed_to_broker:
                 # The broker holds it; a republish on every run would only add copies.
@@ -1567,6 +1567,18 @@ class TranService:
                 f"Republishing tranlog: event_id->{status.event_id}, tenant_id->{status.tenant_id}, transaction_no->{status.transaction_no}"
             )
             await self._publish_tranlog_async(status.payload)
+
+    async def _claim_undelivered_warning_async(self, event_id: str) -> bool:
+        """
+        Whether this worker sends the undelivered warning for the tranlog (issue #230).
+
+        A failure to claim it skips the warning, not the republish that follows.
+        """
+        try:
+            return await self.tranlog_delivery_status_repo.claim_warning(event_id=event_id)
+        except Exception as e:
+            logger.error(f"Failed to claim the tranlog warning: event_id->{event_id}, error->{e}")
+            return False
 
     async def _republish_if_skipped_async(
         self, status: TranlogDeliveryStatus, now: datetime, read_up_to: dict[str, datetime | None]

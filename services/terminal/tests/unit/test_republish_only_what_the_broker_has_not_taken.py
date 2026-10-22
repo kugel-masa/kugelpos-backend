@@ -43,7 +43,7 @@ def _status(
     )
 
 
-async def _run(*statuses, read_up_to=None, claimed=True, publish_ok=True):
+async def _run(*statuses, read_up_to=None, claimed=True, publish_ok=True, claim_warning=True):
     svc, repos = make_service()
     svc.pubsub_manager = AsyncMock()
     svc.pubsub_manager.publish_message_async.return_value = (publish_ok, None if publish_ok else "down")
@@ -51,6 +51,7 @@ async def _run(*statuses, read_up_to=None, claimed=True, publish_ok=True):
     repo.find_pending_deliveries.return_value = list(statuses)
     repo.find_latest_received_published_at.return_value = read_up_to
     repo.claim_republish.return_value = claimed
+    repo.claim_warning.return_value = claim_warning
     with patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock) as warn:
         await svc.republish_undelivered_terminallog_async()
     return svc, repo, warn
@@ -81,7 +82,7 @@ async def test_an_old_undelivered_log_is_warned_about_once(status):
     _, repo, warn = await _run(_status(status, 180))
 
     warn.assert_awaited_once()
-    repo.mark_warning_sent.assert_awaited_once_with(event_id=f"evt-{status}-180")
+    repo.claim_warning.assert_awaited_once_with(event_id=f"evt-{status}-180")
 
 
 @pytest.mark.asyncio
@@ -89,7 +90,15 @@ async def test_a_log_already_warned_about_is_not_warned_about_again():
     _, repo, warn = await _run(_status("published", 180, warning_sent_at=datetime.now()))
 
     warn.assert_not_awaited()
-    repo.mark_warning_sent.assert_not_awaited()
+    repo.claim_warning.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_worker_that_does_not_hold_the_warning_does_not_send_it():
+    # Another worker claimed it first.
+    _, _, warn = await _run(_status("published", 180), claim_warning=False)
+
+    warn.assert_not_awaited()
 
 
 @pytest.mark.asyncio
