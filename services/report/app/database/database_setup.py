@@ -92,6 +92,17 @@ async def create_tran_collection(tenant_id: str):
             "partialFilterExpression": WITHOUT_CART_ID,
         },
         {
+            # The lookups by numbering, served by an index again (issue #230). The
+            # partial index above cannot serve them: a query that does not say
+            # "cart_id is null" may not use it, so both the dedupe of a log
+            # without a cart_id and the numbering-reuse check scanned the whole
+            # collection on every store. Not partial, not unique: the numbering
+            # leads, so it serves either query, and cart_id last gives this index
+            # a different name from the one above.
+            "keys": {**NUMBERING_KEYS, "cart_id": 1},
+            "unique": False,
+        },
+        {
             "keys": {"tenant_id": 1, "store_code": 1, "cart_id": 1},
             "unique": True,
             "partialFilterExpression": {"cart_id": {"$type": "string"}},

@@ -13,6 +13,7 @@ import os
 import uuid
 
 import pytest
+import pytest_asyncio
 
 from kugel_common.database import database as db_helper
 from kugel_common.enums import TransactionType
@@ -26,15 +27,26 @@ from app.models.repositories.terminal_info_web_repository import TerminalInfoWeb
 from app.models.repositories.tranlog_repository import TranlogRepository
 from app.services.report_service import ReportService
 
+# A tenant of its own, dropped after each test: these tests store sales that
+# share a numbering, which a shared tenant's numbering index would then refuse
+# to be rebuilt over, and they rebuild that index.
+TENANT = "T230NUMBERING"
 STORE = "STORE230"
 TERMINAL = 23
 DATE = "2026-10-22"
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _own_tenant():
+    yield
+    db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{TENANT}")
+    await db.client.drop_database(db.name)
+
+
 def _sale(amount: int, cart_id: str | None, business_counter: int = 7, transaction_no: int = 1) -> BaseTransaction:
     tax = amount // 10
     return BaseTransaction(
-        tenant_id=os.environ.get("TENANT_ID"),
+        tenant_id=TENANT,
         store_code=STORE,
         terminal_no=TERMINAL,
         business_date=DATE,
@@ -55,14 +67,23 @@ def _sale(amount: int, cart_id: str | None, business_counter: int = 7, transacti
         },
         payments=[{"payment_no": 1, "payment_code": "01", "amount": amount + tax, "description": "Cash"}],
         taxes=[
-            {"tax_no": 1, "tax_code": "01", "tax_name": "10%", "tax_amount": tax, "target_amount": amount, "target_quantity": 1}
+            {
+                "tax_no": 1,
+                "tax_code": "01",
+                "tax_name": "10%",
+                "tax_amount": tax,
+                "target_amount": amount,
+                "target_quantity": 1,
+            }
         ],
-        line_items=[{"line_no": 1, "item_code": "I230", "quantity": 1, "unit_price": amount, "amount": amount, "tax_code": "01"}],
+        line_items=[
+            {"line_no": 1, "item_code": "I230", "quantity": 1, "unit_price": amount, "amount": amount, "tax_code": "01"}
+        ],
     )
 
 
 async def _db_and_repo():
-    tenant_id = os.environ.get("TENANT_ID")
+    tenant_id = TENANT
     db = await db_helper.get_db_async(f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}")
     repo = TranlogRepository(db, tenant_id)
     await db[repo.collection_name].delete_many({"store_code": STORE})
@@ -71,7 +92,7 @@ async def _db_and_repo():
 
 
 async def _report(db, report_type: str):
-    tenant_id = os.environ.get("TENANT_ID")
+    tenant_id = TENANT
     service = ReportService(
         tran_repository=TranlogRepository(db, tenant_id),
         cash_in_out_log_repository=CashInOutLogRepository(db, tenant_id),
@@ -131,7 +152,7 @@ async def test_a_numbering_index_over_every_record_is_replaced():
     await collection.drop_index(name)
     await collection.create_index(list(database_setup.NUMBERING_KEYS.items()), name=name, unique=True)
 
-    await database_setup.create_tran_collection(os.environ.get("TENANT_ID"))
+    await database_setup.create_tran_collection(TENANT)
 
     info = (await collection.index_information())[name]
     assert info["unique"] is True
@@ -161,3 +182,37 @@ async def test_both_sales_are_counted_in_the_reports(second):
     assert sum(p.amount for p in sales.payments) == 3300
     cash = next(p for p in payments.payment_summary if p.payment_code == "01")
     assert (cash.count, cash.amount) == (2, 3300)
+
+
+def _stages(plan: dict) -> list[str]:
+    stages = [plan.get("stage")]
+    for key in ("inputStage", "queryPlan"):
+        if key in plan:
+            stages += _stages(plan[key])
+    for child in plan.get("inputStages", []):
+        stages += _stages(child)
+    return stages
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [{"cart_id": {"$ne": "this-one"}}, {}],
+    ids=["numbering-reuse-check", "dedupe-without-cart-id"],
+)
+async def test_a_lookup_by_numbering_uses_an_index(extra):
+    """The partial numbering index cannot serve these; without another index they scan every record."""
+    db, repo = await _db_and_repo()
+    collection = db[repo.collection_name]
+    numbering = {
+        "tenant_id": TENANT,
+        "store_code": "S",
+        "terminal_no": 1,
+        "business_counter": 1,
+        "transaction_no": 1,
+    }
+
+    plan = (await collection.find({**numbering, **extra}).limit(1).explain())["queryPlanner"]["winningPlan"]
+
+    assert "IXSCAN" in _stages(plan), plan
+    assert "COLLSCAN" not in _stages(plan), plan

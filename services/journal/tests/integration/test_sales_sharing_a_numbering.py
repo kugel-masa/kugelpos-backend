@@ -13,6 +13,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 
 from kugel_common.database import database as db_helper
 from kugel_common.enums import TransactionType
@@ -29,11 +30,22 @@ from app.models.repositories.tranlog_repository import TranlogRepository
 from app.services.journal_service import JournalService
 from app.services.log_service import LogService
 
+# A tenant of its own, dropped after each test: these tests store sales that
+# share a numbering, which a shared tenant's numbering index would then refuse
+# to be rebuilt over, and they rebuild that index.
+TENANT = "T230NUMBERING"
 TERMINAL = 230
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _own_tenant():
+    yield
+    db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{TENANT}")
+    await db.client.drop_database(db.name)
+
+
 async def _db():
-    tenant_id = os.environ.get("TENANT_ID")
+    tenant_id = TENANT
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
     for name in (settings.DB_COLLECTION_NAME_TRAN, settings.DB_COLLECTION_NAME_JOURNAL):
         await db[name].delete_many({"terminal_no": TERMINAL})
@@ -42,7 +54,7 @@ async def _db():
 
 
 def _service(db) -> LogService:
-    tenant_id = os.environ.get("TENANT_ID")
+    tenant_id = TENANT
     return LogService(
         tran_repository=TranlogRepository(db=db, tenant_id=tenant_id),
         cash_in_out_log_repository=CashInOutLogRepository(db=db, tenant_id=tenant_id),
@@ -53,7 +65,7 @@ def _service(db) -> LogService:
 
 def _sale(cart_id: str, second: int) -> BaseTransaction:
     return BaseTransaction(
-        tenant_id=os.environ.get("TENANT_ID"),
+        tenant_id=TENANT,
         store_code=os.environ.get("STORE_CODE"),
         terminal_no=TERMINAL,
         transaction_no=1,
@@ -111,9 +123,43 @@ async def test_a_numbering_index_over_every_record_is_replaced():
     await collection.drop_index(name)
     await collection.create_index(list(database_setup.NUMBERING_KEYS.items()), name=name, unique=True)
 
-    await database_setup.create_tran_collection(os.environ.get("TENANT_ID"))
-    await database_setup.create_tran_collection(os.environ.get("TENANT_ID"))
+    await database_setup.create_tran_collection(TENANT)
+    await database_setup.create_tran_collection(TENANT)
 
     info = (await collection.index_information())[name]
     assert info["unique"] is True
     assert info["partialFilterExpression"] == {"cart_id": None}
+
+
+def _stages(plan: dict) -> list[str]:
+    stages = [plan.get("stage")]
+    for key in ("inputStage", "queryPlan"):
+        if key in plan:
+            stages += _stages(plan[key])
+    for child in plan.get("inputStages", []):
+        stages += _stages(child)
+    return stages
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [{"cart_id": {"$ne": "this-one"}}, {}],
+    ids=["numbering-reuse-check", "dedupe-without-cart-id"],
+)
+async def test_a_lookup_by_numbering_uses_an_index(extra):
+    """The partial numbering index cannot serve these; without another index they scan every record."""
+    db = await _db()
+    collection = db[settings.DB_COLLECTION_NAME_TRAN]
+    numbering = {
+        "tenant_id": TENANT,
+        "store_code": "S",
+        "terminal_no": 1,
+        "business_counter": 1,
+        "transaction_no": 1,
+    }
+
+    plan = (await collection.find({**numbering, **extra}).limit(1).explain())["queryPlanner"]["winningPlan"]
+
+    assert "IXSCAN" in _stages(plan), plan
+    assert "COLLSCAN" not in _stages(plan), plan
