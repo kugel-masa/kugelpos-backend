@@ -563,6 +563,25 @@ class TestTerminalServiceRepublishUndelivered:
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
+    async def test_republish_still_publishes_when_marking_it_failed_fails(self, mock_notify):
+        """A log past the failed period is marked failed before it is
+        republished. A database error on that update used to skip the
+        republish of exactly the logs that most need it."""
+        from datetime import datetime, timedelta
+        svc, repos = make_service()
+        svc._publish_cash_in_out_log_async = AsyncMock()
+        repos["terminal_log_delivery_status_repo"].update_delivery_status.side_effect = RuntimeError("db down")
+        old = self._status("EVT-OLD", {"event_type": "cash_in_out", "event_id": "EVT-OLD"})
+        old.created_at = datetime.now() - timedelta(hours=1)
+        repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [old]
+
+        await svc.republish_undelivered_terminallog_async()
+
+        svc._publish_cash_in_out_log_async.assert_awaited_once_with(old.payload)
+        mock_notify.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
     async def test_republish_unknown_event_type_marks_failed(self, mock_notify):
         """Unknown event_type should mark the log as failed."""
         from datetime import datetime, timedelta

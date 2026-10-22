@@ -1116,6 +1116,29 @@ class TerminalService:
             return "cash_in_out"
         return None
 
+    async def _escalate_undelivered_terminallog_async(self, status) -> None:
+        """
+        Mark a long-undelivered terminal log as failed and warn about it.
+
+        This is bookkeeping around the republish, not a precondition for it:
+        if the status update fails (it raises on a database error), the log is
+        still republished. Otherwise the very records that most need delivering
+        would be the ones skipped.
+        """
+        try:
+            await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
+        except Exception as e:
+            logger.error(f"Failed to mark terminallog as failed: event_id->{status.event_id}, error->{e}")
+        await send_warning_notification(
+            message="Undelivered terminallog found: "
+            f"event_id->{status.event_id}, "
+            f"tenant_id->{status.tenant_id}, "
+            f"store_code->{status.store_code}, "
+            f"terminal_no->{status.terminal_no}",
+            service="terminal",
+            context=status.model_dump(),
+        )
+
     async def republish_undelivered_terminallog_async(self) -> None:
         """
         Republish undelivered terminal logs to the appropriate topics.
@@ -1150,18 +1173,7 @@ class TerminalService:
                 # Check if the terminal log is undelivered longer than the threshold
                 failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
                 if status.created_at < datetime.now() - timedelta(minutes=failed_minutes):
-                    # Update the delivery status to "failed"
-                    await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
-                    # notify warning
-                    await send_warning_notification(
-                        message="Undelivered terminallog found: "
-                        f"event_id->{status.event_id}, "
-                        f"tenant_id->{status.tenant_id}, "
-                        f"store_code->{status.store_code}, "
-                        f"terminal_no->{status.terminal_no}",
-                        service="terminal",
-                        context=status.model_dump(),
-                    )
+                    await self._escalate_undelivered_terminallog_async(status)
                 # Determine log type based on payload content and republish
                 logger.debug(f"Republishing terminallog: event_id->{status.event_id}, tenant_id->{status.tenant_id}")
                 payload = status.payload
