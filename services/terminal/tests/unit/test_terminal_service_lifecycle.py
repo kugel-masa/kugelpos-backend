@@ -382,6 +382,30 @@ class TestTerminalServiceOpenTerminal:
         repos["open_close_log_repo"].commit_transaction.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("app.services.terminal_service.OpenCloseReceiptData")
+    @patch("app.services.terminal_service.CashInOutReceiptData")
+    async def test_open_terminal_initial_cash_log_carries_event_type(self, mock_cash_receipt_cls, mock_oc_receipt_cls):
+        """Issue #137: the initial-amount cash log is stored for republish with
+        event_type, which the republish job routes on. It had none."""
+        svc, repos = make_service()
+        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = _make_idle_terminal()
+        store = MagicMock()
+        store.store_name = "Test Store"
+        repos["store_info_repo"].get_store_info_async.return_value = store
+        for cls_mock in (mock_cash_receipt_cls, mock_oc_receipt_cls):
+            inst = MagicMock()
+            inst.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
+            cls_mock.return_value = inst
+        _setup_transaction_mock(repos["open_close_log_repo"])
+        svc.pubsub_manager = AsyncMock()
+        svc.pubsub_manager.publish_message_async.return_value = (True, None)
+
+        await svc.open_terminal_async(initial_amout=10000)
+
+        stored = [c.kwargs.get("payload") for c in repos["terminal_log_delivery_status_repo"].create_status_async.call_args_list]
+        assert sorted(p["event_type"] for p in stored) == ["cash_in_out", "open"]
+
+    @pytest.mark.asyncio
     async def test_open_terminal_not_found(self):
         svc, repos = make_service()
         repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = None

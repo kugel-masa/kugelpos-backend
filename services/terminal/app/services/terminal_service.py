@@ -641,6 +641,9 @@ class TerminalService:
             cash_event_id = str(uuid.uuid4())
             cash_message = self._convert_datetime(cash_in_out_log.model_dump())
             cash_message["event_id"] = cash_event_id
+            # The republish job routes on event_type; without it this log
+            # raised KeyError there and stopped the whole run (#137).
+            cash_message["event_type"] = "cash_in_out"
             cash_event_distinations = [
                 {"service_name": "report", "status": "pending"},
                 {"service_name": "journal", "status": "pending"},
@@ -1094,6 +1097,25 @@ class TerminalService:
         else:
             return None
 
+    @staticmethod
+    def _terminallog_event_type(payload: dict) -> str | None:
+        """
+        The event type a stored terminal log is republished as.
+
+        The initial-amount cash log written at open carried no event_type
+        until #137, and those records are still in the delivery-status
+        collection. They are recognised by shape: an open/close log carries
+        `operation`, a cash in/out log carries `amount`.
+        """
+        event_type = payload.get("event_type")
+        if event_type is not None:
+            return event_type
+        if payload.get("operation") in ("open", "close"):
+            return payload["operation"]
+        if "amount" in payload:
+            return "cash_in_out"
+        return None
+
     async def republish_undelivered_terminallog_async(self) -> None:
         """
         Republish undelivered terminal logs to the appropriate topics.
@@ -1115,44 +1137,51 @@ class TerminalService:
         logger.warning(f"Undelivered terminallogs found: {len(undelivered_terminallog_status_list)}")
 
         for status in undelivered_terminallog_status_list:
-            # Check if the terminal log is undelivered shorter than the threshold
-            if status.created_at > datetime.now() - timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES):
-                # Skip the terminal log if it was created recently
-                logger.debug(f"Skipping terminallog: event_id->{status.event_id}")
-                continue
+            # One bad record must not stop the others from being republished:
+            # an exception here used to abort the whole run (#137).
+            try:
+                # Check if the terminal log is undelivered shorter than the threshold
+                recent = datetime.now() - timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES)
+                if status.created_at > recent:
+                    # Skip the terminal log if it was created recently
+                    logger.debug(f"Skipping terminallog: event_id->{status.event_id}")
+                    continue
 
-            # Check if the terminal log is undelivered longer than the threshold
-            failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
-            if status.created_at < datetime.now() - timedelta(minutes=failed_minutes):
-                # Update the delivery status to "failed"
-                await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
-                # notify warning
-                await send_warning_notification(
-                    message="Undelivered terminallog found: "
-                    f"event_id->{status.event_id}, "
-                    f"tenant_id->{status.tenant_id}, "
-                    f"store_code->{status.store_code}, "
-                    f"terminal_no->{status.terminal_no}",
-                    service="terminal",
-                    context=status.model_dump(),
-                )
-            # Determine log type based on payload content and republish
-            logger.debug(f"Republishing terminallog: event_id->{status.event_id}, tenant_id->{status.tenant_id}")
-            payload = status.payload
-            log_type = None
+                # Check if the terminal log is undelivered longer than the threshold
+                failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
+                if status.created_at < datetime.now() - timedelta(minutes=failed_minutes):
+                    # Update the delivery status to "failed"
+                    await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
+                    # notify warning
+                    await send_warning_notification(
+                        message="Undelivered terminallog found: "
+                        f"event_id->{status.event_id}, "
+                        f"tenant_id->{status.tenant_id}, "
+                        f"store_code->{status.store_code}, "
+                        f"terminal_no->{status.terminal_no}",
+                        service="terminal",
+                        context=status.model_dump(),
+                    )
+                # Determine log type based on payload content and republish
+                logger.debug(f"Republishing terminallog: event_id->{status.event_id}, tenant_id->{status.tenant_id}")
+                payload = status.payload
+                log_type = None
+                event_type = self._terminallog_event_type(payload)
 
-            if payload["event_type"] == "cash_in_out":
-                log_type = "cashlog"
-                await self._publish_cash_in_out_log_async(payload)
-            elif payload["event_type"] == "open" or payload["event_type"] == "close":
-                log_type = "opencloselog"
-                await self._publish_open_close_log(payload)
-            else:
-                logger.error(f"Unknown log type for message: event_id->{status.event_id}")
-                # Update delivery status to failed for unknown log types
-                await self._update_delivery_status_internal_async(
-                    event_id=status.event_id, status="failed", message="Unknown log type"
-                )
-                continue
+                if event_type == "cash_in_out":
+                    log_type = "cashlog"
+                    await self._publish_cash_in_out_log_async(payload)
+                elif event_type in ("open", "close"):
+                    log_type = "opencloselog"
+                    await self._publish_open_close_log(payload)
+                else:
+                    logger.error(f"Unknown log type for message: event_id->{status.event_id}")
+                    # Update delivery status to failed for unknown log types
+                    await self._update_delivery_status_internal_async(
+                        event_id=status.event_id, status="failed", message="Unknown log type"
+                    )
+                    continue
 
-            logger.info(f"Republished {log_type}: event_id->{status.event_id}")
+                logger.info(f"Republished {log_type}: event_id->{status.event_id}")
+            except Exception as e:
+                logger.error(f"Failed to republish terminallog: event_id->{status.event_id}, error->{e}")
