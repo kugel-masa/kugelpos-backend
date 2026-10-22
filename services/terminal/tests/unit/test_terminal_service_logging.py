@@ -505,6 +505,81 @@ class TestTerminalServiceRepublishUndelivered:
         repos["terminal_log_delivery_status_repo"].update_delivery_status.assert_called()
         mock_notify.assert_called_once()
 
+    @staticmethod
+    def _status(event_id, payload):
+        from datetime import datetime, timedelta
+        status = MagicMock()
+        status.event_id = event_id
+        status.tenant_id = "TENANT-01"
+        status.store_code = "S001"
+        status.terminal_no = 1
+        status.created_at = datetime.now() - timedelta(minutes=10)
+        status.payload = payload
+        status.model_dump = MagicMock(return_value={})
+        return status
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload,topic_kind",
+        [
+            ({"event_id": "EVT-L1", "amount": 10000, "description": "Initial amount"}, "cash"),
+            ({"event_id": "EVT-L2", "operation": "open"}, "openclose"),
+            ({"event_id": "EVT-L3", "operation": "close"}, "openclose"),
+        ],
+    )
+    @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
+    async def test_republish_a_stored_log_without_event_type(self, mock_notify, payload, topic_kind):
+        """Issue #137: records written before the fix carry no event_type.
+        They used to raise KeyError; they are recognised by shape instead."""
+        svc, repos = make_service()
+        svc._publish_cash_in_out_log_async = AsyncMock()
+        svc._publish_open_close_log = AsyncMock()
+        repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [
+            self._status(payload["event_id"], payload)
+        ]
+
+        await svc.republish_undelivered_terminallog_async()
+
+        published = svc._publish_cash_in_out_log_async if topic_kind == "cash" else svc._publish_open_close_log
+        other = svc._publish_open_close_log if topic_kind == "cash" else svc._publish_cash_in_out_log_async
+        published.assert_awaited_once_with(payload)
+        other.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
+    async def test_republish_one_failing_record_does_not_stop_the_rest(self, mock_notify):
+        """Issue #137: an exception on one record used to abort the whole run,
+        so every record after it stayed undelivered."""
+        svc, repos = make_service()
+        svc._publish_cash_in_out_log_async = AsyncMock(side_effect=[RuntimeError("broker down"), None])
+        repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [
+            self._status("EVT-F1", {"event_type": "cash_in_out", "event_id": "EVT-F1"}),
+            self._status("EVT-F2", {"event_type": "cash_in_out", "event_id": "EVT-F2"}),
+        ]
+
+        await svc.republish_undelivered_terminallog_async()
+
+        assert svc._publish_cash_in_out_log_async.await_count == 2
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
+    async def test_republish_still_publishes_when_marking_it_failed_fails(self, mock_notify):
+        """A log past the failed period is marked failed before it is
+        republished. A database error on that update used to skip the
+        republish of exactly the logs that most need it."""
+        from datetime import datetime, timedelta
+        svc, repos = make_service()
+        svc._publish_cash_in_out_log_async = AsyncMock()
+        repos["terminal_log_delivery_status_repo"].update_delivery_status.side_effect = RuntimeError("db down")
+        old = self._status("EVT-OLD", {"event_type": "cash_in_out", "event_id": "EVT-OLD"})
+        old.created_at = datetime.now() - timedelta(hours=1)
+        repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [old]
+
+        await svc.republish_undelivered_terminallog_async()
+
+        svc._publish_cash_in_out_log_async.assert_awaited_once_with(old.payload)
+        mock_notify.assert_awaited_once()
+
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
     async def test_republish_unknown_event_type_marks_failed(self, mock_notify):
