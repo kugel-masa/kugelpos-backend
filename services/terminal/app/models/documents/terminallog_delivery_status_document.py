@@ -5,6 +5,13 @@ from datetime import datetime
 
 from kugel_common.models.documents.abstract_document import AbstractDocument
 
+#: Overall statuses of a terminal log the broker has not taken yet (issue #230).
+#: Only these are republished. ``pending`` covers the gap between the commit that
+#: creates the document and the publish after it; ``publish_failed`` is a publish
+#: the broker refused. Once the broker has taken a log, a durable queue holds it,
+#: so sending it again only adds copies.
+NOT_HANDED_TO_BROKER_STATUSES = ("pending", "publish_failed")
+
 
 class TerminallogDeliveryStatus(AbstractDocument):
     """
@@ -27,7 +34,9 @@ class TerminallogDeliveryStatus(AbstractDocument):
     # Message key information
     event_id: str  # Event ID (UUID)
     published_at: datetime  # Published datetime
-    status: str = "published"  # Overall status (published/delivered/partially_delivered/failed)
+    # Overall status (pending/publish_failed/published/delivered/partially_delivered/failed).
+    # "failed" means every service reported failure, or the log cannot be republished.
+    status: str = "published"
 
     # Terminal-related information
     tenant_id: str  # Tenant ID
@@ -42,3 +51,6 @@ class TerminallogDeliveryStatus(AbstractDocument):
 
     # Update information
     last_updated_at: datetime  # Last updated datetime
+
+    # When the undelivered warning was sent. It is sent once per log (issue #230).
+    warning_sent_at: Optional[datetime] = None

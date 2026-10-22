@@ -376,7 +376,8 @@ class TestTranlogDeliveryStatusRepository:
         assert created_doc.terminal_no == 1
         assert created_doc.business_date == "20240601"
         assert created_doc.open_counter == 1
-        assert created_doc.status == "published"
+        # Not handed to the broker until the publish after the commit (#230)
+        assert created_doc.status == "pending"
         assert len(created_doc.services) == 2
         assert created_doc.services[0].service_name == "report"
         assert created_doc.services[1].service_name == "journal"

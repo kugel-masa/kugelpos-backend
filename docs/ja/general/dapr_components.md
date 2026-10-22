@@ -236,6 +236,8 @@ event_id は、発行元の delivery-status への通知より前に記録しま
 
 デッドレターキューを読む仕組みはまだありません（#230）。
 
+発行側では、cart と terminal がイベントごとに配信状態を持ちます。ログを保存するトランザクションの中で `pending` として作り、ブローカーが受け取ると `published`、受け取らなかったときは `publish_failed` になります。再発行ジョブ（5 分ごと、24 時間）が送り直すのは `pending` と `publish_failed` だけです。ブローカーが受け取ったイベントは永続キューが保持しているので、送り直しても別のコピーとして配信されるだけです。15 分を過ぎても届かないイベントは、状態に関係なく 1 回だけ警告します（`warning_sent_at`）。RabbitMQ はデータを `rabbitmq_data` ボリュームに固定のホスト名で保存するので、コンテナを作り直してもキューの中身は残ります（`stop.sh --clean` で削除されます）。
+
 ## Redis設定とデータベース分離
 
 ### データベースインデックス割り当て
@@ -249,7 +251,7 @@ event_id は、発行元の delivery-status への通知より前に記録しま
 
 ### TTL設定理由
 
-- **statestore（48時間）**: 冪等性のキーごとに `ttlInSeconds` を付けます（report・journal・stock の `EVENT_IDEMPOTENCY_TTL_SECONDS`）。コンポーネントの既定値（1 時間）より優先されます。発行元の再発行の期間より長くなければなりません。cart と terminal は、未配信のイベントを元の event_id のまま 24 時間再発行します
+- **statestore（48時間）**: 冪等性のキーごとに `ttlInSeconds` を付けます（report・journal・stock の `EVENT_IDEMPOTENCY_TTL_SECONDS`）。コンポーネントの既定値（1 時間）より優先されます。発行元の再発行の期間より長くなければなりません。cart と terminal は、ブローカーに渡せていないイベントを元の event_id のまま 24 時間再発行します
 - **cartstore（10時間）**: 長時間取引に対応する中期保存
 
 ## パフォーマンス考慮事項

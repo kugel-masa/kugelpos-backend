@@ -6,6 +6,14 @@ from datetime import datetime
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.utils.misc import to_lower_camel
 
+#: Overall statuses of a tranlog the broker has not taken yet (issue #230). Only
+#: these are republished. ``pending`` covers the gap between the commit that
+#: creates the document and the publish after it: a process that stops there
+#: leaves the tranlog unpublished. ``publish_failed`` is a publish the broker
+#: refused. Once the broker has taken a tranlog, a durable queue holds it, so
+#: sending it again only adds copies.
+NOT_HANDED_TO_BROKER_STATUSES = ("pending", "publish_failed")
+
 
 class TranlogDeliveryStatus(AbstractDocument):
     """
@@ -28,7 +36,9 @@ class TranlogDeliveryStatus(AbstractDocument):
     # メッセージのキー情報
     event_id: str  # イベントID (UUID)
     published_at: datetime  # 発行日時
-    status: str = "published"  # 全体の状態 (published/delivered/partially_delivered/failed)
+    # 全体の状態 (pending/publish_failed/published/delivered/partially_delivered/failed)。
+    # failed は「全サービスが処理の失敗を報告した」の意味だけで使う。
+    status: str = "published"
 
     # トランザクション関連情報
     tenant_id: str  # テナントID
@@ -44,3 +54,6 @@ class TranlogDeliveryStatus(AbstractDocument):
 
     # 更新情報
     last_updated_at: datetime  # 最終更新日時
+
+    # When the undelivered warning was sent. It is sent once per tranlog (issue #230).
+    warning_sent_at: Optional[datetime] = None

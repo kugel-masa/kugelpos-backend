@@ -17,6 +17,7 @@ from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepos
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.models.repositories.tran_log_web_repository import TranlogWebRepository
 from app.models.repositories.terminallog_delivery_status_repository import TerminallogDeliveryStatusRepository
+from app.models.documents.terminallog_delivery_status_document import NOT_HANDED_TO_BROKER_STATUSES
 from app.models.documents.cash_in_out_log import CashInOutLog
 from app.models.documents.open_close_log import OpenCloseLog
 from app.enums.function_mode import FunctionMode
@@ -955,8 +956,10 @@ class TerminalService:
         if success:
             await self._update_delivery_status_internal_async(event_id, "published")
         else:
-            # Update delivery status to failed if there's an error
-            await self._update_delivery_status_internal_async(event_id=event_id, status="failed", message=error_msg)
+            # The broker did not take it, so the republish job has to (issue #230).
+            await self._update_delivery_status_internal_async(
+                event_id=event_id, status="publish_failed", message=error_msg
+            )
             logger.error(f"Failed to publish cash in/out log: {error_msg}. Continuing processing...")
 
     async def _publish_open_close_log(self, open_close_dict: dict) -> None:
@@ -979,8 +982,10 @@ class TerminalService:
         if success:
             await self._update_delivery_status_internal_async(event_id, "published")
         else:
-            # Update delivery status to failed if there's an error
-            await self._update_delivery_status_internal_async(event_id=event_id, status="failed", message=error_msg)
+            # The broker did not take it, so the republish job has to (issue #230).
+            await self._update_delivery_status_internal_async(
+                event_id=event_id, status="publish_failed", message=error_msg
+            )
             logger.error(f"Failed to publish open/close log: {error_msg}. Continuing processing...")
 
     async def _update_delivery_status_internal_async(
@@ -1116,35 +1121,39 @@ class TerminalService:
             return "cash_in_out"
         return None
 
-    async def _escalate_undelivered_terminallog_async(self, status) -> None:
+    async def _warn_undelivered_terminallog_async(self, status, not_handed_to_broker: bool) -> None:
         """
-        Mark a long-undelivered terminal log as failed and warn about it.
+        Warn once that a terminal log has not been delivered (issue #230).
 
-        This is bookkeeping around the republish, not a precondition for it:
-        if the status update fails (it raises on a database error), the log is
-        still republished. Otherwise the very records that most need delivering
-        would be the ones skipped.
+        The status is left as it is: overwriting it with "failed" mixed up "never
+        reached the broker" and "not acknowledged", and the republish that followed
+        set it back. This is bookkeeping around the republish, not a precondition
+        for it: if recording the warning fails, the log is still republished.
         """
-        try:
-            await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
-        except Exception as e:
-            logger.error(f"Failed to mark terminallog as failed: event_id->{status.event_id}, error->{e}")
+        reason = "not handed to the broker" if not_handed_to_broker else "handed to the broker, not acknowledged"
         await send_warning_notification(
-            message="Undelivered terminallog found: "
+            message=f"Undelivered terminallog found ({reason}): "
             f"event_id->{status.event_id}, "
             f"tenant_id->{status.tenant_id}, "
             f"store_code->{status.store_code}, "
-            f"terminal_no->{status.terminal_no}",
+            f"terminal_no->{status.terminal_no}, "
+            f"status->{status.status}",
             service="terminal",
             context=status.model_dump(),
         )
+        try:
+            await self.terminal_log_delivery_status_repo.mark_warning_sent(event_id=status.event_id)
+        except Exception as e:
+            logger.error(f"Failed to record the terminallog warning: event_id->{status.event_id}, error->{e}")
 
     async def republish_undelivered_terminallog_async(self) -> None:
         """
-        Republish undelivered terminal logs to the appropriate topics.
+        Republish the terminal logs the broker has not taken, and warn once about
+        any that are not delivered (issue #230).
 
-        This function retrieves undelivered terminal logs from the database
-        and republishes them to the appropriate topics for processing.
+        Only a log still ``pending`` or ``publish_failed`` is republished. Once the
+        broker has taken a log, a durable queue holds it, and republishing it every
+        run, as before, only added copies for 24 hours.
 
         Returns:
             None
@@ -1170,10 +1179,18 @@ class TerminalService:
                     logger.debug(f"Skipping terminallog: event_id->{status.event_id}")
                     continue
 
-                # Check if the terminal log is undelivered longer than the threshold
+                not_handed_to_broker = status.status in NOT_HANDED_TO_BROKER_STATUSES
+
                 failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
-                if status.created_at < datetime.now() - timedelta(minutes=failed_minutes):
-                    await self._escalate_undelivered_terminallog_async(status)
+                if (
+                    status.created_at < datetime.now() - timedelta(minutes=failed_minutes)
+                    and status.warning_sent_at is None
+                ):
+                    await self._warn_undelivered_terminallog_async(status, not_handed_to_broker)
+
+                if not not_handed_to_broker:
+                    # The broker holds it; a republish would only add a copy.
+                    continue
                 # Determine log type based on payload content and republish
                 logger.debug(f"Republishing terminallog: event_id->{status.event_id}, tenant_id->{status.tenant_id}")
                 payload = status.payload

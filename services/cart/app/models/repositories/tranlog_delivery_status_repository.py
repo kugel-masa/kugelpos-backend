@@ -85,7 +85,11 @@ class TranlogDeliveryStatusRepository(AbstractRepository[TranlogDeliveryStatus])
             open_counter=open_counter,
             payload=payload,
             services=service_status_list,
-            status="published",
+            # Not handed to the broker yet (issue #230). This document is created in
+            # the transaction that stores the tranlog, and the publish comes after the
+            # commit. Written as "published", a tranlog never published because the
+            # process stopped in between would not be republished.
+            status="pending",
             last_updated_at=now,
         )
 
@@ -228,13 +232,28 @@ class TranlogDeliveryStatusRepository(AbstractRepository[TranlogDeliveryStatus])
             logger.error(f"Failed to update service status: {e}")
             return False
 
+    async def mark_warning_sent(self, event_id: str) -> bool:
+        """
+        Record that the undelivered warning for this tranlog has been sent (issue #230)
+
+        Without the record the warning went out on every republish run, up to 288
+        times per tranlog over the 24-hour window.
+
+        Args:
+            event_id: Target event ID
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        return await self.update_one_async({"event_id": event_id}, {"warning_sent_at": get_app_time()})
+
     async def update_delivery_status(self, event_id: str, status: str) -> bool:
         """
         Update overall delivery status
 
         Args:
             event_id: Target event ID
-            status: New status (published/delivered/partially_delivered/failed)
+            status: New status (pending/publish_failed/published/delivered/partially_delivered/failed)
 
         Returns:
             bool: True if update was successful, False otherwise
