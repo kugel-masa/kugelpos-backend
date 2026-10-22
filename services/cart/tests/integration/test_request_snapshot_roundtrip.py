@@ -23,6 +23,12 @@ from fastapi import status
 
 from app.config.settings import settings
 from app.services import snapshot_service
+from kugel_common.utils.misc import get_app_time
+
+# Carried transaction datetimes are checked against a -90d / +1d window around
+# the server clock, so a literal date stops being accepted once the window
+# moves past it. Any time of today is inside the window.
+TODAY = get_app_time().date().isoformat()
 
 KEY_SPEC = "it-v1:" + base64.b64encode(b"integration-test-key-32-bytes!!!").decode()
 
@@ -139,7 +145,7 @@ async def test_carried_finalize_context_drives_numbering(http_client, snapshot_k
     assert paying_snapshot is not None
 
     # Distinctive carried values a server counter would never produce.
-    finalize_ctx = {"seq": 7777, "receiptCounter": 8888, "transactionDatetime": "2026-06-14T01:02:03"}
+    finalize_ctx = {"seq": 7777, "receiptCounter": 8888, "transactionDatetime": f"{TODAY}T01:02:03"}
     wrapped = {"signedSnapshot": paying_snapshot, "payload": finalize_ctx}
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
@@ -178,7 +184,7 @@ async def test_carried_cancel_is_numbered_from_the_carried_context(http_client, 
     # Distinctive carried values a server counter would never produce.
     wrapped = {
         "signedSnapshot": snapshot,
-        "payload": {"seq": 7801, "receiptCounter": 7802, "transactionDatetime": "2026-06-14T04:05:06"},
+        "payload": {"seq": 7801, "receiptCounter": 7802, "transactionDatetime": f"{TODAY}T04:05:06"},
     }
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
@@ -201,7 +207,7 @@ async def test_carried_cancel_rejects_a_context_without_a_snapshot(http_client, 
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
-        json={"seq": 7811, "receiptCounter": 7812, "transactionDatetime": "2026-06-14T04:06:07"},
+        json={"seq": 7811, "receiptCounter": 7812, "transactionDatetime": f"{TODAY}T04:06:07"},
         headers=headers,
     )
     assert r.status_code >= status.HTTP_400_BAD_REQUEST, r.text
@@ -262,7 +268,7 @@ async def test_a_finalize_that_cannot_be_signed_is_refused_and_repeatable(http_c
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
     paying_snapshot = await _pay_off(http_client, cart_id, snapshot)
 
-    ctx = {"seq": 5252, "receiptCounter": 5261, "transactionDatetime": "2026-06-14T05:06:07"}
+    ctx = {"seq": 5252, "receiptCounter": 5261, "transactionDatetime": f"{TODAY}T05:06:07"}
     wrapped = {"signedSnapshot": paying_snapshot, "payload": ctx}
     url = f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}"
 
@@ -304,7 +310,7 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
     paying_snapshot = await _pay_off(http_client, cart_id, snapshot)
 
-    ctx = {"seq": 5151, "receiptCounter": 5162, "transactionDatetime": "2026-06-14T02:03:04"}
+    ctx = {"seq": 5151, "receiptCounter": 5162, "transactionDatetime": f"{TODAY}T02:03:04"}
     wrapped = {"signedSnapshot": paying_snapshot, "payload": ctx}
 
     r1 = await http_client.post(
@@ -371,7 +377,7 @@ async def test_carried_void_uses_signed_finalize_context(http_client, snapshot_k
         cart_id="void-cart-it-0001",
         seq=6543,  # distinctive per-open seq a server counter would never produce
         receipt_counter=6544,
-        transaction_datetime="2026-06-14T07:08:09",
+        transaction_datetime=f"{TODAY}T07:08:09",
         terminal_info=terminal_info,
     )
     assert void_env is not None
@@ -407,7 +413,7 @@ async def test_carried_void_rejects_tampered_seq(http_client, snapshot_keys):
         cart_id="void-cart-it-0002",
         seq=10,
         receipt_counter=11,
-        transaction_datetime="2026-06-14T07:08:09",
+        transaction_datetime=f"{TODAY}T07:08:09",
         terminal_info=terminal_info,
     )
     void_env["finalize_context"]["seq"] = 999999  # tamper after signing
@@ -467,7 +473,7 @@ async def test_snapshotless_bill_with_finalize_context_is_rejected(http_client, 
     assert r.status_code == status.HTTP_200_OK, r.text
 
     # No wrapped body / no signed snapshot, but a finalize context is supplied.
-    forged = {"seq": 1, "receiptCounter": 2, "transactionDatetime": "2026-06-14T03:04:05"}
+    forged = {"seq": 1, "receiptCounter": 2, "transactionDatetime": f"{TODAY}T03:04:05"}
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
         json=forged,

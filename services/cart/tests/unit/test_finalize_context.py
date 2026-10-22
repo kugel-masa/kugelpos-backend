@@ -12,10 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Unit tests for FinalizeContext validation (issue #156 review fixes M1/M2)."""
+from datetime import timedelta
+
 import pytest
 from pydantic import ValidationError
 
-from app.api.v1.schemas import FinalizeContext
+from kugel_common.utils.misc import get_app_time
+
+from app.api.v1.schemas import MAX_BACKDATED_FINALIZE, MAX_FUTUREDATED_FINALIZE, FinalizeContext
+
+
+def _stamp(offset: timedelta = timedelta(0)) -> str:
+    """A naive ISO datetime relative to the server clock the validator reads.
+
+    The validator only accepts times within a window around now, so a literal
+    date in a test turns into a failure once the window has moved past it.
+    """
+    return (get_app_time().replace(tzinfo=None, microsecond=0) + offset).isoformat()
+
+
+NOW = _stamp()
 
 
 def test_empty_context_is_valid():
@@ -25,19 +41,19 @@ def test_empty_context_is_valid():
 
 
 def test_full_context_is_valid():
-    ctx = FinalizeContext(seq=5, receiptCounter=10, transactionDatetime="2026-06-14T09:30:00")
+    ctx = FinalizeContext(seq=5, receiptCounter=10, transactionDatetime=NOW)
     assert ctx.seq == 5
     assert ctx.receipt_counter == 10
-    assert ctx.transaction_datetime == "2026-06-14T09:30:00"
+    assert ctx.transaction_datetime == NOW
 
 
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"transactionDatetime": "2026-06-14T09:30:00"},  # only time
+        {"transactionDatetime": NOW},  # only time
         {"seq": 5},  # only seq
         {"seq": 5, "receiptCounter": 10},  # missing time
-        {"seq": 5, "transactionDatetime": "2026-06-14T09:30:00"},  # missing counter
+        {"seq": 5, "transactionDatetime": NOW},  # missing counter
     ],
 )
 def test_partial_context_is_rejected(kwargs):
@@ -61,3 +77,29 @@ def test_bad_datetime_is_rejected(bad_datetime):
     bucketing (split on 'T'), so it must be rejected."""
     with pytest.raises(ValidationError):
         FinalizeContext(seq=5, receiptCounter=10, transactionDatetime=bad_datetime)
+
+
+@pytest.mark.parametrize(
+    "offset",
+    [
+        -MAX_BACKDATED_FINALIZE + timedelta(hours=1),  # an offline session settled late
+        MAX_FUTUREDATED_FINALIZE - timedelta(hours=1),  # a terminal clock running ahead
+    ],
+)
+def test_datetime_inside_the_window_is_accepted(offset):
+    ctx = FinalizeContext(seq=5, receiptCounter=10, transactionDatetime=_stamp(offset))
+    assert ctx.transaction_datetime == _stamp(offset)
+
+
+@pytest.mark.parametrize(
+    "offset",
+    [
+        -MAX_BACKDATED_FINALIZE - timedelta(hours=1),
+        MAX_FUTUREDATED_FINALIZE + timedelta(hours=1),
+    ],
+)
+def test_datetime_outside_the_window_is_rejected(offset):
+    """A well-formed but plainly wrong clock lands the sale in a business date
+    that reports never reconcile."""
+    with pytest.raises(ValidationError):
+        FinalizeContext(seq=5, receiptCounter=10, transactionDatetime=_stamp(offset))

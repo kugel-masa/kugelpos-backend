@@ -141,54 +141,63 @@ async def add_discount_to_cart_async(cart_doc: CartDocument, add_discount_list: 
             )
         )
 
-    # Allocate subtotal discounts to line items proportionally
+    # Reset allocations once, before any discount is allocated: resetting per
+    # discount kept only the last one, and an empty list left stale
+    # allocations behind. Tax is computed from these allocations, while the
+    # cart total is computed from subtotal_discounts, so the two must agree.
+    for line_item in cart_doc.line_items:
+        line_item.discounts_allocated = []
+
+    # Only these line items take a share, so the share is of their total, not
+    # of the subtotal (which also holds discount-restricted items).
+    eligible_line_items = [
+        line_item
+        for line_item in cart_doc.line_items
+        if not line_item.is_cancelled and not line_item.is_discount_restricted
+    ]
+    eligible_amount = sum([Decimal(line_item.amount) for line_item in eligible_line_items])
+
     for discount in cart_doc.subtotal_discounts:
-        for line_item in cart_doc.line_items:
-            line_item.discounts_allocated = []  # Initialize
-            if not line_item.is_cancelled and not line_item.is_discount_restricted:
-                # Allocate discount amount proportionally by line item amount
-                target_discount_amount = Decimal(discount.discount_amount)
-                line_item_amout = Decimal(line_item.amount)
-                sub_total_amount = Decimal(cart_doc.subtotal_amount)
-                discount_amount_allocated = __round(target_discount_amount * line_item_amout / sub_total_amount)
+        target_discount_amount = Decimal(discount.discount_amount)
+        if target_discount_amount == 0:
+            continue
+        if eligible_amount <= 0:
+            message = f"No line item can take the subtotal discount, cart_id: {cart_doc.cart_id}, discount_amount: {discount.discount_amount}"
+            raise DiscountAllocationException(message, logger)
 
-                line_item.discounts_allocated.append(
-                    CartDocument.DiscountInfo(
-                        seq_no=discount.seq_no,
-                        discount_type=discount.discount_type,
-                        discount_value=discount.discount_value,
-                        discount_amount=discount_amount_allocated,
-                        detail=discount.detail,
-                    )
-                )
+        # Allocate discount amount proportionally by line item amount
+        allocations: list[tuple[CartDocument.CartLineItem, CartDocument.DiscountInfo]] = []
+        for line_item in eligible_line_items:
+            allocated = CartDocument.DiscountInfo(
+                seq_no=discount.seq_no,
+                discount_type=discount.discount_type,
+                discount_value=discount.discount_value,
+                discount_amount=__round(target_discount_amount * Decimal(line_item.amount) / eligible_amount),
+                detail=discount.detail,
+            )
+            line_item.discounts_allocated.append(allocated)
+            allocations.append((line_item, allocated))
 
-        # Add any remaining discount amount to the line item with the highest amount
-        # Calculate total allocated discount amount
-        discount_amount_allocated_total = sum(
-            [
-                sum([discount.discount_amount for discount in line_item.discounts_allocated])
-                for line_item in cart_doc.line_items
-            ]
-        )
-        diff = discount.discount_amount - discount_amount_allocated_total
-        if diff > 0:
-            # Sort line items by amount in descending order and add remaining amount
-            sorted_line_items = sorted(cart_doc.line_items, key=lambda x: x.amount, reverse=True)
-            while diff > 0:
-                for line_item in sorted_line_items:
-                    if not line_item.is_cancelled:
-                        if diff >= line_item.quantity:
-                            add_value = line_item.quantity
-                        elif diff < line_item.quantity:
-                            add_value = diff
-                        line_item.discounts_allocated[0].discount_amount += add_value
-                        diff -= add_value
-                        if diff == 0:
-                            break
-                if diff > 0:
-                    message = f"Failed to add discount, diff: {diff}"
-                    raise DiscountAllocationException(message, logger)
-                break
+        # Settle the rounding difference one currency unit at a time, largest
+        # line item first, on this discount's own allocations only
+        diff = target_discount_amount - sum([Decimal(allocated.discount_amount) for _, allocated in allocations])
+        ordered = sorted(allocations, key=lambda pair: pair[0].amount, reverse=True)
+        while diff != 0:
+            settled_any = False
+            for line_item, allocated in ordered:
+                step = max(min(diff, Decimal(1)), Decimal(-1))
+                current = Decimal(allocated.discount_amount)
+                # Never take an allocation below zero or above its line item
+                if not (0 <= current + step <= Decimal(line_item.amount)):
+                    continue
+                allocated.discount_amount = float(current + step)
+                diff -= step
+                settled_any = True
+                if diff == 0:
+                    break
+            if not settled_any:
+                message = f"Failed to allocate subtotal discount, cart_id: {cart_doc.cart_id}, diff: {diff}"
+                raise DiscountAllocationException(message, logger)
     return
 
 
