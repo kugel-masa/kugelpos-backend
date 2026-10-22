@@ -33,6 +33,7 @@ class CartErrorCode:
     BALANCE_LESS_THAN_DISCOUNT = "402003"  # 残高が値引金額より小さい
     DISCOUNT_ALLOCATION_ERROR = "402004"  # 値引の按分処理に失敗
     DISCOUNT_RESTRICTION = "402005"  # 値引禁止商品
+    LINE_ITEM_NOT_FOUND = "402006"  # 指定の明細行が存在しない
 
     # 支払関連エラー (403xx)
     BALANCE_ZERO = "403001"  # 残高が既にゼロ
@@ -96,6 +97,7 @@ class CartErrorMessage:
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "値引金額が残高より多いです",
             CartErrorCode.DISCOUNT_ALLOCATION_ERROR: "値引の按分処理に失敗しました",
             CartErrorCode.DISCOUNT_RESTRICTION: "値引禁止商品です",
+            CartErrorCode.LINE_ITEM_NOT_FOUND: "指定の明細行が存在しません",
             # スナップショット/restore 関連
             CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH: "スナップショットの署名が一致しません",
             CartErrorCode.SNAPSHOT_INVALID: "スナップショットの形式が不正です",
@@ -139,6 +141,7 @@ class CartErrorMessage:
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "Balance is less than discount",
             CartErrorCode.DISCOUNT_ALLOCATION_ERROR: "Discount allocation error",
             CartErrorCode.DISCOUNT_RESTRICTION: "Discount restriction",
+            CartErrorCode.LINE_ITEM_NOT_FOUND: "Line item not found",
             # スナップショット/restore 関連
             CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH: "Snapshot signature mismatch",
             CartErrorCode.SNAPSHOT_INVALID: "Invalid snapshot envelope",

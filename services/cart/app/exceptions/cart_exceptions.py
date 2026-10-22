@@ -61,6 +61,23 @@ class CartCannotSaveException(ServiceException):
 
 
 # 商品関連の例外
+class LineItemNotFoundException(ServiceException):
+    """
+    Exception raised when a line number does not name a line item of the cart.
+    指定の明細行がカートに存在しない場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.LINE_ITEM_NOT_FOUND,
+            CartErrorMessage.get_message(CartErrorCode.LINE_ITEM_NOT_FOUND),
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
 class ItemNotFoundException(ServiceException):
     """
     Exception raised when an item is not found.
