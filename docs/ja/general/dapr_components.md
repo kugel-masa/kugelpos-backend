@@ -226,6 +226,16 @@ async def handle_tranlog_event(event_data):
     await state_manager.mark_processed(event_id)
 ```
 
+event_id は、発行元の delivery-status への通知より前に記録します。通知はベストエフォートで、ログを保存した後は、通知に失敗してもイベントを失敗にしません。処理済みと分かった再配信でも `received` を通知し直します。1 回目の通知が失われた場合に備えるためです。
+
+### 再配信とデッドレター
+
+処理できなかったイベントには 500 で `RETRY` を返し、Dapr のサイドカーが再試行します（`dapr/components/pubsub-resiliency.yaml`：指数バックオフ・上限 3 分・18 回、合計で約 16〜24 分）。再試行を使い切ると、report 系のコンポーネント（`requeueInFailure: "false"`、`enableDeadLetter: "true"`）がメッセージを RabbitMQ のデッドレターキュー `dlq-<app-id>-<topic>` に移し、そこに残ります。再試行の合計は RabbitMQ の `consumer_timeout`（30 分）より短くなければなりません。超えると、ブローカーが未 ack のメッセージをキューに戻し、再試行が最初からやり直しになります。この 2 点は `services/report/tests/unit/test_pubsub_redelivery_budget.py` で確認しています。
+
+何度配信しても成功しないイベント（`event_id` がない、スキーマに合わない）には 200 で `DROP` を返し、再試行しません。
+
+デッドレターキューを読む仕組みはまだありません（#230）。
+
 ## Redis設定とデータベース分離
 
 ### データベースインデックス割り当て
@@ -233,13 +243,13 @@ async def handle_tranlog_event(event_data):
 | DB Index | 用途 | TTL | 使用サービス |
 |----------|------|-----|-------------|
 | 0 | Redis default | - | 未使用 |
-| 1 | statestore（冪等性） | 1時間 | Report, Journal, Stock |
+| 1 | statestore（冪等性） | 48時間（キーごと） | Report, Journal, Stock |
 | 2 | cartstore（キャッシング） | 10時間 | Cart |
 | 3 | terminalstore | - | 未使用 |
 
 ### TTL設定理由
 
-- **statestore（1時間）**: イベント重複防止に必要な短期保存
+- **statestore（48時間）**: 冪等性のキーごとに `ttlInSeconds` を付けます（report・journal・stock の `EVENT_IDEMPOTENCY_TTL_SECONDS`）。コンポーネントの既定値（1 時間）より優先されます。発行元の再発行の期間より長くなければなりません。cart と terminal は、未配信のイベントを元の event_id のまま 24 時間再発行します
 - **cartstore（10時間）**: 長時間取引に対応する中期保存
 
 ## パフォーマンス考慮事項
