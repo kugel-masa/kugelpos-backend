@@ -93,6 +93,28 @@ class TestLogService:
         assert result == base_transaction
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("missing", ["user", "staff", "both"])
+    async def test_receive_tranlog_without_user_or_staff(self, log_service, base_transaction, mock_repositories, missing):
+        """A void carries user=None. Reading `.id` off it raised on every void,
+        and the event was redelivered forever once the subscriber reported
+        failures honestly (#229)."""
+        tran_repo, _, _, journal_service = mock_repositories
+        tran_repo.start_transaction.return_value.__aenter__.return_value = AsyncMock()
+        tran_repo.create_tranlog_async.return_value = base_transaction
+        base_transaction.transaction_type = TransactionType.VoidSales.value
+        if missing in ("user", "both"):
+            base_transaction.user = None
+        if missing in ("staff", "both"):
+            base_transaction.staff = None
+
+        await log_service.receive_tranlog_async(base_transaction)
+
+        journal = journal_service.receive_journal_async.call_args[0][0]
+        assert journal["transaction_type"] == TransactionType.VoidSales.value
+        assert journal["user_id"] == (None if missing in ("user", "both") else "user123")
+        assert journal["staff_id"] == (None if missing in ("staff", "both") else "staff123")
+
+    @pytest.mark.asyncio
     async def test_receive_tranlog_normal_sales_cancelled(self, log_service, base_transaction, mock_repositories):
         """Test that cancelled normal sales transaction type is converted to NormalSalesCancel."""
         # Arrange

@@ -84,8 +84,11 @@ class LogService:
             receipt_no=tran.receipt_no,
             amount=tran.sales.total_amount_with_tax,
             quantity=tran.sales.total_quantity,
-            staff_id=tran.staff.id,
-            user_id=tran.user.id,
+            # A void carries no user, and a transaction need not carry staff.
+            # Dereferencing either raised on every void, and the event was
+            # redelivered forever once the subscriber reported failures (#229).
+            staff_id=tran.staff.id if tran.staff else None,
+            user_id=tran.user.id if tran.user else None,
             journal_text=tran.journal_text,
             receipt_text=tran.receipt_text,
         )
