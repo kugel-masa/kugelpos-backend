@@ -175,33 +175,6 @@ class StockService:
                 f"Processing transaction {transaction_no} (cart_id: {cart_id}, type: {transaction_type}) for tenant {tenant_id} store {store_code}, terminal {terminal_no}"
             )
 
-            # Idempotency pre-check: if any stock_update already exists for this
-            # transaction, it was already processed — skip the whole batch
-            # (re-applying $inc would double-decrement). Client-carried cart
-            # phase 2 (issue #156 / #152) keys on cart_id when present (a
-            # duplicate finalize / lost-ACK retry to any backend carries the
-            # same cart_id); otherwise the legacy (terminal_no, transaction_no)
-            # identity (Dapr redelivery, issue #98).
-            existing = None
-            if cart_id is not None:
-                existing = await self._stock_update_repository.find_by_cart_id_async(
-                    tenant_id=tenant_id, store_code=store_code, cart_id=cart_id
-                )
-            elif terminal_no is not None and transaction_no is not None:
-                existing = await self._stock_update_repository.find_by_transaction_async(
-                    tenant_id=tenant_id,
-                    store_code=store_code,
-                    terminal_no=terminal_no,
-                    transaction_no=transaction_no,
-                )
-            if existing:
-                logger.warning(
-                    f"Transaction already processed (cart_id={cart_id}, transaction_no={transaction_no}) for "
-                    f"tenant={tenant_id}, store={store_code}, terminal={terminal_no} "
-                    f"({len(existing)} existing stock_update records). Skipping."
-                )
-                return
-
             # Check if transaction is cancelled
             is_cancelled = transaction_data.get("sales", {}).get("is_cancelled", False)
             if is_cancelled:
@@ -233,32 +206,65 @@ class StockService:
                 )
                 return
 
-            # Process each item in the transaction
+            # One stock movement per item, not per line item: the cart adds a
+            # new line for every scan, and the unique index on stock_update is
+            # keyed on (cart_id, item_code, update_type). Applying two lines of
+            # the same item separately made the second one a "duplicate", whose
+            # $inc was rolled back, so the item was decremented only once.
+            quantities: dict[str, float] = {}
             for item in line_items:
                 item_code = item.get("item_code")
                 quantity = item.get("quantity", 0)
-                is_item_cancelled = item.get("is_cancelled", False)
 
                 # Skip cancelled items
-                if is_item_cancelled:
+                if item.get("is_cancelled", False):
                     logger.info(
                         f"Item {item_code} in transaction {transaction_no} is cancelled, skipping stock update."
                     )
                     continue
 
                 if quantity > 0:
-                    # Sales reduce stock (negative change)
-                    await self.update_stock_async(
-                        tenant_id=tenant_id,
-                        store_code=store_code,
-                        item_code=item_code,
-                        quantity_change=quantity * sign,  # negative for sales, positive for returns
-                        update_type=update_type,
-                        reference_id=transaction_no_str,
-                        terminal_no=terminal_no,
-                        transaction_no=transaction_no,
-                        cart_id=cart_id,
+                    quantities[item_code] = quantities.get(item_code, 0) + quantity
+
+            # Idempotency is per item, not per transaction. Skipping the whole
+            # transaction once any record existed meant that a delivery which
+            # failed part-way never applied the remaining items on
+            # redelivery. Client-carried cart phase 2 (issue #156 / #152) keys
+            # on cart_id when present; otherwise the legacy (terminal_no,
+            # transaction_no) identity (Dapr redelivery, issue #98).
+            existing = []
+            if cart_id is not None:
+                existing = await self._stock_update_repository.find_by_cart_id_async(
+                    tenant_id=tenant_id, store_code=store_code, cart_id=cart_id
+                )
+            elif terminal_no is not None and transaction_no is not None:
+                existing = await self._stock_update_repository.find_by_transaction_async(
+                    tenant_id=tenant_id,
+                    store_code=store_code,
+                    terminal_no=terminal_no,
+                    transaction_no=transaction_no,
+                )
+            already_applied = {record.item_code for record in existing if record.update_type == update_type}
+
+            for item_code, quantity in quantities.items():
+                if item_code in already_applied:
+                    logger.warning(
+                        f"Item {item_code} already applied for cart_id={cart_id}, transaction_no={transaction_no} "
+                        f"(tenant={tenant_id}, store={store_code}, terminal={terminal_no}). Skipping."
                     )
+                    continue
+
+                await self.update_stock_async(
+                    tenant_id=tenant_id,
+                    store_code=store_code,
+                    item_code=item_code,
+                    quantity_change=quantity * sign,  # negative for sales, positive for returns
+                    update_type=update_type,
+                    reference_id=transaction_no_str,
+                    terminal_no=terminal_no,
+                    transaction_no=transaction_no,
+                    cart_id=cart_id,
+                )
 
             logger.info(
                 f"Transaction processed successfully. tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}, transaction_no: {transaction_no}"
