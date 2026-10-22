@@ -61,7 +61,9 @@ phase 2 で **`transaction_no` は営業回数ごとの連番（seq）** にな�
 
 クライアントが採番を持ち込むのは、**再送された精算がどのバックエンドで処理されても同じ番号・同じ時刻になる**ようにするため。重複した精算は下流（report / journal / stock）で `cart_id` により1件に収束する。
 
-採番の整合性はユニークインデックスで担保される。同じ `(business_counter, transaction_no)` の二重登録は DB が拒否する。
+採番の整合性は、発生元の cart のユニークインデックスで担保される。同じ `(business_counter, transaction_no)` の二重登録は、cart の DB が確定の時点で拒否する。
+
+下流（report / journal）では、取引の同一性は `cart_id` で判断する。番号のユニークインデックスは `cart_id` を持たない記録だけに掛かる（`partialFilterExpression: {cart_id: null}`）。番号が同じでも `cart_id` が違えば、別の売上として両方を保存する（#230）。全件に掛けていた頃は 2 件目を拒否していたため、report では売上が黙って消え、journal では配信が失敗し続けて DLQ に入っていた。下流で番号が重なるのは採番の不具合（cart の DB の復元や作り直し、端末の入れ替え、別のバックエンド）のしるしなので、保存した上で警告ログ（`Two transactions share one numbering`）を出す。売上レポート・支払レポートの集計も、番号ではなく記録ごとに数える。
 
 ### 営業回数の持ち回り
 
