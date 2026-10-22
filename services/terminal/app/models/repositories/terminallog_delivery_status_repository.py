@@ -230,6 +230,119 @@ class TerminallogDeliveryStatusRepository(AbstractRepository[TerminallogDelivery
         """
         return await self.update_one_async({"event_id": event_id}, {"warning_sent_at": get_app_time()})
 
+    async def mark_handed_off(self, event_id: str) -> bool:
+        """
+        Record that the broker has taken this log (issue #230)
+
+        Sets the overall status to ``published`` and stamps ``handed_off_at``. The
+        stamp is written here and nowhere else, so it only ever means a hand-off.
+
+        Args:
+            event_id: Target event ID
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        now = get_app_time()
+        return await self.update_one_async(
+            {"event_id": event_id}, {"status": "published", "handed_off_at": now, "last_updated_at": now}
+        )
+
+    async def find_latest_received_published_at(
+        self, service_name: str, since: datetime, received_before: datetime
+    ) -> Optional[datetime]:
+        """
+        The newest ``published_at`` among the logs ``service_name`` has acknowledged (issue #230)
+
+        It stands for how far the consumer has read. A log handed to the broker
+        before this point and still unacknowledged by the consumer was most likely
+        skipped: the queue is read in order. The order is not strict (concurrent
+        handlers, Dapr retries), but the 15-minute wait and the one-run margin make
+        that rare, and a copy that arrives while the original is still being
+        processed is dropped by event_id. Both topics (cash in/out and open/close)
+        count: one sidecar declares both subscriptions when it starts, and the open
+        log, the first publish after a start, would otherwise wait for the close log.
+
+        ``published_at`` is when the document was created, never later than the
+        hand-off, so the point is never overestimated. Acknowledgements newer than
+        ``received_before`` are left out: a log handed off just before them may still
+        be in the consumer's hands.
+
+        Args:
+            service_name: Consumer to look at
+            since: Start of the republish window
+            received_before: Only acknowledgements at or before this time count
+
+        Returns:
+            Optional[datetime]: The newest ``published_at`` (UTC), or None if the
+            consumer has acknowledged nothing in the window
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        doc = await self.dbcollection.find_one(
+            {
+                "published_at": {"$gte": since},
+                "services": {
+                    "$elemMatch": {
+                        "service_name": service_name,
+                        "status": "received",
+                        "received_at": {"$lte": received_before},
+                    }
+                },
+            },
+            projection={"published_at": 1},
+            sort=[("published_at", -1)],
+            session=self.session,
+        )
+        if doc is None:
+            return None
+        published_at: datetime = doc["published_at"]
+        # MongoDB returns naive UTC.
+        return published_at if published_at.tzinfo else published_at.replace(tzinfo=timezone.utc)
+
+    async def claim_republish(self, event_id: str, until: datetime) -> bool:
+        """
+        Take on the one-time republish of a skipped log (issue #230)
+
+        The job can run in more than one worker, so only the worker whose conditional
+        update matches sends it. A claim whose worker stopped before sending expires
+        at ``until``, and the next run takes it over.
+
+        Args:
+            event_id: Target event ID
+            until: When the claim expires
+
+        Returns:
+            bool: True if this caller holds the claim
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        result = await self.dbcollection.update_one(
+            {
+                "event_id": event_id,
+                "republished_at": None,
+                "$or": [
+                    {"republish_claim_expires_at": None},
+                    {"republish_claim_expires_at": {"$lte": get_app_time()}},
+                ],
+            },
+            {"$set": {"republish_claim_expires_at": until}},
+            session=self.session,
+        )
+        return result.modified_count == 1
+
+    async def mark_republished(self, event_id: str) -> bool:
+        """
+        Record that the skipped log has been sent again (issue #230). It is not sent a third time.
+
+        Args:
+            event_id: Target event ID
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        return await self.update_one_async({"event_id": event_id}, {"republished_at": get_app_time()})
+
     async def update_delivery_status(self, event_id: str, status: str) -> bool:
         """
         Update overall delivery status

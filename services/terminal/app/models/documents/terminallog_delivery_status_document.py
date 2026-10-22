@@ -6,10 +6,11 @@ from datetime import datetime
 from kugel_common.models.documents.abstract_document import AbstractDocument
 
 #: Overall statuses of a terminal log the broker has not taken yet (issue #230).
-#: Only these are republished. ``pending`` covers the gap between the commit that
-#: creates the document and the publish after it; ``publish_failed`` is a publish
-#: the broker refused. Once the broker has taken a log, a durable queue holds it,
-#: so sending it again only adds copies.
+#: Only these are republished on every run. ``pending`` covers the gap between the
+#: commit that creates the document and the publish after it; ``publish_failed`` is
+#: a publish the broker refused. Once the broker has taken a log, a durable queue
+#: holds it, so sending it again on every run only adds copies. The exception is a
+#: log a consumer has read past without acknowledging it, which is sent once more.
 NOT_HANDED_TO_BROKER_STATUSES = ("pending", "publish_failed")
 
 
@@ -54,3 +55,11 @@ class TerminallogDeliveryStatus(AbstractDocument):
 
     # When the undelivered warning was sent. It is sent once per log (issue #230).
     warning_sent_at: Optional[datetime] = None
+
+    # When the broker took the log. ``published_at`` is when the document was
+    # created, earlier than the hand-off for a log the broker first refused.
+    handed_off_at: Optional[datetime] = None
+    # A log a consumer has read past is sent once more (issue #230): when the claim
+    # of the worker sending it expires, and when it was sent.
+    republish_claim_expires_at: Optional[datetime] = None
+    republished_at: Optional[datetime] = None

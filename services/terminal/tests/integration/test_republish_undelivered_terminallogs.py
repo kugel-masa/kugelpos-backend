@@ -113,3 +113,74 @@ async def test_a_log_the_broker_refused_keeps_being_republished_and_is_warned_ab
     assert svc.pubsub_manager.publish_message_async.await_count == 2
     assert warn.await_count == 1
     assert (await repo.find_by_event_id(event_id)).status == "publish_failed"
+
+
+async def _age(db, event_id, minutes):
+    at = get_app_time() - timedelta(minutes=minutes)
+    await db[settings.DB_COLLECTION_NAME_TERMINALLOG_DELIVERY_STATUS].update_one(
+        {"event_id": event_id},
+        {"$set": {"created_at": at, "published_at": at, "handed_off_at": at, "warning_sent_at": at}},
+    )
+
+
+async def _skipped_and_later(db, svc, repo):
+    """Two logs the broker took; journal acknowledged the later one, not the earlier."""
+    skipped = await _cash_in_and_age(db, svc, repo)
+    later = await _cash_in_and_age(db, svc, repo)
+    await _age(db, skipped, 40)
+    await _age(db, later, 30)
+    await svc.update_delivery_status_async(event_id=later, status="received", service_name="journal", message="")
+    # Acknowledged 20 minutes ago, past the one-run margin.
+    await db[settings.DB_COLLECTION_NAME_TERMINALLOG_DELIVERY_STATUS].update_one(
+        {"event_id": later},
+        {"$set": {"services.$[e].received_at": get_app_time() - timedelta(minutes=20)}},
+        array_filters=[{"e.service_name": "journal"}],
+    )
+    return skipped, later
+
+
+@pytest.mark.asyncio
+async def test_a_log_the_consumer_read_past_is_sent_once_more_and_only_once(db):
+    svc, repo = await _service(db, publish_ok=True)
+    skipped, later = await _skipped_and_later(db, svc, repo)
+
+    await _republish_twice(svc)
+
+    sent = [call.kwargs["message"]["event_id"] for call in svc.pubsub_manager.publish_message_async.await_args_list]
+    assert sent == [skipped]
+    stored = await repo.find_by_event_id(skipped)
+    assert stored.republished_at is not None
+    assert stored.status == "published"
+    assert (await repo.find_by_event_id(later)).status == "delivered"
+
+
+@pytest.mark.asyncio
+async def test_two_workers_send_a_skipped_log_once_between_them(db):
+    import asyncio
+
+    first, repo = await _service(db, publish_ok=True)
+    second, _ = await _service(db, publish_ok=True)
+    await _skipped_and_later(db, first, repo)
+    first.pubsub_manager.publish_message_async.reset_mock()
+
+    with patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock):
+        await asyncio.gather(
+            first.republish_undelivered_terminallog_async(), second.republish_undelivered_terminallog_async()
+        )
+
+    sends = (
+        first.pubsub_manager.publish_message_async.await_count + second.pubsub_manager.publish_message_async.await_count
+    )
+    assert sends == 1
+
+
+@pytest.mark.asyncio
+async def test_a_log_no_consumer_read_past_is_left_to_the_queue(db):
+    svc, repo = await _service(db, publish_ok=True)
+    event_id = await _cash_in_and_age(db, svc, repo)
+    await _age(db, event_id, 40)
+
+    await _republish_twice(svc)
+
+    svc.pubsub_manager.publish_message_async.assert_not_awaited()
+    assert (await repo.find_by_event_id(event_id)).republished_at is None
