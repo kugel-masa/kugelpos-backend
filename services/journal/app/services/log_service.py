@@ -1,5 +1,8 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+import asyncio
 from logging import getLogger
+
+from pymongo.errors import PyMongoError
 
 # 不要なワイルドカードインポート削除（実際に使用される例外クラスがないため）
 from kugel_common.models.documents.base_tranlog import BaseTransaction
@@ -15,6 +18,27 @@ from app.services.journal_service import JournalService
 from app.models.documents.jornal_document import JournalDocument
 
 logger = getLogger(__name__)
+
+# Waits before running a transaction again after a transient write error. A
+# concurrent copy of the same event usually commits within milliseconds.
+TRANSIENT_RETRY_DELAYS_SECONDS = (0.05, 0.1, 0.2, 0.4)
+
+# Write conflicts and aborted transactions, and a duplicate key: the outcome of
+# a concurrent copy winning the race.
+_TRANSIENT_ERROR_CODES = {112, 251, 11000}
+
+
+def _is_transient_write_error(error: BaseException) -> bool:
+    """Whether a database error behind ``error`` may not recur if the transaction runs again."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, PyMongoError) and (
+            error.has_error_label("TransientTransactionError") or getattr(error, "code", None) in _TRANSIENT_ERROR_CODES
+        ):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
 
 
 class LogService:
@@ -93,6 +117,33 @@ class LogService:
             receipt_text=tran.receipt_text,
         )
 
+        attempt = 0
+        while True:
+            try:
+                return await self.__store_tranlog_and_journal_async(tran, journal_doc)
+            except Exception as e:
+                # Copies of one event can be processed at the same time (issue #230).
+                # Their writes collide inside the transaction, and the loser fails
+                # with a WriteConflict or a duplicate key instead of finding the
+                # record, because the winner had not committed when it looked. When
+                # it runs again, the transaction finds that record and skips it.
+                if attempt < len(TRANSIENT_RETRY_DELAYS_SECONDS) and _is_transient_write_error(e):
+                    await asyncio.sleep(TRANSIENT_RETRY_DELAYS_SECONDS[attempt])
+                    attempt += 1
+                    continue
+                if await self.__stored_by_another_delivery_async(tran):
+                    return tran
+                message = f"Failed to create transaction log & journal: {e}"
+                logger.error(message)
+                await send_fatal_error_notification(
+                    message=message, error=e, service="journal", context=tran.model_dump()
+                )
+                raise e
+
+    async def __store_tranlog_and_journal_async(
+        self, tran: BaseTransaction, journal_doc: JournalDocument
+    ) -> BaseTransaction:
+        """Store the transaction log and its journal entry in one transaction."""
         async with await self.tran_repository.start_transaction() as session:
             try:
                 self.journal_service.journal_repository.set_session(session)
@@ -100,14 +151,33 @@ class LogService:
                 await self.journal_service.receive_journal_async(journal_doc.model_dump())
                 await self.tran_repository.commit_transaction()
                 return return_tran
-            except Exception as e:
+            except Exception:
                 await self.tran_repository.abort_transaction()
-                message = f"Failed to create transaction log & journal: {e}"
-                logger.error(message)
-                await send_fatal_error_notification(
-                    message=message, error=e, service="journal", context=tran.model_dump()
-                )
-                raise e
+                raise
+
+    async def __stored_by_another_delivery_async(self, tran: BaseTransaction) -> bool:
+        """
+        Whether a concurrent delivery of the same transaction stored it (issue #230).
+
+        The last check before the event is failed, for a winner that committed
+        after the loser's retries ran out. Checked after the abort, so it sees
+        committed data only.
+
+        A failure of the check itself counts as "not stored": the caller then fails
+        the event, and it is delivered again.
+        """
+        try:
+            stored = await self.tran_repository.find_stored_async(tran)
+        except Exception as check_exc:
+            logger.warning(f"Could not check whether the transaction is already stored: {check_exc}")
+            return False
+        if stored is None:
+            return False
+        logger.warning(
+            "Transaction already stored by another delivery. "
+            f"cart_id: {tran.cart_id}, terminal_no: {tran.terminal_no}, transaction_no: {tran.transaction_no}"
+        )
+        return True
 
     async def receive_cashlog_async(self, cashlog: CashInOutLog) -> CashInOutLog:
         """

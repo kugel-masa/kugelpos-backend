@@ -1,3 +1,24 @@
+# The redelivery budget for the report-family topics (tranlog / cashlog /
+# opencloselog), issue #230.
+#
+# The sidecar retries a failed delivery in-process, backing off exponentially.
+# When the retries run out the delivery fails, and because the components set
+# `requeueInFailure: "false"` and `enableDeadLetter: "true"` RabbitMQ moves the
+# message to its dead-letter queue (dlq-<app-id>-<topic>). With requeueing on, it
+# went straight back on the queue and a message that always fails was redelivered
+# forever.
+#
+# Budget: Dapr starts the back-off at 0.5 s and grows it 1.5x per retry, here
+# capped at 3 minutes, for 18 retries: about 16 minutes, and about 24 minutes if
+# Dapr's +-50% jitter lands every wait at its longest. That has to stay under
+# RabbitMQ's consumer_timeout (30 minutes by default). The sidecar holds the
+# message unacknowledged while it retries; past the timeout the broker closes
+# the channel, requeues the message, and the retries start over, which is the
+# endless loop again. The budget rides out a database restart or a short outage.
+# Anything longer ends up in the dead-letter queue, where it is kept.
+#
+# services/report/tests/unit/test_pubsub_redelivery_budget.py checks all of the
+# above.
 apiVersion: dapr.io/v1alpha1
 kind: Resiliency
 metadata:
@@ -6,9 +27,9 @@ spec:
   policies:
     retries:
       pubsubRetry:
-        policy: constant
-        duration: 5s
-        maxRetries: 3
+        policy: exponential
+        maxInterval: 3m
+        maxRetries: 18
   targets:
     components:
       pubsub-tranlog-report:

@@ -226,6 +226,16 @@ async def handle_tranlog_event(event_data):
     await state_manager.mark_processed(event_id)
 ```
 
+The event_id is recorded before the publisher's delivery-status endpoint is notified, and that notification is best-effort: once the log is stored, a failed notification never fails the event. A redelivery found already processed sends the `received` notification again, in case the first one was lost.
+
+### Redelivery and Dead Letters
+
+A subscriber that cannot process an event answers `RETRY` with a 500, and the Dapr sidecar retries it (`dapr/components/pubsub-resiliency.yaml`: exponential back-off capped at 3 minutes, 18 retries, about 16-24 minutes in all). When the retries run out, the report-family components (`requeueInFailure: "false"`, `enableDeadLetter: "true"`) hand the message to RabbitMQ's dead-letter queue `dlq-<app-id>-<topic>`, where it is kept. The retries must finish within RabbitMQ's `consumer_timeout` (30 minutes): past it the broker requeues the unacknowledged message and the retries start over. `services/report/tests/unit/test_pubsub_redelivery_budget.py` checks both.
+
+An event that cannot succeed on any delivery (no `event_id`, or a payload that does not match its schema) is answered `DROP` with a 200, and is not retried.
+
+Nothing consumes the dead-letter queues yet (#230).
+
 ## Redis Configuration and Database Separation
 
 ### Database Index Assignment
@@ -233,13 +243,13 @@ async def handle_tranlog_event(event_data):
 | DB Index | Purpose | TTL | Used by Services |
 |----------|---------|-----|------------------|
 | 0 | Redis default | - | Unused |
-| 1 | statestore (idempotency) | 1 hour | Report, Journal, Stock |
+| 1 | statestore (idempotency) | 48 hours (per key) | Report, Journal, Stock |
 | 2 | cartstore (caching) | 10 hours | Cart |
 | 3 | terminalstore | - | Unused |
 
 ### TTL Configuration Rationale
 
-- **statestore (1 hour)**: Short-term storage needed for event duplication prevention
+- **statestore (48 hours)**: Each idempotency key carries its own `ttlInSeconds` (`EVENT_IDEMPOTENCY_TTL_SECONDS` in report / journal / stock), overriding the component's 1-hour default. It has to outlive the publishers' republish window: cart and terminal re-send an undelivered event under its original event_id for 24 hours
 - **cartstore (10 hours)**: Medium-term storage to support long-duration transactions
 
 ## Performance Considerations

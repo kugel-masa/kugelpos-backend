@@ -5,7 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.schemas.pagination import PaginatedResult
-from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
+from kugel_common.exceptions import CannotCreateException
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
 from app.config.settings import settings
@@ -51,29 +51,8 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             CannotCreateException: If the transaction log cannot be created
         """
         try:
-
-            # Client-carried cart phase 2 (issue #156 / #152): dedupe on cart_id
-            # (the transaction identity) so a duplicate finalize converges to one
-            # record (first-wins skip). Fall back to (business_counter,
-            # transaction_no) for legacy records without cart_id — transaction_no
-            # alone is the per-open seq and not unique across sessions.
-            if tranlog.cart_id is not None:
-                filter = {
-                    "tenant_id": tranlog.tenant_id,
-                    "store_code": tranlog.store_code,
-                    "cart_id": tranlog.cart_id,
-                }
-            else:
-                filter = {
-                    "tenant_id": tranlog.tenant_id,
-                    "store_code": tranlog.store_code,
-                    "terminal_no": tranlog.terminal_no,
-                    "business_counter": tranlog.business_counter,
-                    "transaction_no": tranlog.transaction_no,
-                }
-
             # Check if the transaction log already exists
-            if await self.get_one_async(filter):
+            if await self.get_one_async(self.__identity_filter(tranlog)):
                 logger.warning(f"Transaction already exists. transaction: {tranlog}")
                 return tranlog
 
@@ -84,11 +63,12 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
                 raise Exception()
             return tranlog
 
-        except DuplicateKeyException:
-            # Concurrent duplicate finalize (issue #156): the unique-index race
-            # loser — the benign "already converged" signal, skip not error.
-            logger.warning(f"Transaction already exists (duplicate-key on insert): {tranlog}")
-            return tranlog
+        # A duplicate key is not caught as "already stored" here, unlike report:
+        # this insert runs inside the journal's transaction, and MongoDB aborts
+        # the transaction on the error, so carrying on only fails the journal
+        # insert that follows (issue #230). The caller aborts, then runs the
+        # transaction again or checks with find_stored_async whether a
+        # concurrent delivery stored it.
         except Exception as e:
             message = (
                 "Failed to create tranlog: "
@@ -99,6 +79,41 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
                 f"transaction_type->{tranlog.transaction_type}"
             )
             raise CannotCreateException(message, logger, e) from e
+
+    async def find_stored_async(self, tranlog: BaseTransaction) -> BaseTransaction | None:
+        """
+        Find the stored transaction log that is the same transaction as ``tranlog``.
+
+        Uses the identity create_tranlog_async deduplicates on.
+
+        Args:
+            tranlog: The transaction log to look for
+
+        Returns:
+            The stored transaction log, or None when there is none
+        """
+        return await self.get_one_async(self.__identity_filter(tranlog))
+
+    @staticmethod
+    def __identity_filter(tranlog: BaseTransaction) -> dict:
+        # Client-carried cart phase 2 (issue #156 / #152): dedupe on cart_id
+        # (the transaction identity) so a duplicate finalize converges to one
+        # record (first-wins skip). Fall back to (business_counter,
+        # transaction_no) for legacy records without cart_id — transaction_no
+        # alone is the per-open seq and not unique across sessions.
+        if tranlog.cart_id is not None:
+            return {
+                "tenant_id": tranlog.tenant_id,
+                "store_code": tranlog.store_code,
+                "cart_id": tranlog.cart_id,
+            }
+        return {
+            "tenant_id": tranlog.tenant_id,
+            "store_code": tranlog.store_code,
+            "terminal_no": tranlog.terminal_no,
+            "business_counter": tranlog.business_counter,
+            "transaction_no": tranlog.transaction_no,
+        }
 
     async def get_tranlog_list_by_query_async(
         self,

@@ -15,7 +15,10 @@ spec:
     - name: deliveryMode
       value: "2"
     - name: requeueInFailure
-      value: "true"
+      # "false": once the sidecar's retries (pubsub-resiliency.yaml) run out, the
+      # message goes to the dead-letter queue. "true" put it straight back on this
+      # queue, so a message that always fails was redelivered forever (#230).
+      value: "false"
     - name: prefetchCount
       value: "10"
     - name: publisherConfirm
