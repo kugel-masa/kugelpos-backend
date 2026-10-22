@@ -17,8 +17,10 @@ async def test_save_state_success():
 
         result = await mgr.save_state("id1", {"key": "value"})
         assert result == (True, None)
+        # The key outlives the publisher's 24 h republish window (#230),
+        # which the component default (1 h) did not.
         mock_client.save_state.assert_called_once_with(
-            store_name="statestore", key="id1", value={"key": "value"}
+            store_name="statestore", key="id1", value={"key": "value"}, metadata={"ttlInSeconds": "172800"}
         )
 
 

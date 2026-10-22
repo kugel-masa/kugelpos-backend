@@ -1,7 +1,8 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from fastapi import APIRouter, status, Depends, Path, Request, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from typing import Optional
 from logging import getLogger
 import json
 import aiohttp
@@ -158,6 +159,10 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         JSONResponse: The Dapr subscription status (SUCCESS / RETRY / DROP)
             with the HTTP status code Dapr acts on
     """
+    # Bound before the try, so that the error branches can name them even when
+    # the body cannot be read.
+    message: dict = {}
+    event_id = ""
     try:
         message = await request.json()
 
@@ -184,7 +189,10 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
                 status_code=status.HTTP_200_OK,
             )
 
-        log_data = log_model(**message["data"])
+        try:
+            log_data = log_model(**message["data"])
+        except ValidationError as validation_error:
+            return await _drop_invalid_log(log_type, message["data"], event_id, validation_error)
         # Masked before serializing: `model_dump_json()` returns a string, and
         # masking a string does nothing. An open/close log carries a whole
         # terminal document (issue #211).
@@ -194,6 +202,8 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         result = await get_state(event_id)
         if result:
             logger.warning(f"Message already processed. event_id: {event_id}, {log_type}: {log_info}")
+            # The notification of the first delivery may have been lost.
+            await _notify_received_best_effort(log_type, message["data"], event_id)
             return JSONResponse(
                 content={"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"},
                 status_code=status.HTTP_200_OK,
@@ -204,11 +214,12 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         await receive_method(log_data)
         logger.info(f"{log_type} received successfully. event_id: {event_id}, {log_type}: {log_info}")
 
-        # Notify the Pub/Sub service about the status of the log
-        await _notify_pubsub_status(log_type=log_type, data_dict=message["data"], status="received")
-
-        # Save the state to prevent duplicate processing
+        # Saved before the notification: the log is stored, so from here on a
+        # redelivery must stop at the state-store check.
         await save_state(event_id, {"event_id": event_id})
+
+        # An empty message clears a failure an earlier attempt left with the publisher.
+        await _notify_received_best_effort(log_type, message["data"], event_id, message="")
 
         logger.info(f"Processed event id: {event_id}")
 
@@ -232,6 +243,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
             await save_state(event_id, {"event_id": event_id})
         except Exception as save_exc:
             logger.warning(f"Failed to save state after duplicate detection: {save_exc}")
+        await _notify_received_best_effort(log_type, message["data"], event_id)
         return JSONResponse(
             content={
                 "status": "SUCCESS",
@@ -243,7 +255,14 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
     except Exception as e:
         err_message = f"Failed to receive {log_type}. message: {mask_sensitive_data(message)}, Error: {e}"
         logger.error(err_message)
-        await _notify_pubsub_status(log_type=log_type, data_dict=message["data"], status="failed", message=err_message)
+        # Best-effort, like the other notifications: if it raised, the answer
+        # below would never reach Dapr.
+        try:
+            await _notify_pubsub_status(
+                log_type=log_type, data_dict=message.get("data", {}), status="failed", message=err_message
+            )
+        except Exception as notify_exc:
+            logger.warning(f"Failed to notify the publisher of the failure. event_id={event_id}: {notify_exc}")
         return JSONResponse(
             content={
                 "status": "RETRY",
@@ -254,7 +273,61 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         )
 
 
-async def _notify_pubsub_status(log_type: str, data_dict: dict, status: str, message: str = "") -> None:
+async def _drop_invalid_log(log_type: str, data_dict: dict, event_id: str, error: ValidationError) -> JSONResponse:
+    """
+    Drop a log that does not match its schema, and tell the publisher.
+
+    The same payload fails the same way on every delivery, so a RETRY would only
+    spend the redelivery budget before the message reached the dead-letter queue
+    (issue #230). Only the names of the failing fields are reported: an open/close
+    log carries a whole terminal document, secrets included (issue #211).
+    """
+    failed_fields = [".".join(str(part) for part in err.get("loc", ())) for err in error.errors()]
+    logger.error(f"{log_type} does not match the schema; dropped. event_id: {event_id}, fields: {failed_fields}")
+    try:
+        await _notify_pubsub_status(
+            log_type=log_type,
+            data_dict=data_dict,
+            status="failed",
+            message=f"{log_type} does not match the schema: {failed_fields}",
+        )
+    except Exception as notify_exc:
+        logger.warning(f"Failed to notify the publisher of the dropped {log_type}. event_id={event_id}: {notify_exc}")
+    return JSONResponse(
+        content={"status": "DROP", "message": f"{log_type} does not match the schema", "operation": "handle_log"},
+        status_code=status.HTTP_200_OK,
+    )
+
+
+async def _notify_received_best_effort(
+    log_type: str, data_dict: dict, event_id: str, message: Optional[str] = None
+) -> None:
+    """
+    Tell the publisher this log is stored here, without ever raising (issue #230).
+
+    The notification only moves the publisher's delivery status; the log is
+    already saved. Letting its failure fail the event turned an unreachable cart
+    or terminal into redeliveries of events that had been stored, which blocked
+    the subscription for as long as the publisher was down.
+
+    Called on every path that ends with the log stored: the first delivery, and a
+    redelivery found already processed. Without the second, a notification lost on
+    the first delivery was never sent again.
+
+    Args:
+        message: Sent only when given. A redelivery leaves it out, so the publisher
+            keeps the message it already holds for this service.
+    """
+    try:
+        await _notify_pubsub_status(log_type=log_type, data_dict=data_dict, status="received", message=message)
+    except Exception as notify_exc:
+        logger.warning(
+            f"Failed to notify the publisher. event_id={event_id} log_type={log_type}: {notify_exc}. "
+            "The log is stored; treating the message as consumed."
+        )
+
+
+async def _notify_pubsub_status(log_type: str, data_dict: dict, status: str, message: Optional[str] = None) -> None:
     """
     Notify the Pub/Sub service about the status of a transaction log.
     Args:
@@ -280,7 +353,7 @@ async def _notify_pubsub_status(log_type: str, data_dict: dict, status: str, mes
     return None
 
 
-async def _notify_pubsub_status_tranlog_async(tran_dict: dict, status: str, message: str = "") -> None:
+async def _notify_pubsub_status_tranlog_async(tran_dict: dict, status: str, message: Optional[str] = None) -> None:
     event_id = tran_dict["event_id"]
     tenant_id = tran_dict["tenant_id"]
     store_code = tran_dict["store_code"]
@@ -302,7 +375,10 @@ async def _notify_pubsub_status_tranlog_async(tran_dict: dict, status: str, mess
             api_key = ""
         headers = {"X-API-Key": api_key}
 
-    payload = {"event_id": event_id, "service": "journal", "status": status, "message": message}
+    payload = {"event_id": event_id, "service": "journal", "status": status}
+    # Left out when not given: the publisher then keeps the message it holds.
+    if message is not None:
+        payload["message"] = message
     async with get_service_client(service_name="cart") as client:
         params = {"terminal_id": terminal_id}
         endpoint = f"/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no_str}/transactions/{transaction_no_str}/delivery-status"
@@ -311,7 +387,9 @@ async def _notify_pubsub_status_tranlog_async(tran_dict: dict, status: str, mess
     return None
 
 
-async def _notify_pubsub_status_terminallog_async(terminal_dict: dict, status: str, message: str = "") -> None:
+async def _notify_pubsub_status_terminallog_async(
+    terminal_dict: dict, status: str, message: Optional[str] = None
+) -> None:
     event_id = terminal_dict["event_id"]
     tenant_id = terminal_dict["tenant_id"]
     store_code = terminal_dict["store_code"]
@@ -333,7 +411,10 @@ async def _notify_pubsub_status_terminallog_async(terminal_dict: dict, status: s
             api_key = ""
         headers = {"X-API-Key": api_key}
 
-    payload = {"event_id": event_id, "service": service_name, "status": status, "message": message}
+    payload = {"event_id": event_id, "service": service_name, "status": status}
+    # Left out when not given: the publisher then keeps the message it holds.
+    if message is not None:
+        payload["message"] = message
     async with get_service_client(service_name="terminal") as client:
         params = {"terminal_id": terminal_id}
         endpoint = f"/terminals/{terminal_id}/delivery-status"

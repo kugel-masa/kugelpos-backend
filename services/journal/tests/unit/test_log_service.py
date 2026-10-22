@@ -192,6 +192,7 @@ class TestLogService:
 
         # Make journal service throw an exception
         journal_service.receive_journal_async.side_effect = Exception("Journal creation failed")
+        tran_repo.find_stored_async.return_value = None
 
         # Act & Assert
         with pytest.raises(Exception) as exc_info:
@@ -199,6 +200,79 @@ class TestLogService:
 
         assert str(exc_info.value) == "Journal creation failed"
         tran_repo.abort_transaction.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_write_conflict_runs_the_transaction_again(self, log_service, base_transaction, mock_repositories):
+        """A concurrent copy of the event won the race; the next run finds its record (#230)."""
+        from pymongo.errors import OperationFailure
+
+        tran_repo, _, _, journal_service = mock_repositories
+        conflict = OperationFailure("WriteConflict", code=112, details={"errorLabels": ["TransientTransactionError"]})
+        try:
+            raise RuntimeError("Failed to create tranlog") from conflict
+        except RuntimeError as wrapped:
+            tran_repo.create_tranlog_async.side_effect = [wrapped, base_transaction]
+
+        with patch("app.services.log_service.asyncio.sleep", new_callable=AsyncMock), patch(
+            "app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock
+        ) as fatal:
+            result = await log_service.receive_tranlog_async(base_transaction)
+
+        assert result == base_transaction
+        assert tran_repo.create_tranlog_async.await_count == 2
+        assert tran_repo.abort_transaction.await_count == 1
+        fatal.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failure_that_is_not_transient_is_not_run_again(
+        self, log_service, base_transaction, mock_repositories
+    ):
+        tran_repo, _, _, journal_service = mock_repositories
+        journal_service.receive_journal_async.side_effect = ValueError("bad journal")
+        tran_repo.find_stored_async.return_value = None
+
+        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal:
+            with pytest.raises(ValueError):
+                await log_service.receive_tranlog_async(base_transaction)
+
+        assert tran_repo.create_tranlog_async.await_count == 1
+        fatal.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_transaction_another_delivery_stored_is_not_a_failure(
+        self, log_service, base_transaction, mock_repositories
+    ):
+        """The winner committed only after the loser's retries ran out (#230)."""
+        tran_repo, _, _, journal_service = mock_repositories
+        journal_service.receive_journal_async.side_effect = ValueError("journal insert failed")
+        tran_repo.find_stored_async.return_value = base_transaction
+
+        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal:
+            result = await log_service.receive_tranlog_async(base_transaction)
+
+        assert result == base_transaction
+        fatal.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_transient_errors_are_retried_a_bounded_number_of_times(
+        self, log_service, base_transaction, mock_repositories
+    ):
+        from pymongo.errors import OperationFailure
+
+        from app.services.log_service import TRANSIENT_RETRY_DELAYS_SECONDS
+
+        tran_repo, _, _, _ = mock_repositories
+        tran_repo.create_tranlog_async.side_effect = OperationFailure("WriteConflict", code=112)
+        tran_repo.find_stored_async.return_value = None
+
+        with patch("app.services.log_service.asyncio.sleep", new_callable=AsyncMock), patch(
+            "app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock
+        ):
+            with pytest.raises(OperationFailure):
+                await log_service.receive_tranlog_async(base_transaction)
+
+        # Then the event fails, and Dapr's redelivery takes over.
+        assert tran_repo.create_tranlog_async.await_count == len(TRANSIENT_RETRY_DELAYS_SECONDS) + 1
 
     @pytest.mark.asyncio
     async def test_receive_tranlog_with_edge_cases(self, log_service, mock_repositories):

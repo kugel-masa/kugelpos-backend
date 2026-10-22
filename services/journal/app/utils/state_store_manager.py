@@ -40,7 +40,12 @@ class StateStoreManager:
             Tuple[bool, Optional[str]]: (True if successful, None) or (False, error message)
         """
         try:
-            success = await self._dapr_client.save_state(store_name=self._store_name, key=state_id, value=state_data)
+            # Each key carries its own expiry, so the component-wide default
+            # (statestore.yaml) does not decide how long an event is remembered.
+            metadata = {"ttlInSeconds": str(settings.EVENT_IDEMPOTENCY_TTL_SECONDS)}
+            success = await self._dapr_client.save_state(
+                store_name=self._store_name, key=state_id, value=state_data, metadata=metadata
+            )
 
             if success:
                 logger.info(f"State saved successfully. state_id: {state_id}, state_data: {state_data}")

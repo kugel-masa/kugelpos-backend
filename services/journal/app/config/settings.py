@@ -37,6 +37,15 @@ class Settings(
     MONGODB_URI: str = Field(default="mongodb://localhost:27017/?replicaSet=rs0")
     DB_NAME_PREFIX: str = Field(default="db_journal")
 
+    # How long an event_id is remembered as processed (issue #230). It has to
+    # outlive every window in which the same event_id can arrive again: the
+    # broker's redelivery (about 16-24 minutes, dapr/components/pubsub-resiliency.yaml)
+    # and, much longer, the publisher's republish job, which re-sends the stored
+    # event under its original event_id for UNDELIVERED_CHECK_PERIOD_IN_HOURS
+    # (24 h in cart and terminal). The statestore component's own default
+    # (ttlInSeconds, 1 h) was shorter than that.
+    EVENT_IDEMPOTENCY_TTL_SECONDS: int = Field(default=48 * 60 * 60, gt=0)
+
     DEBUG: str = "false"
     DEBUG_PORT: int = 5678
 
