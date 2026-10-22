@@ -340,3 +340,55 @@ async def test_store_item_full_crud(http_client, admin_header):
     await http_client.delete(
         f"/api/v1/tenants/{tenant_id}/items/{item_code}", headers=admin_header
     )
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_button_keeps_its_row_and_column(http_client, admin_header):
+    """Issue #137: deleting (1, 1) from a 3x3 tab removes that button only.
+
+    The old condition kept a button only when both pos_x AND pos_y differed,
+    so the rest of its row and column went with it and four of nine survived.
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    h = admin_header
+    base = f"/api/v1/tenants/{tenant_id}/item_books"
+
+    r = await http_client.post(base, json={"title": "E2E Grid", "categories": []}, headers=h)
+    assert r.status_code == status.HTTP_201_CREATED, r.text
+    book_id = r.json()["data"]["itemBookId"]
+    tab_path = f"{base}/{book_id}/categories/1/tabs/1"
+    try:
+        r = await http_client.post(
+            f"{base}/{book_id}/categories",
+            json={"categoryNumber": 1, "title": "Grid", "color": "0xFFFFFF", "tabs": []},
+            headers=h,
+        )
+        assert r.status_code == status.HTTP_201_CREATED, r.text
+        r = await http_client.post(
+            f"{base}/{book_id}/categories/1/tabs",
+            json={"tabNumber": 1, "title": "Grid", "color": "0xFFFFFF", "buttons": []},
+            headers=h,
+        )
+        assert r.status_code == status.HTTP_201_CREATED, r.text
+        grid = {(x, y) for x in range(3) for y in range(3)}
+        for x, y in sorted(grid):
+            r = await http_client.post(
+                f"{tab_path}/buttons",
+                json={
+                    "pos_x": x, "pos_y": y, "size": "Single",
+                    "imageUrl": "url", "colorText": "0xFFFFFF", "itemCode": "49-01",
+                },
+                headers=h,
+            )
+            assert r.status_code == status.HTTP_201_CREATED, r.text
+
+        r = await http_client.delete(f"{tab_path}/buttons/pos_x/1/pos_y/1", headers=h)
+        assert r.status_code == status.HTTP_200_OK, r.text
+
+        r = await http_client.get(f"{base}/{book_id}", headers=h)
+        assert r.status_code == status.HTTP_200_OK, r.text
+        buttons = r.json()["data"]["categories"][0]["tabs"][0]["buttons"]
+        remaining = {(b.get("posX", b.get("pos_x")), b.get("posY", b.get("pos_y"))) for b in buttons}
+        assert remaining == grid - {(1, 1)}
+    finally:
+        await http_client.delete(f"{base}/{book_id}", headers=h)

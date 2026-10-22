@@ -616,6 +616,25 @@ class TestDeleteButton:
         assert result is not None
 
     @pytest.mark.asyncio
+    async def test_delete_button_keeps_its_row_and_column(self):
+        """Issue #137: deleting (1, 1) on a 3x3 grid removes that button only.
+        The old AND-of-not-equal condition also wiped (0, 1), (2, 1), (1, 0)
+        and (1, 2), keeping just the four corners."""
+        svc, book_repo, _, _ = _make_service()
+        grid = [_make_button(pos_x=x, pos_y=y, item_code=f"ITEM-{x}{y}") for x in range(3) for y in range(3)]
+        tab = _make_tab(tab_number=1, buttons=grid)
+        cat = _make_category(category_number=1, tabs=[tab])
+        doc = _make_item_book(categories=[cat])
+        book_repo.get_item_book_async.return_value = doc
+        book_repo.replace_item_book_async.return_value = doc
+
+        await svc.delete_button_from_tab_in_category_in_item_book_async("BK-001", 1, 1, 1, 1)
+
+        saved = book_repo.replace_item_book_async.call_args[0][1]
+        remaining = {(b.pos_x, b.pos_y) for b in saved.categories[0].tabs[0].buttons}
+        assert remaining == {(x, y) for x in range(3) for y in range(3)} - {(1, 1)}
+
+    @pytest.mark.asyncio
     async def test_delete_button_not_found_raises(self):
         svc, book_repo, _, _ = _make_service()
         tab = _make_tab(tab_number=1, buttons=[])
