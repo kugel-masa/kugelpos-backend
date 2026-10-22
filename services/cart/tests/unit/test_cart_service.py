@@ -265,6 +265,7 @@ class TestCartServiceCancelLineItem:
     async def test_cancel_line_item_success(self):
         """Successfully cancel a line item."""
         line_item = MagicMock()
+        line_item.line_no = 1
         line_item.is_cancelled = False
         cart = _make_cart_doc(status="EnteringItem", line_items=[line_item])
         svc = _build_service(cart_doc=cart)
@@ -272,6 +273,59 @@ class TestCartServiceCancelLineItem:
 
         result = await svc.cancel_line_item_from_cart_async(line_no=1)
         assert result.line_items[0].is_cancelled is True
+
+
+class TestCartServiceLineNo:
+    """Issue #137: lineNo comes from the URL and used to be a raw list index."""
+
+    @staticmethod
+    def _line(line_no):
+        item = MagicMock()
+        item.line_no = line_no
+        item.is_cancelled = False
+        return item
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("line_no", [0, -1, 3, 99])
+    @pytest.mark.parametrize(
+        "operation",
+        [
+            lambda svc, n: svc.cancel_line_item_from_cart_async(line_no=n),
+            lambda svc, n: svc.update_line_item_quantity_in_cart_async(line_no=n, quantity=5),
+            lambda svc, n: svc.update_line_item_unit_price_in_cart_async(line_no=n, unit_price=10.0),
+            lambda svc, n: svc.add_discount_to_line_item_in_cart_async(
+                line_no=n, add_discount_list=[{"discount_type": "DiscountAmount", "discount_value": 10, "discount_detail": ""}]
+            ),
+        ],
+        ids=["cancel", "quantity", "unit_price", "discount"],
+    )
+    async def test_a_line_number_that_names_no_line_is_refused(self, operation, line_no):
+        """0 and negative numbers wrapped round to the last lines and changed
+        one the client never named; past the end raised IndexError (500)."""
+        from app.exceptions import LineItemNotFoundException
+
+        first, second = self._line(1), self._line(2)
+        cart = _make_cart_doc(status="EnteringItem", line_items=[first, second])
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.EnteringItem.value)
+
+        with pytest.raises(LineItemNotFoundException):
+            await operation(svc, line_no)
+
+        assert first.is_cancelled is False and second.is_cancelled is False
+        svc.cart_repo.cache_cart_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_named_line_is_the_one_changed(self):
+        first, second = self._line(1), self._line(2)
+        cart = _make_cart_doc(status="EnteringItem", line_items=[first, second])
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.EnteringItem.value)
+
+        await svc.cancel_line_item_from_cart_async(line_no=2)
+
+        assert second.is_cancelled is True
+        assert first.is_cancelled is False
 
 
 class TestCartServiceSubtotal:
@@ -297,6 +351,7 @@ class TestCartServiceAddDiscountToLineItem:
     async def test_add_discount_to_line_item_success(self):
         """Successfully add a discount to a line item."""
         line_item = MagicMock()
+        line_item.line_no = 1
         cart = _make_cart_doc(status="EnteringItem", line_items=[line_item])
         svc = _build_service(cart_doc=cart)
         svc.state_manager.set_state(CartStatus.EnteringItem.value)
@@ -437,6 +492,7 @@ class TestCartServiceUpdateLineItem:
     async def test_update_quantity_success(self):
         """Successfully update line item quantity."""
         line_item = MagicMock()
+        line_item.line_no = 1
         line_item.quantity = 1
         cart = _make_cart_doc(status="EnteringItem", line_items=[line_item])
         svc = _build_service(cart_doc=cart)
@@ -449,6 +505,7 @@ class TestCartServiceUpdateLineItem:
     async def test_update_unit_price_success(self):
         """Successfully update line item unit price."""
         line_item = MagicMock()
+        line_item.line_no = 1
         line_item.unit_price = 100.0
         line_item.is_unit_price_changed = False
         cart = _make_cart_doc(status="EnteringItem", line_items=[line_item])

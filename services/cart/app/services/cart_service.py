@@ -18,6 +18,7 @@ from app.exceptions import (
     CartNotFoundException,
     NotFoundException,
     ItemNotFoundException,
+    LineItemNotFoundException,
     StrategyPluginException,
     BalanceZeroException,
     BalanceMinusException,
@@ -550,6 +551,24 @@ class CartService(ICartService):
         return cart_doc
 
     # Cancel a line item in the cart
+    def __get_line_item(self, cart_doc: CartDocument, line_no: int) -> CartDocument.CartLineItem:
+        """
+        The line item a client-supplied line number names.
+
+        The number comes straight from the URL. Used as a list index, 0 and
+        negative values wrapped round to the last lines and silently cancelled,
+        repriced or discounted one the client never named, and a number past
+        the end raised IndexError (500).
+
+        Raises:
+            LineItemNotFoundException: If no line item has that number
+        """
+        line_item = next((item for item in cart_doc.line_items if item.line_no == line_no), None)
+        if line_item is None:
+            message = f"Line item not found. cart_id: {cart_doc.cart_id}, line_no: {line_no}, lines: {len(cart_doc.line_items)}"
+            raise LineItemNotFoundException(message, logger)
+        return line_item
+
     async def cancel_line_item_from_cart_async(self, line_no: int) -> CartDocument:
         """
         Cancel (remove) a line item from the cart.
@@ -569,7 +588,7 @@ class CartService(ICartService):
         self.state_manager.check_event_sequence(self)
 
         # Cancel target line item
-        line_item = cart_doc.line_items[line_no - 1]
+        line_item = self.__get_line_item(cart_doc, line_no)
         line_item.is_cancelled = True
 
         # Calculate subtotal
@@ -601,7 +620,7 @@ class CartService(ICartService):
         self.state_manager.check_event_sequence(self)
 
         # Update target line item
-        line_item = cart_doc.line_items[line_no - 1]
+        line_item = self.__get_line_item(cart_doc, line_no)
         line_item.quantity = quantity
         # line_item.amount = line_item.unit_price * line_item.quantity
 
@@ -635,7 +654,7 @@ class CartService(ICartService):
         self.state_manager.check_event_sequence(self)
 
         # Update target line item
-        line_item = cart_doc.line_items[line_no - 1]
+        line_item = self.__get_line_item(cart_doc, line_no)
         if not line_item.is_unit_price_changed:
             line_item.is_unit_price_changed = True
             line_item.unit_price_original = line_item.unit_price
@@ -673,7 +692,7 @@ class CartService(ICartService):
         self.state_manager.check_event_sequence(self)
 
         # Add discounts to the target line item
-        line_item = cart_doc.line_items[line_no - 1]
+        line_item = self.__get_line_item(cart_doc, line_no)
         await add_discount_to_cart_logic.add_discount_to_line_item_async(line_item, add_discount_list)
 
         # Calculate subtotal
