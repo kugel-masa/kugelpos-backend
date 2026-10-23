@@ -63,3 +63,20 @@ class TerminallogDeliveryStatus(AbstractDocument):
     # of the worker sending it expires, and when it was sent.
     republish_claim_expires_at: Optional[datetime] = None
     republished_at: Optional[datetime] = None
+
+
+def is_not_handed_to_broker(status: TerminallogDeliveryStatus) -> bool:
+    """
+    Whether the broker has not taken the log yet, so the job republishes it (issue #230).
+
+    Besides ``NOT_HANDED_TO_BROKER_STATUSES``, a ``failed`` log without
+    ``handed_off_at`` counts: it was written before this change, when the job
+    overwrote every undelivered log with ``failed`` and a republish the broker
+    refused left it there. Such a log never reached the broker, and treating it as
+    ``failed`` would drop it. A ``failed`` written now has ``handed_off_at`` when
+    every consumer reported failure. The other one, a log of unknown type that
+    cannot be republished, is left out by the caller.
+    """
+    if status.status in NOT_HANDED_TO_BROKER_STATUSES:
+        return True
+    return status.status == "failed" and status.handed_off_at is None

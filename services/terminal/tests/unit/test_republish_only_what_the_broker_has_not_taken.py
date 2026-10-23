@@ -71,9 +71,29 @@ async def test_a_log_the_broker_has_not_taken_is_republished(status, minutes_old
 @pytest.mark.parametrize("status", ["published", "partially_delivered", "failed"])
 @pytest.mark.parametrize("minutes_old", [10, 180])
 async def test_a_log_the_broker_has_taken_is_not_republished(status, minutes_old):
-    svc, _, _ = await _run(_status(status, minutes_old))
+    svc, _, _ = await _run(_status(status, minutes_old, handed_off_at=_utc_naive(minutes_old)))
 
     svc.pubsub_manager.publish_message_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("minutes_old", [10, 180])
+@pytest.mark.parametrize("event_type", ["cash_in_out", "open"])
+async def test_a_failed_log_written_before_the_status_split_is_republished(minutes_old, event_type):
+    # The old job overwrote every undelivered log with "failed", and a republish the
+    # broker refused left it there, without the hand-off ever being recorded.
+    svc, _, _ = await _run(_status("failed", minutes_old, event_type=event_type))
+
+    svc.pubsub_manager.publish_message_async.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_log_of_unknown_type_is_not_tried_again():
+    # "failed" because it cannot be republished, not because the broker refused it.
+    svc, repo, _ = await _run(_status("failed", 180, event_type="unknown"))
+
+    svc.pubsub_manager.publish_message_async.assert_not_awaited()
+    repo.update_delivery_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio

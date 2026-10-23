@@ -66,3 +66,19 @@ class TranlogDeliveryStatus(AbstractDocument):
     # claim of the worker sending it expires, and when it was sent.
     republish_claim_expires_at: Optional[datetime] = None
     republished_at: Optional[datetime] = None
+
+
+def is_not_handed_to_broker(status: TranlogDeliveryStatus) -> bool:
+    """
+    Whether the broker has not taken the tranlog yet, so the job republishes it (issue #230).
+
+    Besides ``NOT_HANDED_TO_BROKER_STATUSES``, a ``failed`` tranlog without
+    ``handed_off_at`` counts: it was written before this change, when the job
+    overwrote every undelivered tranlog with ``failed`` and a republish the broker
+    refused left it there. Such a tranlog never reached the broker, and treating it
+    as ``failed`` would drop it. A ``failed`` written now always has
+    ``handed_off_at``: every consumer reported failure, so the broker took it.
+    """
+    if status.status in NOT_HANDED_TO_BROKER_STATUSES:
+        return True
+    return status.status == "failed" and status.handed_off_at is None

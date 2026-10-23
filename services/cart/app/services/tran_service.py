@@ -26,8 +26,8 @@ from app.models.repositories.tranlog_delivery_status_repository import (
     TranlogDeliveryStatusRepository,
 )
 from app.models.documents.tranlog_delivery_status_document import (
-    NOT_HANDED_TO_BROKER_STATUSES,
     TranlogDeliveryStatus,
+    is_not_handed_to_broker,
 )
 from app.models.repositories.terminal_counter_repository import (
     TerminalCounterRepository,
@@ -1486,7 +1486,9 @@ class TranService:
 
         Only a tranlog that never reached the broker is republished: one still
         ``pending`` (the process can stop between the commit and the publish), or one
-        the broker refused (``publish_failed``). Once the broker has taken a tranlog, a
+        the broker refused (``publish_failed``, or ``failed`` without ``handed_off_at``
+        when written before this change; see ``is_not_handed_to_broker``). Once the
+        broker has taken a tranlog, a
         durable queue holds it: a consumer that is down gets it when it comes back, and
         one that keeps failing on it sends it to the dead-letter queue. Republishing it
         every run, as before, only added copies, each redelivered on its own, for 24
@@ -1535,7 +1537,7 @@ class TranService:
                 # Skip the tranlog if it was created recently
                 logger.debug(f"Skipping tranlog: event_id->{status.event_id}")
                 continue
-            not_handed_to_broker = status.status in NOT_HANDED_TO_BROKER_STATUSES
+            not_handed_to_broker = is_not_handed_to_broker(status)
 
             failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
             if (

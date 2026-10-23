@@ -19,8 +19,8 @@ from app.models.repositories.open_close_log_repository import OpenCloseLogReposi
 from app.models.repositories.tran_log_web_repository import TranlogWebRepository
 from app.models.repositories.terminallog_delivery_status_repository import TerminallogDeliveryStatusRepository
 from app.models.documents.terminallog_delivery_status_document import (
-    NOT_HANDED_TO_BROKER_STATUSES,
     TerminallogDeliveryStatus,
+    is_not_handed_to_broker,
 )
 from app.models.documents.cash_in_out_log import CashInOutLog
 from app.models.documents.open_close_log import OpenCloseLog
@@ -1183,7 +1183,9 @@ class TerminalService:
         Republish the terminal logs the broker has not taken, and warn once about
         any that are not delivered (issue #230).
 
-        Only a log still ``pending`` or ``publish_failed`` is republished on every run.
+        Only a log still ``pending`` or ``publish_failed`` is republished on every run,
+        and a ``failed`` one without ``handed_off_at`` written before this change (see
+        ``is_not_handed_to_broker``).
         Once the broker has taken a log, a durable queue holds it, and republishing it
         every run, as before, only added copies for 24 hours.
 
@@ -1221,7 +1223,12 @@ class TerminalService:
                     logger.debug(f"Skipping terminallog: event_id->{status.event_id}")
                     continue
 
-                not_handed_to_broker = status.status in NOT_HANDED_TO_BROKER_STATUSES
+                # A log of unknown type is "failed" because it cannot be republished,
+                # not because the broker refused it; trying it every run only repeats that.
+                cannot_be_republished = status.status == "failed" and self._terminallog_event_type(
+                    status.payload
+                ) not in ("cash_in_out", "open", "close")
+                not_handed_to_broker = is_not_handed_to_broker(status) and not cannot_be_republished
 
                 failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
                 if (

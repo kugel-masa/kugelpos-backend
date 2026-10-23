@@ -70,9 +70,19 @@ async def test_a_tranlog_the_broker_has_not_taken_is_republished(status, minutes
 @pytest.mark.parametrize("status", ["published", "partially_delivered", "failed"])
 @pytest.mark.parametrize("minutes_old", [10, 180])
 async def test_a_tranlog_the_broker_has_taken_is_not_republished(status, minutes_old):
-    svc, _, _ = await _run(_status(status, minutes_old))
+    svc, _, _ = await _run(_status(status, minutes_old, handed_off_at=_utc_naive(minutes_old)))
 
     svc.pubsub_manager.publish_message_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("minutes_old", [10, 180])
+async def test_a_failed_tranlog_written_before_the_status_split_is_republished(minutes_old):
+    # The old job overwrote every undelivered tranlog with "failed", and a republish
+    # the broker refused left it there, without the hand-off ever being recorded.
+    svc, _, _ = await _run(_status("failed", minutes_old))
+
+    svc.pubsub_manager.publish_message_async.assert_awaited_once()
 
 
 @pytest.mark.asyncio

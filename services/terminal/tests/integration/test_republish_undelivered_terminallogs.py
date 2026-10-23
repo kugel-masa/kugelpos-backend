@@ -115,6 +115,25 @@ async def test_a_log_the_broker_refused_keeps_being_republished_and_is_warned_ab
     assert (await repo.find_by_event_id(event_id)).status == "publish_failed"
 
 
+@pytest.mark.asyncio
+async def test_a_failed_log_written_before_the_status_split_is_republished_once(db):
+    # As the old job left it: overwritten with "failed", the republish refused, and
+    # none of the fields this change added.
+    svc, repo = await _service(db, publish_ok=True)
+    event_id = await _cash_in_and_age(db, svc, repo)
+    await db[settings.DB_COLLECTION_NAME_TERMINALLOG_DELIVERY_STATUS].update_one(
+        {"event_id": event_id},
+        {"$set": {"status": "failed"}, "$unset": {"handed_off_at": "", "warning_sent_at": "", "republished_at": ""}},
+    )
+
+    await _republish_twice(svc)
+
+    assert svc.pubsub_manager.publish_message_async.await_count == 1
+    stored = await repo.find_by_event_id(event_id)
+    assert stored.status == "published"
+    assert stored.handed_off_at is not None
+
+
 async def _age(db, event_id, minutes):
     at = get_app_time() - timedelta(minutes=minutes)
     await db[settings.DB_COLLECTION_NAME_TERMINALLOG_DELIVERY_STATUS].update_one(
