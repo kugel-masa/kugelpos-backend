@@ -61,7 +61,9 @@ In phase 2 **`transaction_no` is the per-open sequence (seq)**. `business_counte
 
 The client carries the numbering so that **a retried finalize yields the same number and time on any backend**. Duplicate finalizes converge to a single record downstream (report / journal / stock) via `cart_id`.
 
-Numbering integrity is backed by a unique index: a second insert of the same `(business_counter, transaction_no)` is refused by the database.
+Numbering integrity is backed by a unique index at the source: cart's database refuses a second finalize of the same `(business_counter, transaction_no)`.
+
+Downstream (report / journal), a transaction's identity is its `cart_id`. The numbering unique index covers only records without a `cart_id` (`partialFilterExpression: {cart_id: null}`), so two sales sharing a numbering with different `cart_id`s are both stored (#230). Over every record, the index refused the second one: report dropped the sale silently, and journal failed its delivery until it was dead-lettered. A numbering reused downstream means the numbering went wrong (a restored or rebuilt cart database, a replaced terminal, another backend), so it is stored and a warning is logged (`Two transactions share one numbering`). The sales and payment reports count records, not numberings.
 
 ### Carried counters
 

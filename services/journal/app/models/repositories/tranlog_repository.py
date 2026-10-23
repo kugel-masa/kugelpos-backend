@@ -61,6 +61,7 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")
             if not await self.create_async(tranlog):
                 raise Exception()
+            await self.__warn_on_numbering_reuse(tranlog)
             return tranlog
 
         # A duplicate key is not caught as "already stored" here, unlike report:
@@ -114,6 +115,45 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             "business_counter": tranlog.business_counter,
             "transaction_no": tranlog.transaction_no,
         }
+
+    async def __warn_on_numbering_reuse(self, tranlog: BaseTransaction) -> None:
+        """
+        Log when two transactions with different cart_ids share one numbering (issue #230).
+
+        Both are stored: a cart_id is the transaction's identity, so they are
+        different sales. But the numbering is unique at the source, where cart
+        refuses the second finalize, so a reuse here means the numbering went
+        wrong somewhere: a restored or rebuilt cart database, a replaced
+        terminal, or a second backend. The unique index used to reject the second
+        sale instead; this keeps the signal without losing the sale.
+        """
+        if tranlog.cart_id is None:
+            return
+        try:
+            others = await self.dbcollection.count_documents(
+                {
+                    "tenant_id": tranlog.tenant_id,
+                    "store_code": tranlog.store_code,
+                    "terminal_no": tranlog.terminal_no,
+                    "business_counter": tranlog.business_counter,
+                    "transaction_no": tranlog.transaction_no,
+                    "cart_id": {"$ne": tranlog.cart_id},
+                },
+                limit=1,
+                session=self.session,
+            )
+        except Exception as e:
+            # A read for a warning must not fail the sale.
+            logger.debug(f"Could not check the numbering for reuse: {e}")
+            return
+        if others:
+            logger.warning(
+                "Two transactions share one numbering: "
+                f"tenant_id={tranlog.tenant_id} store_code={tranlog.store_code} "
+                f"terminal_no={tranlog.terminal_no} business_counter={tranlog.business_counter} "
+                f"transaction_no={tranlog.transaction_no} cart_id={tranlog.cart_id}. "
+                "Both are stored as different sales by cart_id; the numbering is worth checking."
+            )
 
     async def get_tranlog_list_by_query_async(
         self,
