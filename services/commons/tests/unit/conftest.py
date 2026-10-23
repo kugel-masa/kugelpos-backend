@@ -10,6 +10,9 @@ import os
 
 import pytest
 
+# The tests run on the published development keys (issue #132).
+os.environ.setdefault("ALLOW_INSECURE_DEV_SECRETS", "true")
+
 
 def pytest_collection_modifyitems(config, items):
     """Mark only items located under THIS conftest's directory."""

@@ -16,6 +16,8 @@ from dotenv import load_dotenv as _load_dotenv
 _ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 _load_dotenv(os.path.join(_ROOT_DIR, '.env.test'), override=True)
 os.environ.setdefault("DB_NAME_PREFIX", "db_cart")
+# The tests run on the published development keys (issue #132).
+os.environ.setdefault("ALLOW_INSECURE_DEV_SECRETS", "true")
 os.environ.setdefault("STORE_CODE", "5678")
 os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
 import pytest

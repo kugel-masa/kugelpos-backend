@@ -80,19 +80,21 @@ If you prefer to run the setup steps manually:
 
 ### 1. Environment setup
 
-#### Environment Variables (Optional for Development)
-The services include default values for development, but you may want to customize them:
+#### Secrets
+Every service needs the same two secrets:
 
-- `SECRET_KEY`: JWT signing secret key (default: "test-secret-key-for-development-only")
-- `PUBSUB_NOTIFY_API_KEY`: API key for Pub/Sub notifications (has default value)
+- `SECRET_KEY`: signs and verifies every JWT (users, terminals, services)
+- `PUBSUB_NOTIFY_API_KEY`: authenticates pub/sub delivery notifications
 
-⚠️ **Important**: Change these values in production environments!
+A service will not start if either is empty or one of the values published in this repository (the code defaults, the `.env.sample` placeholders). The development stack (`services/docker-compose.yaml`) and the tests set `ALLOW_INSECURE_DEV_SECRETS=true`, so they run on the published defaults. Never set it anywhere else.
+
+`services/docker-compose.prod.yaml` refuses to start without both. Generate each with:
 
 ```bash
-# Optional: Set custom environment variables for development
-export SECRET_KEY="your-secure-secret-key-here"
-export PUBSUB_NOTIFY_API_KEY="your-api-key-here"
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
 
+```bash
 # Prepare test environment file (only change tenant ID if needed)
 cp .env.test.sample .env.test
 ```
