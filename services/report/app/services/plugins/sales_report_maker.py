@@ -473,11 +473,16 @@ class SalesReportMaker(IReportPlugin):
             match_dict["open_counter"] = open_counter
 
         # CRITICAL FIX for Cartesian product issue (Issue #78)
-        # Add intermediate grouping by transaction_no to deduplicate parent fields
+        # Add intermediate grouping by transaction to deduplicate parent fields
         # before final aggregation by business criteria
-        # Note: transaction_no is only unique within tenant_id + store_code + terminal_no
+        # One group per stored transaction, keyed by its document _id (issue #230).
+        # The numbering does not identify a transaction: transaction_no restarts
+        # at every open (#156), and two sales with different cart_ids can share a
+        # numbering. Keyed on the numbering, either case merged two sales into one
+        # and counted only the first.
 
         intermediate_group_id = {
+            "transaction_id": "$_id",
             "tenant_id": "$tenant_id",
             "store_code": "$store_code",
             "terminal_no": "$terminal_no",  # Always include terminal_no for unique identification

@@ -2,11 +2,53 @@
 from typing import Optional
 from logging import getLogger
 
+from pymongo.errors import OperationFailure
+
 from kugel_common.database import database as db_helper
 from app.config.settings import settings
 
 # setup logger
 logger = getLogger(__name__)
+
+
+# The numbering of a transaction: (business_counter, transaction_no) per terminal.
+NUMBERING_KEYS = {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1}
+# Records the numbering index applies to: those without a cart_id (issue #230).
+WITHOUT_CART_ID = {"cart_id": None}
+INDEX_NOT_FOUND = 27
+
+
+async def retire_numbering_index_over_every_record(tenant_id: Optional[str], collection_name: str) -> None:
+    """
+    Drop a numbering index that still applies to every record (issue #230).
+
+    It is rebuilt by the index list as a partial index over records without a
+    cart_id. It has the same keys and name, so createIndexes would refuse the new
+    options rather than replace it, and drop_indexes_by_keys would drop it on
+    every start. Only an index without the partial filter is dropped here.
+    """
+    db = await db_helper.get_db_async(_db_name(tenant_id))
+    existing = await db[collection_name].index_information()
+    for name, info in existing.items():
+        if list(info.get("key", [])) != list(NUMBERING_KEYS.items()):
+            continue
+        if info.get("partialFilterExpression") == WITHOUT_CART_ID:
+            continue
+        try:
+            await db[collection_name].drop_index(name)
+        except OperationFailure as e:
+            # Another instance starting at the same time dropped it first.
+            if e.code != INDEX_NOT_FOUND:
+                raise
+        logger.info(f"Dropped {collection_name}.{name}: the numbering index now applies only to records without a cart_id")
+
+
+def _db_name(tenant_id: Optional[str]) -> str:
+    # `None` addresses the shared commons database, the convention cart and
+    # terminal already used for the collections written there (issue #221).
+    # Without this it produced a database literally named "<prefix>_None",
+    # which nothing reads and nothing would ever have noticed.
+    return f"{settings.DB_NAME_PREFIX}_commons" if tenant_id is None else f"{settings.DB_NAME_PREFIX}_{tenant_id}"
 
 
 # create some collection
@@ -17,13 +59,8 @@ async def create_some_collection(
     index_name: str,
     drop_indexes_by_keys: list = None,
 ):
-    # `None` addresses the shared commons database, the convention cart and
-    # terminal already used for the collections written there (issue #221).
-    # Without this it produced a database literally named "<prefix>_None",
-    # which nothing reads and nothing would ever have noticed.
-    db_name = f"{settings.DB_NAME_PREFIX}_commons" if tenant_id is None else f"{settings.DB_NAME_PREFIX}_{tenant_id}"
     await db_helper.create_collection_with_indexes_async(
-        db_name=db_name,
+        db_name=_db_name(tenant_id),
         collection_name=collection_name,
         index_keys_list=index_keys_list,
         index_name=index_name,
@@ -42,8 +79,28 @@ async def create_tran_collection(tenant_id: str):
     # on existing collections too, so this migrates live tenants on startup.
     index_keys_list = [
         {
-            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1, "transaction_no": 1},
+            "keys": NUMBERING_KEYS,
             "unique": True,
+            # Only records without a cart_id (issue #230). A cart_id is the
+            # transaction's identity, and the cart_id index below keeps those
+            # unique. Over every record, this index refused a second sale that
+            # reused a numbering with a different cart_id: a sale lost, or, where
+            # the failure is retried, a message redelivered until it was
+            # dead-lettered. The numbering is unique at the source: cart refuses
+            # the second finalize. A reuse that still reaches here is logged by
+            # the repository instead.
+            "partialFilterExpression": WITHOUT_CART_ID,
+        },
+        {
+            # The lookups by numbering, served by an index again (issue #230). The
+            # partial index above cannot serve them: a query that does not say
+            # "cart_id is null" may not use it, so both the dedupe of a log
+            # without a cart_id and the numbering-reuse check scanned the whole
+            # collection on every store. Not partial, not unique: the numbering
+            # leads, so it serves either query, and cart_id last gives this index
+            # a different name from the one above.
+            "keys": {**NUMBERING_KEYS, "cart_id": 1},
+            "unique": False,
         },
         {
             "keys": {"tenant_id": 1, "store_code": 1, "cart_id": 1},
@@ -51,6 +108,7 @@ async def create_tran_collection(tenant_id: str):
             "partialFilterExpression": {"cart_id": {"$type": "string"}},
         },
     ]
+    await retire_numbering_index_over_every_record(tenant_id, name)
     await create_some_collection(
         tenant_id=tenant_id,
         collection_name=name,

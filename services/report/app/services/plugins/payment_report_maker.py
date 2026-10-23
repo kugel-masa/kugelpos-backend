@@ -308,7 +308,6 @@ class PaymentReportMaker(IReportPlugin):
             # Group by payment code and transaction type
             # CRITICAL FIX: Use $addToSet to collect unique transaction identifiers, then count with $size
             # This prevents counting split payments multiple times
-            # Note: transaction_no is only unique within tenant_id + store_code + terminal_no
             {
                 "$group": {
                     "_id": {
@@ -316,8 +315,12 @@ class PaymentReportMaker(IReportPlugin):
                         "transaction_type": "$transaction_type"
                     },
                     "amount": {"$sum": "$payments.amount"},
+                    # By document _id: the numbering does not identify a transaction
+                    # (transaction_no restarts at every open, and two sales with
+                    # different cart_ids can share a numbering; issue #230).
                     "unique_transactions": {
                         "$addToSet": {
+                            "transaction_id": "$_id",
                             "tenant_id": "$tenant_id",
                             "store_code": "$store_code",
                             "terminal_no": "$terminal_no",
