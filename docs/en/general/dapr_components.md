@@ -236,6 +236,8 @@ An event that cannot succeed on any delivery (no `event_id`, or a payload that d
 
 Nothing consumes the dead-letter queues yet (#230).
 
+On the publisher side, cart and terminal keep a delivery status per event. It is created as `pending` in the transaction that stores the log, and becomes `published` once the broker takes the event, or `publish_failed` if it refuses it. The republish job (every 5 minutes, for 24 hours) re-sends only `pending` and `publish_failed` events, and a `failed` one without `handed_off_at`: written before this status split, it is a publish the broker refused. Once the broker has taken an event, its durable queue holds it, and a copy would only be redelivered on its own. The exception is an event a consumer has read past: 15 minutes after the hand-off (`handed_off_at`), the consumer has acknowledged an event handed off later but still not this one. It is most likely not in the queue (published before the subscriber's queue existed, or processed with the acknowledgement lost), so it is sent once more (`republished_at`), by whichever worker takes the claim. An event still undelivered after 15 minutes raises one warning, whatever its status. The worker that sets `warning_sent_at` with a conditional update sends it, so the cron running in every uvicorn worker does not multiply it. RabbitMQ keeps its data in the `rabbitmq_data` volume with a fixed hostname, so queued events survive a container recreate (`stop.sh --clean` removes it).
+
 ## Redis Configuration and Database Separation
 
 ### Database Index Assignment
@@ -249,7 +251,7 @@ Nothing consumes the dead-letter queues yet (#230).
 
 ### TTL Configuration Rationale
 
-- **statestore (48 hours)**: Each idempotency key carries its own `ttlInSeconds` (`EVENT_IDEMPOTENCY_TTL_SECONDS` in report / journal / stock), overriding the component's 1-hour default. It has to outlive the publishers' republish window: cart and terminal re-send an undelivered event under its original event_id for 24 hours
+- **statestore (48 hours)**: Each idempotency key carries its own `ttlInSeconds` (`EVENT_IDEMPOTENCY_TTL_SECONDS` in report / journal / stock), overriding the component's 1-hour default. It has to outlive the publishers' republish window: cart and terminal re-send an event the broker has not taken under its original event_id for 24 hours
 - **cartstore (10 hours)**: Medium-term storage to support long-duration transactions
 
 ## Performance Considerations

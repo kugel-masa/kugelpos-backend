@@ -419,6 +419,8 @@ class TestTerminalServiceRepublishUndelivered:
 
         status = MagicMock()
         status.event_id = "EVT-100"
+        status.status = "pending"
+        status.warning_sent_at = None
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
@@ -445,6 +447,8 @@ class TestTerminalServiceRepublishUndelivered:
 
         status = MagicMock()
         status.event_id = "EVT-200"
+        status.status = "pending"
+        status.warning_sent_at = None
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
@@ -479,8 +483,9 @@ class TestTerminalServiceRepublishUndelivered:
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
-    async def test_republish_marks_old_as_failed(self, mock_notify):
-        """Logs older than failed period are marked as failed and a warning is sent."""
+    async def test_republish_warns_about_an_old_log_once_and_leaves_its_status(self, mock_notify):
+        """A log past the failed period raises one warning (#230). Its status is not
+        overwritten with "failed": the next republish set it back, every run."""
         from datetime import datetime, timedelta
         svc, repos = make_service()
         svc.pubsub_manager = AsyncMock()
@@ -489,6 +494,8 @@ class TestTerminalServiceRepublishUndelivered:
 
         status = MagicMock()
         status.event_id = "EVT-400"
+        status.status = "pending"
+        status.warning_sent_at = None
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
@@ -501,15 +508,18 @@ class TestTerminalServiceRepublishUndelivered:
 
         await svc.republish_undelivered_terminallog_async()
 
-        # Should have been marked as failed
-        repos["terminal_log_delivery_status_repo"].update_delivery_status.assert_called()
         mock_notify.assert_called_once()
+        repos["terminal_log_delivery_status_repo"].claim_warning.assert_awaited_once_with(event_id="EVT-400")
+        for call in repos["terminal_log_delivery_status_repo"].update_delivery_status.await_args_list:
+            assert call.kwargs.get("status", call.args[1] if len(call.args) > 1 else None) != "failed"
 
     @staticmethod
     def _status(event_id, payload):
         from datetime import datetime, timedelta
         status = MagicMock()
         status.event_id = event_id
+        status.status = "pending"
+        status.warning_sent_at = None
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
@@ -563,14 +573,15 @@ class TestTerminalServiceRepublishUndelivered:
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
-    async def test_republish_still_publishes_when_marking_it_failed_fails(self, mock_notify):
-        """A log past the failed period is marked failed before it is
-        republished. A database error on that update used to skip the
-        republish of exactly the logs that most need it."""
+    async def test_republish_still_publishes_when_claiming_the_warning_fails(self, mock_notify):
+        """A log past the failed period is warned about before it is
+        republished. A database error on claiming the warning skips the warning
+        (it is claimed before it is sent, #230), but must not skip the republish
+        of exactly the logs that most need it."""
         from datetime import datetime, timedelta
         svc, repos = make_service()
         svc._publish_cash_in_out_log_async = AsyncMock()
-        repos["terminal_log_delivery_status_repo"].update_delivery_status.side_effect = RuntimeError("db down")
+        repos["terminal_log_delivery_status_repo"].claim_warning.side_effect = RuntimeError("db down")
         old = self._status("EVT-OLD", {"event_type": "cash_in_out", "event_id": "EVT-OLD"})
         old.created_at = datetime.now() - timedelta(hours=1)
         repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [old]
@@ -578,7 +589,7 @@ class TestTerminalServiceRepublishUndelivered:
         await svc.republish_undelivered_terminallog_async()
 
         svc._publish_cash_in_out_log_async.assert_awaited_once_with(old.payload)
-        mock_notify.assert_awaited_once()
+        mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
@@ -591,6 +602,8 @@ class TestTerminalServiceRepublishUndelivered:
 
         status = MagicMock()
         status.event_id = "EVT-500"
+        status.status = "pending"
+        status.warning_sent_at = None
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1

@@ -47,7 +47,13 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
+    # Data and node name pinned, so queued messages survive a container recreate
+    # (stop.sh / start.sh). The volume alone is not enough: RabbitMQ keeps its data
+    # under rabbit@<hostname>, and without a fixed hostname the node name changes
+    # with the container ID and the old data is not read. Once the broker has taken
+    # a log, nothing republishes it (#230), so losing the queue loses the log.
     container_name: rabbitmq
+    hostname: rabbitmq
     restart: always
     logging: *default-logging
     ports:
@@ -60,6 +66,8 @@ services:
       retries: 5
     networks:
       - kugelpos-network
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
 
   # Application services using production images
   account:
@@ -467,3 +475,4 @@ volumes:
   mongo_data:
   mongo_config:
   redis_data:
+  rabbitmq_data:

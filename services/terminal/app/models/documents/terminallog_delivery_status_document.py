@@ -5,6 +5,14 @@ from datetime import datetime
 
 from kugel_common.models.documents.abstract_document import AbstractDocument
 
+#: Overall statuses of a terminal log the broker has not taken yet (issue #230).
+#: Only these are republished on every run. ``pending`` covers the gap between the
+#: commit that creates the document and the publish after it; ``publish_failed`` is
+#: a publish the broker refused. Once the broker has taken a log, a durable queue
+#: holds it, so sending it again on every run only adds copies. The exception is a
+#: log a consumer has read past without acknowledging it, which is sent once more.
+NOT_HANDED_TO_BROKER_STATUSES = ("pending", "publish_failed")
+
 
 class TerminallogDeliveryStatus(AbstractDocument):
     """
@@ -27,7 +35,9 @@ class TerminallogDeliveryStatus(AbstractDocument):
     # Message key information
     event_id: str  # Event ID (UUID)
     published_at: datetime  # Published datetime
-    status: str = "published"  # Overall status (published/delivered/partially_delivered/failed)
+    # Overall status (pending/publish_failed/published/delivered/partially_delivered/failed).
+    # "failed" means every service reported failure, or the log cannot be republished.
+    status: str = "published"
 
     # Terminal-related information
     tenant_id: str  # Tenant ID
@@ -42,3 +52,31 @@ class TerminallogDeliveryStatus(AbstractDocument):
 
     # Update information
     last_updated_at: datetime  # Last updated datetime
+
+    # When the undelivered warning was sent. It is sent once per log (issue #230).
+    warning_sent_at: Optional[datetime] = None
+
+    # When the broker took the log. ``published_at`` is when the document was
+    # created, earlier than the hand-off for a log the broker first refused.
+    handed_off_at: Optional[datetime] = None
+    # A log a consumer has read past is sent once more (issue #230): when the claim
+    # of the worker sending it expires, and when it was sent.
+    republish_claim_expires_at: Optional[datetime] = None
+    republished_at: Optional[datetime] = None
+
+
+def is_not_handed_to_broker(status: TerminallogDeliveryStatus) -> bool:
+    """
+    Whether the broker has not taken the log yet, so the job republishes it (issue #230).
+
+    Besides ``NOT_HANDED_TO_BROKER_STATUSES``, a ``failed`` log without
+    ``handed_off_at`` counts: it was written before this change, when the job
+    overwrote every undelivered log with ``failed`` and a republish the broker
+    refused left it there. Such a log never reached the broker, and treating it as
+    ``failed`` would drop it. A ``failed`` written now has ``handed_off_at`` when
+    every consumer reported failure. The other one, a log of unknown type that
+    cannot be republished, is left out by the caller.
+    """
+    if status.status in NOT_HANDED_TO_BROKER_STATUSES:
+        return True
+    return status.status == "failed" and status.handed_off_at is None

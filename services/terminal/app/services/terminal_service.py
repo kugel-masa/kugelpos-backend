@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from collections.abc import Awaitable, Callable
 from typing import Optional
 import aiohttp
 import json
@@ -17,6 +18,10 @@ from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepos
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.models.repositories.tran_log_web_repository import TranlogWebRepository
 from app.models.repositories.terminallog_delivery_status_repository import TerminallogDeliveryStatusRepository
+from app.models.documents.terminallog_delivery_status_document import (
+    TerminallogDeliveryStatus,
+    is_not_handed_to_broker,
+)
 from app.models.documents.cash_in_out_log import CashInOutLog
 from app.models.documents.open_close_log import OpenCloseLog
 from app.enums.function_mode import FunctionMode
@@ -944,19 +949,15 @@ class TerminalService:
             cash_in_out_log: Cash in/out log to publish
         """
         event_id = cashlog_dict["event_id"]
-        pubsub_name = "pubsub-cashlog-report"
-        topic_name = "topic-cashlog"
-
-        # Use PubsubManager with circuit breaker pattern
-        success, error_msg = await self.pubsub_manager.publish_message_async(
-            pubsub_name=pubsub_name, topic_name=topic_name, message=cashlog_dict
-        )
+        success, error_msg = await self._send_cash_in_out_log_async(cashlog_dict)
 
         if success:
-            await self._update_delivery_status_internal_async(event_id, "published")
+            await self._mark_handed_off_async(event_id)
         else:
-            # Update delivery status to failed if there's an error
-            await self._update_delivery_status_internal_async(event_id=event_id, status="failed", message=error_msg)
+            # The broker did not take it, so the republish job has to (issue #230).
+            await self._update_delivery_status_internal_async(
+                event_id=event_id, status="publish_failed", message=error_msg
+            )
             logger.error(f"Failed to publish cash in/out log: {error_msg}. Continuing processing...")
 
     async def _publish_open_close_log(self, open_close_dict: dict) -> None:
@@ -968,20 +969,53 @@ class TerminalService:
             open_close_dict: Open/close log to publish
         """
         event_id = open_close_dict["event_id"]
-        pubsub_name = "pubsub-opencloselog-report"
-        topic_name = "topic-opencloselog"
-
-        # Use PubsubManager with circuit breaker pattern
-        success, error_msg = await self.pubsub_manager.publish_message_async(
-            pubsub_name=pubsub_name, topic_name=topic_name, message=open_close_dict
-        )
+        success, error_msg = await self._send_open_close_log_async(open_close_dict)
 
         if success:
-            await self._update_delivery_status_internal_async(event_id, "published")
+            await self._mark_handed_off_async(event_id)
         else:
-            # Update delivery status to failed if there's an error
-            await self._update_delivery_status_internal_async(event_id=event_id, status="failed", message=error_msg)
+            # The broker did not take it, so the republish job has to (issue #230).
+            await self._update_delivery_status_internal_async(
+                event_id=event_id, status="publish_failed", message=error_msg
+            )
             logger.error(f"Failed to publish open/close log: {error_msg}. Continuing processing...")
+
+    async def _send_cash_in_out_log_async(self, cashlog_dict: dict) -> tuple[bool, str | None]:
+        """
+        Hand a cash in/out log to the broker, without recording anything.
+
+        Returns:
+            Whether the broker took it, and the error if not
+        """
+        # Use PubsubManager with circuit breaker pattern
+        return await self.pubsub_manager.publish_message_async(
+            pubsub_name="pubsub-cashlog-report", topic_name="topic-cashlog", message=cashlog_dict
+        )
+
+    async def _send_open_close_log_async(self, open_close_dict: dict) -> tuple[bool, str | None]:
+        """
+        Hand an open/close log to the broker, without recording anything.
+
+        Returns:
+            Whether the broker took it, and the error if not
+        """
+        # Use PubsubManager with circuit breaker pattern
+        return await self.pubsub_manager.publish_message_async(
+            pubsub_name="pubsub-opencloselog-report", topic_name="topic-opencloselog", message=open_close_dict
+        )
+
+    async def _mark_handed_off_async(self, event_id: str) -> bool:
+        """
+        Record that the broker took the log: ``published``, and when (issue #230).
+
+        Raises:
+            InternalErrorException: If the repository cannot complete the update
+        """
+        try:
+            return await self.terminal_log_delivery_status_repo.mark_handed_off(event_id=event_id)
+        except Exception as e:
+            message = f"Error updating delivery status: {e}"
+            raise InternalErrorException(message, logger) from e
 
     async def _update_delivery_status_internal_async(
         self, event_id: str, status: str, service_name: str = None, message: str = None
@@ -1116,35 +1150,51 @@ class TerminalService:
             return "cash_in_out"
         return None
 
-    async def _escalate_undelivered_terminallog_async(self, status) -> None:
+    async def _warn_undelivered_terminallog_async(self, status, not_handed_to_broker: bool) -> None:
         """
-        Mark a long-undelivered terminal log as failed and warn about it.
+        Warn once that a terminal log has not been delivered (issue #230).
 
-        This is bookkeeping around the republish, not a precondition for it:
-        if the status update fails (it raises on a database error), the log is
-        still republished. Otherwise the very records that most need delivering
-        would be the ones skipped.
+        The status is left as it is: overwriting it with "failed" mixed up "never
+        reached the broker" and "not acknowledged", and the republish that followed
+        set it back. Only the worker that claims the warning sends it. This is
+        bookkeeping around the republish, not a precondition for it: if claiming the
+        warning fails, the log is still republished.
         """
         try:
-            await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
+            if not await self.terminal_log_delivery_status_repo.claim_warning(event_id=status.event_id):
+                return
         except Exception as e:
-            logger.error(f"Failed to mark terminallog as failed: event_id->{status.event_id}, error->{e}")
+            logger.error(f"Failed to claim the terminallog warning: event_id->{status.event_id}, error->{e}")
+            return
+        reason = "not handed to the broker" if not_handed_to_broker else "handed to the broker, not acknowledged"
         await send_warning_notification(
-            message="Undelivered terminallog found: "
+            message=f"Undelivered terminallog found ({reason}): "
             f"event_id->{status.event_id}, "
             f"tenant_id->{status.tenant_id}, "
             f"store_code->{status.store_code}, "
-            f"terminal_no->{status.terminal_no}",
+            f"terminal_no->{status.terminal_no}, "
+            f"status->{status.status}",
             service="terminal",
             context=status.model_dump(),
         )
 
     async def republish_undelivered_terminallog_async(self) -> None:
         """
-        Republish undelivered terminal logs to the appropriate topics.
+        Republish the terminal logs the broker has not taken, and warn once about
+        any that are not delivered (issue #230).
 
-        This function retrieves undelivered terminal logs from the database
-        and republishes them to the appropriate topics for processing.
+        Only a log still ``pending`` or ``publish_failed`` is republished on every run,
+        and a ``failed`` one without ``handed_off_at`` written before this change (see
+        ``is_not_handed_to_broker``).
+        Once the broker has taken a log, a durable queue holds it, and republishing it
+        every run, as before, only added copies for 24 hours.
+
+        That holds while the log is waiting in the queue. It does not when a consumer
+        has acknowledged a log handed off after this one, and still not this one: the
+        log was most likely lost before the queue existed (a subscriber declares its
+        queue when it starts, and the open log is the first publish after a start), or
+        it was processed and the acknowledgement was lost. Such a log is sent once
+        more; see ``_republish_if_skipped_async``.
 
         Returns:
             None
@@ -1159,6 +1209,9 @@ class TerminalService:
 
         logger.warning(f"Undelivered terminallogs found: {len(undelivered_terminallog_status_list)}")
 
+        now = get_app_time()
+        # How far each consumer has read, looked up once per run and only when needed.
+        read_up_to: dict[str, datetime | None] = {}
         for status in undelivered_terminallog_status_list:
             # One bad record must not stop the others from being republished:
             # an exception here used to abort the whole run (#137).
@@ -1170,10 +1223,25 @@ class TerminalService:
                     logger.debug(f"Skipping terminallog: event_id->{status.event_id}")
                     continue
 
-                # Check if the terminal log is undelivered longer than the threshold
+                # A log of unknown type is "failed" because it cannot be republished,
+                # not because the broker refused it; trying it every run only repeats that.
+                cannot_be_republished = status.status == "failed" and self._terminallog_event_type(
+                    status.payload
+                ) not in ("cash_in_out", "open", "close")
+                not_handed_to_broker = is_not_handed_to_broker(status) and not cannot_be_republished
+
                 failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
-                if status.created_at < datetime.now() - timedelta(minutes=failed_minutes):
-                    await self._escalate_undelivered_terminallog_async(status)
+                if (
+                    status.created_at < datetime.now() - timedelta(minutes=failed_minutes)
+                    and status.warning_sent_at is None
+                ):
+                    await self._warn_undelivered_terminallog_async(status, not_handed_to_broker)
+
+                if not not_handed_to_broker:
+                    # The broker holds it; a republish on every run would only add copies.
+                    # Only a log a consumer has read past is sent, once.
+                    await self._republish_if_skipped_async(status, now=now, read_up_to=read_up_to)
+                    continue
                 # Determine log type based on payload content and republish
                 logger.debug(f"Republishing terminallog: event_id->{status.event_id}, tenant_id->{status.tenant_id}")
                 payload = status.payload
@@ -1197,3 +1265,82 @@ class TerminalService:
                 logger.info(f"Republished {log_type}: event_id->{status.event_id}")
             except Exception as e:
                 logger.error(f"Failed to republish terminallog: event_id->{status.event_id}, error->{e}")
+
+    async def _republish_if_skipped_async(
+        self, status: TerminallogDeliveryStatus, now: datetime, read_up_to: dict[str, datetime | None]
+    ) -> None:
+        """
+        Send a log the broker took once more if a consumer has read past it (issue #230).
+
+        A consumer has read past it when it acknowledged a log handed off after this
+        one (``find_latest_received_published_at``) and this one is still ``pending``
+        for it. Not counted as skipped:
+
+        - A consumer that reported ``failed``. The message reached it; the Dapr
+          retries and the dead-letter queue own it.
+        - A consumer that acknowledged nothing later. It is down, and the queue holds
+          the log for it.
+
+        At most once per log, only for ``published`` and ``partially_delivered``, and
+        only for a log of a known type.
+
+        Times are compared in UTC: MongoDB returns naive UTC, and ``now`` is the
+        timezone-aware application time.
+
+        Args:
+            status: An undelivered log the broker has taken
+            now: The time of this run
+            read_up_to: Per-consumer position, filled as it is looked up during the run
+        """
+        if status.status not in ("published", "partially_delivered") or status.republished_at is not None:
+            return
+        event_type = self._terminallog_event_type(status.payload)
+        send: Callable[[dict], Awaitable[tuple[bool, str | None]]]
+        if event_type == "cash_in_out":
+            send = self._send_cash_in_out_log_async
+        elif event_type in ("open", "close"):
+            send = self._send_open_close_log_async
+        else:
+            return
+        handed_off_at = status.handed_off_at or status.published_at
+        if handed_off_at.tzinfo is None:
+            handed_off_at = handed_off_at.replace(tzinfo=timezone.utc)
+        if handed_off_at > now - timedelta(minutes=settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES):
+            return
+
+        interval = timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES)
+        skipped_by = []
+        for service in status.services:
+            if service.status != "pending":
+                continue
+            if service.service_name not in read_up_to:
+                read_up_to[service.service_name] = (
+                    await self.terminal_log_delivery_status_repo.find_latest_received_published_at(
+                        service_name=service.service_name,
+                        since=now - timedelta(hours=settings.UNDELIVERED_CHECK_PERIOD_IN_HOURS),
+                        received_before=now - interval,
+                    )
+                )
+            position = read_up_to[service.service_name]
+            if position is not None and position > handed_off_at:
+                skipped_by.append(service.service_name)
+        if not skipped_by:
+            return
+
+        if not await self.terminal_log_delivery_status_repo.claim_republish(
+            event_id=status.event_id, until=now + interval
+        ):
+            return
+        logger.warning(
+            "Republishing a terminallog the consumers read past without acknowledging it: "
+            f"event_id->{status.event_id}, tenant_id->{status.tenant_id}, store_code->{status.store_code}, "
+            f"terminal_no->{status.terminal_no}, event_type->{event_type}, skipped_by->{skipped_by}"
+        )
+        # The status is left as it is: the consumers that have the log keep their
+        # acknowledgement, and a send the broker refuses is retried by the next run once
+        # the claim expires. Writing publish_failed would have every run send it as well.
+        success, error_msg = await send(status.payload)
+        if success:
+            await self.terminal_log_delivery_status_repo.mark_republished(event_id=status.event_id)
+        else:
+            logger.error(f"Failed to republish a skipped terminallog: event_id->{status.event_id}, error->{error_msg}")

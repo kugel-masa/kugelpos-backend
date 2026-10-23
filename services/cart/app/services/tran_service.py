@@ -6,7 +6,7 @@ import aiohttp
 import uuid
 import json
 import ast
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = getLogger(__name__)
 
@@ -25,7 +25,10 @@ from app.models.repositories.cart_restore_log_repository import CartRestoreLogRe
 from app.models.repositories.tranlog_delivery_status_repository import (
     TranlogDeliveryStatusRepository,
 )
-from app.models.documents.tranlog_delivery_status_document import TranlogDeliveryStatus
+from app.models.documents.tranlog_delivery_status_document import (
+    TranlogDeliveryStatus,
+    is_not_handed_to_broker,
+)
 from app.models.repositories.terminal_counter_repository import (
     TerminalCounterRepository,
 )
@@ -1360,20 +1363,51 @@ class TranService:
         logger.debug(f"tranlog dict: {tranlog_dict}")
         event_id = tranlog_dict["event_id"]
 
+        success, error_msg = await self._send_tranlog_async(tranlog_dict)
+
+        if success:
+            await self._mark_handed_off_async(event_id=event_id)
+        else:
+            # The broker did not take it, so the republish job has to (issue #230).
+            # Kept apart from "failed", which means every consumer reported failure.
+            await self._update_delivery_status_internal_async(
+                event_id=event_id, status="publish_failed", message=error_msg
+            )
+            logger.error(f"Failed to publish transaction log: {error_msg}. Continuing processing...")
+
+    async def _send_tranlog_async(self, tranlog_dict: dict) -> tuple[bool, str | None]:
+        """
+        Hand a transaction log to the broker, without recording anything.
+
+        Args:
+            tranlog_dict: The transaction log dictionary to publish
+
+        Returns:
+            tuple[bool, str | None]: Whether the broker took it, and the error if not
+        """
         pubsub_name = "pubsub-tranlog-report"
         topic_name = "topic-tranlog"
 
         # Use PubsubManager with circuit breaker pattern
-        success, error_msg = await self.pubsub_manager.publish_message_async(
+        return await self.pubsub_manager.publish_message_async(
             pubsub_name=pubsub_name, topic_name=topic_name, message=tranlog_dict
         )
 
-        if success:
-            await self._update_delivery_status_internal_async(event_id=event_id, status="published")
-        else:
-            # Update delivery status to failed if there's an error
-            await self._update_delivery_status_internal_async(event_id=event_id, status="failed", message=error_msg)
-            logger.error(f"Failed to publish transaction log: {error_msg}. Continuing processing...")
+    async def _mark_handed_off_async(self, event_id: str) -> bool:
+        """
+        Record that the broker took the tranlog: ``published``, and when (issue #230).
+
+        Args:
+            event_id: The event ID of the transaction log
+
+        Returns:
+            bool: True if the update was successful, False otherwise
+        """
+        try:
+            return await self.tranlog_delivery_status_repo.mark_handed_off(event_id=event_id)
+        except Exception as e:
+            message = f"Error updating delivery status: {e}"
+            raise InternalErrorException(message, logger) from e
 
     async def _update_delivery_status_internal_async(
         self, event_id: str, status: str, service_name: str = None, message: str = None
@@ -1447,10 +1481,31 @@ class TranService:
 
     async def republish_undelivered_tranlog_async(self) -> None:
         """
-        Republish undelivered transaction logs to the tranlog topic.
+        Republish the transaction logs the broker has not taken, and warn once about
+        any that are not delivered (issue #230).
 
-        This function retrieves undelivered transaction logs from the database
-        and republishes them to the tranlog topic for processing.
+        Only a tranlog that never reached the broker is republished: one still
+        ``pending`` (the process can stop between the commit and the publish), or one
+        the broker refused (``publish_failed``, or ``failed`` without ``handed_off_at``
+        when written before this change; see ``is_not_handed_to_broker``). Once the
+        broker has taken a tranlog, a
+        durable queue holds it: a consumer that is down gets it when it comes back, and
+        one that keeps failing on it sends it to the dead-letter queue. Republishing it
+        every run, as before, only added copies, each redelivered on its own, for 24
+        hours.
+
+        That holds while the tranlog is waiting in the queue. It does not when a
+        consumer has acknowledged a tranlog handed off after this one, and still not
+        this one: the queue is read in order, so this one is most likely not there.
+        It was lost before the queue existed (a subscriber declares its queue when it
+        starts, and RabbitMQ drops a message published before that), or it was
+        processed and the acknowledgement was lost. Such a tranlog is sent once more;
+        see ``_republish_if_skipped_async``. A consumer that has acknowledged nothing
+        later is down, and the queue still holds the tranlog for it.
+
+        A tranlog still not delivered after ``UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES``
+        raises one warning, whatever its status. The status is no longer overwritten
+        with "failed", which mixed up "never reached the broker" and "not acknowledged".
 
         Returns:
             None
@@ -1465,7 +1520,9 @@ class TranService:
 
         logger.warning(f"Undelivered tranlogs found: {len(undelivered_tranlog_status_list)}")
 
-        # Republish undelivered tranlogs
+        now = get_app_time()
+        # How far each consumer has read, looked up once per run and only when needed.
+        read_up_to: dict[str, datetime | None] = {}
         for status in undelivered_tranlog_status_list:
             # Check if all services have been received
             all_services_received = all(service.status == "received" for service in status.services)
@@ -1480,26 +1537,119 @@ class TranService:
                 # Skip the tranlog if it was created recently
                 logger.debug(f"Skipping tranlog: event_id->{status.event_id}")
                 continue
-            # Check if the tranlog is undelivered longer than the threshold
+            not_handed_to_broker = is_not_handed_to_broker(status)
+
             failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
-            if status.created_at < datetime.now() - timedelta(minutes=failed_minutes):
-                # Update the delivery status to "failed"
-                await self._update_delivery_status_internal_async(event_id=status.event_id, status="failed")
-                # notify warning
+            if (
+                status.created_at < datetime.now() - timedelta(minutes=failed_minutes)
+                and status.warning_sent_at is None
+                and await self._claim_undelivered_warning_async(status.event_id)
+            ):
+                reason = (
+                    "not handed to the broker" if not_handed_to_broker else "handed to the broker, not acknowledged"
+                )
                 await send_warning_notification(
-                    message="Undelivered tranlog found: "
+                    message=f"Undelivered tranlog found ({reason}): "
                     f"event_id->{status.event_id}, "
                     f"tenant_id->{status.tenant_id}, "
                     f"store_code->{status.store_code}, "
                     f"terminal_no->{status.terminal_no}, "
-                    f"transaction_no->{status.transaction_no}",
+                    f"transaction_no->{status.transaction_no}, "
+                    f"status->{status.status}",
                     service="cart",
                     context=status.model_dump(),
-                )  # Republish the tranlog
+                )
+
+            if not not_handed_to_broker:
+                # The broker holds it; a republish on every run would only add copies.
+                # Only a tranlog a consumer has read past is sent, once.
+                await self._republish_if_skipped_async(status, now=now, read_up_to=read_up_to)
+                continue
             logger.debug(
                 f"Republishing tranlog: event_id->{status.event_id}, tenant_id->{status.tenant_id}, transaction_no->{status.transaction_no}"
             )
             await self._publish_tranlog_async(status.payload)
+
+    async def _claim_undelivered_warning_async(self, event_id: str) -> bool:
+        """
+        Whether this worker sends the undelivered warning for the tranlog (issue #230).
+
+        A failure to claim it skips the warning, not the republish that follows.
+        """
+        try:
+            return await self.tranlog_delivery_status_repo.claim_warning(event_id=event_id)
+        except Exception as e:
+            logger.error(f"Failed to claim the tranlog warning: event_id->{event_id}, error->{e}")
+            return False
+
+    async def _republish_if_skipped_async(
+        self, status: TranlogDeliveryStatus, now: datetime, read_up_to: dict[str, datetime | None]
+    ) -> None:
+        """
+        Send a tranlog the broker took once more if a consumer has read past it (issue #230).
+
+        A consumer has read past it when it acknowledged a tranlog handed off after
+        this one (``find_latest_received_published_at``) and this one is still
+        ``pending`` for it. Not counted as skipped:
+
+        - A consumer that reported ``failed``. The message reached it; the Dapr
+          retries and the dead-letter queue own it.
+        - A consumer that acknowledged nothing later. It is down, and the queue holds
+          the tranlog for it, or it is listed but not deployed.
+
+        At most once per tranlog, and only for ``published`` and
+        ``partially_delivered``: ``failed`` means every consumer reported failure.
+
+        Times are compared in UTC: MongoDB returns naive UTC, and ``now`` is the
+        timezone-aware application time.
+
+        Args:
+            status: An undelivered tranlog the broker has taken
+            now: The time of this run
+            read_up_to: Per-consumer position, filled as it is looked up during the run
+        """
+        if status.status not in ("published", "partially_delivered") or status.republished_at is not None:
+            return
+        handed_off_at = status.handed_off_at or status.published_at
+        if handed_off_at.tzinfo is None:
+            handed_off_at = handed_off_at.replace(tzinfo=timezone.utc)
+        if handed_off_at > now - timedelta(minutes=settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES):
+            return
+
+        interval = timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES)
+        skipped_by = []
+        for service in status.services:
+            if service.status != "pending":
+                continue
+            if service.service_name not in read_up_to:
+                read_up_to[
+                    service.service_name
+                ] = await self.tranlog_delivery_status_repo.find_latest_received_published_at(
+                    service_name=service.service_name,
+                    since=now - timedelta(hours=settings.UNDELIVERED_CHECK_PERIOD_IN_HOURS),
+                    received_before=now - interval,
+                )
+            position = read_up_to[service.service_name]
+            if position is not None and position > handed_off_at:
+                skipped_by.append(service.service_name)
+        if not skipped_by:
+            return
+
+        if not await self.tranlog_delivery_status_repo.claim_republish(event_id=status.event_id, until=now + interval):
+            return
+        logger.warning(
+            "Republishing a tranlog the consumers read past without acknowledging it: "
+            f"event_id->{status.event_id}, tenant_id->{status.tenant_id}, store_code->{status.store_code}, "
+            f"terminal_no->{status.terminal_no}, transaction_no->{status.transaction_no}, skipped_by->{skipped_by}"
+        )
+        # The status is left as it is: the consumers that have the tranlog keep their
+        # acknowledgement, and a send the broker refuses is retried by the next run once
+        # the claim expires. Writing publish_failed would have every run send it as well.
+        success, error_msg = await self._send_tranlog_async(status.payload)
+        if success:
+            await self.tranlog_delivery_status_repo.mark_republished(event_id=status.event_id)
+        else:
+            logger.error(f"Failed to republish a skipped tranlog: event_id->{status.event_id}, error->{error_msg}")
 
     async def get_transaction_list_with_status_async(
         self, transaction_list: list[BaseTransaction]
