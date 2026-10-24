@@ -25,9 +25,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 logger = getLogger(__name__)
 
 #: Values of SECRET_KEY / PUBSUB_NOTIFY_API_KEY that are published in this
-#: repository: the code defaults, the .env.sample placeholders and the
-#: quick_start.sh exports. Anyone can read them, so a service holding one of
-#: them accepts tokens and notifications that anyone can make (issue #132).
+#: repository: the code defaults, the .env.sample placeholders, the
+#: quick_start.sh exports and the README examples (removed, but still in the
+#: history). Anyone can read them, so a service holding one of them accepts
+#: tokens and notifications that anyone can make (issue #132).
 PUBLISHED_SECRET_VALUES = frozenset(
     {
         "test-secret-key-for-development-only",
@@ -36,6 +37,8 @@ PUBLISHED_SECRET_VALUES = frozenset(
         "your_pubsub_notify_api_key",
         "dev-secret-key-123456789",
         "dev-api-key-123456789",
+        "your-secure-secret-key-here",
+        "your-api-key-here",
     }
 )
 
