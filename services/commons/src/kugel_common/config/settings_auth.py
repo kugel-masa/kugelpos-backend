@@ -90,10 +90,13 @@ class AuthSettings(BaseSettings):
         when a subclass redefines one of them (stock declares its own
         PUBSUB_NOTIFY_API_KEY, with an empty default).
         """
+        # Stripped before the comparison too: a published value with spaces
+        # around it (account's .env.sample had "your_secret_key ") is still
+        # published, and the signing uses it as given.
         insecure = [
             name
             for name in ("SECRET_KEY", "PUBSUB_NOTIFY_API_KEY")
-            if not getattr(self, name).strip() or getattr(self, name) in PUBLISHED_SECRET_VALUES
+            if getattr(self, name).strip() in PUBLISHED_SECRET_VALUES | {""}
         ]
         if not insecure:
             return self

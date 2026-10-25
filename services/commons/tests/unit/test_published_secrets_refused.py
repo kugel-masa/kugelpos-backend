@@ -62,6 +62,21 @@ def test_an_empty_value_in_the_environment_is_refused(monkeypatch, name):
         _settings()
 
 
+@pytest.mark.parametrize("padded", ["your_secret_key ", " test-secret-key-for-development-only", "\tdev-api-key-123456789\n"])
+@pytest.mark.parametrize("name", ["SECRET_KEY", "PUBSUB_NOTIFY_API_KEY"])
+def test_a_published_value_with_spaces_around_it_is_refused(monkeypatch, name, padded):
+    # account's .env.sample published "your_secret_key " with the space, and
+    # an environment variable keeps it.
+    monkeypatch.setenv("SECRET_KEY", OWN_SECRET)
+    monkeypatch.setenv("PUBSUB_NOTIFY_API_KEY", OWN_API_KEY)
+    monkeypatch.setenv(name, padded)
+
+    with pytest.raises(ValidationError) as raised:
+        _settings()
+
+    assert name in str(raised.value)
+
+
 def test_a_blank_value_is_refused():
     with pytest.raises(ValidationError):
         _settings(SECRET_KEY="   ", PUBSUB_NOTIFY_API_KEY=OWN_API_KEY)
