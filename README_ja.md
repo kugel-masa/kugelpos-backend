@@ -80,19 +80,21 @@ chmod +x quick_start.sh
 
 ### 1. 環境設定
 
-#### 環境変数（開発環境では任意）
-サービスには開発用のデフォルト値が含まれていますが、カスタマイズすることも可能です：
+#### 秘密鍵
+すべてのサービスに、同じ2つの秘密鍵が必要です。
 
-- `SECRET_KEY`: JWT署名用の秘密鍵（デフォルト: "test-secret-key-for-development-only"）
-- `PUBSUB_NOTIFY_API_KEY`: Pub/Sub通知用のAPIキー（デフォルト値あり）
+- `SECRET_KEY`: すべての JWT（ユーザー・端末・サービス間）の署名と検証に使います
+- `PUBSUB_NOTIFY_API_KEY`: pub/sub の配信通知の認証に使います
 
-⚠️ **重要**: 本番環境では、これらの値を変更してください！
+どちらかが空か、このリポジトリで公開されている値（コードの既定値、`.env.sample` の仮の値）のとき、サービスは起動しません。開発用のスタック（`services/docker-compose.yaml`）とテストは `ALLOW_INSECURE_DEV_SECRETS=true` を設定しているので、公開されている既定値で動きます。それ以外の環境では、このフラグを設定しないでください。
+
+`services/docker-compose.prod.yaml` は、2つの鍵を渡さないと起動しません。鍵は次のコマンドで作れます。
 
 ```bash
-# 任意：開発用のカスタム環境変数を設定
-export SECRET_KEY="your-secure-secret-key-here"
-export PUBSUB_NOTIFY_API_KEY="your-api-key-here"
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
 
+```bash
 # テスト用の.env.testファイルを準備してください（テナントIDのみ変更）
 cp .env.test.sample .env.test
 ```

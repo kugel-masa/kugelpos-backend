@@ -15,6 +15,9 @@ services:
       - path: ./account/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_account
       # Needed by the request-logging middleware, not by account's own routes.
@@ -44,6 +47,9 @@ services:
       - path: ./terminal/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_terminal
       - BASE_URL_DAPR=http://localhost:3500/v1.0
@@ -79,6 +85,9 @@ services:
       - path: ./master-data/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_master
       # gRPC server settings (default: disabled)
@@ -113,6 +122,9 @@ services:
       - path: ./cart/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_cart
       # gRPC client settings (default: disabled)
@@ -160,6 +172,9 @@ services:
       - path: ./report/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_report
       - BASE_URL_DAPR=http://localhost:3500/v1.0
@@ -193,6 +208,9 @@ services:
       - path: ./journal/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_journal
       - BASE_URL_DAPR=http://localhost:3500/v1.0
@@ -224,6 +242,9 @@ services:
       - path: ./stock/.env
         required: false
     environment:
+      # The development stack runs on the published SECRET_KEY and
+      # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
+      - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_stock
       - BASE_URL_DAPR=http://localhost:3500/v1.0
