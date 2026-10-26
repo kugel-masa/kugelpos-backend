@@ -3,7 +3,7 @@ from fastapi import APIRouter, Path, Depends, status, Query
 from logging import getLogger
 import inspect
 
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import bind_body_identity, get_tenant_id_with_security_by_query_optional, verify_tenant_id
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.status_codes import StatusCodes
 
@@ -87,6 +87,7 @@ async def receive_journals(
         f"receive_journals: tenant_id->{tenant_id}, store_code->{store_code}, terminal_no->{terminal_no}, journal_data->{journal_data}"
     )
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
+    bind_body_identity(journal_data, tenant_id, store_code, terminal_no, logger)
     journal = await journal_service.receive_journal_async(journal_data.model_dump())
     return_journal = SchemasTransformerV1().transform_journal_response(journal)
 

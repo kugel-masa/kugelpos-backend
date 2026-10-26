@@ -11,7 +11,7 @@ import inspect
 from kugel_common.database import database as db_helper
 from kugel_common.exceptions import DuplicateKeyException
 from kugel_common.schemas.api_response import ApiResponse
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import bind_body_identity, get_tenant_id_with_security_by_query_optional, verify_tenant_id
 from kugel_common.status_codes import StatusCodes
 from kugel_common.utils.log_utils import mask_loggable, mask_sensitive_data
 from app.config.settings import settings
@@ -564,6 +564,7 @@ async def receive_transactions(
     )
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
     tran_data_obj = BaseTransaction(**tran_data)
+    bind_body_identity(tran_data_obj, tenant_id, store_code, terminal_no, logger)
     # All BaseTransaction fields are Optional (so the model can be reused for
     # partial updates / pub-sub envelopes), but this endpoint requires the
     # nested sales / staff / user blocks to build a JournalDocument

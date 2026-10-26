@@ -98,6 +98,47 @@ def verify_tenant_id(tenant_id: str, tenant_id_in_token: str, logger: Logger) ->
             detail=message
         )
 
+
+def bind_body_identity(body: object, tenant_id: str, store_code: str, terminal_no: str | int, logger: Logger) -> None:
+    """
+    Makes the tenant, store and terminal a request body names those of its URL (issue #134).
+
+    The tenant in the URL is checked against the credential (verify_tenant_id);
+    the body's own tenant_id / store_code / terminal_no were stored as given, so
+    a caller could file a journal or a sale under a store and terminal other
+    than the ones it posted to. A field the body leaves out takes the URL's
+    value; one that names another is refused.
+
+    Args:
+        body: The request model; its tenant_id, store_code and terminal_no are
+            read and, when missing, set
+        tenant_id: Tenant ID from the URL, already verified against the credential
+        store_code: Store code from the URL
+        terminal_no: Terminal number from the URL
+        logger: Logger instance for logging a refusal
+
+    Raises:
+        HTTPException: 400 if a field names another tenant, store or terminal,
+            or the URL's terminal number is not a number
+    """
+    try:
+        url_terminal_no = int(terminal_no)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"terminal_no in the URL is not a number: {terminal_no}")
+
+    url_identity = {"tenant_id": tenant_id, "store_code": store_code, "terminal_no": url_terminal_no}
+    mismatched = []
+    for field, url_value in url_identity.items():
+        body_value = getattr(body, field, None)
+        if body_value is None:
+            setattr(body, field, url_value)
+        elif (int(body_value) if field == "terminal_no" else body_value) != url_value:
+            mismatched.append(f"{field}->{body_value} (URL: {url_value})")
+    if mismatched:
+        message = f"The body names another tenant, store or terminal than its URL: {', '.join(mismatched)}"
+        logger.error(message)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """
     FastAPI dependency that returns the current authenticated user based on JWT token.
