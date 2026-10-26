@@ -237,6 +237,8 @@ Journal entries represent receipts, cash operations, and other terminal activiti
 Authentication is required via token or API key. The tenant ID in the path must match
 the one in the security credentials.
 
+The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store and terminal of the path. A body that names another is refused with 400 (issue #134).
+
 **Path Parameters:**
 
 | Parameter | Type | Required | Description |
@@ -329,6 +331,8 @@ token or API key.
 
 The function validates the tenant ID from the security credentials,
 processes the transaction data, and generates the corresponding journal entries.
+
+The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store and terminal of the path. One the body leaves out takes the path's value; one that names another is refused with 400 (issue #134).
 
 **Path Parameters:**
 

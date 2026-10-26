@@ -262,6 +262,8 @@ This endpoint can be used as an alternative to the Dapr pub/sub mechanism
 when direct REST API calls are preferred. It requires authentication via
 token or API key.
 
+The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store and terminal of the path. One the body leaves out takes the path's value; one that names another is refused with 400 (issue #134).
+
 **Path Parameters:**
 
 | Parameter | Type | Required | Description |
