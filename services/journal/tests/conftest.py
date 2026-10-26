@@ -18,6 +18,8 @@ _load_dotenv(os.path.join(_ROOT_DIR, '.env.test'), override=True)
 os.environ.setdefault("DB_NAME_PREFIX", "db_journal")
 # The tests run on the published development keys (issue #132).
 os.environ.setdefault("ALLOW_INSECURE_DEV_SECRETS", "true")
+# ...and on the published development Dapr app token (issue #134).
+os.environ.setdefault("APP_API_TOKEN", "dev-app-api-token-for-development-only")
 os.environ.setdefault("STORE_CODE", "5678")
 os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
 import pytest

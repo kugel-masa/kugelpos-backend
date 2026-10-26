@@ -17,6 +17,11 @@ import os
 import pytest
 from fastapi import status
 
+from kugel_common.utils.dapr_app_token import DAPR_APP_TOKEN_HEADER
+
+# What the service's Dapr sidecar sends on every pub/sub delivery (issue #134).
+DAPR_DELIVERY_HEADERS = {DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]}
+
 
 @pytest.mark.asyncio
 async def test_post_tenants(http_client, admin_header):
@@ -37,7 +42,7 @@ async def test_post_tenants(http_client, admin_header):
 async def test_tranlog_health_check(http_client):
     """POST /tranlog accepts the Dapr pubsub health-check shape."""
     response = await http_client.post(
-        "/api/v1/tranlog",
+        "/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS,
         json={"data": {"test": "health-check"}},
     )
     assert response.status_code == status.HTTP_200_OK, response.text

@@ -11,6 +11,12 @@ from app.services.log_service import LogService
 from kugel_common.security import get_tenant_id_with_security_by_query_optional
 from kugel_common.exceptions import register_exception_handlers
 
+import os
+from kugel_common.utils.dapr_app_token import DAPR_APP_TOKEN_HEADER
+
+# What the service's Dapr sidecar sends on every pub/sub delivery (issue #134).
+DAPR_DELIVERY_HEADERS = {DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]}
+
 
 def make_app():
     app = FastAPI()
@@ -41,7 +47,7 @@ class TestHandleTranlog:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
-                "/api/v1/tranlog",
+                "/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS,
                 json={"data": {"test": "health-check"}},
             )
 
@@ -61,7 +67,7 @@ class TestHandleTranlog:
              patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
-                    "/api/v1/tranlog",
+                    "/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS,
                     json={
                         "data": {
                             "event_id": "evt-001",
@@ -94,7 +100,7 @@ class TestHandleTranlog:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
-                "/api/v1/tranlog",
+                "/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS,
                 json={"data": {"tenant_id": "T001"}},
             )
 
@@ -113,7 +119,7 @@ class TestHandleTranlog:
         with patch("app.api.v1.tran.get_state", new_callable=AsyncMock, return_value={"event_id": "evt-001"}):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
-                    "/api/v1/tranlog",
+                    "/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS,
                     json={
                         "data": {
                             "event_id": "evt-001",
@@ -159,7 +165,7 @@ class TestHandleTranlog:
              patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
-                    "/api/v1/tranlog",
+                    "/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS,
                     json={
                         "data": {
                             "event_id": "evt-dup-001",
@@ -200,7 +206,7 @@ class TestHandleCashlog:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
-                "/api/v1/cashlog",
+                "/api/v1/cashlog", headers=DAPR_DELIVERY_HEADERS,
                 json={"data": {"test": "health-check"}},
             )
 
@@ -222,7 +228,7 @@ class TestHandleOpencloselog:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
-                "/api/v1/opencloselog",
+                "/api/v1/opencloselog", headers=DAPR_DELIVERY_HEADERS,
                 json={"data": {"test": "health-check"}},
             )
 
@@ -326,7 +332,7 @@ class TestDaprStatusContract:
              patch("app.api.v1.tran.save_state", new_callable=AsyncMock, return_value=True) as save_mock, \
              patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post(url, json={"data": {"event_id": "evt-fail-001", "tenant_id": "T001"}})
+                response = await client.post(url, headers=DAPR_DELIVERY_HEADERS, json={"data": {"event_id": "evt-fail-001", "tenant_id": "T001"}})
 
         assert response.status_code == 500, response.text
         assert response.json()["status"] == "RETRY"
@@ -344,7 +350,7 @@ class TestDaprStatusContract:
              patch("app.api.v1.tran.save_state", new_callable=AsyncMock, return_value=True), \
              patch("app.api.v1.tran._notify_pubsub_status", new_callable=AsyncMock):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                response = await client.post(url, json={"data": {"event_id": "evt-ok-001", "tenant_id": "T001"}})
+                response = await client.post(url, headers=DAPR_DELIVERY_HEADERS, json={"data": {"event_id": "evt-ok-001", "tenant_id": "T001"}})
 
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "SUCCESS"

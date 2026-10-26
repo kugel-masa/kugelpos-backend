@@ -13,6 +13,7 @@ from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.schemas.base_schemas import Metadata
 from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
 from kugel_common.status_codes import StatusCodes
+from kugel_common.utils.dapr_app_token import make_dapr_app_token_verifier
 from kugel_common.utils.http_client_helper import get_service_client
 from kugel_common.utils.service_auth import create_service_token
 from app.api.v1.schemas import (
@@ -37,6 +38,18 @@ logger = getLogger(__name__)
 
 # Create API router
 router = APIRouter(tags=["stock"])
+
+
+def _app_api_token() -> str:
+    from app.config.settings import settings
+
+    return settings.APP_API_TOKEN
+
+
+# The pub/sub route below carries no JWT and picks the tenant database from
+# the event body, so it accepts only what this service's own Dapr sidecar
+# delivers (issue #134).
+verify_dapr_app_token = make_dapr_app_token_verifier(_app_api_token)
 
 
 # Stock endpoints
@@ -637,6 +650,7 @@ async def _notify_pubsub_status(log_type: str, log_dict: dict, status: str, mess
 # PubSub handlers
 @router.post(
     "/tranlog",
+    dependencies=[Depends(verify_dapr_app_token)],
     summary="Handle transaction log from cart service",
     description="Process transaction log to update stock quantities",
 )

@@ -16,6 +16,12 @@ from app.api.v1 import tran
 from app.api.v1.tran import get_log_service_from_request
 from tests.unit.test_api_tran import make_app as _make_app
 
+import os
+from kugel_common.utils.dapr_app_token import DAPR_APP_TOKEN_HEADER
+
+# What the service's Dapr sidecar sends on every pub/sub delivery (issue #134).
+DAPR_DELIVERY_HEADERS = {DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]}
+
 
 def make_app(mock_log_service):
     app = _make_app()
@@ -39,7 +45,7 @@ TRANLOG = {
 
 async def _post(app, data, url="/api/v1/tranlog"):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        return await client.post(url, json={"data": data})
+        return await client.post(url, headers=DAPR_DELIVERY_HEADERS, json={"data": data})
 
 
 def _state(seen=None):

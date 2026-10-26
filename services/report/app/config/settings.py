@@ -10,6 +10,7 @@ from kugel_common.config.settings import (
     DatetimeSettings,
     WebServiceSettings,
 )
+from kugel_common.config.settings_dapr_app_token import DaprAppTokenSettings
 from kugel_common.config.settings_http import HttpRequestSettings
 from app.config.settings_database import DBCollectionSettings
 
@@ -27,6 +28,7 @@ class Settings(
     DBCollectionCommonSettings,
     DatetimeSettings,
     AuthSettings,
+    DaprAppTokenSettings,
     WebServiceSettings,
     HttpRequestSettings,
 ):

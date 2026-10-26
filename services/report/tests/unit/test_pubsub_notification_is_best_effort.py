@@ -15,6 +15,12 @@ from httpx import ASGITransport, AsyncClient
 from app.api.v1 import tran
 from tests.unit.test_api_tran import make_app
 
+import os
+from kugel_common.utils.dapr_app_token import DAPR_APP_TOKEN_HEADER
+
+# What the service's Dapr sidecar sends on every pub/sub delivery (issue #134).
+DAPR_DELIVERY_HEADERS = {DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]}
+
 TRANLOG = {
     "event_id": "evt-230",
     "tenant_id": "test-tenant",
@@ -32,7 +38,7 @@ TRANLOG = {
 
 async def _post(app, data, url="/api/v1/tranlog"):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        return await client.post(url, json={"data": data})
+        return await client.post(url, headers=DAPR_DELIVERY_HEADERS, json={"data": data})
 
 
 def _state(seen=None):

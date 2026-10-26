@@ -24,8 +24,14 @@ def _app_business_date() -> str:
     return datetime.now(ZoneInfo(os.environ.get("TIMEZONE", "Asia/Tokyo"))).strftime("%Y%m%d")
 
 
-def _client(url_env: str) -> httpx.Client:
-    return httpx.Client(base_url=os.environ[url_env], timeout=30.0)
+# What each subscriber's Dapr sidecar sends on every delivery; the routes refuse
+# a request without it (issue #134). The development compose default.
+APP_API_TOKEN = os.environ.get("APP_API_TOKEN", "dev-app-api-token-for-development-only")
+
+
+def _client(url_env: str, token: str | None = APP_API_TOKEN) -> httpx.Client:
+    headers = {"dapr-api-token": token} if token is not None else {}
+    return httpx.Client(base_url=os.environ[url_env], timeout=30.0, headers=headers)
 
 
 @pytest.mark.parametrize(
@@ -83,3 +89,25 @@ def test_dapr_subscriber_drops_missing_event_id(url_env, path):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body.get("status") == "DROP", body
+
+
+@pytest.mark.parametrize(
+    "url_env,path",
+    [
+        ("URL_JOURNAL", "/api/v1/tranlog"),
+        ("URL_JOURNAL", "/api/v1/cashlog"),
+        ("URL_JOURNAL", "/api/v1/opencloselog"),
+        ("URL_REPORT", "/api/v1/tranlog"),
+        ("URL_REPORT", "/api/v1/cashlog"),
+        ("URL_REPORT", "/api/v1/opencloselog"),
+        ("URL_STOCK", "/api/v1/tranlog"),
+    ],
+)
+@pytest.mark.parametrize("token", [None, "a-token-someone-guessed"], ids=["no token", "wrong token"])
+def test_dapr_subscriber_refuses_a_request_not_from_its_sidecar(url_env, path, token):
+    # The app port is published; before #134 this event would have been stored
+    # in whichever tenant it named. The sales the other e2e tests make still
+    # arrive, through the sidecars, which carry the token.
+    with _client(url_env, token=token) as c:
+        resp = c.post(path, json={"data": {"event_id": f"evt-forged-{uuid.uuid4()}", "tenant_id": "T-FORGED"}})
+    assert resp.status_code == 401, resp.text
