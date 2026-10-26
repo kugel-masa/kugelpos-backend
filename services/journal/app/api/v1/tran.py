@@ -16,6 +16,7 @@ from kugel_common.status_codes import StatusCodes
 from kugel_common.utils.log_utils import mask_loggable, mask_sensitive_data
 from app.config.settings import settings
 from kugel_common.models.documents.base_tranlog import BaseTransaction
+from kugel_common.utils.dapr_app_token import make_dapr_app_token_verifier
 from kugel_common.utils.http_client_helper import get_service_client
 from kugel_common.utils.service_auth import create_service_token
 
@@ -39,6 +40,11 @@ from app.exceptions import (
 
 # Create a router instance for transaction-related endpoints
 router = APIRouter()
+
+# The pub/sub routes below carry no JWT and pick the tenant database from the
+# event body, so they accept only what this service's own Dapr sidecar
+# delivers (issue #134).
+verify_dapr_app_token = make_dapr_app_token_verifier(lambda: settings.APP_API_TOKEN)
 
 # Get a logger instance for this module
 logger = getLogger(__name__)
@@ -423,7 +429,7 @@ async def _notify_pubsub_status_terminallog_async(
     return None
 
 
-@router.post("/tranlog")
+@router.post("/tranlog", dependencies=[Depends(verify_dapr_app_token)])
 async def handle_tranlog(request: Request, log_service: LogService = Depends(get_log_service_from_request)):
     """
     Handle transaction logs received via Dapr pub/sub.
@@ -453,7 +459,7 @@ async def handle_tranlog(request: Request, log_service: LogService = Depends(get
     return await handle_log(request, "tranlog", BaseTransaction, log_service.receive_tranlog_async)
 
 
-@router.post("/cashlog")
+@router.post("/cashlog", dependencies=[Depends(verify_dapr_app_token)])
 async def handle_cashlog(request: Request, log_service: LogService = Depends(get_log_service_from_request)):
     """
     Handle cash in/out logs received via Dapr pub/sub.
@@ -482,7 +488,7 @@ async def handle_cashlog(request: Request, log_service: LogService = Depends(get
     return await handle_log(request, "cashlog", CashInOutLog, log_service.receive_cashlog_async)
 
 
-@router.post("/opencloselog")
+@router.post("/opencloselog", dependencies=[Depends(verify_dapr_app_token)])
 async def handle_opencloselog(request: Request, log_service: LogService = Depends(get_log_service_from_request)):
     """
     Handle terminal open/close logs received via Dapr pub/sub.

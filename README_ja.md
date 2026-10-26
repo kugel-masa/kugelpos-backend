@@ -88,7 +88,9 @@ chmod +x quick_start.sh
 
 どちらかが空か、このリポジトリで公開されている値（コードの既定値、`.env.sample` の仮の値）のとき、サービスは起動しません。開発用のスタック（`services/docker-compose.yaml`）とテストは `ALLOW_INSECURE_DEV_SECRETS=true` を設定しているので、公開されている既定値で動きます。それ以外の環境では、このフラグを設定しないでください。
 
-`services/docker-compose.prod.yaml` は、2つの鍵を渡さないと起動しません。鍵は次のコマンドで作れます。
+pub/sub を購読するサービス（report、journal、stock）には、`APP_API_TOKEN` も必要です。これらの経路は、daprd サイドカーが `dapr-api-token` ヘッダーで付けるこのトークンを持つ配送だけを受け付けます。アプリとそのサイドカーに同じ値を設定してください。トークンがないとき、または compose ファイルで公開されている開発用トークンのときは、`ALLOW_INSECURE_DEV_SECRETS=true` を設定しない限り起動しません（issue #134）。
+
+`services/docker-compose.prod.yaml` は、3つの値を渡さないと起動しません。値は次のコマンドで作れます。
 
 ```bash
 python -c 'import secrets; print(secrets.token_urlsafe(48))'

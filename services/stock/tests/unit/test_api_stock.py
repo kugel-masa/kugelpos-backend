@@ -17,6 +17,12 @@ from app.enums.update_type import UpdateType
 from kugel_common.security import get_tenant_id_with_security_by_query_optional
 from kugel_common.exceptions import register_exception_handlers
 
+import os
+from kugel_common.utils.dapr_app_token import DAPR_APP_TOKEN_HEADER
+
+# What the service's Dapr sidecar sends on every pub/sub delivery (issue #134).
+DAPR_DELIVERY_HEADERS = {DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]}
+
 
 # -- helpers --
 
@@ -335,7 +341,7 @@ async def test_set_reorder_parameters_not_found(client, mock_stock_service):
 async def test_tranlog_health_check(client):
     """Health check messages should return SUCCESS."""
     payload = {"data": {"test": "health-check"}}
-    resp = await client.post("/api/v1/tranlog", json=payload)
+    resp = await client.post("/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS, json=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "SUCCESS"
 
@@ -344,7 +350,7 @@ async def test_tranlog_health_check(client):
 async def test_tranlog_missing_event_id(client):
     """Missing event_id should return DROP with 200 — Dapr retries any non-2xx (#135)."""
     payload = {"data": {"tenant_id": TENANT}}
-    resp = await client.post("/api/v1/tranlog", json=payload)
+    resp = await client.post("/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS, json=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "DROP"
 
@@ -353,7 +359,7 @@ async def test_tranlog_missing_event_id(client):
 async def test_tranlog_missing_tenant_id(client):
     """Missing tenant_id should return DROP with 200 — Dapr retries any non-2xx (#135)."""
     payload = {"data": {"event_id": "evt_001"}}
-    resp = await client.post("/api/v1/tranlog", json=payload)
+    resp = await client.post("/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS, json=payload)
     assert resp.status_code == 200
     assert resp.json()["status"] == "DROP"
 
@@ -388,7 +394,7 @@ async def test_tranlog_success(client):
         mock_db_helper.get_db_async = AsyncMock(return_value=MagicMock())
         mock_asyncio.create_task = MagicMock()
 
-        resp = await client.post("/api/v1/tranlog", json=payload)
+        resp = await client.post("/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS, json=payload)
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "SUCCESS"
@@ -423,7 +429,7 @@ async def test_tranlog_duplicate_event(client):
         mock_db_helper.get_db_async = AsyncMock(return_value=MagicMock())
         mock_asyncio.create_task = MagicMock()
 
-        resp = await client.post("/api/v1/tranlog", json=payload)
+        resp = await client.post("/api/v1/tranlog", headers=DAPR_DELIVERY_HEADERS, json=payload)
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "SUCCESS"

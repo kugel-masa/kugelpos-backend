@@ -175,6 +175,9 @@ services:
       # The development stack runs on the published SECRET_KEY and
       # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
       - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
+      # The token this app's daprd sidecar sends on every pub/sub delivery. The
+      # sidecar below is given the same value (issue #134).
+      - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_report
       - BASE_URL_DAPR=http://localhost:3500/v1.0
@@ -211,6 +214,9 @@ services:
       # The development stack runs on the published SECRET_KEY and
       # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
       - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
+      # The token this app's daprd sidecar sends on every pub/sub delivery. The
+      # sidecar below is given the same value (issue #134).
+      - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_journal
       - BASE_URL_DAPR=http://localhost:3500/v1.0
@@ -245,6 +251,9 @@ services:
       # The development stack runs on the published SECRET_KEY and
       # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
       - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
+      # The token this app's daprd sidecar sends on every pub/sub delivery. The
+      # sidecar below is given the same value (issue #134).
+      - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_stock
       - BASE_URL_DAPR=http://localhost:3500/v1.0
@@ -348,6 +357,10 @@ services:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
     network_mode: "service:report"
+    environment:
+      # daprd sends it as dapr-api-token to the app, which refuses a pub/sub
+      # delivery without it (issue #134).
+      - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
 
   dapr_journal:
     image: daprio/daprd:latest
@@ -364,6 +377,10 @@ services:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
     network_mode: "service:journal"
+    environment:
+      # daprd sends it as dapr-api-token to the app, which refuses a pub/sub
+      # delivery without it (issue #134).
+      - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
 
   dapr_stock:
     image: daprio/daprd:latest
@@ -380,6 +397,10 @@ services:
       - ./dapr/config.yaml:/dapr/config.yaml:ro
       - ./dapr/components:/dapr/components
     network_mode: "service:stock"
+    environment:
+      # daprd sends it as dapr-api-token to the app, which refuses a pub/sub
+      # delivery without it (issue #134).
+      - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
 
   redis:
     image: redis:latest

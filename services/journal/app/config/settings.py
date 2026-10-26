@@ -5,6 +5,7 @@ from pydantic_settings import SettingsConfigDict
 from kugel_common.config.settings_database import DBSettings, DBCollectionCommonSettings
 from kugel_common.config.settings_datetime import DatetimeSettings
 from kugel_common.config.settings_auth import AuthSettings
+from kugel_common.config.settings_dapr_app_token import DaprAppTokenSettings
 from kugel_common.config.settings_web import WebServiceSettings
 from kugel_common.config.settings_http import HttpRequestSettings
 from app.config.settings_database import DBCollectionSettings
@@ -24,6 +25,7 @@ class Settings(
     DatetimeSettings,
     WebServiceSettings,
     AuthSettings,
+    DaprAppTokenSettings,
     HttpRequestSettings,
 ):
     # The Dapr pub/sub tranlog subscriber is served by this same app, and the
