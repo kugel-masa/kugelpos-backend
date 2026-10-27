@@ -54,6 +54,29 @@ class TestGetChannel:
         assert ch1 is ch2
         assert mock_create.call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_interceptors_are_applied_to_the_channel(self):
+        interceptor = object()
+        with patch("grpc.aio.insecure_channel", return_value=MagicMock()) as mock_create:
+            await gch.GrpcClientHelper(target="server:1234", interceptors=[interceptor]).get_channel()
+        assert mock_create.call_args.kwargs["interceptors"] == [interceptor]
+
+    @pytest.mark.asyncio
+    async def test_a_channel_without_interceptors_gets_none(self):
+        with patch("grpc.aio.insecure_channel", return_value=MagicMock()) as mock_create:
+            await gch.GrpcClientHelper(target="server:1234").get_channel()
+        assert mock_create.call_args.kwargs["interceptors"] is None
+
+    @pytest.mark.asyncio
+    async def test_one_target_with_two_pool_keys_gets_two_channels(self):
+        """Two app-ids behind the same local Dapr sidecar must not share a channel."""
+        with patch("grpc.aio.insecure_channel", side_effect=lambda *a, **k: MagicMock()) as mock_create:
+            first = await gch.GrpcClientHelper(target="localhost:50001", pool_key="localhost:50001#a").get_channel()
+            second = await gch.GrpcClientHelper(target="localhost:50001", pool_key="localhost:50001#b").get_channel()
+        assert first is not second
+        assert mock_create.call_count == 2
+        assert all(call.args[0] == "localhost:50001" for call in mock_create.call_args_list)
+
 
 class TestCloseAll:
     @pytest.mark.asyncio

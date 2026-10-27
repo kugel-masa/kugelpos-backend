@@ -43,6 +43,38 @@ _channels: Dict[Tuple[str, str], grpc.aio.Channel] = {}
 _stubs: Dict[Tuple[str, str], item_service_pb2_grpc.ItemServiceStub] = {}
 
 
+class _DaprAppIdInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
+    """Adds the ``dapr-app-id`` metadata a Dapr sidecar routes a gRPC call by.
+
+    Dapr's gRPC proxy picks the callee from this entry, not from the address.
+    The call's own metadata (the terminal's credential) is kept and travels on
+    to master-data unchanged.
+    """
+
+    def __init__(self, app_id: str):
+        self._entry = ("dapr-app-id", app_id)
+
+    async def intercept_unary_unary(self, continuation, client_call_details, request):
+        metadata = list(client_call_details.metadata or [])
+        metadata.append(self._entry)
+        return await continuation(client_call_details._replace(metadata=metadata), request)
+
+
+def _grpc_target() -> Tuple[str, Optional[list], str]:
+    """
+    Resolve (target, interceptors, pool_key) for the master-data channel.
+
+    Direct to MASTER_DATA_GRPC_URL unless MASTER_DATA_GRPC_APP_ID is set; then
+    to the local Dapr sidecar, with the app-id in the metadata and in the pool
+    key, since every sidecar-routed channel has the same target.
+    """
+    app_id = cart_settings.MASTER_DATA_GRPC_APP_ID
+    if not app_id:
+        return cart_settings.MASTER_DATA_GRPC_URL, None, cart_settings.MASTER_DATA_GRPC_URL
+    target = f"localhost:{cart_settings.DAPR_GRPC_PORT}"
+    return target, [_DaprAppIdInterceptor(app_id)], f"{target}#{app_id}"
+
+
 async def get_master_data_grpc_stub(
     tenant_id: str,
     store_code: str
@@ -70,12 +102,15 @@ async def get_master_data_grpc_stub(
 
     if cache_key not in _channels or cache_key not in _stubs:
         # Create gRPC helper with configuration
+        target, interceptors, pool_key = _grpc_target()
         grpc_helper = GrpcClientHelper(
-            target=cart_settings.MASTER_DATA_GRPC_URL,
+            target=target,
             options=[
                 ('grpc.max_send_message_length', 10 * 1024 * 1024),  # 10 MB
                 ('grpc.max_receive_message_length', 10 * 1024 * 1024),  # 10 MB
-            ]
+            ],
+            interceptors=interceptors,
+            pool_key=pool_key,
         )
 
         # Create channel via helper
@@ -86,7 +121,7 @@ async def get_master_data_grpc_stub(
 
         logger.info(
             f"Created new gRPC channel for master-data service "
-            f"(tenant={tenant_id}, store={store_code})"
+            f"(tenant={tenant_id}, store={store_code}, target={target}, via_dapr={bool(interceptors)})"
         )
 
     return _stubs[cache_key]

@@ -34,15 +34,29 @@ _grpc_client_pool: Dict[str, grpc.aio.Channel] = {}
 class GrpcClientHelper:
     """gRPC client helper with connection pooling"""
 
-    def __init__(self, target: str, options: Optional[list] = None):
+    def __init__(
+        self,
+        target: str,
+        options: Optional[list] = None,
+        interceptors: Optional[list] = None,
+        pool_key: Optional[str] = None,
+    ):
         """
         Initialize gRPC client helper
 
         Args:
             target: Target server address (e.g., "localhost:50051")
             options: gRPC channel options
+            interceptors: Client interceptors applied to the channel, e.g. one
+                that adds the ``dapr-app-id`` metadata a Dapr sidecar routes by
+            pool_key: Pool identity when the target alone is ambiguous. Every
+                channel routed through the local Dapr sidecar has the same
+                target, so pooling by target alone would hand a channel built
+                for one app-id to a caller asking for another
         """
         self.target = target
+        self.interceptors = interceptors or []
+        self.pool_key = pool_key or target
         self.options = options or [
             ('grpc.max_send_message_length', 10 * 1024 * 1024),
             ('grpc.max_receive_message_length', 10 * 1024 * 1024),
@@ -59,13 +73,14 @@ class GrpcClientHelper:
         Returns:
             grpc.aio.Channel: gRPC channel
         """
-        if self.target not in _grpc_client_pool:
-            logger.info(f"Creating new gRPC channel for {self.target}")
-            _grpc_client_pool[self.target] = grpc.aio.insecure_channel(
+        if self.pool_key not in _grpc_client_pool:
+            logger.info(f"Creating new gRPC channel for {self.pool_key}")
+            _grpc_client_pool[self.pool_key] = grpc.aio.insecure_channel(
                 self.target,
-                options=self.options
+                options=self.options,
+                interceptors=self.interceptors or None,
             )
-        return _grpc_client_pool[self.target]
+        return _grpc_client_pool[self.pool_key]
 
     async def close_all(self):
         """Close all pooled channels"""

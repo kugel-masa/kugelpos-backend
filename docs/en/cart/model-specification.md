@@ -558,5 +558,7 @@ was the authority.
 | USE_GRPC | boolean | false | Use gRPC for item detail retrieval |
 | GRPC_TIMEOUT | float | 5.0 | gRPC request timeout (seconds) |
 | MASTER_DATA_GRPC_URL | string | "master-data:50051" | gRPC server URL |
+| MASTER_DATA_GRPC_APP_ID | string | "" | Dapr app-id of master-data's gRPC sidecar. Empty connects directly to MASTER_DATA_GRPC_URL; set, the call goes through the local Dapr sidecar |
+| DAPR_GRPC_PORT | integer | 50001 | Local Dapr sidecar gRPC API port, used only with MASTER_DATA_GRPC_APP_ID |
 
-The gRPC call carries the terminal's credential as metadata, as the REST call carries it in headers: `authorization: Bearer <terminal JWT>`, or `x-api-key` with `terminal-id` for a terminal without a JWT. master-data answers `UNAUTHENTICATED` without a valid credential, and `PERMISSION_DENIED` when the request names a tenant or store other than the credential's (issue #134). The port is not published to the host; cart reaches it over the compose network.
+The gRPC call carries the terminal's credential as metadata, as the REST call carries it in headers: `authorization: Bearer <terminal JWT>`, or `x-api-key` with `terminal-id` for a terminal without a JWT. master-data answers `UNAUTHENTICATED` without a valid credential, and `PERMISSION_DENIED` when the request names a tenant or store other than the credential's (issue #134). The port is not published to the host; cart reaches it over the compose network. In-store deployments stay direct, so a sidecar outage cannot stop a sale; `services/docker-compose.grpc-invoke.yaml` is an opt-in overlay that routes the call through Dapr, for deployments that route service calls through it.

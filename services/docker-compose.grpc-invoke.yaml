@@ -1,0 +1,56 @@
+# Routes cart -> master-data gRPC through Dapr instead of directly.
+#
+# Off by default: in-store deployments call master-data directly, so a daprd
+# outage cannot stop a sale (issue #158). This overlay exists for deployments
+# that route service calls through Dapr, such as the stpos fork's cloud side
+# (its #951), and for comparing the two routes on the same base:
+#
+#   direct:      docker compose -f docker-compose.yaml up -d
+#   via Dapr:    docker compose -f docker-compose.yaml -f docker-compose.grpc-invoke.yaml up -d
+#
+# It works on docker-compose.prod.yaml the same way.
+#
+# Why a second sidecar for master-data: it serves HTTP on 8000 and gRPC on
+# 50051, and a daprd has a single -app-protocol. The existing HTTP sidecar
+# stays; the gRPC one gets its own app-id and its own ports in the same
+# network namespace.
+#
+# The terminal's credential rides in the call metadata, which Dapr forwards
+# unchanged, so master-data authenticates the call the same way on either
+# route (issue #134).
+services:
+  master-data:
+    environment:
+      USE_GRPC: "true"
+      GRPC_PORT: 50051
+
+  master-data-grpc-dapr:
+    image: daprio/daprd:latest
+    restart: unless-stopped
+    command:
+      [
+        "./daprd",
+        "-app-id", "master-data-grpc",
+        "-app-port", "50051",
+        "-app-protocol", "grpc",
+        "-dapr-http-port", "3501",
+        "-dapr-grpc-port", "50002",
+        "-metrics-port", "9091",
+        "-components-path", "/components",
+        "-log-level", "info"
+      ]
+    depends_on:
+      - master-data
+      - rabbitmq
+      - redis
+    volumes:
+      - ./dapr/components:/components:ro
+    network_mode: "service:master-data"
+
+  cart:
+    environment:
+      USE_GRPC: "true"
+      # Set, cart calls its own sidecar's gRPC port and Dapr routes by this
+      # app-id. Drop this file and cart is back on MASTER_DATA_GRPC_URL.
+      MASTER_DATA_GRPC_APP_ID: master-data-grpc
+      DAPR_GRPC_PORT: 50001
