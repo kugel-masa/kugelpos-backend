@@ -203,7 +203,7 @@ def mock_grpc_item_lookup():
     async def _mock_get_stub(tenant_id, store_code):
         stub = MagicMock()
 
-        async def get_item_detail(request, timeout=None):
+        async def get_item_detail(request, timeout=None, metadata=None):
             return _make_grpc_item(request.item_code)
 
         stub.GetItemDetail = AsyncMock(side_effect=get_item_detail)

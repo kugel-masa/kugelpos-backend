@@ -18,8 +18,10 @@ Implements the GetItemDetail RPC method for retrieving item master data.
 """
 
 import grpc
+from fastapi import HTTPException
 from kugel_common.grpc import item_service_pb2, item_service_pb2_grpc
 from kugel_common.exceptions import DocumentNotFoundException
+from kugel_common.security import get_grpc_caller
 from app.dependencies.get_master_services import get_item_store_master_service_async
 import logging
 
@@ -31,6 +33,28 @@ class ItemServiceImpl(item_service_pb2_grpc.ItemServiceServicer):
 
     async def GetItemDetail(self, request, context):
         """Get item detail by item code"""
+        # The request names the tenant and store whose database is read; it is
+        # served only to a caller authenticated for them (issue #134).
+        try:
+            caller = await get_grpc_caller(context.invocation_metadata())
+        except HTTPException as e:
+            logger.warning(f"gRPC GetItemDetail refused: {e.detail}")
+            context.set_code(grpc.StatusCode.UNAUTHENTICATED)
+            context.set_details("Invalid or missing credentials")
+            return item_service_pb2.ItemDetailResponse()
+
+        if request.tenant_id != caller.tenant_id or (
+            caller.store_code is not None and request.store_code != caller.store_code
+        ):
+            logger.warning(
+                f"gRPC GetItemDetail refused: request names tenant_id={request.tenant_id}, "
+                f"store_code={request.store_code}; the credential is for "
+                f"tenant_id={caller.tenant_id}, store_code={caller.store_code}"
+            )
+            context.set_code(grpc.StatusCode.PERMISSION_DENIED)
+            context.set_details("The credential is not for the requested tenant or store")
+            return item_service_pb2.ItemDetailResponse()
+
         try:
             logger.info(
                 f"gRPC GetItemDetail request: tenant_id={request.tenant_id}, "
@@ -74,5 +98,5 @@ class ItemServiceImpl(item_service_pb2_grpc.ItemServiceServicer):
         except Exception as e:
             logger.error(f"gRPC GetItemDetail error: {e}", exc_info=True)
             context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(str(e))
+            context.set_details("Internal error")
             return item_service_pb2.ItemDetailResponse()

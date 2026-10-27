@@ -16,7 +16,7 @@ from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from logging import getLogger, Logger
-from typing import Optional
+from typing import Iterable, NamedTuple, Optional
 import json
 
 from kugel_common.config.settings import settings
@@ -451,6 +451,70 @@ async def __get_tenant_id(
 
     message = "Unauthorized access : No token or API-KEY provided"
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
+
+class GrpcCaller(NamedTuple):
+    """The tenant a gRPC caller authenticated as, and its store when the credential names one."""
+    tenant_id: str
+    store_code: Optional[str]
+
+
+async def get_grpc_caller(metadata: Iterable[tuple[str, str]]) -> GrpcCaller:
+    """
+    Authenticates a gRPC call from its metadata, the way __get_tenant_id authenticates a REST call (issue #134).
+
+    The metadata carries the same credentials as the REST headers, under
+    lower-case keys: "authorization" ("Bearer <terminal or user JWT>"), or
+    "x-api-key" with "terminal-id". Metadata passes through a Dapr gRPC proxy
+    unchanged, so this works whether the caller dials the server directly or
+    through Dapr.
+
+    Args:
+        metadata: The call's invocation metadata as (key, value) pairs
+
+    Returns:
+        GrpcCaller with the credential's tenant, and its store for a terminal
+        JWT or API key (None for a user JWT, which is not bound to a store)
+
+    Raises:
+        HTTPException: 401 if no credential is provided, it is invalid, or it
+            is a terminal's and names no store
+    """
+    entries = {key.lower(): value for key, value in metadata or ()}
+
+    authorization = entries.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() == "bearer" and token:
+        try:
+            terminal_claims = verify_terminal_token(token)
+        except HTTPException:
+            # Not a terminal token, fall through to user JWT
+            return GrpcCaller(verify_token(token)["tenant_id"], None)
+        return _terminal_grpc_caller(terminal_claims["tenant_id"], terminal_claims.get("store_code"))
+
+    api_key = entries.get("x-api-key")
+    terminal_id = entries.get("terminal-id")
+    if api_key and terminal_id:
+        terminal_info = await get_terminal_info(terminal_id, api_key)
+        return _terminal_grpc_caller(terminal_info.tenant_id, terminal_info.store_code)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized access : No token or API-KEY provided",
+    )
+
+
+def _terminal_grpc_caller(tenant_id: str, store_code: Optional[str]) -> GrpcCaller:
+    """
+    A terminal's credential is bound to its store; one that names none is refused
+    rather than read as the tenant-wide reach of a user JWT.
+    """
+    if not store_code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="The terminal credential names no store",
+        )
+    return GrpcCaller(tenant_id, store_code)
 
 async def get_tenant_id_with_security(
     terminal_id: str = Path(..., description="terminal_id should be provided in the path"),
