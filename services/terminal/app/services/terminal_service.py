@@ -1216,9 +1216,14 @@ class TerminalService:
             # One bad record must not stop the others from being republished:
             # an exception here used to abort the whole run (#137).
             try:
+                # MongoDB returns naive UTC; compared with the local naive clock, any TZ
+                # other than UTC shifts both thresholds by its offset (#236).
+                created_at = status.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
                 # Check if the terminal log is undelivered shorter than the threshold
-                recent = datetime.now() - timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES)
-                if status.created_at > recent:
+                recent = now - timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES)
+                if created_at > recent:
                     # Skip the terminal log if it was created recently
                     logger.debug(f"Skipping terminallog: event_id->{status.event_id}")
                     continue
@@ -1232,7 +1237,7 @@ class TerminalService:
 
                 failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
                 if (
-                    status.created_at < datetime.now() - timedelta(minutes=failed_minutes)
+                    created_at < now - timedelta(minutes=failed_minutes)
                     and status.warning_sent_at is None
                 ):
                     await self._warn_undelivered_terminallog_async(status, not_handed_to_broker)
