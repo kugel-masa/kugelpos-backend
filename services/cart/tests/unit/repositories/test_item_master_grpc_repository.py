@@ -110,6 +110,45 @@ async def test_fetch_constructs_request_with_terminal_id(repository):
         assert request.terminal_id == "TEST001"
 
 
+async def _sent_metadata(terminal_info: TerminalInfoDocument) -> list[tuple[str, str]]:
+    repository = ItemMasterGrpcRepository(
+        tenant_id="test_tenant",
+        store_code="STORE01",
+        terminal_info=terminal_info,
+        cache_backend=InMemoryCacheBackend(),
+    )
+    with patch(
+        "app.models.repositories.item_master_grpc_repository.get_master_data_grpc_stub",
+        new_callable=AsyncMock,
+    ) as mock_get_stub:
+        mock_stub = MagicMock()
+        mock_stub.GetItemDetail = AsyncMock(return_value=MagicMock(
+            item_code="ITEM001", item_name="x", price=1.0,
+            tax_code="T", category_code="C", is_active=True,
+        ))
+        mock_get_stub.return_value = mock_stub
+
+        await repository.get_item_by_code_async("ITEM001")
+
+    return mock_stub.GetItemDetail.call_args.kwargs["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_sends_the_terminal_jwt_as_metadata():
+    """master-data authenticates the call from its metadata (issue #134)."""
+    terminal_info = TerminalInfoDocument(terminal_id="TEST001", store_code="STORE01", api_key="key")
+    terminal_info.jwt_token = "terminal.jwt"
+
+    assert await _sent_metadata(terminal_info) == [("authorization", "Bearer terminal.jwt")]
+
+
+@pytest.mark.asyncio
+async def test_fetch_without_a_jwt_sends_the_api_key_and_terminal_id_as_metadata():
+    terminal_info = TerminalInfoDocument(terminal_id="TEST001", store_code="STORE01", api_key="key")
+
+    assert await _sent_metadata(terminal_info) == [("x-api-key", "key"), ("terminal-id", "TEST001")]
+
+
 # ---------------------------------------------------------------------------
 # Error mapping
 # ---------------------------------------------------------------------------

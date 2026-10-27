@@ -558,3 +558,5 @@ was the authority.
 | USE_GRPC | boolean | false | Use gRPC for item detail retrieval |
 | GRPC_TIMEOUT | float | 5.0 | gRPC request timeout (seconds) |
 | MASTER_DATA_GRPC_URL | string | "master-data:50051" | gRPC server URL |
+
+The gRPC call carries the terminal's credential as metadata, as the REST call carries it in headers: `authorization: Bearer <terminal JWT>`, or `x-api-key` with `terminal-id` for a terminal without a JWT. master-data answers `UNAUTHENTICATED` without a valid credential, and `PERMISSION_DENIED` when the request names a tenant or store other than the credential's (issue #134). The port is not published to the host; cart reaches it over the compose network.

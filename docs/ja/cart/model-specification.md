@@ -561,3 +561,5 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 | USE_GRPC | boolean | false | 商品詳細取得に gRPC を使う |
 | GRPC_TIMEOUT | float | 5.0 | gRPC タイムアウト（秒） |
 | MASTER_DATA_GRPC_URL | string | "master-data:50051" | gRPC サーバの URL |
+
+gRPC の呼び出しは、REST がヘッダで送るのと同じ端末の認証情報を metadata で送ります。`authorization: Bearer <端末 JWT>`、JWT を持たない端末は `x-api-key` と `terminal-id` です。master-data は、有効な認証情報がなければ `UNAUTHENTICATED`、認証情報と違うテナントや店舗を要求されれば `PERMISSION_DENIED` を返します（issue #134）。ポートはホストに公開せず、cart は compose のネットワーク経由で呼びます。

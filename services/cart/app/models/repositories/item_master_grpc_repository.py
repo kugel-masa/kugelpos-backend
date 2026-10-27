@@ -71,6 +71,16 @@ class ItemMasterGrpcRepository(AbstractMasterDataRepository[ItemMasterDocument])
     def item_master_documents(self) -> list[ItemMasterDocument]:
         return list(self._session_docs_by_code.values())
 
+    def _credential_metadata(self) -> list[tuple[str, str]]:
+        """The terminal's credential, as the Web variant sends it in headers (issue #134)."""
+        jwt_token = getattr(self.terminal_info, "jwt_token", None)
+        if jwt_token:
+            return [("authorization", f"Bearer {jwt_token}")]
+        return [
+            ("x-api-key", self.terminal_info.api_key or ""),
+            ("terminal-id", self.terminal_info.terminal_id or ""),
+        ]
+
     async def _fetch_one(self, item_code: str) -> ItemMasterDocument:
         try:
             stub = await get_master_data_grpc_stub(self.tenant_id, self.store_code)
@@ -81,7 +91,7 @@ class ItemMasterGrpcRepository(AbstractMasterDataRepository[ItemMasterDocument])
                 terminal_id=self.terminal_info.terminal_id,
             )
             response = await stub.GetItemDetail(
-                request, timeout=cart_settings.GRPC_TIMEOUT
+                request, timeout=cart_settings.GRPC_TIMEOUT, metadata=self._credential_metadata()
             )
 
             if not response.item_code:

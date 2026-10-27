@@ -194,7 +194,7 @@ services:
     logging: *default-logging
     ports:
       - "8002:8000"
-      - "50051:50051"
+      # gRPC (50051) is not published: only cart calls it, over the compose network (issue #134).
     environment:
       # Required: the same secrets in every service, never the published ones (issue #132).
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY to a secret of your own}

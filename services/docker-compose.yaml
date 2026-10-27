@@ -98,7 +98,7 @@ services:
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
     ports:
       - "8002:8000"
-      - "50051:50051"
+      # gRPC (50051) is not published: only cart calls it, over the compose network (issue #134).
     depends_on:
       mongodb:
         condition: service_healthy
