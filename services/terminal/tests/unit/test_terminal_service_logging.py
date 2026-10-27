@@ -411,7 +411,7 @@ class TestTerminalServiceRepublishUndelivered:
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
     async def test_republish_cash_in_out_log(self, mock_notify):
         """Undelivered cash_in_out log older than interval but within failed period is republished."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         svc, repos = make_service()
         svc.pubsub_manager = AsyncMock()
         svc.pubsub_manager.publish_message_async.return_value = (True, None)
@@ -425,7 +425,7 @@ class TestTerminalServiceRepublishUndelivered:
         status.store_code = "S001"
         status.terminal_no = 1
         # Created 10 minutes ago (older than default 5 min interval, within failed period)
-        status.created_at = datetime.now() - timedelta(minutes=10)
+        status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
         status.payload = {"event_type": "cash_in_out", "event_id": "EVT-100"}
         status.model_dump = MagicMock(return_value={})
 
@@ -439,7 +439,7 @@ class TestTerminalServiceRepublishUndelivered:
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
     async def test_republish_open_close_log(self, mock_notify):
         """Undelivered open log is republished."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         svc, repos = make_service()
         svc.pubsub_manager = AsyncMock()
         svc.pubsub_manager.publish_message_async.return_value = (True, None)
@@ -452,7 +452,7 @@ class TestTerminalServiceRepublishUndelivered:
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
-        status.created_at = datetime.now() - timedelta(minutes=10)
+        status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
         status.payload = {"event_type": "open", "event_id": "EVT-200"}
         status.model_dump = MagicMock(return_value={})
 
@@ -466,13 +466,13 @@ class TestTerminalServiceRepublishUndelivered:
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
     async def test_republish_skips_recent_logs(self, mock_notify):
         """Logs created very recently (within interval) are skipped."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         svc, repos = make_service()
         svc.pubsub_manager = AsyncMock()
 
         status = MagicMock()
         status.event_id = "EVT-300"
-        status.created_at = datetime.now() - timedelta(minutes=1)  # only 1 min ago
+        status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)  # only 1 min ago
         status.payload = {"event_type": "cash_in_out", "event_id": "EVT-300"}
 
         repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [status]
@@ -486,7 +486,7 @@ class TestTerminalServiceRepublishUndelivered:
     async def test_republish_warns_about_an_old_log_once_and_leaves_its_status(self, mock_notify):
         """A log past the failed period raises one warning (#230). Its status is not
         overwritten with "failed": the next republish set it back, every run."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         svc, repos = make_service()
         svc.pubsub_manager = AsyncMock()
         svc.pubsub_manager.publish_message_async.return_value = (True, None)
@@ -500,7 +500,7 @@ class TestTerminalServiceRepublishUndelivered:
         status.store_code = "S001"
         status.terminal_no = 1
         # Very old — beyond failed threshold (default 60 min)
-        status.created_at = datetime.now() - timedelta(hours=3)
+        status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=3)
         status.payload = {"event_type": "cash_in_out", "event_id": "EVT-400"}
         status.model_dump = MagicMock(return_value={})
 
@@ -515,7 +515,7 @@ class TestTerminalServiceRepublishUndelivered:
 
     @staticmethod
     def _status(event_id, payload):
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         status = MagicMock()
         status.event_id = event_id
         status.status = "pending"
@@ -523,7 +523,7 @@ class TestTerminalServiceRepublishUndelivered:
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
-        status.created_at = datetime.now() - timedelta(minutes=10)
+        status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
         status.payload = payload
         status.model_dump = MagicMock(return_value={})
         return status
@@ -578,12 +578,12 @@ class TestTerminalServiceRepublishUndelivered:
         republished. A database error on claiming the warning skips the warning
         (it is claimed before it is sent, #230), but must not skip the republish
         of exactly the logs that most need it."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         svc, repos = make_service()
         svc._publish_cash_in_out_log_async = AsyncMock()
         repos["terminal_log_delivery_status_repo"].claim_warning.side_effect = RuntimeError("db down")
         old = self._status("EVT-OLD", {"event_type": "cash_in_out", "event_id": "EVT-OLD"})
-        old.created_at = datetime.now() - timedelta(hours=1)
+        old.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
         repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [old]
 
         await svc.republish_undelivered_terminallog_async()
@@ -595,7 +595,7 @@ class TestTerminalServiceRepublishUndelivered:
     @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
     async def test_republish_unknown_event_type_marks_failed(self, mock_notify):
         """Unknown event_type should mark the log as failed."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         svc, repos = make_service()
         svc.pubsub_manager = AsyncMock()
         repos["terminal_log_delivery_status_repo"].update_delivery_status.return_value = True
@@ -607,7 +607,7 @@ class TestTerminalServiceRepublishUndelivered:
         status.tenant_id = "TENANT-01"
         status.store_code = "S001"
         status.terminal_no = 1
-        status.created_at = datetime.now() - timedelta(minutes=10)
+        status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
         status.payload = {"event_type": "unknown_type", "event_id": "EVT-500"}
         status.model_dump = MagicMock(return_value={})
 

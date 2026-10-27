@@ -1532,8 +1532,13 @@ class TranService:
                 logger.debug(f"tranlog already delivered: event_id->{status.event_id}")
                 continue
 
+            # MongoDB returns naive UTC; compared with the local naive clock, any TZ
+            # other than UTC shifts both thresholds by its offset (#236).
+            created_at = status.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
             # Check if the tranlog is undelivered shorter than the threshold for skipping
-            if status.created_at > datetime.now() - timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES):
+            if created_at > now - timedelta(minutes=settings.UNDELIVERED_CHECK_INTERVAL_IN_MINUTES):
                 # Skip the tranlog if it was created recently
                 logger.debug(f"Skipping tranlog: event_id->{status.event_id}")
                 continue
@@ -1541,7 +1546,7 @@ class TranService:
 
             failed_minutes = settings.UNDELIVERED_CHECK_FAILED_PERIOD_IN_MINUTES
             if (
-                status.created_at < datetime.now() - timedelta(minutes=failed_minutes)
+                created_at < now - timedelta(minutes=failed_minutes)
                 and status.warning_sent_at is None
                 and await self._claim_undelivered_warning_async(status.event_id)
             ):

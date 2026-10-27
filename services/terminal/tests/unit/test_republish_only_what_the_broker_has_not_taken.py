@@ -6,6 +6,7 @@ also marked the log ``failed`` and warned about it on every run, up to ~285
 warnings per log, and the republish that followed set the status back.
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -251,3 +252,32 @@ async def test_each_consumer_position_is_looked_up_once_per_run_across_both_topi
     _, repo, _ = await _run(_taken(), _taken("partially_delivered", event_type="open"), read_up_to=READ_PAST)
 
     repo.find_latest_received_published_at.assert_awaited_once()
+
+
+@pytest.fixture(params=["Asia/Tokyo", "America/New_York"])
+def process_tz_not_utc(request, monkeypatch):
+    """The process clock is not UTC, as on a store PC or an image that sets TZ (issue #236)."""
+    monkeypatch.setenv("TZ", request.param)
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.mark.asyncio
+async def test_a_log_just_written_is_left_alone_whatever_the_process_tz(process_tz_not_utc):
+    # East of UTC, the local clock read every log as hours old: republished at once.
+    svc, _, warn = await _run(_status("pending", 1))
+
+    svc.pubsub_manager.publish_message_async.assert_not_awaited()
+    warn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_log_past_the_interval_is_republished_not_warned_about_whatever_the_process_tz(process_tz_not_utc):
+    # East of UTC every log was past the failed period and warned about on its first
+    # check; west of UTC it was held back for hours.
+    svc, _, warn = await _run(_status("pending", 10))
+
+    svc.pubsub_manager.publish_message_async.assert_awaited_once()
+    warn.assert_not_awaited()
