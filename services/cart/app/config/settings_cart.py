@@ -86,6 +86,14 @@ class CartSettings(BaseSettings):
     USE_GRPC: bool = Field(default=False, description="Use gRPC for master-data communication")
     GRPC_TIMEOUT: float = Field(default=5.0, description="gRPC request timeout in seconds")
     MASTER_DATA_GRPC_URL: str = Field(default="master-data:50051", description="Master-data gRPC server URL")
+    # Empty keeps the direct connection to MASTER_DATA_GRPC_URL. Set, the call
+    # goes to the local Dapr sidecar's gRPC port and Dapr routes it to this
+    # app-id. In-store deployments stay direct, so a sidecar outage cannot stop
+    # a sale; this is for deployments that route through Dapr (stpos #951).
+    MASTER_DATA_GRPC_APP_ID: str = Field(
+        default="", description="Dapr app-id of master-data's gRPC sidecar; empty connects directly"
+    )
+    DAPR_GRPC_PORT: int = Field(default=50001, description="Local Dapr sidecar gRPC API port")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

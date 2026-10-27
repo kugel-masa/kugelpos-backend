@@ -561,5 +561,7 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 | USE_GRPC | boolean | false | 商品詳細取得に gRPC を使う |
 | GRPC_TIMEOUT | float | 5.0 | gRPC タイムアウト（秒） |
 | MASTER_DATA_GRPC_URL | string | "master-data:50051" | gRPC サーバの URL |
+| MASTER_DATA_GRPC_APP_ID | string | "" | master-data の gRPC 用サイドカーの Dapr app-id。空なら MASTER_DATA_GRPC_URL へ直接つなぎ、設定するとローカルの Dapr サイドカー経由で呼ぶ |
+| DAPR_GRPC_PORT | integer | 50001 | ローカルの Dapr サイドカーの gRPC API ポート。MASTER_DATA_GRPC_APP_ID を設定したときだけ使う |
 
-gRPC の呼び出しは、REST がヘッダで送るのと同じ端末の認証情報を metadata で送ります。`authorization: Bearer <端末 JWT>`、JWT を持たない端末は `x-api-key` と `terminal-id` です。master-data は、有効な認証情報がなければ `UNAUTHENTICATED`、認証情報と違うテナントや店舗を要求されれば `PERMISSION_DENIED` を返します（issue #134）。ポートはホストに公開せず、cart は compose のネットワーク経由で呼びます。
+gRPC の呼び出しは、REST がヘッダで送るのと同じ端末の認証情報を metadata で送ります。`authorization: Bearer <端末 JWT>`、JWT を持たない端末は `x-api-key` と `terminal-id` です。master-data は、有効な認証情報がなければ `UNAUTHENTICATED`、認証情報と違うテナントや店舗を要求されれば `PERMISSION_DENIED` を返します（issue #134）。ポートはホストに公開せず、cart は compose のネットワーク経由で呼びます。店舗内の配備は直接つなぐままにし、サイドカーが落ちても販売を止めません。`services/docker-compose.grpc-invoke.yaml` は、サービス間の呼び出しを Dapr 経由にする配備のための、任意で重ねるオーバーレイです。
