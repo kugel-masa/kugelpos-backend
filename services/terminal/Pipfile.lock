@@ -617,7 +617,7 @@
         "kugel-common": {
             "file": "commons/dist/kugel_common-0.1.100-py3-none-any.whl",
             "hashes": [
-                "sha256:d2103e6f6d7ade61e6877599e22f61752480b8e985abf842b30ce38580503560"
+                "sha256:017f1d892d952615df223857ccb4fad6a04ac1456e831c4b17c69147a3ab1168"
             ]
         },
         "motor": {

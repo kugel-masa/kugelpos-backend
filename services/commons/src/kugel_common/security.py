@@ -477,7 +477,8 @@ async def get_grpc_caller(metadata: Iterable[tuple[str, str]]) -> GrpcCaller:
         JWT or API key (None for a user JWT, which is not bound to a store)
 
     Raises:
-        HTTPException: 401 if no credential is provided or it is invalid
+        HTTPException: 401 if no credential is provided, it is invalid, or it
+            is a terminal's and names no store
     """
     entries = {key.lower(): value for key, value in metadata or ()}
 
@@ -486,21 +487,34 @@ async def get_grpc_caller(metadata: Iterable[tuple[str, str]]) -> GrpcCaller:
     if scheme.lower() == "bearer" and token:
         try:
             terminal_claims = verify_terminal_token(token)
-            return GrpcCaller(terminal_claims["tenant_id"], terminal_claims.get("store_code"))
         except HTTPException:
-            pass  # Not a terminal token, fall through to user JWT
-        return GrpcCaller(verify_token(token)["tenant_id"], None)
+            # Not a terminal token, fall through to user JWT
+            return GrpcCaller(verify_token(token)["tenant_id"], None)
+        return _terminal_grpc_caller(terminal_claims["tenant_id"], terminal_claims.get("store_code"))
 
     api_key = entries.get("x-api-key")
     terminal_id = entries.get("terminal-id")
     if api_key and terminal_id:
         terminal_info = await get_terminal_info(terminal_id, api_key)
-        return GrpcCaller(terminal_info.tenant_id, terminal_info.store_code)
+        return _terminal_grpc_caller(terminal_info.tenant_id, terminal_info.store_code)
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Unauthorized access : No token or API-KEY provided",
     )
+
+
+def _terminal_grpc_caller(tenant_id: str, store_code: Optional[str]) -> GrpcCaller:
+    """
+    A terminal's credential is bound to its store; one that names none is refused
+    rather than read as the tenant-wide reach of a user JWT.
+    """
+    if not store_code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="The terminal credential names no store",
+        )
+    return GrpcCaller(tenant_id, store_code)
 
 async def get_tenant_id_with_security(
     terminal_id: str = Path(..., description="terminal_id should be provided in the path"),

@@ -18,10 +18,9 @@ from kugel_common.security import GrpcCaller, get_grpc_caller
 from kugel_common.utils.terminal_auth import create_terminal_token
 
 
-def _terminal_token() -> str:
-    return create_terminal_token(
-        TerminalInfoDocument(tenant_id="T001", store_code="S001", terminal_no=1, terminal_id="T001-S001-01")
-    )
+def _terminal_token(**store) -> str:
+    fields = {"tenant_id": "T001", "terminal_no": 1, "terminal_id": "T001-S001-01", **store}
+    return create_terminal_token(TerminalInfoDocument(**fields))
 
 
 def _user_token(secret: str = settings.SECRET_KEY) -> str:
@@ -31,7 +30,7 @@ def _user_token(secret: str = settings.SECRET_KEY) -> str:
 
 @pytest.mark.asyncio
 async def test_a_terminal_jwt_names_its_tenant_and_store():
-    caller = await get_grpc_caller([("authorization", f"Bearer {_terminal_token()}")])
+    caller = await get_grpc_caller([("authorization", f"Bearer {_terminal_token(store_code='S001')}")])
 
     assert caller == GrpcCaller("T001", "S001")
 
@@ -88,5 +87,26 @@ async def test_a_call_without_a_credential_is_refused(metadata):
 async def test_a_token_signed_with_another_key_is_refused():
     with pytest.raises(HTTPException) as raised:
         await get_grpc_caller([("authorization", f"Bearer {_user_token(secret='x' * 32)}")])
+
+    assert raised.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_terminal_jwt_naming_no_store_is_refused():
+    """A terminal credential without a store must not reach every store of its tenant."""
+    with pytest.raises(HTTPException) as raised:
+        await get_grpc_caller([("authorization", f"Bearer {_terminal_token()}")])
+
+    assert raised.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_an_api_key_whose_terminal_names_no_store_is_refused():
+    terminal = TerminalInfoDocument(tenant_id="T001", terminal_no=1, terminal_id="T001-S001-01")
+    with (
+        patch("kugel_common.security.get_terminal_info", new_callable=AsyncMock, return_value=terminal),
+        pytest.raises(HTTPException) as raised,
+    ):
+        await get_grpc_caller([("x-api-key", "key"), ("terminal-id", "T001-S001-01")])
 
     assert raised.value.status_code == 401
