@@ -9,7 +9,16 @@ from kugel_common.config.settings import settings
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
 from kugel_common.utils.terminal_auth import create_terminal_token
-from kugel_common.security import verify_terminal_token, terminal_claims_to_terminal_info
+from fastapi import HTTPException
+
+from kugel_common.security import (
+    get_tenant_id_with_security,
+    get_tenant_id_with_security_by_query,
+    get_tenant_id_with_security_by_query_optional,
+    terminal_claims_to_terminal_info,
+    verify_terminal_binding,
+    verify_terminal_token,
+)
 
 
 def _make_terminal_info(
@@ -250,3 +259,49 @@ class TestTerminalClaimsToTerminalInfo:
         assert restored.business_counter == original.business_counter
         assert restored.staff.id == original.staff.id
         assert restored.staff.name == original.staff.name
+
+
+class TestTerminalBinding:
+    """A terminal JWT may act only on the terminal it was issued to."""
+
+    @pytest.mark.asyncio
+    async def test_own_terminal_is_allowed(self):
+        token = create_terminal_token(_make_terminal_info())
+        tenant_id = await get_tenant_id_with_security("T001-001-01", None, token)
+        assert tenant_id == "T001"
+
+    @pytest.mark.asyncio
+    async def test_other_terminal_is_forbidden(self):
+        token = create_terminal_token(_make_terminal_info())
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_security("T001-001-02", None, token)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_other_terminal_by_query_is_forbidden(self):
+        token = create_terminal_token(_make_terminal_info())
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_security_by_query("T001-001-02", None, token)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_no_target_terminal_is_allowed(self):
+        token = create_terminal_token(_make_terminal_info())
+        tenant_id = await get_tenant_id_with_security_by_query_optional(None, None, token)
+        assert tenant_id == "T001"
+
+    @pytest.mark.asyncio
+    async def test_token_without_terminal_claim_is_forbidden(self):
+        # verify_terminal_token does not require the claim; a token without it
+        # must not skip the comparison.
+        token = jwt.encode(
+            {"token_type": "terminal", "tenant_id": "T001"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_security("T001-001-01", None, token)
+        assert exc.value.status_code == 403
+
+    def test_binding_without_target_passes(self):
+        verify_terminal_binding({"terminal_id": "T001-001-01"}, None)

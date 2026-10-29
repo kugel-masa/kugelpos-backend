@@ -205,6 +205,41 @@ def verify_terminal_token(token: str) -> dict:
         raise credentials_exception
 
 
+def verify_terminal_binding(claims: dict, terminal_id: Optional[str]) -> None:
+    """
+    Ensure a terminal JWT acts only on the terminal it was issued to.
+
+    A terminal JWT proves which terminal is calling, not which terminal the
+    request targets. Without this check a token for terminal A could open,
+    close or move cash on terminal B in the same tenant.
+
+    The check is written as the condition to pass, not the condition to
+    reject: verify_terminal_token does not require a terminal_id claim, and a
+    missing claim must be refused rather than skip the comparison.
+
+    Args:
+        claims: Claims returned by verify_terminal_token
+        terminal_id: Terminal the request targets; None when the endpoint has none
+
+    Raises:
+        HTTPException: 403 when the token belongs to another terminal
+    """
+    if terminal_id is None:
+        return
+    token_terminal_id = claims.get("terminal_id")
+    if isinstance(token_terminal_id, str) and token_terminal_id == terminal_id:
+        return
+    audit_logger.warning(
+        "Terminal JWT used against another terminal (token_terminal_id=%s, target_terminal_id=%s)",
+        token_terminal_id,
+        terminal_id,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Terminal token does not match the requested terminal",
+    )
+
+
 def terminal_claims_to_terminal_info(claims: dict) -> TerminalInfoDocument:
     """
     Convert JWT claims to a TerminalInfoDocument-compatible object.
@@ -433,10 +468,12 @@ async def __get_tenant_id(
         # Priority 1: Try terminal JWT (token_type="terminal")
         try:
             terminal_claims = verify_terminal_token(token)
-            logger.debug(f"Terminal JWT verified for {terminal_claims.get('terminal_id')}")
-            return terminal_claims.get("tenant_id")
         except HTTPException:
-            pass  # Not a terminal token, fall through to user JWT
+            terminal_claims = None  # Not a terminal token, fall through to user JWT
+        if terminal_claims is not None:
+            logger.debug(f"Terminal JWT verified for {terminal_claims.get('terminal_id')}")
+            verify_terminal_binding(terminal_claims, terminal_id)
+            return terminal_claims.get("tenant_id")
 
         # Priority 2: Try user JWT (existing OAuth2 flow)
         logger.debug("Token provided, trying user JWT")
