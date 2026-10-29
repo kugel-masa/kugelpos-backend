@@ -69,8 +69,10 @@ class CashReportTemplate(BaseDocumentModel):
     """
 
     logical_amount: float  # Expected amount in cash drawer
-    physical_amount: float  # Actual counted amount in cash drawer
-    difference_amount: float  # Difference between logical and physical amounts
+    # None when the drawer was not counted: zero would read as "counted, and
+    # empty". The terminal accepts a close without the counted amount.
+    physical_amount: Optional[float] = None  # Actual counted amount in cash drawer
+    difference_amount: Optional[float] = None  # Difference; None when nothing was counted
     cash_in: CashInOutReportTemplate  # Cash in operations
     cash_out: CashInOutReportTemplate  # Cash out operations
 

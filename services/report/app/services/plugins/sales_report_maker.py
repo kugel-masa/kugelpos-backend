@@ -252,18 +252,30 @@ class SalesReportMaker(IReportPlugin):
         """
         Aggregate open/close logs
 
+        The terminal accepts an open without a float and a close without a
+        counted amount, so either can be missing from the log. Summing them
+        as-is raised a TypeError and the report failed with a 500 for every
+        request covering that session.
+
+        A close that was not counted makes the counted amount None rather than
+        zero. Zero would print a drawer that was counted and found empty, and a
+        shortfall equal to the session's cash takings, neither of which anyone
+        measured.
+
         Args:
             results: List of open/close logs
 
         Returns:
-            Aggregated results of open/close logs
+            Aggregated results of open/close logs. ``physical_amount`` is None
+            when any close in the set was not counted.
         """
-        initial_amount = sum(
-            [open_close.terminal_info.initial_amount for open_close in results if open_close.operation == "open"]
-        )
-        physical_amount = sum(
-            [open_close.terminal_info.physical_amount for open_close in results if open_close.operation == "close"]
-        )
+        opens = [oc for oc in results if oc.operation == "open" and oc.terminal_info is not None]
+        closes = [oc for oc in results if oc.operation == "close"]
+
+        initial_amount = sum([oc.terminal_info.initial_amount or 0 for oc in opens])
+
+        uncounted = any(oc.terminal_info is None or oc.terminal_info.physical_amount is None for oc in closes)
+        physical_amount = None if uncounted else sum([oc.terminal_info.physical_amount for oc in closes])
 
         return {"initial_amount": initial_amount, "physical_amount": physical_amount}
 
@@ -1073,7 +1085,9 @@ class SalesReportMaker(IReportPlugin):
         cash_out_amount = cash_summary["cash_out_amount"]
         logical_amount = payment_amount_by_cash + cash_in_amount + cash_out_amount  # cash_out_amount is negative
         pyisical_amount = open_close_summary["physical_amount"]
-        difference_amount = pyisical_amount - logical_amount
+        # Nothing counted, no difference: subtracting from zero would report the
+        # whole of the cash takings as missing.
+        difference_amount = None if pyisical_amount is None else pyisical_amount - logical_amount
 
         return {
             "logical_amount": logical_amount,

@@ -217,9 +217,13 @@ class SalesReportReceiptData(AbstractReceiptData[SalesReportDocument]):
         #  あるべき現金　　     99,999,999円
         #  過不足 　           99,999,999円
         page.lines.append(self.line_left("現 金"))
-        self._make_line("ドロア内現金", report.cash.physical_amount, page)
+        # A drawer that was not counted prints neither line; zero would read as
+        # counted and empty, and as a shortfall of the whole cash takings.
+        if report.cash.physical_amount is not None:
+            self._make_line("ドロア内現金", report.cash.physical_amount, page)
         self._make_line("あるべき現金", report.cash.logical_amount, page)
-        self._make_line("過不足", report.cash.difference_amount, page)
+        if report.cash.difference_amount is not None:
+            self._make_line("過不足", report.cash.difference_amount, page)
 
         # --------------------------------
         page.lines.append(self.line_boarder())
