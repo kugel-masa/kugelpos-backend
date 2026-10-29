@@ -18,6 +18,8 @@ httpx = "*"
 aiohttp = "*"
 wcwidth = "*"
 debugpy = "*"
+# Rotation that is safe across uvicorn workers sharing one log file.
+concurrent-log-handler = "*"
 
 [dev-packages]
 pytest = "*"

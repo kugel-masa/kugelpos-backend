@@ -21,6 +21,8 @@ apscheduler = "*"
 # Request-body decompression for carried snapshots (issue #156, FR-009);
 # .NET 8 clients send Content-Encoding: br by default.
 brotli = "*"
+# Rotation that is safe across uvicorn workers sharing one log file.
+concurrent-log-handler = "*"
 
 [dev-packages]
 pytest = "*"

@@ -18,6 +18,8 @@ kugel_common = {file = "commons/dist/kugel_common-0.1.106-py3-none-any.whl"}
 wcwidth = "*"
 debugpy = "*"
 requests = "*"
+# Rotation that is safe across uvicorn workers sharing one log file.
+concurrent-log-handler = "*"
 
 [dev-packages]
 pytest = "*"

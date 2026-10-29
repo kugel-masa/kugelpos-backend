@@ -461,14 +461,16 @@ container, where no log driver can cap them. Every service loads its
 because `tests/conftest.py` loads it without `configure_logging`. Rotated
 segments are named `app.1.log`, not `app.log.1`, so they still match `*.log`.
 
-The file handlers are `MultiProcessRotatingFileHandler`, because the
+The file handlers are `concurrent_log_handler.ConcurrentRotatingFileHandler`
+(the `concurrent-log-handler` package, as in the stpos fork), because the
 `UVICORN_WORKERS` processes each hold a handler on the same files. With the
-plain `RotatingFileHandler` every worker rotates on its own, so segments are
-rotated before they are full and a file still being written can be shifted
-past `backupCount` and deleted. This handler writes each record under a lock
-file shared by all processes (`app.log.lock`): it reopens the file if another
-process rotated it, rotates if the file is full, then writes, so no other
-process can rotate in between.
+standard `RotatingFileHandler` every worker rotates on its own, so segments are
+cut before they are full and a rotation can drop a segment outright. The
+concurrent handler serializes writes and rotation across processes through a
+lock file next to each log (`.__app.lock`). It is used whatever the worker count.
+`ConcurrentRotatingFileHandler` is not a subclass of `RotatingFileHandler`, so
+`configure_logging` matches `BaseRotatingHandler` with a `maxBytes` when it
+applies the overrides.
 
 | Variable | Default | Purpose |
 |---|---|---|

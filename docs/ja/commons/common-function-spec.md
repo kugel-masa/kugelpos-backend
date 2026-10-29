@@ -489,13 +489,15 @@ pydantic 文書など — に対して同じマスクを行う。文書やレス
 ローテーション後のファイル名は `app.log.1` ではなく `app.1.log` とし、`*.log` に
 一致させ続ける。
 
-ファイルハンドラは `MultiProcessRotatingFileHandler` を使う。`UVICORN_WORKERS`
-の各プロセスが、同じファイルにそれぞれハンドラを持つためである。標準の
+ファイルハンドラは `concurrent_log_handler.ConcurrentRotatingFileHandler`
+（`concurrent-log-handler` パッケージ。stpos と同じ）を使う。`UVICORN_WORKERS` の
+各プロセスが、同じファイルにそれぞれハンドラを持つためである。標準の
 `RotatingFileHandler` では各ワーカーが別々にローテーションするので、満杯になる前に
-回ってしまい、書き込み中のファイルが `backupCount` を超えてずらされて削除される
-こともある。このハンドラは、全プロセスで共有するロックファイル（`app.log.lock`）の中で
-1 件ずつ書く。ほかのプロセスが回していればファイルを開き直し、満杯なら回してから書く。
-その間に、ほかのプロセスが回すことはない。
+切られ、ローテーションで世代がまるごと落ちることもある。このハンドラは、各ログの隣の
+ロックファイル（`.__app.lock`）で、プロセスをまたいで書き込みとローテーションを
+直列にする。ワーカー数にかかわらず常にこれを使う。
+`ConcurrentRotatingFileHandler` は `RotatingFileHandler` のサブクラスではないため、
+`configure_logging` は上書きの対象を「`maxBytes` を持つ `BaseRotatingHandler`」で選ぶ。
 
 | 環境変数 | 既定値 | 用途 |
 |---|---|---|

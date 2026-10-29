@@ -17,7 +17,8 @@ data/*
 *.txt
 # ignore all files with the extension .log
 *.log
-*.log.lock
+# lock files of concurrent-log-handler, next to each log file
+.__*.lock
 # ignore all files with the extension .bak
 *.bak
 # ignore all files with the extension .pdf

@@ -25,13 +25,13 @@ needs_repo = pytest.mark.skipif(not SERVICES_DIR.is_dir(), reason="repository la
 # Prints, as JSON, the loggers and file handlers the child process ended up with.
 DESCRIBE = """
 import json, logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import BaseRotatingHandler
 
 def handlers(name):
     out = []
     for h in logging.getLogger(name).handlers:
         item = {"class": type(h).__name__, "level": logging.getLevelName(h.level)}
-        if isinstance(h, RotatingFileHandler):
+        if isinstance(h, BaseRotatingHandler) and hasattr(h, "maxBytes"):
             item.update(file=h.baseFilename.rsplit("/", 1)[-1], max_bytes=h.maxBytes,
                         backup_count=h.backupCount, namer=getattr(h.namer, "__name__", None))
         out.append(item)
@@ -98,7 +98,7 @@ def test_conf_is_bounded_when_loaded_on_its_own(service, tmp_path):
     files = _file_handlers(described)
     assert sorted(h["file"] for h in files) == ["app.log", "audit.log", "request.log"]
     for handler in files:
-        assert handler["class"] == "MultiProcessRotatingFileHandler"
+        assert handler["class"] == "ConcurrentRotatingFileHandler"
         assert handler["max_bytes"] > 0 and handler["backup_count"] > 0
     assert described["root"]["level"] == "INFO"
     assert described["requestLogger"]["level"] == "INFO"
@@ -175,12 +175,16 @@ def test_quieted_loggers_write_a_warning_once(name, tmp_path):
 
 
 # Each worker writes numbered lines through its own handler on the same app.log,
-# as uvicorn workers do.
+# as uvicorn workers do. The handler is the class the services' logging.conf
+# names, so these tests hold whatever that file is changed to.
 WORKER = """
-import logging, sys
-from kugel_common.utils.logging_setup import MultiProcessRotatingFileHandler
+import importlib, logging, sys
+from kugel_common.utils.logging_setup import rotated_log_name
 
-handler = MultiProcessRotatingFileHandler("app.log", "a", {max_bytes}, {backups}, "utf-8")
+module, _, name = {handler_class!r}.rpartition(".")
+handler_class = getattr(importlib.import_module(module), name)
+handler = handler_class("app.log", "a", {max_bytes}, {backups}, "utf-8")
+handler.namer = rotated_log_name
 logger = logging.getLogger("worker")
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
@@ -188,6 +192,16 @@ for n in range({lines}):
     logger.info("worker=%s line=%05d %s", sys.argv[1], n, "x" * 40)
 handler.close()
 """
+
+
+def _conf_handler_class() -> str:
+    conf = (SERVICES_DIR / "cart" / "app" / "logging.conf").read_text()
+    section = conf.split("[handler_fileHandler]")[1]
+    return next(line.split("=", 1)[1] for line in section.splitlines() if line.startswith("class="))
+
+
+def _worker(**values) -> str:
+    return WORKER.format(handler_class=_conf_handler_class(), **values)
 
 
 def _run_workers(cwd: Path, workers: int, script: str) -> None:
@@ -201,15 +215,16 @@ def _run_workers(cwd: Path, workers: int, script: str) -> None:
         assert process.wait(timeout=60) == 0, process.stderr.read()
 
 
+@needs_repo
 def test_workers_sharing_a_file_rotate_it_once_per_fill_and_lose_nothing(tmp_path):
     """
-    With one handler per worker on a plain RotatingFileHandler, every worker
+    With one handler per worker on the standard RotatingFileHandler, every worker
     rotates on its own, so segments are rotated long before they are full and
     the retention that backupCount promises shrinks accordingly; once a shifted
     segment passes backupCount, lines still being written to it are deleted.
     """
     workers, lines, max_bytes = 4, 600, 2000
-    _run_workers(tmp_path, workers, WORKER.format(max_bytes=max_bytes, backups=1000, lines=lines))
+    _run_workers(tmp_path, workers, _worker(max_bytes=max_bytes, backups=1000, lines=lines))
 
     kept = [line for p in tmp_path.glob("app*.log") for line in p.read_text().splitlines()]
     assert sorted(kept) == sorted(
@@ -219,6 +234,7 @@ def test_workers_sharing_a_file_rotate_it_once_per_fill_and_lose_nothing(tmp_pat
     assert rotated and all(max_bytes / 2 <= size < max_bytes * 2 for size in rotated), sorted(rotated)
 
 
+@needs_repo
 def test_workers_never_write_into_a_segment_rotation_has_deleted(tmp_path):
     """
     With few backups the oldest segments are dropped, as designed; what is left
@@ -226,7 +242,7 @@ def test_workers_never_write_into_a_segment_rotation_has_deleted(tmp_path):
     A hole means a worker kept writing into a file another worker had deleted.
     """
     workers, lines = 4, 600
-    _run_workers(tmp_path, workers, WORKER.format(max_bytes=1000, backups=2, lines=lines))
+    _run_workers(tmp_path, workers, _worker(max_bytes=1000, backups=2, lines=lines))
 
     kept = [line for p in tmp_path.glob("app*.log") for line in p.read_text().splitlines()]
     for w in range(workers):
