@@ -123,8 +123,8 @@ def test_cross_tenant_admin_cannot_read_other_tenant():
 # ---------------------------------------------------------------------------
 
 
-def _terminal_jwts(tenant_id: str, admin_token: str, store_code: str) -> tuple[str, str, str]:
-    """Create two terminals in one store; return (terminal A, terminal B, JWT of A)."""
+def _terminal_jwts(tenant_id: str, admin_token: str, store_code: str) -> tuple[str, str, str, str]:
+    """Create two terminals in one store; return (terminal A, terminal B, JWT of A, API key of A)."""
     h = {"Authorization": f"Bearer {admin_token}"}
     with _client("URL_TERMINAL") as c:
         c.post(f"/api/v1/tenants/{tenant_id}/stores", json={
@@ -140,7 +140,12 @@ def _terminal_jwts(tenant_id: str, admin_token: str, store_code: str) -> tuple[s
             created.append(resp.json()["data"])
         resp = c.post("/api/v1/auth/token", headers={"X-API-KEY": created[0]["apiKey"]})
         resp.raise_for_status()
-    return created[0]["terminalId"], created[1]["terminalId"], resp.json()["data"]["access_token"]
+    return (
+        created[0]["terminalId"],
+        created[1]["terminalId"],
+        resp.json()["data"]["access_token"],
+        created[0]["apiKey"],
+    )
 
 
 def test_terminal_jwt_cannot_act_on_another_terminal():
@@ -153,7 +158,7 @@ def test_terminal_jwt_cannot_act_on_another_terminal():
     admin_token = _live_admin_token(tenant_id)
     _setup_tenant(tenant_id, admin_token)
     store_code = "5678"
-    terminal_a, terminal_b, jwt_a = _terminal_jwts(tenant_id, admin_token, store_code)
+    terminal_a, terminal_b, jwt_a, _ = _terminal_jwts(tenant_id, admin_token, store_code)
     h = {"Authorization": f"Bearer {jwt_a}"}
 
     with _client("URL_TERMINAL") as c:
@@ -167,6 +172,48 @@ def test_terminal_jwt_cannot_act_on_another_terminal():
     with _client("URL_JOURNAL") as c:
         assert c.get(journals, params={"terminal_id": terminal_a}, headers=h).status_code == 200
         resp = c.get(journals, params={"terminal_id": terminal_b}, headers=h)
+        assert resp.status_code == 403, resp.text
+
+
+def test_terminal_credential_is_bound_to_its_store():
+    """A terminal reads only its own store and writes only as itself (C10).
+
+    The store_code / terminal_no in the URL are compared with the credential,
+    on both the terminal JWT and the API-key paths.
+    """
+    tenant_id = _new_tenant_id()
+    admin_token = _live_admin_token(tenant_id)
+    _setup_tenant(tenant_id, admin_token)
+    store_code, other_store = "5678", "5679"
+    terminal_a, _, jwt_a, api_key_a = _terminal_jwts(tenant_id, admin_token, store_code)
+    h = {"Authorization": f"Bearer {jwt_a}"}
+    stores = f"/api/v1/tenants/{tenant_id}/stores"
+
+    with _client("URL_JOURNAL") as c:
+        assert c.get(f"{stores}/{store_code}/journals", headers=h).status_code == 200
+        resp = c.get(f"{stores}/{other_store}/journals", headers=h)
+        assert resp.status_code == 403, resp.text
+        # A write is bound to the terminal too; the binding is checked before the body.
+        resp = c.post(f"{stores}/{store_code}/terminals/2/transactions", json={}, headers=h)
+        assert resp.status_code == 403, resp.text
+
+    with _client("URL_STOCK") as c:
+        assert c.get(f"{stores}/{store_code}/stock", headers=h).status_code == 200
+        resp = c.get(f"{stores}/{other_store}/stock", headers=h)
+        assert resp.status_code == 403, resp.text
+        # API key of terminal A, naming A in the query, but another store in the path.
+        resp = c.get(
+            f"{stores}/{other_store}/stock",
+            params={"terminal_id": terminal_a},
+            headers={"X-API-KEY": api_key_a},
+        )
+        assert resp.status_code == 403, resp.text
+
+    with _client("URL_CART") as c:
+        # Another register of the same store may be listed; another store may not.
+        resp = c.get(f"{stores}/{store_code}/terminals/2/transactions", headers=h)
+        assert resp.status_code == 200, resp.text
+        resp = c.get(f"{stores}/{other_store}/terminals/1/transactions", headers=h)
         assert resp.status_code == 403, resp.text
 
 

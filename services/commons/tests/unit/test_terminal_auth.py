@@ -9,13 +9,15 @@ from kugel_common.config.settings import settings
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
 from kugel_common.utils.terminal_auth import create_terminal_token
-from fastapi import HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from httpx import ASGITransport, AsyncClient
 
 from kugel_common.security import (
     get_tenant_id_with_security,
     get_tenant_id_with_security_by_query,
     get_tenant_id_with_security_by_query_optional,
     terminal_claims_to_terminal_info,
+    verify_path_binding,
     verify_terminal_binding,
     verify_terminal_token,
 )
@@ -305,3 +307,92 @@ class TestTerminalBinding:
 
     def test_binding_without_target_passes(self):
         verify_terminal_binding({"terminal_id": "T001-001-01"}, None)
+
+
+def _path_binding_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/tenants/{tenant_id}/stores/{store_code}/journals")
+    async def store_read(tenant_id: str = Depends(get_tenant_id_with_security_by_query_optional)):
+        return {"tenant_id": tenant_id}
+
+    @app.get("/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports")
+    async def terminal_read(tenant_id: str = Depends(get_tenant_id_with_security_by_query_optional)):
+        return {"tenant_id": tenant_id}
+
+    @app.post("/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions")
+    async def terminal_write(tenant_id: str = Depends(get_tenant_id_with_security_by_query_optional)):
+        return {"tenant_id": tenant_id}
+
+    return app
+
+
+async def _call(method: str, path: str, token: str) -> int:
+    transport = ASGITransport(app=_path_binding_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.request(method, path, headers={"Authorization": f"Bearer {token}"})
+    return resp.status_code
+
+
+class TestPathBinding:
+    """A terminal credential reads only its own store and writes only as its own terminal."""
+
+    @pytest.mark.asyncio
+    async def test_own_store_is_allowed(self):
+        token = create_terminal_token(_make_terminal_info())
+        assert await _call("GET", "/tenants/T001/stores/001/journals", token) == 200
+
+    @pytest.mark.asyncio
+    async def test_other_store_is_forbidden(self):
+        token = create_terminal_token(_make_terminal_info())
+        assert await _call("GET", "/tenants/T001/stores/002/journals", token) == 403
+
+    @pytest.mark.asyncio
+    async def test_other_terminal_of_own_store_may_be_read(self):
+        # A register may ask for another register's report in its own store.
+        token = create_terminal_token(_make_terminal_info())
+        assert await _call("GET", "/tenants/T001/stores/001/terminals/2/reports", token) == 200
+
+    @pytest.mark.asyncio
+    async def test_write_as_own_terminal_is_allowed(self):
+        token = create_terminal_token(_make_terminal_info())
+        assert await _call("POST", "/tenants/T001/stores/001/terminals/1/transactions", token) == 200
+
+    @pytest.mark.asyncio
+    async def test_write_as_other_terminal_is_forbidden(self):
+        token = create_terminal_token(_make_terminal_info())
+        assert await _call("POST", "/tenants/T001/stores/001/terminals/2/transactions", token) == 403
+
+    @pytest.mark.asyncio
+    async def test_write_into_other_store_is_forbidden(self):
+        token = create_terminal_token(_make_terminal_info())
+        assert await _call("POST", "/tenants/T001/stores/002/terminals/1/transactions", token) == 403
+
+    @pytest.mark.asyncio
+    async def test_token_without_store_claim_is_forbidden(self):
+        token = jwt.encode(
+            {"token_type": "terminal", "tenant_id": "T001", "terminal_id": "T001-001-01", "terminal_no": 1},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM,
+        )
+        assert await _call("GET", "/tenants/T001/stores/001/journals", token) == 403
+
+    @pytest.mark.asyncio
+    async def test_user_jwt_is_not_bound(self):
+        token = jwt.encode(
+            {"sub": "admin", "tenant_id": "T001"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM,
+        )
+        assert await _call("POST", "/tenants/T001/stores/002/terminals/9/transactions", token) == 200
+
+    def test_without_request_nothing_is_bound(self):
+        verify_path_binding(None, None, None, None, "terminal_jwt")
+
+    def test_terminal_no_is_compared_as_a_number(self):
+        verify_path_binding("001", 1, {"store_code": "001", "terminal_no": "01"}, "POST", "api_key")
+
+    def test_missing_terminal_no_is_forbidden_on_write(self):
+        with pytest.raises(HTTPException) as exc:
+            verify_path_binding("001", None, {"store_code": "001", "terminal_no": "1"}, "POST", "api_key")
+        assert exc.value.status_code == 403

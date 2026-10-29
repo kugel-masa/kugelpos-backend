@@ -6,7 +6,7 @@ import inspect
 from kugel_common.database import database as db_helper
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.utils.log_utils import mask_sensitive_data
-from kugel_common.security import verify_pubsub_notification_auth
+from kugel_common.security import verify_path_binding, verify_pubsub_notification_auth
 from app.dependencies.terminal_info_dependency import get_terminal_info_with_jwt_or_apikey
 from kugel_common.status_codes import StatusCodes
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
@@ -226,6 +226,7 @@ def parse_sort(sort: str = Query(default=None, description="?sort=field1:1,field
     },
 )
 async def get_transactions_by_query(
+    request: Request,
     tenant_id: str = Path(...),
     store_code: str = Path(...),
     terminal_no: int = Path(...),
@@ -271,6 +272,17 @@ async def get_transactions_by_query(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid tenant_id: {tenant_id}",
         )
+    # A terminal lists only its own store's transactions. The single-transaction
+    # GET and return stay open across stores: a return may reference an original
+    # rung up at any store of the tenant (issue #156).
+    terminal_info = tran_service.terminal_info
+    verify_path_binding(
+        terminal_info.store_code,
+        terminal_info.terminal_no,
+        request.path_params,
+        request.method,
+        "terminal_jwt" if getattr(terminal_info, "jwt_token", None) else "api_key",
+    )
 
     try:
         paginated_result = await tran_service.get_tranlog_by_query_async(
