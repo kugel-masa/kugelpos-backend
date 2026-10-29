@@ -19,6 +19,7 @@ from kugel_common.security import (
     get_tenant_id_with_token,
     verify_pubsub_notification_auth,
     verify_terminal_token,
+    verify_terminal_binding,
     get_current_user,
     get_terminal_info,
     Security,
@@ -183,13 +184,15 @@ async def get_auth_context_with_path_terminal(
     if token:
         try:
             claims = verify_terminal_token(token)
+        except HTTPException:
+            claims = None  # Not a terminal token, fall through to user JWT
+        if claims is not None:
+            verify_terminal_binding(claims, terminal_id)
             return {
                 "tenant_id": claims.get("tenant_id"),
                 "auth_type": "terminal_jwt",
                 "subject": claims.get("terminal_id"),
             }
-        except HTTPException:
-            pass  # Not a terminal token, fall through to user JWT
         user = await get_current_user(token)
         return {
             "tenant_id": user.get("tenant_id"),

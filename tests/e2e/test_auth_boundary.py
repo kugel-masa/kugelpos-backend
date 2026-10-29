@@ -119,6 +119,58 @@ def test_cross_tenant_admin_cannot_read_other_tenant():
 
 
 # ---------------------------------------------------------------------------
+# Cross-terminal denial
+# ---------------------------------------------------------------------------
+
+
+def _terminal_jwts(tenant_id: str, admin_token: str, store_code: str) -> tuple[str, str, str]:
+    """Create two terminals in one store; return (terminal A, terminal B, JWT of A)."""
+    h = {"Authorization": f"Bearer {admin_token}"}
+    with _client("URL_TERMINAL") as c:
+        c.post(f"/api/v1/tenants/{tenant_id}/stores", json={
+            "store_code": store_code, "store_name": "Auth Test Store",
+        }, headers=h).raise_for_status()
+        created = []
+        for terminal_no in (1, 2):
+            resp = c.post("/api/v1/terminals", json={
+                "store_code": store_code, "terminal_no": terminal_no,
+                "description": "auth-boundary",
+            }, headers=h)
+            resp.raise_for_status()
+            created.append(resp.json()["data"])
+        resp = c.post("/api/v1/auth/token", headers={"X-API-KEY": created[0]["apiKey"]})
+        resp.raise_for_status()
+    return created[0]["terminalId"], created[1]["terminalId"], resp.json()["data"]["access_token"]
+
+
+def test_terminal_jwt_cannot_act_on_another_terminal():
+    """Terminal A's JWT on terminal B → 403, on both auth paths (#251).
+
+    terminal reads the target from the URL path; journal (and every other
+    service through kugel_common) reads it from the terminal_id query.
+    """
+    tenant_id = _new_tenant_id()
+    admin_token = _live_admin_token(tenant_id)
+    _setup_tenant(tenant_id, admin_token)
+    store_code = "5678"
+    terminal_a, terminal_b, jwt_a = _terminal_jwts(tenant_id, admin_token, store_code)
+    h = {"Authorization": f"Bearer {jwt_a}"}
+
+    with _client("URL_TERMINAL") as c:
+        assert c.get(f"/api/v1/terminals/{terminal_a}", headers=h).status_code == 200
+        resp = c.get(f"/api/v1/terminals/{terminal_b}", headers=h)
+        assert resp.status_code == 403, resp.text
+        resp = c.post(f"/api/v1/terminals/{terminal_b}/open", json={"initial_amount": 0}, headers=h)
+        assert resp.status_code == 403, resp.text
+
+    journals = f"/api/v1/tenants/{tenant_id}/stores/{store_code}/journals"
+    with _client("URL_JOURNAL") as c:
+        assert c.get(journals, params={"terminal_id": terminal_a}, headers=h).status_code == 200
+        resp = c.get(journals, params={"terminal_id": terminal_b}, headers=h)
+        assert resp.status_code == 403, resp.text
+
+
+# ---------------------------------------------------------------------------
 # Expired token
 # ---------------------------------------------------------------------------
 
