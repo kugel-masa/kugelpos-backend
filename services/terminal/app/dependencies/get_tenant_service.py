@@ -7,7 +7,7 @@ This module provides dependency injection helpers for creating and configuring
 tenant service instances with all necessary repositories.
 """
 
-from fastapi import Depends, Query
+from fastapi import Depends, Query, Request
 from logging import getLogger
 
 from kugel_common.database import database as db_helper
@@ -75,7 +75,10 @@ async def get_tenant_id_with_token_wrapper(token: str = Depends(oauth2_scheme)):
 
 
 async def get_tenant_id_with_security_by_query_optional_wrapper(
-    terminal_id: str = Query(None), api_key: str = Security(api_key_header), token: str = Depends(oauth2_scheme)
+    request: Request,
+    terminal_id: str = Query(None),
+    api_key: str = Security(api_key_header),
+    token: str = Depends(oauth2_scheme),
 ):
     """
     Security dependency that validates authentication using either:
@@ -83,4 +86,6 @@ async def get_tenant_id_with_security_by_query_optional_wrapper(
     - OAuth2 token
     Used for operations that can be performed with either authentication method
     """
-    return await get_tenant_id_with_security_by_query_optional(terminal_id, api_key, token, is_terminal_service=True)
+    return await get_tenant_id_with_security_by_query_optional(
+        terminal_id, api_key, token, is_terminal_service=True, request=request
+    )

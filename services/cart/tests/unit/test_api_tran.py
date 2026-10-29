@@ -106,6 +106,35 @@ async def test_get_transactions_success():
 
 
 @pytest.mark.asyncio
+async def test_get_transactions_of_another_store_is_forbidden():
+    app = _make_app()
+    svc = _make_tran_service_mock()
+    app.dependency_overrides[get_tran_service] = lambda: svc
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/tenants/tenant1/stores/store2/terminals/1/transactions")
+    assert resp.status_code == 403
+    svc.get_tranlog_by_query_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_transactions_of_another_terminal_in_own_store_is_allowed():
+    app = _make_app()
+    svc = _make_tran_service_mock()
+    paginated = MagicMock()
+    paginated.data = []
+    paginated.metadata.model_dump.return_value = {"total": 0, "page": 1, "limit": 100, "sort": None, "filter": None}
+    svc.get_tranlog_by_query_async.return_value = paginated
+    app.dependency_overrides[get_tran_service] = lambda: svc
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/tenants/tenant1/stores/store1/terminals/2/transactions")
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_get_transactions_tenant_mismatch():
     app = _make_app()
     svc = _make_tran_service_mock()

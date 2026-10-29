@@ -7,7 +7,7 @@ This module provides dependency injection helpers for creating and configuring
 terminal service instances with all necessary repositories and services.
 """
 
-from fastapi import Depends, HTTPException, Path, Query, status
+from fastapi import Depends, HTTPException, Path, Query, Request, status
 from logging import getLogger
 from typing import Optional
 
@@ -150,6 +150,7 @@ async def get_tenant_id_with_security_wrapper(
 
 
 async def get_tenant_id_with_security_by_query_optional_wrapper(
+    request: Request,
     terminal_id: Optional[str] = Query(None),
     api_key: str = Security(api_key_header),
     token: str = Depends(oauth2_scheme),
@@ -158,7 +159,9 @@ async def get_tenant_id_with_security_by_query_optional_wrapper(
     Security dependency similar to get_tenant_id_with_security_wrapper,
     but with terminal ID as an optional query parameter instead of a path parameter
     """
-    return await get_tenant_id_with_security_by_query_optional(terminal_id, api_key, token, is_terminal_service=True)
+    return await get_tenant_id_with_security_by_query_optional(
+        terminal_id, api_key, token, is_terminal_service=True, request=request
+    )
 
 
 async def get_auth_context_with_path_terminal(

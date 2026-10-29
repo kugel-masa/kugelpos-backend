@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from fastapi import HTTPException, status, Depends, Security, Path, Query
+from fastapi import HTTPException, Request, status, Depends, Security, Path, Query
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from logging import getLogger, Logger
-from typing import Iterable, NamedTuple, Optional
+from typing import Iterable, Mapping, NamedTuple, Optional
 import json
 
 from kugel_common.config.settings import settings
@@ -240,6 +240,78 @@ def verify_terminal_binding(claims: dict, terminal_id: Optional[str]) -> None:
     )
 
 
+# A terminal may read anything in its own store, but writes only as itself: the
+# terminal_no in the path is bound for these methods alone. Reads stay open across
+# the store because some are designed that way (a register asking for another
+# register's report, a store-wide journal search).
+_TERMINAL_BOUND_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _same_terminal_no(credential_terminal_no: object, target_terminal_no: str) -> bool:
+    if isinstance(credential_terminal_no, bool):
+        return False
+    try:
+        return int(credential_terminal_no) == int(target_terminal_no)
+    except (TypeError, ValueError):
+        return False
+
+
+def verify_path_binding(
+    store_code: Optional[str],
+    terminal_no: object,
+    path_params: Optional[Mapping[str, str]],
+    method: Optional[str],
+    credential: str,
+) -> None:
+    """
+    Ensure a terminal credential acts only on its own store, and writes only as its own terminal.
+
+    The store_code and terminal_no in the URL name what the request acts on; the
+    credential names who is calling. Without this check a terminal of store A could
+    read store B's journals and stock, or post a tranlog into store B's reports.
+
+    Like verify_terminal_binding, each check is written as the condition to pass, so
+    a credential that carries no store_code or terminal_no is refused rather than let
+    through.
+
+    Args:
+        store_code: Store the credential belongs to
+        terminal_no: Terminal number the credential belongs to
+        path_params: The request's path parameters; None when there is no request
+        method: The request's HTTP method
+        credential: How the caller authenticated, for the audit log
+
+    Raises:
+        HTTPException: 403 when the path names another store, or another terminal on a write
+    """
+    if not path_params:
+        return
+    target_store_code = path_params.get("store_code")
+    if target_store_code is not None and not (isinstance(store_code, str) and store_code == target_store_code):
+        _refuse_path_binding(credential, "store_code", store_code, target_store_code)
+    target_terminal_no = path_params.get("terminal_no")
+    if (
+        target_terminal_no is not None
+        and method in _TERMINAL_BOUND_METHODS
+        and not _same_terminal_no(terminal_no, target_terminal_no)
+    ):
+        _refuse_path_binding(credential, "terminal_no", terminal_no, target_terminal_no)
+
+
+def _refuse_path_binding(credential: str, field: str, own: object, target: object) -> None:
+    audit_logger.warning(
+        "Terminal credential used against another %s (credential=%s, own=%s, target=%s)",
+        field,
+        credential,
+        own,
+        target,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Terminal credential does not match the requested {field}",
+    )
+
+
 def terminal_claims_to_terminal_info(claims: dict) -> TerminalInfoDocument:
     """
     Convert JWT claims to a TerminalInfoDocument-compatible object.
@@ -441,7 +513,8 @@ async def __get_tenant_id(
     terminal_id: Optional[str] = None,
     api_key: Optional[str] = None,
     token: Optional[str] = None,
-    is_terminal_service: Optional[bool] = False
+    is_terminal_service: Optional[bool] = False,
+    request: Optional[Request] = None,
 ):
     """
     Internal helper function to retrieve tenant ID using API key, terminal JWT, or user JWT.
@@ -456,6 +529,8 @@ async def __get_tenant_id(
         api_key: Optional API key for terminal-based authentication
         token: Optional OAuth/JWT token for token-based authentication
         is_terminal_service: Whether the caller is the terminal service itself
+        request: The incoming request; a terminal credential is bound to the
+            store_code / terminal_no in its path (see verify_path_binding)
 
     Returns:
         Tenant ID string
@@ -463,6 +538,9 @@ async def __get_tenant_id(
     Raises:
         HTTPException: If no valid authentication is provided
     """
+    path_params = request.path_params if request is not None else None
+    method = request.method if request is not None else None
+
     # Priority 1 & 2: Try token-based authentication first
     if token:
         # Priority 1: Try terminal JWT (token_type="terminal")
@@ -473,6 +551,13 @@ async def __get_tenant_id(
         if terminal_claims is not None:
             logger.debug(f"Terminal JWT verified for {terminal_claims.get('terminal_id')}")
             verify_terminal_binding(terminal_claims, terminal_id)
+            verify_path_binding(
+                terminal_claims.get("store_code"),
+                terminal_claims.get("terminal_no"),
+                path_params,
+                method,
+                "terminal_jwt",
+            )
             return terminal_claims.get("tenant_id")
 
         # Priority 2: Try user JWT (existing OAuth2 flow)
@@ -484,6 +569,7 @@ async def __get_tenant_id(
     if terminal_id and api_key:
         logger.debug(f"Terminal_id: {terminal_id}, and API-KEY provided")
         terminal_info = await get_terminal_info(terminal_id, api_key, is_terminal_service)
+        verify_path_binding(terminal_info.store_code, terminal_info.terminal_no, path_params, method, "api_key")
         return terminal_info.tenant_id
 
     message = "Unauthorized access : No token or API-KEY provided"
@@ -557,7 +643,8 @@ async def get_tenant_id_with_security(
     terminal_id: str = Path(..., description="terminal_id should be provided in the path"),
     api_key: Optional[str] = Security(api_key_header), 
     token: Optional[str] = Depends(oauth2_scheme),
-    is_terminal_service: Optional[bool] = False
+    is_terminal_service: Optional[bool] = False,
+    request: Request = None,
 ):
     """
     FastAPI dependency that retrieves tenant ID using path parameter for terminal ID.
@@ -567,17 +654,19 @@ async def get_tenant_id_with_security(
         api_key: API key from header
         token: OAuth token from header
         is_terminal_service: Whether the caller is the terminal service itself
+        request: The incoming request, injected by FastAPI; binds a terminal credential to its path
         
     Returns:
         Tenant ID string
     """
-    return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service)
+    return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service, request)
 
 async def get_tenant_id_with_security_by_query(
     terminal_id: str = Query(..., description="terminal_id should be provided by query parameter"),
     api_key: Optional[str] = Security(api_key_header),
     token: Optional[str] = Depends(oauth2_scheme),
-    is_terminal_service: Optional[bool] = False
+    is_terminal_service: Optional[bool] = False,
+    request: Request = None,
 ):
     """
     FastAPI dependency that retrieves tenant ID using query parameter for terminal ID.
@@ -587,17 +676,19 @@ async def get_tenant_id_with_security_by_query(
         api_key: API key from header
         token: OAuth token from header
         is_terminal_service: Whether the caller is the terminal service itself
+        request: The incoming request, injected by FastAPI; binds a terminal credential to its path
         
     Returns:
         Tenant ID string
     """
-    return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service)
+    return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service, request)
 
 async def get_tenant_id_with_security_by_query_optional(
     terminal_id: Optional[str] = Query(None, description="terminal_id should be provided by query parameter optional"),
     api_key: Optional[str] = Security(api_key_header),
     token: Optional[str] = Depends(oauth2_scheme),
-    is_terminal_service: Optional[bool] = False
+    is_terminal_service: Optional[bool] = False,
+    request: Request = None,
 ):
     """
     FastAPI dependency that retrieves tenant ID using optional query parameter for terminal ID.
@@ -607,11 +698,12 @@ async def get_tenant_id_with_security_by_query_optional(
         api_key: API key from header
         token: OAuth token from header
         is_terminal_service: Whether the caller is the terminal service itself
+        request: The incoming request, injected by FastAPI; binds a terminal credential to its path
         
     Returns:
         Tenant ID string
     """
-    return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service)
+    return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service, request)
 
 async def get_tenant_id_with_token(
     token: str = Depends(oauth2_scheme),
