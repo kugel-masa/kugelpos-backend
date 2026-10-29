@@ -447,6 +447,40 @@ body. Sanitization never raises: a body that cannot be processed is stored as
 Note that gzip (#147) does not bound any of this: the log stores the parsed,
 uncompressed body, so transport compression never reaches it.
 
+### Log Files and Levels (`utils/logging_setup.py`)
+
+Each service writes `app.log`, `request.log` and `audit.log` inside its
+container, where no log driver can cap them. Every service loads its
+`app/logging.conf` through `configure_logging`, which:
+
+- calls `fileConfig` with `disable_existing_loggers=False`, so loggers created
+  before the app is imported - `uvicorn.error` among them - keep writing;
+- applies the environment variables below on top of the file.
+
+`logging.conf` itself holds literal, bounded values (INFO, rotating handlers),
+because `tests/conftest.py` loads it without `configure_logging`. Rotated
+segments are named `app.1.log`, not `app.log.1`, so they still match `*.log`.
+
+The file handlers are `concurrent_log_handler.ConcurrentRotatingFileHandler`
+(the `concurrent-log-handler` package, as in the stpos fork), because the
+`UVICORN_WORKERS` processes each hold a handler on the same files. With the
+standard `RotatingFileHandler` every worker rotates on its own, so segments are
+cut before they are full and a rotation can drop a segment outright. The
+concurrent handler serializes writes and rotation across processes through a
+lock file next to each log (`.__app.lock`). It is used whatever the worker count.
+`ConcurrentRotatingFileHandler` is not a subclass of `RotatingFileHandler`, so
+`configure_logging` matches `BaseRotatingHandler` with a `maxBytes` when it
+applies the overrides.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Level of the root and request loggers and their handlers. `DEBUG` is opt-in |
+| `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | `20971520` / `5` | Rotation of `app.log` and `request.log` |
+| `LOG_AUDIT_MAX_BYTES` / `LOG_AUDIT_BACKUP_COUNT` | `20971520` / `20` | Rotation of `audit.log` |
+
+`LOG_LEVEL` does not lower `audit.log`: it is a security record, and
+`LOG_LEVEL=WARNING` must not silence it.
+
 ## 8. Business Logic Support
 
 ### Transaction Types (`enums.py`)

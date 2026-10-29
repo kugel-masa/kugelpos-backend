@@ -474,6 +474,40 @@ pydantic 文書など — に対して同じマスクを行う。文書やレス
 なお gzip (#147) はこの量を抑えない。ログにはパース済みの非圧縮ボディが
 保存されるため、転送時の圧縮は届かない。
 
+### ログファイルとレベル (`utils/logging_setup.py`)
+
+各サービスはコンテナ内に `app.log`・`request.log`・`audit.log` を書く。
+ここはログドライバでは上限をかけられない。各サービスは `app/logging.conf` を
+`configure_logging` で読み込み、次のことを行う。
+
+- `fileConfig` を `disable_existing_loggers=False` で呼ぶ。アプリより先に
+  作られたロガー（`uvicorn.error` など）も出力を続ける
+- 下表の環境変数をファイルの設定の上に適用する
+
+`logging.conf` 自体は、上限のある固定値（INFO、ローテーションするハンドラ）を持つ。
+`tests/conftest.py` が `configure_logging` を通さずに読み込むためである。
+ローテーション後のファイル名は `app.log.1` ではなく `app.1.log` とし、`*.log` に
+一致させ続ける。
+
+ファイルハンドラは `concurrent_log_handler.ConcurrentRotatingFileHandler`
+（`concurrent-log-handler` パッケージ。stpos と同じ）を使う。`UVICORN_WORKERS` の
+各プロセスが、同じファイルにそれぞれハンドラを持つためである。標準の
+`RotatingFileHandler` では各ワーカーが別々にローテーションするので、満杯になる前に
+切られ、ローテーションで世代がまるごと落ちることもある。このハンドラは、各ログの隣の
+ロックファイル（`.__app.lock`）で、プロセスをまたいで書き込みとローテーションを
+直列にする。ワーカー数にかかわらず常にこれを使う。
+`ConcurrentRotatingFileHandler` は `RotatingFileHandler` のサブクラスではないため、
+`configure_logging` は上書きの対象を「`maxBytes` を持つ `BaseRotatingHandler`」で選ぶ。
+
+| 環境変数 | 既定値 | 用途 |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | root とリクエストのロガー、およびそのハンドラのレベル。`DEBUG` は指定したときだけ |
+| `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | `20971520` / `5` | `app.log` と `request.log` のローテーション |
+| `LOG_AUDIT_MAX_BYTES` / `LOG_AUDIT_BACKUP_COUNT` | `20971520` / `20` | `audit.log` のローテーション |
+
+`LOG_LEVEL` は `audit.log` のレベルを下げない。セキュリティの記録であり、
+`LOG_LEVEL=WARNING` で消えてはならないためである。
+
 ## 8. ビジネスロジック支援
 
 ### トランザクション種別 (`enums.py`)

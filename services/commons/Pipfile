@@ -32,6 +32,8 @@ respx = "*"
 # Exercises the brotli branch of the request-decompression middleware; the
 # middleware itself degrades gracefully when brotli is absent.
 brotli = "*"
+# The handler the services' logging.conf names; test_logging_setup loads those files.
+concurrent-log-handler = "*"
 
 [requires]
 python_version = "3.12"

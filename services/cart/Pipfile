@@ -12,7 +12,7 @@ pydantic-settings = "*"
 motor = "*"
 pytz = "*"
 pyjwt = "*"
-kugel_common = {file = "commons/dist/kugel_common-0.1.105-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.106-py3-none-any.whl"}
 httpx = "*"
 aiohttp = "*"
 wcwidth = "*"
@@ -21,6 +21,8 @@ apscheduler = "*"
 # Request-body decompression for carried snapshots (issue #156, FR-009);
 # .NET 8 clients send Content-Encoding: br by default.
 brotli = "*"
+# Rotation that is safe across uvicorn workers sharing one log file.
+concurrent-log-handler = "*"
 
 [dev-packages]
 pytest = "*"

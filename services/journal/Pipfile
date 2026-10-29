@@ -12,12 +12,14 @@ pydantic-settings = "*"
 motor = "*"
 pytz = "*"
 pyjwt = "*"
-kugel_common = {file = "commons/dist/kugel_common-0.1.105-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.106-py3-none-any.whl"}
 
 httpx = "*"
 aiohttp = "*"
 wcwidth = "*"
 debugpy = "*"
+# Rotation that is safe across uvicorn workers sharing one log file.
+concurrent-log-handler = "*"
 
 [dev-packages]
 pytest = "*"
