@@ -447,6 +447,38 @@ body. Sanitization never raises: a body that cannot be processed is stored as
 Note that gzip (#147) does not bound any of this: the log stores the parsed,
 uncompressed body, so transport compression never reaches it.
 
+### Log Files and Levels (`utils/logging_setup.py`)
+
+Each service writes `app.log`, `request.log` and `audit.log` inside its
+container, where no log driver can cap them. Every service loads its
+`app/logging.conf` through `configure_logging`, which:
+
+- calls `fileConfig` with `disable_existing_loggers=False`, so loggers created
+  before the app is imported - `uvicorn.error` among them - keep writing;
+- applies the environment variables below on top of the file.
+
+`logging.conf` itself holds literal, bounded values (INFO, rotating handlers),
+because `tests/conftest.py` loads it without `configure_logging`. Rotated
+segments are named `app.1.log`, not `app.log.1`, so they still match `*.log`.
+
+The file handlers are `MultiProcessRotatingFileHandler`, because the
+`UVICORN_WORKERS` processes each hold a handler on the same files. With the
+plain `RotatingFileHandler` every worker rotates on its own, so segments are
+rotated before they are full and a file still being written can be shifted
+past `backupCount` and deleted. This handler writes each record under a lock
+file shared by all processes (`app.log.lock`): it reopens the file if another
+process rotated it, rotates if the file is full, then writes, so no other
+process can rotate in between.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Level of the root and request loggers and their handlers. `DEBUG` is opt-in |
+| `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | `20971520` / `5` | Rotation of `app.log` and `request.log` |
+| `LOG_AUDIT_MAX_BYTES` / `LOG_AUDIT_BACKUP_COUNT` | `20971520` / `20` | Rotation of `audit.log` |
+
+`LOG_LEVEL` does not lower `audit.log`: it is a security record, and
+`LOG_LEVEL=WARNING` must not silence it.
+
 ## 8. Business Logic Support
 
 ### Transaction Types (`enums.py`)

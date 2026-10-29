@@ -5,13 +5,15 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from logging import getLogger, config
+from logging import getLogger
 import platform
 import os
 
+from kugel_common.utils.logging_setup import configure_logging
+
 # Load logging configuration from the specified file
 logging_conf_path = os.path.join(os.path.dirname(__file__), "logging.conf")
-config.fileConfig(logging_conf_path)
+configure_logging(logging_conf_path)
 logger = getLogger(__name__)
 logger.info("Application started - journal service")
 
