@@ -4,7 +4,7 @@ from logging import getLogger
 import inspect
 
 from kugel_common.status_codes import StatusCodes
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id, get_tenant_id_refusing_terminal
 from kugel_common.schemas.api_response import ApiResponse
 from app.api.common.pagination import PaginationMetadata
 from kugel_common.exceptions import (
@@ -47,7 +47,7 @@ async def create_item_master_async(
     item_store: ItemStoreCreateRequest,
     store_code: str = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Create a new store-specific item master record.
@@ -254,7 +254,7 @@ async def update_item_store_master_async(
     item_store: ItemStoreUpdateRequest,
     store_code: str = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update an existing store-specific item record.
@@ -321,7 +321,7 @@ async def delete_item_store_master_async(
     item_code: str,
     store_code: str = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a store-specific item record.

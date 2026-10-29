@@ -7,7 +7,7 @@ from datetime import datetime
 
 from kugel_common.exceptions import DocumentAlreadyExistsException, DocumentNotFoundException
 from kugel_common.exceptions import register_exception_handlers
-from kugel_common.security import get_tenant_id_with_security_by_query_optional
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, get_tenant_id_refusing_terminal
 
 from app.api.v1.settings_master import router as settings_router
 from app.dependencies.common import parse_sort
@@ -21,6 +21,7 @@ def make_app():
     app.include_router(settings_router, prefix="/api/v1")
     register_exception_handlers(app)
     app.dependency_overrides[get_tenant_id_with_security_by_query_optional] = lambda: TENANT_ID
+    app.dependency_overrides[get_tenant_id_refusing_terminal] = lambda: TENANT_ID
     app.dependency_overrides[parse_sort] = lambda: [("name", 1)]
     return app
 

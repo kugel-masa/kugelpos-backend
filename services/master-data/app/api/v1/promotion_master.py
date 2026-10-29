@@ -6,7 +6,7 @@ from datetime import datetime
 import inspect
 
 from kugel_common.status_codes import StatusCodes
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id, get_tenant_id_refusing_terminal
 from kugel_common.schemas.api_response import ApiResponse
 
 from app.api.v1.schemas import (
@@ -37,7 +37,7 @@ logger = getLogger(__name__)
 async def create_promotion(
     promotion: PromotionCreateRequest,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Create a new promotion record.
@@ -270,7 +270,7 @@ async def update_promotion(
     promotion_code: str,
     promotion: PromotionUpdateRequest,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update an existing promotion.
@@ -339,7 +339,7 @@ async def update_promotion(
 async def delete_promotion(
     promotion_code: str,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a promotion (logical deletion).

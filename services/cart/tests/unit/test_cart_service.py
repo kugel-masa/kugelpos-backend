@@ -16,6 +16,7 @@ from app.exceptions import (
     CartCannotCreateException,
     CartCannotSaveException,
     CartNotFoundException,
+    CartScopeViolationException,
     ItemNotFoundException,
     BalanceZeroException,
     BalanceGreaterThanZeroException,
@@ -48,6 +49,9 @@ def _make_cart_doc(status="Idle", cart_id="cart-001", balance=1000.0, line_items
     """Create a CartDocument with sensible defaults."""
     cart = CartDocument()
     cart.cart_id = cart_id
+    cart.tenant_id = "t1"
+    cart.store_code = "S001"
+    cart.terminal_no = 1
     cart.status = status
     cart.balance_amount = balance
     cart.line_items = line_items or []
@@ -214,6 +218,28 @@ class TestCartServiceGetCart:
         with patch("app.services.cart_service.send_fatal_error_notification", new_callable=AsyncMock):
             with pytest.raises(CartNotFoundException):
                 await svc.get_cart_async()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("tenant_id, store_code", [("t2", "S001"), ("t1", "S002")])
+    async def test_cart_of_another_tenant_or_store_is_refused(self, tenant_id, store_code):
+        """The cache is keyed by cart_id alone; the cart's own tenant and store decide who may use it."""
+        cart = _make_cart_doc()
+        cart.tenant_id = tenant_id
+        cart.store_code = store_code
+        svc = _build_service(cart_doc=cart)
+
+        with pytest.raises(CartScopeViolationException) as exc:
+            await svc.get_cart_async()
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_cart_of_another_register_in_the_store_is_allowed(self):
+        cart = _make_cart_doc()
+        cart.terminal_no = 2
+        svc = _build_service(cart_doc=cart)
+
+        result = await svc.get_cart_async()
+        assert result.cart_id == "cart-001"
 
 
 class TestCartServiceAddItem:

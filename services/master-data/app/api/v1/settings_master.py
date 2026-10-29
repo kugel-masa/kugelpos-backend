@@ -4,7 +4,7 @@ from logging import getLogger
 import inspect
 
 from kugel_common.status_codes import StatusCodes
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id, get_tenant_id_refusing_terminal
 from kugel_common.schemas.api_response import ApiResponse
 from app.api.common.pagination import PaginationMetadata
 from kugel_common.exceptions import (
@@ -46,7 +46,7 @@ logger = getLogger(__name__)
 async def create_settings_master_async(
     settings: SettingsMasterCreateRequest,
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Create a new system settings record.
@@ -315,7 +315,7 @@ async def update_settings_master_async(
     name: str,
     settings: SettingsMasterUpdateRequest,
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update an existing system setting.
@@ -375,7 +375,7 @@ async def update_settings_master_async(
 async def delete_settings_master_async(
     name: str,
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a system setting.

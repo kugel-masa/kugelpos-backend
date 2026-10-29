@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from kugel_common.security import (
     get_tenant_id_with_security,
     get_tenant_id_with_security_by_query,
+    get_tenant_id_refusing_terminal,
     get_tenant_id_with_security_by_query_optional,
     terminal_claims_to_terminal_info,
     verify_path_binding,
@@ -396,3 +397,45 @@ class TestPathBinding:
         with pytest.raises(HTTPException) as exc:
             verify_path_binding("001", None, {"store_code": "001", "terminal_no": "1"}, "POST", "api_key")
         assert exc.value.status_code == 403
+
+
+class TestRefusingTerminal:
+    """Endpoints a terminal must not call take only user and service JWTs."""
+
+    @pytest.mark.asyncio
+    async def test_user_jwt_is_accepted(self):
+        token = jwt.encode({"sub": "admin", "tenant_id": "T001"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        assert await get_tenant_id_refusing_terminal(None, None, token) == "T001"
+
+    @pytest.mark.asyncio
+    async def test_terminal_jwt_is_forbidden(self):
+        token = create_terminal_token(_make_terminal_info())
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_refusing_terminal(None, None, token)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_terminal_api_key_is_forbidden(self, monkeypatch):
+        async def fake_get_terminal_info(terminal_id, api_key, is_terminal_service=False):
+            return _make_terminal_info()
+
+        monkeypatch.setattr("kugel_common.security.get_terminal_info", fake_get_terminal_info)
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_refusing_terminal("T001-001-01", "key", None)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_wrong_api_key_is_still_unauthorized(self, monkeypatch):
+        async def fake_get_terminal_info(terminal_id, api_key, is_terminal_service=False):
+            raise HTTPException(status_code=401, detail="Invalid API Key")
+
+        monkeypatch.setattr("kugel_common.security.get_terminal_info", fake_get_terminal_info)
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_refusing_terminal("T001-001-01", "wrong", None)
+        assert exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_no_credential_is_unauthorized(self):
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_refusing_terminal(None, None, None)
+        assert exc.value.status_code == 401

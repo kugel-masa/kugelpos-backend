@@ -4,7 +4,7 @@ from logging import getLogger
 import inspect
 
 from kugel_common.status_codes import StatusCodes
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id, get_tenant_id_refusing_terminal
 from kugel_common.schemas.api_response import ApiResponse
 from app.api.common.pagination import PaginationMetadata
 from kugel_common.exceptions import (
@@ -45,7 +45,7 @@ logger = getLogger(__name__)
 async def create_payment(
     payment: PaymentCreateRequest,
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Create a new payment method record.
@@ -246,7 +246,7 @@ async def update_payment(
     payment_code: str,
     payment: PaymentUpdateRequest,
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update an existing payment method.
@@ -312,7 +312,7 @@ async def update_payment(
 async def delete_payment(
     payment_code: str,
     tenant_id: str = Path(...),
-    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a payment method.

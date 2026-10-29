@@ -705,6 +705,61 @@ async def get_tenant_id_with_security_by_query_optional(
     """
     return await __get_tenant_id(terminal_id, api_key, token, is_terminal_service, request)
 
+async def get_tenant_id_refusing_terminal(
+    terminal_id: Optional[str] = Query(None, description="terminal_id of an API-key caller; such callers are refused"),
+    api_key: Optional[str] = Security(api_key_header),
+    token: Optional[str] = Depends(oauth2_scheme),
+):
+    """
+    FastAPI dependency for endpoints a terminal must not call, such as master-data writes.
+
+    Accepts a user or service JWT and returns its tenant. A terminal credential -
+    a terminal JWT, or an API key with its terminal_id - is authenticated first, so
+    a wrong one still answers 401, and then refused with 403: a register's
+    credential is not a back-office one, and without this one terminal could reset
+    any staff member's PIN and roles, or change prices and payment methods, across
+    the tenant.
+
+    Args:
+        terminal_id: Terminal ID from query parameter (API-key callers)
+        api_key: API key from header
+        token: OAuth token from header
+
+    Returns:
+        Tenant ID string
+
+    Raises:
+        HTTPException: 401 without a valid credential, 403 for a terminal credential
+    """
+    if token:
+        try:
+            terminal_claims = verify_terminal_token(token)
+        except HTTPException:
+            terminal_claims = None
+        if terminal_claims is not None:
+            _refuse_terminal_credential("terminal_jwt", terminal_claims.get("terminal_id"))
+        user_dict = await get_current_user(token)
+        return user_dict.get("tenant_id")
+
+    if terminal_id and api_key:
+        await get_terminal_info(terminal_id, api_key)
+        _refuse_terminal_credential("api_key", terminal_id)
+
+    message = "Unauthorized access : No token provided"
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
+
+def _refuse_terminal_credential(credential: str, terminal_id: Optional[str]) -> None:
+    audit_logger.warning(
+        "Terminal credential used on an endpoint terminals may not call (credential=%s, terminal_id=%s)",
+        credential,
+        terminal_id,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Terminal credentials cannot be used on this endpoint",
+    )
+
 async def get_tenant_id_with_token(
     token: str = Depends(oauth2_scheme),
     is_terminal_service: Optional[bool] = False

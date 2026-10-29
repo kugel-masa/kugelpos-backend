@@ -597,3 +597,22 @@ class CartSizeBudgetExceededException(ServiceException):
             CartErrorMessage.get_message(CartErrorCode.CART_SIZE_BUDGET_EXCEEDED),
             status_code=status.HTTP_409_CONFLICT,
         )
+
+
+class CartScopeViolationException(ServiceException):
+    """Raised when a cached cart is used by a terminal of another tenant or store.
+
+    The cache is keyed by cart_id alone, so the cart itself is the only record of
+    whose it is. The carried snapshot is held to the same tenant and store
+    (SnapshotScopeViolationException); this holds the cache path to it.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.CART_SCOPE_VIOLATION,
+            CartErrorMessage.get_message(CartErrorCode.CART_SCOPE_VIOLATION),
+            status_code=status.HTTP_403_FORBIDDEN,
+        )

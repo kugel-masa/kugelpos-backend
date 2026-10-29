@@ -19,6 +19,8 @@ import httpx
 import jwt
 import pytest
 
+from .test_concurrency import _bootstrap
+
 
 # Match commons.config.settings_auth.SECRET_KEY default (development).
 DEV_SECRET_KEY = "test-secret-key-for-development-only"
@@ -215,6 +217,54 @@ def test_terminal_credential_is_bound_to_its_store():
         assert resp.status_code == 200, resp.text
         resp = c.get(f"{stores}/{other_store}/terminals/1/transactions", headers=h)
         assert resp.status_code == 403, resp.text
+
+
+def test_terminal_credential_cannot_write_masters():
+    """A register's credential cannot change tenant masters; the back office can."""
+    tenant_id = _new_tenant_id()
+    admin_token = _live_admin_token(tenant_id)
+    _setup_tenant(tenant_id, admin_token)
+    terminal_a, _, jwt_a, api_key_a = _terminal_jwts(tenant_id, admin_token, "5678")
+    admin = {"Authorization": f"Bearer {admin_token}"}
+    staff = f"/api/v1/tenants/{tenant_id}/staff"
+    body = {"name": "Staff", "pin": "1234", "roles": ["staff"]}
+
+    with _client("URL_MASTER_DATA") as c:
+        assert c.post(staff, json={"id": "S900", **body}, headers=admin).status_code == 201
+        escalate = {"name": "Staff", "pin": "0000", "roles": ["manager"]}
+        resp = c.put(f"{staff}/S900", json=escalate, headers={"Authorization": f"Bearer {jwt_a}"})
+        assert resp.status_code == 403, resp.text
+        resp = c.put(
+            f"{staff}/S900", params={"terminal_id": terminal_a}, json=escalate,
+            headers={"X-API-KEY": api_key_a},
+        )
+        assert resp.status_code == 403, resp.text
+        # Reads stay open to the register.
+        assert c.get(f"{staff}/S900", headers={"Authorization": f"Bearer {jwt_a}"}).status_code == 200
+        assert c.put(f"{staff}/S900", json=body, headers=admin).status_code == 200
+
+
+def test_cart_is_used_only_within_its_tenant_and_store():
+    """The cart cache is keyed by cart_id alone; a cart_id is not a credential."""
+    tenant_id, other_tenant = _new_tenant_id(), _new_tenant_id()
+    owner, owner_key = _bootstrap(tenant_id, "A001", 1, "ITEM1")
+    other_store, other_store_key = _bootstrap(tenant_id, "B001", 1, "ITEM1")
+    stranger, stranger_key = _bootstrap(other_tenant, "X001", 1, "ITEM1")
+    line = [{"itemCode": "ITEM1", "quantity": 1}]
+
+    with _client("URL_CART") as c:
+        resp = c.post("/api/v1/carts", params={"terminal_id": owner}, json={"terminal_id": owner},
+                      headers={"X-API-KEY": owner_key})
+        assert resp.status_code == 201, resp.text
+        cart_id = resp.json()["data"]["cartId"]
+        for terminal_id, api_key in ((other_store, other_store_key), (stranger, stranger_key)):
+            resp = c.post(f"/api/v1/carts/{cart_id}/lineItems", params={"terminal_id": terminal_id},
+                          json=line, headers={"X-API-KEY": api_key})
+            assert resp.status_code == 403, resp.text
+        resp = c.post(f"/api/v1/carts/{cart_id}/lineItems", params={"terminal_id": owner},
+                      json=line, headers={"X-API-KEY": owner_key})
+        assert resp.status_code == 200, resp.text
+        assert len(resp.json()["data"]["lineItems"]) == 1
 
 
 # ---------------------------------------------------------------------------

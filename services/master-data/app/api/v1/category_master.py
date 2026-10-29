@@ -6,7 +6,7 @@ import inspect
 
 from kugel_common.database import database as db_helper
 from kugel_common.status_codes import StatusCodes
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id, get_tenant_id_refusing_terminal
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.exceptions import (
     InvalidRequestDataException,
@@ -47,7 +47,7 @@ logger = getLogger(__name__)
 async def create_category(
     category: CategoryMasterCreateRequest,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Create a new product category record.
@@ -242,7 +242,7 @@ async def update_category(
     category_code: str,
     category: CategoryMasterUpdateRequest,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update an existing product category.
@@ -311,7 +311,7 @@ async def update_category(
 async def delete_category(
     category_code: str,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a product category.

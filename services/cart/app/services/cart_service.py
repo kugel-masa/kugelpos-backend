@@ -32,6 +32,7 @@ from app.exceptions import (
     SnapshotTerminalStateException,
     SnapshotCartIdMismatchException,
     CartSizeBudgetExceededException,
+    CartScopeViolationException,
 )
 from app.models.repositories.cart_repository import CartRepository
 from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
@@ -1282,6 +1283,15 @@ class CartService(ICartService):
             await send_fatal_error_notification(message=message, error=e, service="cart", context=context)
 
             raise CartNotFoundException(message, logger, e) from e
+
+        # The cache is keyed by cart_id alone: hold the cart to the tenant and store
+        # of the terminal using it, as the carried snapshot is (FR-005 / FR-012).
+        if cart.tenant_id != self.terminal_info.tenant_id or cart.store_code != self.terminal_info.store_code:
+            raise CartScopeViolationException(
+                f"Cart scope mismatch: cart={cart.tenant_id}/{cart.store_code} "
+                f"auth={self.terminal_info.tenant_id}/{self.terminal_info.store_code}",
+                logger,
+            )
 
         # Update cache information in each repository
         self.settings_master_repo.set_settings_master_documents(cart.masters.settings)

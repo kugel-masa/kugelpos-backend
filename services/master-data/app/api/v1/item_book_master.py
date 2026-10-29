@@ -6,7 +6,7 @@ from typing import List, Optional
 import asyncio
 
 from kugel_common.status_codes import StatusCodes
-from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id, get_tenant_id_refusing_terminal
 from kugel_common.schemas.api_response import ApiResponse
 from app.api.common.pagination import PaginationMetadata
 from kugel_common.exceptions import (
@@ -53,7 +53,7 @@ logger = getLogger(__name__)
 async def create_item_book(
     item_book: ItemBookCreateRequest,
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Create a new item book record.
@@ -299,7 +299,7 @@ async def update_item_book(
     item_book: ItemBookUpdateRequest,
     item_book_id: str = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update an existing item book record.
@@ -358,7 +358,7 @@ async def update_item_book(
 async def delete_item_book(
     item_book_id: str = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete an item book record.
@@ -413,7 +413,7 @@ async def add_category_to_item_book(
     item_book_category: ItemBookCategory,
     item_book_id: str = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Add a category to an item book.
@@ -474,7 +474,7 @@ async def update_category_in_item_book(
     item_book_id: str = Path(...),
     category_number: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update a category in an item book.
@@ -537,7 +537,7 @@ async def delete_category_from_item_book(
     item_book_id: str = Path(...),
     category_number: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a category from an item book.
@@ -596,7 +596,7 @@ async def add_tab_to_category_in_item_book(
     item_book_id: str = Path(...),
     category_number: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Add a tab to a category in an item book.
@@ -661,7 +661,7 @@ async def update_tab_in_category_in_item_book(
     category_number: int = Path(...),
     tab_number: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update a tab in a category in an item book.
@@ -726,7 +726,7 @@ async def delete_tab_from_category_in_item_book(
     category_number: int = Path(...),
     tab_number: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a tab from a category in an item book.
@@ -791,7 +791,7 @@ async def add_button_to_tab_in_category_in_item_book(
     category_number: int = Path(...),
     tab_number: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Add a button to a tab in a category in an item book.
@@ -859,7 +859,7 @@ async def update_button_in_tab_in_category_in_item_book(
     pos_x: int = Path(...),
     pos_y: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Update a button in a tab in a category in an item book.
@@ -928,7 +928,7 @@ async def delete_button_from_tab_in_category_in_item_book(
     pos_x: int = Path(...),
     pos_y: int = Path(...),
     tenant_id: str = Path(...),
-    tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
+    tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
     Delete a button from a tab in a category in an item book.
