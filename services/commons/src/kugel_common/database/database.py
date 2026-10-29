@@ -24,6 +24,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from logging import getLogger
 from typing import Optional, TypeVar, Callable
 import asyncio
+import re
 from functools import wraps
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from kugel_common.database.database_exceptions import DatabaseException
@@ -34,6 +35,27 @@ logger = getLogger(__name__)
 
 # Get MongoDB connection details from settings
 MONGODB_URI: str = settings.MONGODB_URI
+
+# userinfo between "scheme://" and the host. Greedy on purpose, so a password
+# holding an unencoded "@" is consumed up to the last "@" before the host.
+_URI_USERINFO = re.compile(r"(?<=://)[^/\s]*@")
+
+
+def redact_uri(uri: str) -> str:
+    """
+    Replace the credentials in a MongoDB URI, keeping host and options.
+
+    Messages built from the URI end up in HTTP 500 bodies and in the request
+    log, so they must never carry the user name or password.
+
+    Args:
+        uri: MongoDB connection string
+
+    Returns:
+        The URI with any userinfo replaced by ``***:***``
+    """
+    return _URI_USERINFO.sub("***:***@", uri)
+
 
 # Initialize global variables
 client: AsyncIOMotorClient = None
@@ -133,7 +155,7 @@ async def get_client_async() -> AsyncIOMotorClient:
                 )
             except Exception as e:
                 client = None
-                message = f"Failed to connect to MongoDB: uri->{MONGODB_URI}"
+                message = f"Failed to connect to MongoDB: uri->{redact_uri(MONGODB_URI)}"
                 raise DatabaseException(message, logger, e) from e
         return client
 
@@ -201,7 +223,7 @@ async def get_db_async(db_name: str) -> AsyncIOMotorDatabase:
         logger.info(f"Connected to database {db_name}")
         return db
     except Exception as e:
-        message = f"Failed to get database: uri->{MONGODB_URI} db->{db_name}"
+        message = f"Failed to get database: uri->{redact_uri(MONGODB_URI)} db->{db_name}"
         raise DatabaseException(message, logger, e) from e
 
 
