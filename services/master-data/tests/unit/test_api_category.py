@@ -7,7 +7,7 @@ from datetime import datetime
 
 from kugel_common.exceptions import DocumentAlreadyExistsException, DocumentNotFoundException
 from kugel_common.exceptions import register_exception_handlers
-from kugel_common.security import get_tenant_id_with_security_by_query_optional
+from kugel_common.security import get_tenant_id_with_security_by_query_optional, get_tenant_id_refusing_terminal
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.schemas.base_schemas import Metadata
 
@@ -23,6 +23,7 @@ def make_app():
     app.include_router(category_router, prefix="/api/v1")
     register_exception_handlers(app)
     app.dependency_overrides[get_tenant_id_with_security_by_query_optional] = lambda: TENANT_ID
+    app.dependency_overrides[get_tenant_id_refusing_terminal] = lambda: TENANT_ID
     app.dependency_overrides[parse_sort] = lambda: [("category_code", 1)]
     return app
 

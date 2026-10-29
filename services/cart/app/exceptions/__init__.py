@@ -65,6 +65,7 @@ from .cart_exceptions import (
     SnapshotGenerationFailedException,
     SnapshotCartIdMismatchException,
     CartSizeBudgetExceededException,
+    CartScopeViolationException,
     TransactionAmbiguousException,
     VoidOutOfSessionException,
 )
