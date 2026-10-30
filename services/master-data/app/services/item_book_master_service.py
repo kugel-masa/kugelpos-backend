@@ -653,8 +653,10 @@ class ItemBookMasterService:
                 message = f"button with pos_x {update_data.get('pos_x')} and pos_y {update_data.get('pos_y')} already exists in tab"
                 raise InvalidRequestDataException(message, logger)
 
-        target_button.pos_x = update_data.get("pos_x") if update_data.get("pos_x") else target_button.pos_x
-        target_button.pos_y = update_data.get("pos_y") if update_data.get("pos_y") else target_button.pos_y
+        # Coordinates count from 0, so 0 is a position, not "not given": a truthiness
+        # test kept a button out of the first row and column.
+        target_button.pos_x = update_data.get("pos_x") if update_data.get("pos_x") is not None else target_button.pos_x
+        target_button.pos_y = update_data.get("pos_y") if update_data.get("pos_y") is not None else target_button.pos_y
         target_button.size = update_data.get("size") if update_data.get("size") else target_button.size
         target_button.image_url = (
             update_data.get("image_url") if update_data.get("image_url") else target_button.image_url
