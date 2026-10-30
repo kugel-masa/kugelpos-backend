@@ -6,6 +6,7 @@ import uuid, datetime
 from kugel_common.exceptions import (
     DocumentNotFoundException,
     DocumentAlreadyExistsException,
+    DuplicateKeyException,
     InvalidRequestDataException,
 )
 from app.models.documents.item_book_master_document import (
@@ -30,6 +31,8 @@ class ItemBookMasterService:
     An item book represents a collection of items organized into categories and tabs
     for display and selection in the POS interface.
     """
+
+    ITEM_BOOK_ID_ATTEMPTS = 20
 
     def __init__(
         self,
@@ -63,10 +66,19 @@ class ItemBookMasterService:
         logger.debug(f"Create item book request received for title: {title}")
 
         item_book_doc = ItemBookMasterDocument()
-        item_book_doc.item_book_id = await self.__generate_item_book_id()
         item_book_doc.title = title
         item_book_doc.categories = [ItemBookCategory(**category) for category in categories]
-        return await self.item_book_master_repo.create_item_book_async(item_book_doc)
+        # The id is the first free number of the day, so two books created at the
+        # same moment can pick the same one; the unique index refuses the second,
+        # which then takes the next free number.
+        for attempt in range(1, self.ITEM_BOOK_ID_ATTEMPTS + 1):
+            item_book_doc.item_book_id = await self.__generate_item_book_id()
+            try:
+                return await self.item_book_master_repo.create_item_book_async(item_book_doc)
+            except DuplicateKeyException:
+                if attempt == self.ITEM_BOOK_ID_ATTEMPTS:
+                    raise
+                logger.info(f"Item book id {item_book_doc.item_book_id} was taken meanwhile; retrying")
 
     async def __generate_item_book_id(self) -> str:
         """

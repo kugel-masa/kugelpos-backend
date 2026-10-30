@@ -4,6 +4,7 @@ from logging import getLogger
 
 from kugel_common.config.settings_app import AppSettings
 from kugel_common.database import database as db_helper
+from pymongo.errors import DuplicateKeyError
 
 from app.models.documents.settings_master_document import SettingsMasterDocument
 from app.models.repositories.settings_master_repository import SettingsMasterRepository
@@ -65,6 +66,54 @@ async def create_master_item_book_collection(tenant_id: str):
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_keys_list, index_name=name + "_index"
     )
+    await move_legacy_item_books(tenant_id)
+
+
+# Item books used to be written to master_key_preset, while this setup built the
+# collection and its unique index under master_item_book: the index guarded an
+# empty collection and the data had none. The repository now writes to
+# master_item_book, so whatever an earlier version left in the old collection is
+# carried across here. Re-running the tenant setup (POST /tenants) is how an
+# existing tenant picks this up; run it again once no instance of the earlier
+# version is left, since until then those instances still write to the old place.
+#
+# Each book is removed from the old collection only once an identical copy is in
+# the new one, and the old collection itself is never dropped: a book written
+# there while this runs is left for the next run rather than lost. A book that
+# differs between the two is left in both and reported.
+async def move_legacy_item_books(tenant_id: str):
+    db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+    legacy_name = settings.DB_COLLECTION_NAME_ITEM_BOOK_LEGACY
+    if legacy_name not in await db.list_collection_names():
+        return
+
+    legacy = db[legacy_name]
+    target = db[settings.DB_COLLECTION_NAME_ITEM_BOOK_MASTER]
+    moved = 0
+    conflicts = []
+    async for doc in legacy.find({}):
+        key = {"tenant_id": doc.get("tenant_id"), "item_book_id": doc.get("item_book_id")}
+        existing = await target.find_one(key)
+        if existing is None:
+            try:
+                await target.insert_one(doc)
+            except DuplicateKeyError:
+                # Another run, or a new book under the same id, got there first.
+                existing = await target.find_one(key)
+        if existing is not None and existing != doc:
+            conflicts.append(doc.get("item_book_id"))
+            continue
+        # Only the copy that was read: one changed since is left for the next run.
+        result = await legacy.delete_one(doc)
+        moved += result.deleted_count
+
+    if moved:
+        logger.info(f"Moved {moved} item book(s) from {legacy_name} to {target.name} for tenant_id:{tenant_id}")
+    if conflicts:
+        logger.warning(
+            f"Item books {conflicts} differ between {legacy_name} and {target.name} for tenant_id:{tenant_id}; "
+            f"both copies are kept until they are resolved by hand"
+        )
 
 
 # create master category collection
