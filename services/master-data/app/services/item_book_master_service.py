@@ -134,8 +134,11 @@ class ItemBookMasterService:
                         button.item_code, is_logical_deleted=False, use_cache=False
                     )
                     if not item_common:
+                        # Not in the item master: no price and no name, rather than
+                        # the string "not found" (a price of 0 would read as a free item).
                         logger.warning(f"Item with item_code {button.item_code} not found")
-                        button.description = "not found"
+                        button.description = None
+                        button.unit_price = None
                         continue
                     else:
                         button.description = item_common.description

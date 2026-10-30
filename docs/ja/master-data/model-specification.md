@@ -122,14 +122,14 @@ POS画面のUI階層（カテゴリー/タブ/ボタン）を管理するドキ�
 |------------|------|----------|-------------|
 | pos_x | integer | - | X座標位置 |
 | pos_y | integer | - | Y座標位置 |
-| size | ButtonSize | - | ボタンサイズ（SMALL/MEDIUM/LARGE等） |
+| size | ButtonSize | - | ボタンサイズ（Single/DoubleWidth/DoubleHeight/Quad） |
 | item_code | string | - | 商品コード |
 | color_text | string | - | ボタンテキスト色 |
 | image_url | string | - | ボタン画像URL |
 | unit_price | float | - | 商品価格（動的取得、保存されない） |
 | description | string | - | 商品説明（動的取得、保存されない） |
 
-**注:** `unit_price` と `description` は商品マスターから動的に取得され、ドキュメントには保存されません。
+**注:** `unit_price` と `description` は保存されず、書き込みの要求でも受け付けません（送られても無視します）。値が入るのは `GET .../item_books/{item_book_id}/detail` だけで、商品マスターから取得します（店舗の売価があればそちら）。ほかの経路では常に null です。`/detail` でも、商品マスターにない商品のボタンは null になります。
 
 **インデックス:**
 - ユニーク: (tenant_id, item_book_id)

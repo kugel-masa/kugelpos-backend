@@ -11941,7 +11941,45 @@
           "itemCode"
         ],
         "title": "BaseItemBookButton",
-        "description": "Base Item Book Button Schema\n\nDefines fields for button placement and display attributes within an item book.\nIncludes position (X,Y), size, image URL, text color, item code,\nunit price (optional), and description (optional)."
+        "description": "Base Item Book Button Schema\n\nThe button as returned: the stored fields plus the item's unit price and\ndescription. Only /detail fills those two, from the item master (the store\nprice when the store has one); they are null on every other route, and on\n/detail for a button whose item is not in the item master."
+      },
+      "BaseItemBookButtonRequest": {
+        "properties": {
+          "posX": {
+            "type": "integer",
+            "title": "Posx"
+          },
+          "posY": {
+            "type": "integer",
+            "title": "Posy"
+          },
+          "size": {
+            "$ref": "#/components/schemas/ButtonSize"
+          },
+          "imageUrl": {
+            "type": "string",
+            "title": "Imageurl"
+          },
+          "colorText": {
+            "type": "string",
+            "title": "Colortext"
+          },
+          "itemCode": {
+            "type": "string",
+            "title": "Itemcode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "posX",
+          "posY",
+          "size",
+          "imageUrl",
+          "colorText",
+          "itemCode"
+        ],
+        "title": "BaseItemBookButtonRequest",
+        "description": "Base Item Book Button Request Schema\n\nThe button fields an item book stores: position (X,Y), size, image URL,\ntext color and item code. The item code does not have to exist in the item\nmaster yet.\n\nunit_price and description are deliberately absent. They are read from the\nitem master for display and are never stored; offering them here made them\nlook writable, and PUT stored whatever was sent. A client that still sends\nthem is not refused: unknown fields are ignored."
       },
       "BaseItemBookCategory": {
         "properties": {
@@ -11980,7 +12018,46 @@
           "color"
         ],
         "title": "BaseItemBookCategory",
-        "description": "Base Item Book Category Schema\n\nDefines fields for category information within an item book.\nIncludes category number, title, color, and an array of tabs contained within."
+        "description": "Base Item Book Category Schema\n\nThe category as returned, its buttons carrying the display-only fields."
+      },
+      "BaseItemBookCategoryRequest": {
+        "properties": {
+          "categoryNumber": {
+            "type": "integer",
+            "title": "Categorynumber"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "tabs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseItemBookTabRequest"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tabs",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "categoryNumber",
+          "title",
+          "color"
+        ],
+        "title": "BaseItemBookCategoryRequest",
+        "description": "Base Item Book Category Request Schema\n\nDefines fields for category information within an item book.\nIncludes category number, title, color, and an array of tabs contained within."
       },
       "BaseItemBookTab": {
         "properties": {
@@ -12019,7 +12096,46 @@
           "color"
         ],
         "title": "BaseItemBookTab",
-        "description": "Base Item Book Tab Schema\n\nDefines fields for tab information within an item book.\nIncludes tab number, title, color, and an array of buttons contained within."
+        "description": "Base Item Book Tab Schema\n\nThe tab as returned, its buttons carrying the display-only fields."
+      },
+      "BaseItemBookTabRequest": {
+        "properties": {
+          "tabNumber": {
+            "type": "integer",
+            "title": "Tabnumber"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "buttons": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BaseItemBookButtonRequest"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buttons",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "tabNumber",
+          "title",
+          "color"
+        ],
+        "title": "BaseItemBookTabRequest",
+        "description": "Base Item Book Tab Request Schema\n\nDefines fields for tab information within an item book.\nIncludes tab number, title, color, and an array of buttons contained within."
       },
       "BaseSettingsMasterValue": {
         "properties": {
@@ -12320,28 +12436,6 @@
           "itemCode": {
             "type": "string",
             "title": "Itemcode"
-          },
-          "unitPrice": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unitprice"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
           }
         },
         "type": "object",
@@ -12354,7 +12448,7 @@
           "itemCode"
         ],
         "title": "ItemBookButton",
-        "description": "Item Book Button Schema\n\nDefines the button placement and display attributes within an item book.\nContains position (X,Y), size, image URL, text color, item code, and more."
+        "description": "Item Book Button Schema\n\nRequest body for adding or updating a button: the fields an item book\nstores. The display-only unit_price and description are not accepted."
       },
       "ItemBookButtonDeleteResponse": {
         "properties": {
@@ -12408,7 +12502,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookTab"
+                  "$ref": "#/components/schemas/BaseItemBookTabRequest"
                 },
                 "type": "array"
               },
@@ -12458,7 +12552,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookCategory"
+                  "$ref": "#/components/schemas/BaseItemBookCategoryRequest"
                 },
                 "type": "array"
               },
@@ -12559,7 +12653,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookButton"
+                  "$ref": "#/components/schemas/BaseItemBookButtonRequest"
                 },
                 "type": "array"
               },
@@ -12614,7 +12708,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/BaseItemBookCategory"
+                  "$ref": "#/components/schemas/BaseItemBookCategoryRequest"
                 },
                 "type": "array"
               },

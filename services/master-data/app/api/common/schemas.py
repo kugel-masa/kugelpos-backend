@@ -477,13 +477,18 @@ class BaseCategoryMasterDeleteResponse(BaseSchemaModel):
 
 
 # Item Book
-class BaseItemBookButton(BaseSchemaModel):
+class BaseItemBookButtonRequest(BaseSchemaModel):
     """
-    Base Item Book Button Schema
+    Base Item Book Button Request Schema
 
-    Defines fields for button placement and display attributes within an item book.
-    Includes position (X,Y), size, image URL, text color, item code,
-    unit price (optional), and description (optional).
+    The button fields an item book stores: position (X,Y), size, image URL,
+    text color and item code. The item code does not have to exist in the item
+    master yet.
+
+    unit_price and description are deliberately absent. They are read from the
+    item master for display and are never stored; offering them here made them
+    look writable, and PUT stored whatever was sent. A client that still sends
+    them is not refused: unknown fields are ignored.
     """
 
     pos_x: int
@@ -492,13 +497,25 @@ class BaseItemBookButton(BaseSchemaModel):
     image_url: str
     color_text: str
     item_code: str
-    unit_price: Optional[float] = None  # for getting with detail
-    description: Optional[str] = None  # for getting with detail
 
 
-class BaseItemBookTab(BaseSchemaModel):
+class BaseItemBookButton(BaseItemBookButtonRequest):
     """
-    Base Item Book Tab Schema
+    Base Item Book Button Schema
+
+    The button as returned: the stored fields plus the item's unit price and
+    description. Only /detail fills those two, from the item master (the store
+    price when the store has one); they are null on every other route, and on
+    /detail for a button whose item is not in the item master.
+    """
+
+    unit_price: Optional[float] = None
+    description: Optional[str] = None
+
+
+class BaseItemBookTabRequest(BaseSchemaModel):
+    """
+    Base Item Book Tab Request Schema
 
     Defines fields for tab information within an item book.
     Includes tab number, title, color, and an array of buttons contained within.
@@ -507,12 +524,22 @@ class BaseItemBookTab(BaseSchemaModel):
     tab_number: int
     title: str
     color: str
+    buttons: Optional[list[BaseItemBookButtonRequest]] = []
+
+
+class BaseItemBookTab(BaseItemBookTabRequest):
+    """
+    Base Item Book Tab Schema
+
+    The tab as returned, its buttons carrying the display-only fields.
+    """
+
     buttons: Optional[list[BaseItemBookButton]] = []
 
 
-class BaseItemBookCategory(BaseSchemaModel):
+class BaseItemBookCategoryRequest(BaseSchemaModel):
     """
-    Base Item Book Category Schema
+    Base Item Book Category Request Schema
 
     Defines fields for category information within an item book.
     Includes category number, title, color, and an array of tabs contained within.
@@ -521,6 +548,16 @@ class BaseItemBookCategory(BaseSchemaModel):
     category_number: int
     title: str
     color: str
+    tabs: Optional[list[BaseItemBookTabRequest]] = []
+
+
+class BaseItemBookCategory(BaseItemBookCategoryRequest):
+    """
+    Base Item Book Category Schema
+
+    The category as returned, its buttons carrying the display-only fields.
+    """
+
     tabs: Optional[list[BaseItemBookTab]] = []
 
 
@@ -533,7 +570,7 @@ class BaseItemBookCreateRequest(BaseSchemaModel):
     """
 
     title: str
-    categories: Optional[list[BaseItemBookCategory]] = []
+    categories: Optional[list[BaseItemBookCategoryRequest]] = []
 
 
 class BaseItemBookUpdateRequest(BaseSchemaModel):
@@ -545,10 +582,10 @@ class BaseItemBookUpdateRequest(BaseSchemaModel):
     """
 
     title: str
-    categories: Optional[list[BaseItemBookCategory]] = []
+    categories: Optional[list[BaseItemBookCategoryRequest]] = []
 
 
-class BaseItemBookResponse(BaseItemBookCreateRequest):
+class BaseItemBookResponse(BaseSchemaModel):
     """
     Base Item Book Response Schema
 
@@ -557,9 +594,9 @@ class BaseItemBookResponse(BaseItemBookCreateRequest):
     and last update datetime.
     """
 
-    item_book_id: str
     title: str
     categories: Optional[list[BaseItemBookCategory]] = []
+    item_book_id: str
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 

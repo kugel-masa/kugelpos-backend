@@ -40,9 +40,9 @@ from app.api.common.schemas import (
     BaseCategoryMasterUpdateRequest,
     BaseCategoryMasterResponse,
     BaseCategoryMasterDeleteResponse,
-    BaseItemBookButton,
-    BaseItemBookTab,
-    BaseItemBookCategory,
+    BaseItemBookButtonRequest,
+    BaseItemBookTabRequest,
+    BaseItemBookCategoryRequest,
     BaseItemBookResponse,
     BaseItemBookCreateRequest,
     BaseItemBookUpdateRequest,
@@ -403,18 +403,18 @@ class CategoryMasterDeleteResponse(BaseCategoryMasterDeleteResponse):
 # Item book related schema definitions
 
 
-class ItemBookButton(BaseItemBookButton):
+class ItemBookButton(BaseItemBookButtonRequest):
     """
     Item Book Button Schema
 
-    Defines the button placement and display attributes within an item book.
-    Contains position (X,Y), size, image URL, text color, item code, and more.
+    Request body for adding or updating a button: the fields an item book
+    stores. The display-only unit_price and description are not accepted.
     """
 
     pass
 
 
-class ItemBookTab(BaseItemBookTab):
+class ItemBookTab(BaseItemBookTabRequest):
     """
     Item Book Tab Schema
 
@@ -425,7 +425,7 @@ class ItemBookTab(BaseItemBookTab):
     pass
 
 
-class ItemBookCategory(BaseItemBookCategory):
+class ItemBookCategory(BaseItemBookCategoryRequest):
     """
     Item Book Category Schema
 

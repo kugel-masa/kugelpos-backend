@@ -550,7 +550,7 @@ Delete Categoryを削除します。対象をシステムから削除します�
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory] | No | - |
+| `categories` | array[BaseItemBookCategoryRequest] | No | - |
 
 **リクエスト例:**
 ```json
@@ -686,7 +686,7 @@ Update Item Bookを更新します。
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory] | No | - |
+| `categories` | array[BaseItemBookCategoryRequest] | No | - |
 
 **リクエスト例:**
 ```json
@@ -815,7 +815,7 @@ Delete Item Bookを削除します。対象をシステムから削除します�
 | `categoryNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `tabs` | array[BaseItemBookTab] | No | - |
+| `tabs` | array[BaseItemBookTabRequest] | No | - |
 
 **リクエスト例:**
 ```json
@@ -895,7 +895,7 @@ Update Category In Item Bookを更新します。
 | `categoryNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `tabs` | array[BaseItemBookTab] | No | - |
+| `tabs` | array[BaseItemBookTabRequest] | No | - |
 
 **リクエスト例:**
 ```json
@@ -1030,7 +1030,7 @@ Delete Category From Item Bookを削除します。対象をシステムから�
 | `tabNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `buttons` | array[BaseItemBookButton] | No | - |
+| `buttons` | array[BaseItemBookButtonRequest] | No | - |
 
 **リクエスト例:**
 ```json
@@ -1111,7 +1111,7 @@ Update Tab In Category In Item Bookを更新します。
 | `tabNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `buttons` | array[BaseItemBookButton] | No | - |
+| `buttons` | array[BaseItemBookButtonRequest] | No | - |
 
 **リクエスト例:**
 ```json
@@ -1253,8 +1253,6 @@ Delete Tab From Category In Item Bookを削除します。対象をシステム�
 | `imageUrl` | string | Yes | - |
 | `colorText` | string | Yes | - |
 | `itemCode` | string | Yes | - |
-| `unitPrice` | number | No | - |
-| `description` | string | No | - |
 
 **リクエスト例:**
 ```json
@@ -1264,9 +1262,7 @@ Delete Tab From Category In Item Bookを削除します。対象をシステム�
   "size": "Single",
   "imageUrl": "string",
   "colorText": "string",
-  "itemCode": "string",
-  "unitPrice": 0.0,
-  "description": "string"
+  "itemCode": "string"
 }
 ```
 
@@ -1344,8 +1340,6 @@ Update Button In Tab In Category In Item Bookを更新します。
 | `imageUrl` | string | Yes | - |
 | `colorText` | string | Yes | - |
 | `itemCode` | string | Yes | - |
-| `unitPrice` | number | No | - |
-| `description` | string | No | - |
 
 **リクエスト例:**
 ```json
@@ -1355,9 +1349,7 @@ Update Button In Tab In Category In Item Bookを更新します。
   "size": "Single",
   "imageUrl": "string",
   "colorText": "string",
-  "itemCode": "string",
-  "unitPrice": 0.0,
-  "description": "string"
+  "itemCode": "string"
 }
 ```
 
