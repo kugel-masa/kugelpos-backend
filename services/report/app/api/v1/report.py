@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from fastapi import APIRouter, status, HTTPException, Query, Depends, Path
+from datetime import datetime
 from typing import Optional
 from logging import getLogger
 import inspect
@@ -19,13 +20,39 @@ from app.models.documents.category_report_document import CategoryReportDocument
 from app.models.documents.item_report_document import ItemReportDocument
 from app.models.documents.payment_report_document import PaymentReportDocument
 from app.models.documents.promotion_report_document import PromotionReportDocument
-from app.exceptions.report_exceptions import TerminalNotClosedException
+from app.exceptions.report_exceptions import ReportDateException
 
 # Create a router instance for report-related endpoints
 router = APIRouter()
 
 # Get a logger instance for this module
 logger = getLogger(__name__)
+
+
+def _validate_business_dates(**dates: Optional[str]) -> None:
+    """
+    Refuse a business date that is not YYYYMMDD, or a range that ends before it starts.
+
+    The dates are compared as strings against the stored ones, so a malformed
+    value matched nothing and the report came back empty with a 200, which reads
+    as "no sales" rather than as a bad request.
+    """
+    for name, value in dates.items():
+        if value is None:
+            continue
+        # strptime does not insist on zero padding ("202411" parses as
+        # 2024-01-01), so the length and digits are checked first.
+        try:
+            if len(value) != 8 or not value.isascii() or not value.isdigit():
+                raise ValueError(value)
+            datetime.strptime(value, "%Y%m%d")
+        except ValueError:
+            raise ReportDateException(f"Invalid {name}: {value!r}. Expected YYYYMMDD.", logger)
+    date_from, date_to = dates.get("business_date_from"), dates.get("business_date_to")
+    # The makers refuse a reversed range too, but with a ValueError that
+    # surfaces as a 500 "report generation failed"; it is the caller's mistake.
+    if date_from and date_to and date_from > date_to:
+        raise ReportDateException(f"Invalid date range: {date_from} is after {date_to}.", logger)
 
 
 # parse sort query parameter
@@ -114,6 +141,9 @@ async def get_report_for_store(
     """
     logger.info(f"Fetching {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}")
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
+    _validate_business_dates(
+        business_date=business_date, business_date_from=business_date_from, business_date_to=business_date_to
+    )
     
     # Validate date parameters
     if business_date_from and business_date_to:
@@ -180,32 +210,13 @@ async def get_report_for_store(
             return_report = report_doc
         else:
             return_report = transformer.transform_sales_report_response(report_doc)
-    except TerminalNotClosedException as e:
-        # Return specific error for terminals not closed
-        error_response = ApiResponse(
-            success=False,
-            code=e.error_code,  # Use the specific error code (412101)
-            message=e.user_message,  # Use the user-friendly message
-            data=None,
-            operation=f"{inspect.currentframe().f_code.co_name}",
-        )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=error_response.model_dump()
-        )
-    except ServiceException as e:
-        # Handle other service exceptions
-        error_response = ApiResponse(
-            success=False,
-            code=e.error_code if hasattr(e, 'error_code') else "500001",
-            message=e.user_message if hasattr(e, 'user_message') else str(e),
-            data=None,
-            operation=f"{inspect.currentframe().f_code.co_name}",
-        )
-        raise HTTPException(
-            status_code=e.status_code if hasattr(e, 'status_code') else status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_response.model_dump()
-        )
+    except ServiceException:
+        # Left to the shared AppException handler, which answers with the
+        # exception's status and its code in user_error (412101 for a terminal
+        # not yet closed). Re-raising it as HTTPException(detail=<dict>) made
+        # that handler build ApiResponse(message=<dict>), which fails validation,
+        # so every report error reached the caller as a 422.
+        raise
     except Exception as e:
         message = (
             f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, Error: {e}"
@@ -301,6 +312,9 @@ async def get_report_for_terminal(
         f"Fetching {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}"
     )
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
+    _validate_business_dates(
+        business_date=business_date, business_date_from=business_date_from, business_date_to=business_date_to
+    )
     
     # Validate date parameters
     if business_date_from and business_date_to:
@@ -372,32 +386,13 @@ async def get_report_for_terminal(
             return_report = report_doc
         else:
             return_report = transformer.transform_sales_report_response(report_doc)
-    except TerminalNotClosedException as e:
-        # Return specific error for terminal not closed
-        error_response = ApiResponse(
-            success=False,
-            code=e.error_code,  # Use the specific error code (412101)
-            message=e.user_message,  # Use the user-friendly message
-            data=None,
-            operation=f"{inspect.currentframe().f_code.co_name}",
-        )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=error_response.model_dump()
-        )
-    except ServiceException as e:
-        # Handle other service exceptions
-        error_response = ApiResponse(
-            success=False,
-            code=e.error_code if hasattr(e, 'error_code') else "500001",
-            message=e.user_message if hasattr(e, 'user_message') else str(e),
-            data=None,
-            operation=f"{inspect.currentframe().f_code.co_name}",
-        )
-        raise HTTPException(
-            status_code=e.status_code if hasattr(e, 'status_code') else status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_response.model_dump()
-        )
+    except ServiceException:
+        # Left to the shared AppException handler, which answers with the
+        # exception's status and its code in user_error (412101 for a terminal
+        # not yet closed). Re-raising it as HTTPException(detail=<dict>) made
+        # that handler build ApiResponse(message=<dict>), which fails validation,
+        # so every report error reached the caller as a 422.
+        raise
     except Exception as e:
         message = f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}, Error: {e}"
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)

@@ -408,5 +408,7 @@ async def test_invalid_sales_date_range(http_client):
         headers=headers,
     )
 
-    # FastAPI's request validation rejects from > to before reaching the maker.
-    assert response.status_code == 422
+    # Refused at the API as a date error. It used to come back as a 422 only
+    # because the report error was wrapped twice and failed validation.
+    assert response.status_code == 400
+    assert response.json()["user_error"]["code"] == "412006"
