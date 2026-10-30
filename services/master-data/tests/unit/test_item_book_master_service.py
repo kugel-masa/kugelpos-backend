@@ -157,10 +157,15 @@ class TestGetItemBookDetail:
         assert button.unit_price == 120.0  # overridden by store price
 
     @pytest.mark.asyncio
-    async def test_detail_item_not_found_sets_not_found(self):
+    async def test_detail_item_not_found_has_no_price_or_name(self):
+        """A button whose item is not in the item master gets null for both,
+        not the string "not found", and not a price that was there before."""
         svc, book_repo, common_repo, store_repo = _make_service()
 
         btn = _make_button(item_code="MISSING")
+        # Assignment is not validated, so this stands in for a value already present.
+        btn.unit_price = 5.0
+        btn.description = "stale"
         tab = _make_tab(buttons=[btn])
         cat = _make_category(tabs=[tab])
         doc = _make_item_book(categories=[cat])
@@ -169,7 +174,8 @@ class TestGetItemBookDetail:
 
         result = await svc.get_item_book_detail_by_id_async("BK-001")
         button = result.categories[0].tabs[0].buttons[0]
-        assert button.description == "not found"
+        assert button.description is None
+        assert button.unit_price is None
 
     @pytest.mark.asyncio
     async def test_detail_no_store_price_uses_common(self):

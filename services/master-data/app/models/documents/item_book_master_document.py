@@ -1,6 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Optional
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from kugel_common.models.documents.base_document_model import BaseDocumentModel
 from app.models.documents.abstract_document import AbstractDocument
@@ -26,6 +26,16 @@ class ItemBookButton(BaseDocumentModel):
     description: Optional[str] = Field(
         None, exclude=True
     )  # Description of the item, not stored but retrieved dynamically
+
+    @field_validator("unit_price", "description", mode="before")
+    @classmethod
+    def _never_read_display_values(cls, value):
+        # exclude=True only keeps these out of what is written. A stored book can
+        # still carry them (PUT used to $set the request as sent), and every route
+        # but /detail returned them as read. They are dropped on load instead, so
+        # only /detail, which assigns them after loading (assignment is not
+        # validated), ever fills them.
+        return None
 
 
 class ItemBookTab(BaseDocumentModel):

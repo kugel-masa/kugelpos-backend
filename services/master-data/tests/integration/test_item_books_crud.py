@@ -328,3 +328,105 @@ async def test_create_item_book_with_several_categories(http_client, admin_heade
 
     assert response.status_code == status.HTTP_201_CREATED, response.text
     assert [c["categoryNumber"] for c in response.json()["data"]["categories"]] == [1, 2, 3]
+
+
+# =========================================================================
+# Display-only unit price and description
+# =========================================================================
+
+
+def _buttons(response):
+    data = response.json()["data"]
+    if isinstance(data, list):
+        data = data[0]
+    return {
+        b["itemCode"]: (b["unitPrice"], b["description"])
+        for c in data["categories"]
+        for t in c["tabs"]
+        for b in t["buttons"]
+    }
+
+
+@pytest.mark.asyncio
+async def test_button_price_and_name_are_never_stored(http_client, admin_header):
+    """A button's unitPrice and description come from the item master on /detail.
+
+    The request schema offered them as writable, PUT stored them with a raw
+    $set, and every route but /detail returned them as read, so a price nobody
+    set in the item master could reach the till. They are now ignored on
+    write, null on every route but /detail, and null on /detail for a button
+    whose item is not in the item master (rather than the string "not found").
+    """
+    tenant_id = os.environ.get("TENANT_ID")
+    await _ensure_tenant(http_client, admin_header, tenant_id)
+
+    item_code = "IBDISP-01"
+    missing_code = "IBDISP-MISSING"
+    response = await http_client.post(
+        f"/api/v1/tenants/{tenant_id}/items",
+        json={
+            "itemCode": item_code, "description": "Real name", "unitPrice": 100, "unitCost": 50,
+            "itemDetails": [], "imageUrls": [], "categoryCode": "001", "taxCode": "01",
+        },
+        headers=admin_header,
+    )
+    assert response.status_code in (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST), response.text
+
+    def button(code, price, name, pos_x):
+        return {
+            "posX": pos_x, "posY": 0, "size": "Single", "imageUrl": "", "colorText": "#000",
+            "itemCode": code, "unitPrice": price, "description": name,
+        }
+
+    def book(*buttons):
+        return {
+            "title": "Display Only",
+            "categories": [{
+                "categoryNumber": 1, "title": "c", "color": "#fff",
+                "tabs": [{"tabNumber": 1, "title": "t", "color": "#fff", "buttons": list(buttons)}],
+            }],
+        }
+
+    base = f"/api/v1/tenants/{tenant_id}/item_books"
+
+    # Create: the values sent are not echoed back as if stored.
+    response = await http_client.post(base, json=book(button(item_code, 9999, "sent on create", 0)), headers=admin_header)
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    item_book_id = response.json()["data"]["itemBookId"]
+    assert _buttons(response) == {item_code: (None, None)}
+
+    # PUT the whole book back with values, the way a client edits a /detail read.
+    response = await http_client.put(
+        f"{base}/{item_book_id}",
+        json=book(button(item_code, 1, "sent on put", 0), button(missing_code, 5, "ghost", 1)),
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _buttons(response) == {item_code: (None, None), missing_code: (None, None)}
+
+    # Adding a button with values does not store them either.
+    response = await http_client.post(
+        f"{base}/{item_book_id}/categories/1/tabs/1/buttons",
+        json=button(item_code, 7, "sent on add", 2),
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+
+    expected = {item_code: (None, None), missing_code: (None, None)}
+    response = await http_client.get(f"{base}/{item_book_id}", headers=admin_header)
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _buttons(response) == expected
+
+    response = await http_client.get(base, params={"limit": 100}, headers=admin_header)
+    assert response.status_code == status.HTTP_200_OK, response.text
+    ours = [b for b in response.json()["data"] if b["itemBookId"] == item_book_id]
+    assert len(ours) == 1
+    assert {
+        btn["itemCode"]: (btn["unitPrice"], btn["description"])
+        for c in ours[0]["categories"] for t in c["tabs"] for btn in t["buttons"]
+    } == expected
+
+    # /detail resolves from the item master; a code not in it gets nothing.
+    response = await http_client.get(f"{base}/{item_book_id}/detail", params={"store_code": "IBDISP"}, headers=admin_header)
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _buttons(response) == {item_code: (100, "Real name"), missing_code: (None, None)}

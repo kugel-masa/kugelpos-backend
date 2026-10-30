@@ -602,7 +602,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory] | No | - |
+| `categories` | array[BaseItemBookCategoryRequest] | No | - |
 
 **Request Example:**
 ```json
@@ -746,7 +746,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `title` | string | Yes | - |
-| `categories` | array[BaseItemBookCategory] | No | - |
+| `categories` | array[BaseItemBookCategoryRequest] | No | - |
 
 **Request Example:**
 ```json
@@ -883,7 +883,7 @@ the one in the security credentials.
 | `categoryNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `tabs` | array[BaseItemBookTab] | No | - |
+| `tabs` | array[BaseItemBookTabRequest] | No | - |
 
 **Request Example:**
 ```json
@@ -967,7 +967,7 @@ the one in the security credentials.
 | `categoryNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `tabs` | array[BaseItemBookTab] | No | - |
+| `tabs` | array[BaseItemBookTabRequest] | No | - |
 
 **Request Example:**
 ```json
@@ -1110,7 +1110,7 @@ the one in the security credentials.
 | `tabNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `buttons` | array[BaseItemBookButton] | No | - |
+| `buttons` | array[BaseItemBookButtonRequest] | No | - |
 
 **Request Example:**
 ```json
@@ -1195,7 +1195,7 @@ the one in the security credentials.
 | `tabNumber` | integer | Yes | - |
 | `title` | string | Yes | - |
 | `color` | string | Yes | - |
-| `buttons` | array[BaseItemBookButton] | No | - |
+| `buttons` | array[BaseItemBookButtonRequest] | No | - |
 
 **Request Example:**
 ```json
@@ -1345,8 +1345,6 @@ the one in the security credentials.
 | `imageUrl` | string | Yes | - |
 | `colorText` | string | Yes | - |
 | `itemCode` | string | Yes | - |
-| `unitPrice` | number | No | - |
-| `description` | string | No | - |
 
 **Request Example:**
 ```json
@@ -1356,9 +1354,7 @@ the one in the security credentials.
   "size": "Single",
   "imageUrl": "string",
   "colorText": "string",
-  "itemCode": "string",
-  "unitPrice": 0.0,
-  "description": "string"
+  "itemCode": "string"
 }
 ```
 
@@ -1440,8 +1436,6 @@ the one in the security credentials.
 | `imageUrl` | string | Yes | - |
 | `colorText` | string | Yes | - |
 | `itemCode` | string | Yes | - |
-| `unitPrice` | number | No | - |
-| `description` | string | No | - |
 
 **Request Example:**
 ```json
@@ -1451,9 +1445,7 @@ the one in the security credentials.
   "size": "Single",
   "imageUrl": "string",
   "colorText": "string",
-  "itemCode": "string",
-  "unitPrice": 0.0,
-  "description": "string"
+  "itemCode": "string"
 }
 ```
 

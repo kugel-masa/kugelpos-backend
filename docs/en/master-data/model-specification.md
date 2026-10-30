@@ -125,14 +125,16 @@ Document managing POS screen UI hierarchy (categories/tabs/buttons).
 
 | Field Name | Type | Required | Description |
 |------------|------|----------|-------------|
-| pos_x | integer | ✓ | X coordinate position |
-| pos_y | integer | ✓ | Y coordinate position |
-| size_x | integer | - | Width size (default: 1) |
-| size_y | integer | - | Height size (default: 1) |
+| pos_x | integer | - | X coordinate position |
+| pos_y | integer | - | Y coordinate position |
+| size | ButtonSize | - | Button size (Single/DoubleWidth/DoubleHeight/Quad) |
 | item_code | string | - | Item code |
-| title | string | - | Button title |
-| color | string | - | Button color |
+| color_text | string | - | Button text color |
 | image_url | string | - | Button image URL |
+| unit_price | float | - | Item price (resolved on read, not stored) |
+| description | string | - | Item description (resolved on read, not stored) |
+
+**Note:** `unit_price` and `description` are never stored and are not accepted on write. Only `GET .../item_books/{item_book_id}/detail` fills them from the item master (the store price when the store has one); every other route returns null, and so does `/detail` for a button whose item is not in the item master.
 
 **Indexes:**
 - Unique: (tenant_id, item_book_id)
