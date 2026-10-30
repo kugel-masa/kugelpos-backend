@@ -31,8 +31,8 @@ Document storing state machine-managed active shopping carts.
 | cart_status | string | ✓ | Cart state (Initial/Idle/EnteringItem/Paying/Completed/Cancelled) |
 | generate_date_time | datetime | - | Cart generation date/time |
 | business_date | string | - | Business date (YYYYMMDD) |
-| subtotal_amount | float | - | Total before tax and discounts |
-| total_amount | float | - | Total amount including tax |
+| subtotal_amount | float | - | Sum of the non-cancelled line amounts: after line discounts, before subtotal discounts and external tax |
+| total_amount | float | - | Total after all discounts, excluding external tax (held in `sales`; `sales.total_amount_with_tax` adds the external tax) |
 | total_quantity | integer | - | Total quantity |
 | total_discount_amount | float | - | Total discount amount |
 | deposit_amount | float | - | Deposit amount |
@@ -397,7 +397,8 @@ Complete cart information response.
 | cartId | string | Cart ID |
 | cartStatus | string | Cart status |
 | subtotalAmount | float | Subtotal amount |
-| totalAmount | float | Total amount |
+| totalAmount | float | Total after all discounts, excluding external tax |
+| totalAmountWithTax | float | `totalAmount` plus external tax |
 | balanceAmount | float | Balance amount |
 | lineItems | array[TranLineItem] | Line items |
 | payments | array[TranPayment] | Payment information |
@@ -410,7 +411,8 @@ Transaction information response.
 |-------------------|------|-------------|
 | transactionNo | integer | Transaction number |
 | businessDate | string | Business date |
-| totalAmount | float | Total amount |
+| totalAmount | float | Total after all discounts, excluding external tax (same meaning as on Cart) |
+| totalAmountWithTax | float | `totalAmount` plus external tax |
 | lineItems | array[TranLineItem] | Line items |
 | payments | array[TranPayment] | Payment information |
 | taxes | array[TranTax] | Tax information |

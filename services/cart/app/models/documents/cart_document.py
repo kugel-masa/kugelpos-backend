@@ -42,7 +42,7 @@ class CartDocument(BaseTransaction):
 
     cart_id: Optional[str] = None  # Unique identifier for the cart
     status: Optional[str] = None  # Current status of the cart (e.g., active, completed, abandoned)
-    subtotal_amount: Optional[float] = 0.0  # Sum of line items before tax and discounts
+    subtotal_amount: Optional[float] = 0.0  # Sum of line amounts, after line discounts, before subtotal discounts and tax
     balance_amount: Optional[float] = 0.0  # Final amount after all calculations
     line_items: Optional[list[CartLineItem]] = []  # Items in the cart
     masters: Optional[ReferenceMasters] = ReferenceMasters()  # References to master data

@@ -33,8 +33,8 @@
 | status | string | - | カート状態（Initial/Idle/EnteringItem/Paying/Completed/Cancelled） |
 | generate_date_time | datetime | - | カート生成日時 |
 | business_date | string | - | ビジネス日付（YYYYMMDD） |
-| subtotal_amount | float | - | 税金と割引前の合計 |
-| total_amount | float | - | 税込み合計金額 |
+| subtotal_amount | float | - | 取消されていない明細の金額の合計。明細値引きは引いた後、小計値引きと外税は含まない |
+| total_amount | float | - | すべての値引きを引いた後の合計。外税は含まない（`sales` に保持。外税を足した額は `sales.total_amount_with_tax`） |
 | total_quantity | integer | - | 合計数量 |
 | total_discount_amount | float | - | 合計割引金額 |
 | deposit_amount | float | - | 預かり金額 |
@@ -400,7 +400,8 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 | cartId | string | カートID |
 | cartStatus | string | カート状態 |
 | subtotalAmount | float | 小計金額 |
-| totalAmount | float | 合計金額 |
+| totalAmount | float | すべての値引きを引いた後の合計。外税は含まない |
+| totalAmountWithTax | float | `totalAmount` に外税を足した額 |
 | balanceAmount | float | 残高金額 |
 | lineItems | array[TranLineItem] | 明細項目 |
 | payments | array[TranPayment] | 決済情報 |
@@ -413,7 +414,8 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 |-------------------|------|-------------|
 | transactionNo | integer | トランザクション番号 |
 | businessDate | string | ビジネス日付 |
-| totalAmount | float | 合計金額 |
+| totalAmount | float | すべての値引きを引いた後の合計。外税は含まない（Cart と同じ意味） |
+| totalAmountWithTax | float | `totalAmount` に外税を足した額 |
 | lineItems | array[TranLineItem] | 明細項目 |
 | payments | array[TranPayment] | 決済情報 |
 | taxes | array[TranTax] | 税金情報 |
