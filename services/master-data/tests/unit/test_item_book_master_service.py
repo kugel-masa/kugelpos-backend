@@ -288,12 +288,19 @@ class TestAddCategory:
         svc, book_repo, _, _ = _make_service()
         doc = _make_item_book(categories=[])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.add_category_to_item_book_async(
             "BK-001", {"category_number": 1, "title": "New Cat", "color": "#F00", "tabs": []}
         )
-        assert len(result.categories) == 1
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.add_category_async.assert_awaited_once()
+        item_book_id, category = book_repo.add_category_async.await_args.args
+        assert item_book_id == "BK-001"
+        assert (category["category_number"], category["title"]) == (1, "New Cat")
+        assert result is doc
 
     @pytest.mark.asyncio
     async def test_add_category_duplicate_raises(self):
@@ -327,12 +334,19 @@ class TestUpdateCategory:
         cat = _make_category(category_number=1)
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.update_category_in_item_book_async(
             "BK-001", 1, {"category_number": 1, "title": "Updated"}
         )
-        assert result is not None
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        # Fields the request does not give (color, tabs) are not written back.
+        book_repo.set_category_fields_async.assert_awaited_once_with(
+            "BK-001", 1, {"category_number": 1, "title": "Updated"}
+        )
+        assert result is doc
 
     @pytest.mark.asyncio
     async def test_update_category_not_found_raises(self):
@@ -368,10 +382,14 @@ class TestDeleteCategory:
         cat = _make_category(category_number=1)
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.delete_category_from_item_book_async("BK-001", 1)
-        assert len(result.categories) == 0
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.delete_category_async.assert_awaited_once_with("BK-001", 1)
+        assert result is doc
 
     @pytest.mark.asyncio
     async def test_delete_category_not_found_raises(self):
@@ -394,12 +412,19 @@ class TestAddTab:
         cat = _make_category(category_number=1, tabs=[])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.add_tab_to_category_in_item_book_async(
             "BK-001", 1, {"tab_number": 1, "title": "Tab", "color": "#000", "buttons": []}
         )
-        assert len(result.categories[0].tabs) == 1
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.add_tab_async.assert_awaited_once()
+        item_book_id, category_number, tab = book_repo.add_tab_async.await_args.args
+        assert (item_book_id, category_number) == ("BK-001", 1)
+        assert (tab["tab_number"], tab["title"]) == (1, "Tab")
+        assert result is doc
 
     @pytest.mark.asyncio
     async def test_add_tab_duplicate_raises(self):
@@ -446,12 +471,19 @@ class TestUpdateTab:
         cat = _make_category(category_number=1, tabs=[tab])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.update_tab_in_category_in_item_book_async(
             "BK-001", 1, 1, {"tab_number": 1, "title": "Updated Tab"}
         )
-        assert result is not None
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        # Fields the request does not give (color, buttons) are not written back.
+        book_repo.set_tab_fields_async.assert_awaited_once_with(
+            "BK-001", 1, 1, {"tab_number": 1, "title": "Updated Tab"}
+        )
+        assert result is doc
 
     @pytest.mark.asyncio
     async def test_update_tab_not_found_raises(self):
@@ -490,10 +522,14 @@ class TestDeleteTab:
         cat = _make_category(category_number=1, tabs=[tab])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.delete_tab_from_category_in_item_book_async("BK-001", 1, 1)
-        assert len(result.categories[0].tabs) == 0
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.delete_tab_async.assert_awaited_once_with("BK-001", 1, 1)
+        assert result is doc
 
     @pytest.mark.asyncio
     async def test_delete_tab_not_found_raises(self):
@@ -518,12 +554,35 @@ class TestAddButton:
         cat = _make_category(category_number=1, tabs=[tab])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.add_button_to_tab_in_category_in_item_book_async(
             "BK-001", 1, 1, {"pos_x": 0, "pos_y": 0, "item_code": "ITEM-01", "size": "Single"}
         )
-        assert len(result.categories[0].tabs[0].buttons) == 1
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.add_button_async.assert_awaited_once()
+        item_book_id, category_number, tab_number, button = book_repo.add_button_async.await_args.args
+        assert (item_book_id, category_number, tab_number) == ("BK-001", 1, 1)
+        assert (button["pos_x"], button["pos_y"], button["item_code"]) == (0, 0, "ITEM-01")
+        assert result is doc
+
+    @pytest.mark.asyncio
+    async def test_add_button_does_not_store_display_values(self):
+        """Price and name are display-only (#262); the atomic $push must not store them either."""
+        svc, book_repo, _, _ = _make_service()
+        tab = _make_tab(tab_number=1, buttons=[])
+        cat = _make_category(category_number=1, tabs=[tab])
+        book_repo.get_item_book_async.return_value = _make_item_book(categories=[cat])
+
+        await svc.add_button_to_tab_in_category_in_item_book_async(
+            "BK-001", 1, 1, {"pos_x": 0, "pos_y": 0, "item_code": "ITEM-01", "unit_price": 9999, "description": "x"}
+        )
+
+        button = book_repo.add_button_async.await_args.args[3]
+        assert "unit_price" not in button
+        assert "description" not in button
 
     @pytest.mark.asyncio
     async def test_add_button_duplicate_position_raises(self):
@@ -565,12 +624,18 @@ class TestUpdateButton:
         cat = _make_category(category_number=1, tabs=[tab])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.update_button_in_tab_in_category_in_item_book_async(
             "BK-001", 1, 1, 0, 0, {"pos_x": 0, "pos_y": 0, "item_code": "ITEM-02"}
         )
-        assert result is not None
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.set_button_fields_async.assert_awaited_once_with(
+            "BK-001", 1, 1, 0, 0, {"pos_x": 0, "pos_y": 0, "item_code": "ITEM-02"}
+        )
+        assert result is doc
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("start, target", [((2, 3), (0, 3)), ((2, 3), (2, 0)), ((2, 3), (0, 0))])
@@ -582,13 +647,13 @@ class TestUpdateButton:
         cat = _make_category(category_number=1, tabs=[tab])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.side_effect = lambda _id, d: d
 
-        result = await svc.update_button_in_tab_in_category_in_item_book_async(
+        await svc.update_button_in_tab_in_category_in_item_book_async(
             "BK-001", 1, 1, start[0], start[1], {"pos_x": target[0], "pos_y": target[1], "item_code": "ITEM-01"}
         )
-        moved = result.categories[0].tabs[0].buttons[0]
-        assert (moved.pos_x, moved.pos_y) == target
+
+        fields = book_repo.set_button_fields_async.await_args.args[5]
+        assert (fields["pos_x"], fields["pos_y"]) == target
 
     @pytest.mark.asyncio
     async def test_update_button_not_found_raises(self):
@@ -632,31 +697,32 @@ class TestDeleteButton:
         cat = _make_category(category_number=1, tabs=[tab])
         doc = _make_item_book(categories=[cat])
         book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
 
         result = await svc.delete_button_from_tab_in_category_in_item_book_async(
             "BK-001", 1, 1, 0, 0
         )
-        assert result is not None
+
+        # The write itself is an atomic repository operation, so a unit test checks
+        # which write was asked for; the stored result is pinned by the integration
+        # tests against a real MongoDB (test_item_book_concurrent_writes.py).
+        book_repo.delete_button_async.assert_awaited_once_with("BK-001", 1, 1, 0, 0)
+        assert result is doc
 
     @pytest.mark.asyncio
-    async def test_delete_button_keeps_its_row_and_column(self):
+    async def test_delete_button_names_both_coordinates(self):
         """Issue #137: deleting (1, 1) on a 3x3 grid removes that button only.
         The old AND-of-not-equal condition also wiped (0, 1), (2, 1), (1, 0)
-        and (1, 2), keeping just the four corners."""
+        and (1, 2). The service names the (pos_x, pos_y) pair; the repository's
+        $pull on that pair is checked against a real MongoDB in the integration tier."""
         svc, book_repo, _, _ = _make_service()
         grid = [_make_button(pos_x=x, pos_y=y, item_code=f"ITEM-{x}{y}") for x in range(3) for y in range(3)]
         tab = _make_tab(tab_number=1, buttons=grid)
         cat = _make_category(category_number=1, tabs=[tab])
-        doc = _make_item_book(categories=[cat])
-        book_repo.get_item_book_async.return_value = doc
-        book_repo.replace_item_book_async.return_value = doc
+        book_repo.get_item_book_async.return_value = _make_item_book(categories=[cat])
 
         await svc.delete_button_from_tab_in_category_in_item_book_async("BK-001", 1, 1, 1, 1)
 
-        saved = book_repo.replace_item_book_async.call_args[0][1]
-        remaining = {(b.pos_x, b.pos_y) for b in saved.categories[0].tabs[0].buttons}
-        assert remaining == {(x, y) for x in range(3) for y in range(3)} - {(1, 1)}
+        book_repo.delete_button_async.assert_awaited_once_with("BK-001", 1, 1, 1, 1)
 
     @pytest.mark.asyncio
     async def test_delete_button_not_found_raises(self):
@@ -680,3 +746,50 @@ class TestDeleteButton:
             await svc.delete_button_from_tab_in_category_in_item_book_async(
                 "NONEXISTENT", 1, 1, 0, 0
             )
+
+
+# ---------------------------------------------------------------------------
+# Re-reading when a concurrent write broke the precondition
+# ---------------------------------------------------------------------------
+
+class TestNestedWriteRetry:
+    @pytest.mark.asyncio
+    async def test_a_lost_race_is_re_validated_against_a_fresh_read(self):
+        """The atomic add found the position taken; the re-read turns that into the duplicate error."""
+        svc, book_repo, _, _ = _make_service()
+        empty_tab = _make_tab(tab_number=1, buttons=[])
+        taken_tab = _make_tab(tab_number=1, buttons=[_make_button(pos_x=0, pos_y=0)])
+        book_repo.get_item_book_async.side_effect = [
+            _make_item_book(categories=[_make_category(category_number=1, tabs=[empty_tab])]),
+            _make_item_book(categories=[_make_category(category_number=1, tabs=[taken_tab])]),
+        ]
+        book_repo.add_button_async.return_value = False
+
+        with pytest.raises(DocumentAlreadyExistsException):
+            await svc.add_button_to_tab_in_category_in_item_book_async(
+                "BK-001", 1, 1, {"pos_x": 0, "pos_y": 0, "item_code": "X"}
+            )
+        book_repo.add_button_async.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_write_that_never_lands_fails_after_the_attempt_limit(self):
+        from app.services.item_book_master_service import NESTED_WRITE_ATTEMPTS
+
+        svc, book_repo, _, _ = _make_service()
+        book_repo.get_item_book_async.return_value = _make_item_book(categories=[])
+        book_repo.add_category_async.return_value = False
+
+        with pytest.raises(Exception, match="Failed to update item book"):
+            await svc.add_category_to_item_book_async("BK-001", {"category_number": 1, "tabs": []})
+        assert book_repo.add_category_async.await_count == NESTED_WRITE_ATTEMPTS
+
+    @pytest.mark.asyncio
+    async def test_an_update_with_nothing_to_write_does_not_write(self):
+        svc, book_repo, _, _ = _make_service()
+        doc = _make_item_book(categories=[_make_category(category_number=1)])
+        book_repo.get_item_book_async.return_value = doc
+
+        result = await svc.update_category_in_item_book_async("BK-001", 1, {})
+
+        book_repo.set_category_fields_async.assert_not_awaited()
+        assert result is doc
