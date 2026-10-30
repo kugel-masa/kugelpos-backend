@@ -360,6 +360,51 @@ class TestVoidAsync:
         with pytest.raises(BadRequestBodyException):
             await svc.void_async(tran, None)
 
+    @pytest.mark.asyncio
+    async def test_void_return_looks_up_the_return_in_its_own_session(self):
+        """
+        transaction_no is the per-open seq (issue #156), so the return slip has to
+        be looked up together with its business_counter: another session's
+        return with the same number would point the refund reset at an
+        unrelated sale.
+        """
+        svc = _make_tran_service()
+        tran = _make_base_transaction(transaction_type=TransactionType.ReturnSales.value, transaction_no=7)
+        tran.user = None
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        pay_doc = MagicMock(payment_code="01", description="Cash", can_deposit_over=False, can_change=False)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=pay_doc)
+        svc._resolve_carried_finalize = AsyncMock(return_value=("void-cart", 8, 300, "2025-01-01T13:00:00", None))
+        svc.receipt_data_strategy = MagicMock()
+        svc.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="r", journal_text="j")
+        svc.tranlog_repository.start_transaction = AsyncMock()
+        svc.tranlog_repository.commit_transaction = AsyncMock()
+        svc.tranlog_repository.create_tranlog_async = AsyncMock(side_effect=lambda t: t)
+        svc.tranlog_delivery_status_repo.create_status_async = AsyncMock()
+        svc._publish_tranlog_async = AsyncMock()
+        svc.transaction_status_repo.mark_as_voided_async = AsyncMock()
+        svc.transaction_status_repo.reset_refund_status_async = AsyncMock()
+
+        return_slip = MagicMock()
+        return_slip.origin = MagicMock(
+            tenant_id="test_tenant", store_code="S0009", terminal_no=3, transaction_no=42, business_counter=5
+        )
+        svc.tranlog_repository.get_one_async = AsyncMock(return_value=return_slip)
+
+        await svc.void_async(tran, [{"payment_code": "01", "amount": 1000, "detail": None}])
+
+        query = svc.tranlog_repository.get_one_async.await_args.args[0]
+        assert query == {
+            "tenant_id": "test_tenant",
+            "store_code": "S0001",
+            "terminal_no": 1,
+            "business_counter": 1,
+            "transaction_no": 7,
+        }
+        svc.transaction_status_repo.reset_refund_status_async.assert_awaited_once_with(
+            tenant_id="test_tenant", store_code="S0009", terminal_no=3, transaction_no=42, business_counter=5
+        )
+
 
 class TestReturnAsync:
     """Tests for return_async."""

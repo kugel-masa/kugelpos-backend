@@ -801,12 +801,17 @@ class TranService:
         # If we're voiding a return transaction, reset the refund status on the original sale
         if tran.transaction_type == TransactionType.VoidReturn.value:
             # The origin contains the return transaction info
-            # We need to find the original sale transaction that was refunded
+            # We need to find the original sale transaction that was refunded.
+            # Scoped to the return's open epoch: transaction_no is the per-open seq
+            # (issue #156), so without it this can fetch another session's return
+            # with the same number, and the reset below would then clear the refund
+            # status of an unrelated sale.
             return_tran = await self.tranlog_repository.get_one_async(
                 {
                     "tenant_id": tran.origin.tenant_id,
                     "store_code": tran.origin.store_code,
                     "terminal_no": tran.origin.terminal_no,
+                    "business_counter": tran.origin.business_counter,
                     "transaction_no": tran.origin.transaction_no,
                 }
             )
