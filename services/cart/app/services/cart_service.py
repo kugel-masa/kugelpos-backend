@@ -1,6 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Any, Union
 from logging import getLogger
+import math
 
 # Get logger instance
 logger = getLogger(__name__)
@@ -19,6 +20,8 @@ from app.exceptions import (
     NotFoundException,
     ItemNotFoundException,
     LineItemNotFoundException,
+    QuantityBelowMinimumException,
+    UnitPriceNegativeException,
     StrategyPluginException,
     BalanceZeroException,
     BalanceMinusException,
@@ -61,6 +64,7 @@ from app.services.logics import calc_tax_logic
 from app.services.logics import add_discount_to_cart_logic
 from app.services.logics import calc_line_item_logic
 from app.services.logics import calc_subtotal_logic
+from app.services.logics import line_amount_guard
 from app.services.strategies.payments.abstract_payment import AbstractPayment
 from app.services.strategies.sales_promo.abstract_sales_promo import AbstractSalesPromo
 from app.services.tran_service import TranService
@@ -427,8 +431,16 @@ class CartService(ICartService):
             CartDocument: The updated cart document with new items
 
         Raises:
+            QuantityBelowMinimumException: If a quantity is below 1
+            UnitPriceNegativeException: If a unit price is negative
             ItemNotFoundException: If an item code is not found in the item master
         """
+        # Checked before the cart is read, so a refusal has no side effect.
+        for add_item in add_item_list:
+            self.__check_quantity(add_item["quantity"], f"item_code: {add_item['item_code']}")
+            if add_item["unit_price"] is not None:
+                self.__check_unit_price(add_item["unit_price"], f"item_code: {add_item['item_code']}")
+
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
 
@@ -458,6 +470,8 @@ class CartService(ICartService):
                     unit_price = item.store_price
                 else:
                     unit_price = item.unit_price
+            # The master price is not checked when it is registered.
+            self.__check_unit_price(unit_price, f"item_code: {item.item_code}")
             cart_item.unit_price = unit_price
             cart_item.quantity = add_item["quantity"]
             # cart_item.amount = cart_item.unit_price * cart_item.quantity
@@ -468,6 +482,10 @@ class CartService(ICartService):
 
         # Calculate subtotal (promotions are re-evaluated inside __subtotal_async)
         cart_doc = await self.__subtotal_async(cart_doc)
+
+        # A promotion's rate is not bounded where it is registered, so one over
+        # 100% would take the new line below zero.
+        line_amount_guard.assert_line_amounts_not_negative(cart_doc, context="add item")
 
         # Checked before anything is committed, so a refusal leaves the cart
         # exactly as it was and the basket stays workable (issue #200).
@@ -551,6 +569,34 @@ class CartService(ICartService):
                 continue
         return cart_doc
 
+    @staticmethod
+    def __check_quantity(quantity: int, context: str) -> None:
+        """
+        Refuse a line quantity below 1.
+
+        Nothing checked it. A quantity of 0 with a percentage discount divided by
+        zero (500), and 0 or a negative number made a line with a zero or
+        negative amount, which reduced the total.
+
+        Raises:
+            QuantityBelowMinimumException: If the quantity is below 1
+        """
+        if quantity < 1:
+            raise QuantityBelowMinimumException(f"Quantity below 1: {quantity}, {context}", logger)
+
+    @staticmethod
+    def __check_unit_price(unit_price: float, context: str) -> None:
+        """
+        Refuse a negative unit price, or one that is not a number (NaN, infinity).
+
+        0 is accepted: an item can be given away.
+
+        Raises:
+            UnitPriceNegativeException: If the unit price is negative
+        """
+        if not math.isfinite(unit_price) or unit_price < 0:
+            raise UnitPriceNegativeException(f"Negative unit price: {unit_price}, {context}", logger)
+
     # Cancel a line item in the cart
     def __get_line_item(self, cart_doc: CartDocument, line_no: int) -> CartDocument.CartLineItem:
         """
@@ -613,7 +659,14 @@ class CartService(ICartService):
 
         Returns:
             CartDocument: The updated cart document with modified quantity
+
+        Raises:
+            QuantityBelowMinimumException: If the quantity is below 1
+            AmountLessThanDiscountException: If a fixed discount on the line would
+                then be more than the line amount
         """
+        self.__check_quantity(quantity, f"line_no: {line_no}")
+
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
 
@@ -627,6 +680,12 @@ class CartService(ICartService):
 
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)
+
+        # Fewer units leave a fixed discount, accepted against the old amount,
+        # larger than the line.
+        line_amount_guard.assert_line_amounts_not_negative(
+            cart_doc, context=f"quantity change: line_no: {line_no}, quantity: {quantity}"
+        )
 
         # Save to cache
         await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.NoUpdate)
@@ -647,7 +706,14 @@ class CartService(ICartService):
 
         Returns:
             CartDocument: The updated cart document with modified unit price
+
+        Raises:
+            UnitPriceNegativeException: If the unit price is negative
+            AmountLessThanDiscountException: If a fixed discount on the line would
+                then be more than the line amount
         """
+        self.__check_unit_price(unit_price, f"line_no: {line_no}")
+
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
 
@@ -664,6 +730,12 @@ class CartService(ICartService):
 
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)
+
+        # A lower price leaves a fixed discount, accepted against the old amount,
+        # larger than the line.
+        line_amount_guard.assert_line_amounts_not_negative(
+            cart_doc, context=f"unit price change: line_no: {line_no}, unit_price: {unit_price}"
+        )
 
         # Save to cache
         await self.__cache_cart_async(cart_doc=cart_doc, cart_status=CartStatus.NoUpdate)
@@ -685,6 +757,10 @@ class CartService(ICartService):
 
         Returns:
             CartDocument: The updated cart document with discounts applied
+
+        Raises:
+            AmountLessThanDiscountException: If the discounts together are more
+                than the line amount
         """
         # Get cart information
         cart_doc = await self.__get_cached_cart_async(self.cart_id)
@@ -698,6 +774,12 @@ class CartService(ICartService):
 
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)
+
+        # Each fixed discount is checked against the line on its own, so several
+        # in one request (100 with 60 off twice) can still take it below zero.
+        line_amount_guard.assert_line_amounts_not_negative(
+            cart_doc, context=f"line discount: line_no: {line_no}"
+        )
 
         # Same budget as the line-item path: a discount list is taken from the
         # request and appended, with nothing bounding its length or how many

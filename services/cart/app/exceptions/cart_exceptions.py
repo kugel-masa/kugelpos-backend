@@ -78,6 +78,58 @@ class LineItemNotFoundException(ServiceException):
         )
 
 
+class QuantityBelowMinimumException(ServiceException):
+    """
+    Exception raised when a line item would be given a quantity below 1.
+    明細の数量に 1 未満が指定された場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.QUANTITY_BELOW_MINIMUM,
+            CartErrorMessage.get_message(CartErrorCode.QUANTITY_BELOW_MINIMUM),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class UnitPriceNegativeException(ServiceException):
+    """
+    Exception raised when a line item would be given a negative unit price.
+    明細の単価にマイナスが指定された場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.UNIT_PRICE_NEGATIVE,
+            CartErrorMessage.get_message(CartErrorCode.UNIT_PRICE_NEGATIVE),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class InvalidDiscountValueException(ServiceException):
+    """
+    Exception raised when a discount value is out of range: a negative amount,
+    or a percentage outside 0 to 100.
+    値引の値が範囲外（マイナスの定額、0〜100 以外の率）の場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.INVALID_DISCOUNT_VALUE,
+            CartErrorMessage.get_message(CartErrorCode.INVALID_DISCOUNT_VALUE),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
 class ItemNotFoundException(ServiceException):
     """
     Exception raised when an item is not found.
