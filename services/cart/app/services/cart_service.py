@@ -853,6 +853,10 @@ class CartService(ICartService):
             except (BalanceZeroException, BalanceMinusException, DepositOverException) as e:
                 # Re-raise business logic exceptions as-is
                 raise e
+            except NotFoundException:
+                # The payment code has a strategy but no payment master for this
+                # tenant: the caller's mistake, answered as a 404, not a 500.
+                raise
             except Exception as e:
                 message = f"Failed to pay, payment_code: {add_payment['payment_code']}, amount: {add_payment['amount']}"
                 raise ServiceException(message, logger, e) from e

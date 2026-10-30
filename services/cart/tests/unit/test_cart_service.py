@@ -22,7 +22,7 @@ from app.exceptions import (
     BalanceGreaterThanZeroException,
     StrategyPluginException,
 )
-from kugel_common.exceptions import EventBadSequenceException, NotFoundException
+from kugel_common.exceptions import EventBadSequenceException, NotFoundException, ServiceException
 from app.models.documents.promotion_master_document import PromotionMasterDocument
 
 
@@ -454,6 +454,46 @@ class TestCartServicePayment:
             await svc.add_payment_to_cart_async(
                 [{"payment_code": "99", "amount": 1000, "detail": None}]
             )
+
+    @pytest.mark.asyncio
+    async def test_add_payment_without_payment_master_is_not_found(self):
+        """A code with a strategy but no payment master stays a 404, not a 500 ServiceException."""
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+
+        not_found = NotFoundException(
+            message="payment not found for id 11", collection_name="payment web", find_key="11"
+        )
+        mock_pay_strategy = MagicMock()
+        mock_pay_strategy.payment_code = "11"
+        mock_pay_strategy.pay = AsyncMock(side_effect=not_found)
+        svc.payment_strategies = [mock_pay_strategy]
+
+        with pytest.raises(NotFoundException) as exc_info:
+            await svc.add_payment_to_cart_async(
+                [{"payment_code": "11", "amount": 1000, "detail": None}]
+            )
+        assert exc_info.value is not_found
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_add_payment_other_failure_is_service_exception(self):
+        """Any other failure inside a strategy is still wrapped as a ServiceException."""
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+
+        mock_pay_strategy = MagicMock()
+        mock_pay_strategy.payment_code = "01"
+        mock_pay_strategy.pay = AsyncMock(side_effect=RuntimeError("boom"))
+        svc.payment_strategies = [mock_pay_strategy]
+
+        with pytest.raises(ServiceException) as exc_info:
+            await svc.add_payment_to_cart_async(
+                [{"payment_code": "01", "amount": 1000, "detail": None}]
+            )
+        assert not isinstance(exc_info.value, NotFoundException)
 
 
 class TestCartServiceBill:

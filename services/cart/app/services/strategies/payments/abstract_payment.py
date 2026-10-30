@@ -5,7 +5,7 @@ from app.models.documents.cart_document import CartDocument
 from app.models.documents.payment_master_document import PaymentMasterDocument
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.repositories.payment_master_web_repository import PaymentMasterWebRepository
-from kugel_common.exceptions import NotFoundException, RepositoryException
+from kugel_common.exceptions import RepositoryException
 from app.exceptions import BalanceZeroException, BalanceMinusException, DepositOverException
 
 logger = getLogger(__name__)
@@ -150,19 +150,20 @@ class AbstractPayment(ABC):
             PaymentMasterDocument: Payment method information
 
         Raises:
-            NotFoundException: If the payment method is not found
+            NotFoundException: If the payment method is not found (raised by the repository)
             RepositoryException: If there's an error retrieving the information
         """
         try:
-            pay_doc = await self.payment_master_repo.get_payment_by_code_async(payment_code)
-            if pay_doc is None:
-                message = f"PaymentMaster not found: payment_code->{payment_code}"
-                raise NotFoundException(message, self.payment_master_repo.base_url, payment_code, logger)
-            return pay_doc
+            return await self.payment_master_repo.get_payment_by_code_async(payment_code)
+        except RepositoryException:
+            # The repository already raises NotFoundException (404) for an unknown
+            # code and RepositoryException for other failures. Re-wrapping them
+            # turned "not found" into a repository failure, and the wrapper read a
+            # base_url the repository no longer has, so every such case became a 500.
+            raise
         except Exception as e:
             message = f"get_payment_document_async failed: payment_code->{payment_code}"
-            logger.error(message)
-            raise RepositoryException(message, self.payment_master_repo.base_url, logger, e) from e
+            raise RepositoryException(message, "payment web", logger, e) from e
 
     def update_cart_balance(self, cart_doc: CartDocument, payment_amount: float) -> None:
         """

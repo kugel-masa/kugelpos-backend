@@ -18,9 +18,11 @@ import pytest
 from app.exceptions import BalanceMinusException, BalanceZeroException, DepositOverException
 from app.models.documents.cart_document import CartDocument
 from app.models.documents.payment_master_document import PaymentMasterDocument
+from app.models.repositories.payment_master_web_repository import PaymentMasterWebRepository
 from app.services.strategies.payments.cash import PaymentByCash
 from app.services.strategies.payments.cashless import PaymentByCashless
 from app.services.strategies.payments.others import PaymentByOthers
+from kugel_common.exceptions import NotFoundException, RepositoryException
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
 
@@ -43,8 +45,7 @@ def _make_cart(balance: float = 100.0) -> CartDocument:
 
 def _attach_repo(strategy, payment_code="01"):
     """Wire a mocked payment-master repo so create_cart_payment_async works."""
-    repo = AsyncMock()
-    repo.base_url = "http://test"
+    repo = AsyncMock(spec=PaymentMasterWebRepository)
     repo.get_payment_by_code_async = AsyncMock(return_value=_make_payment_master(payment_code))
     strategy.payment_master_repo = repo
     return strategy
@@ -201,3 +202,51 @@ class TestBalanceUnderflow:
         cart = _make_cart(balance=10.0)
         with pytest.raises(BalanceMinusException):
             probe.update_cart_balance(cart, payment_amount=20.0)
+
+
+# ---------------------------------------------------------------------------
+# Payment master lookup failures
+# ---------------------------------------------------------------------------
+
+
+class TestPaymentMasterLookupFailures:
+    """The mock follows the real repository's spec, which has no base_url; the
+    lookup used to read it while re-wrapping errors, so it raised AttributeError
+    (a 500) where an unknown payment code should be a 404."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_payment_code_is_not_found(self):
+        strategy = _attach_repo(PaymentByCash("01"))
+        not_found = NotFoundException(
+            message="payment not found for id 99", collection_name="payment web", find_key="99"
+        )
+        strategy.payment_master_repo.get_payment_by_code_async = AsyncMock(side_effect=not_found)
+
+        with pytest.raises(NotFoundException) as exc_info:
+            await strategy.pay(_make_cart(balance=100.0), "99", 100.0, None)
+
+        assert exc_info.value is not_found
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_repository_failure_is_passed_through(self):
+        strategy = _attach_repo(PaymentByCash("01"))
+        failure = RepositoryException(message="Request error for id 01", collection_name="payment web")
+        strategy.payment_master_repo.get_payment_by_code_async = AsyncMock(side_effect=failure)
+
+        with pytest.raises(RepositoryException) as exc_info:
+            await strategy.pay(_make_cart(balance=100.0), "01", 100.0, None)
+
+        assert exc_info.value is failure
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_is_wrapped_with_its_cause(self):
+        strategy = _attach_repo(PaymentByCash("01"))
+        cause = RuntimeError("boom")
+        strategy.payment_master_repo.get_payment_by_code_async = AsyncMock(side_effect=cause)
+
+        with pytest.raises(RepositoryException) as exc_info:
+            await strategy.pay(_make_cart(balance=100.0), "01", 100.0, None)
+
+        assert not isinstance(exc_info.value, NotFoundException)
+        assert exc_info.value.__cause__ is cause
