@@ -263,3 +263,145 @@ class TestSummarizeSalesReport:
         ]
         s = _maker()._summarize_sales_report(results)
         assert s["taxes"] == []
+
+
+# ---------------------------------------------------------------------------
+# _summarize_open_close_logs / _make_cash — a drawer nobody counted
+# ---------------------------------------------------------------------------
+#
+# The terminal accepts an open without a float and a close without a counted
+# amount. Summing them as-is raised a TypeError, so every sales report covering
+# such a session failed with a 500.
+
+
+def _open_close(operation: str, initial_amount=None, physical_amount=None, with_info: bool = True):
+    from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+
+    from app.models.documents.open_close_log import OpenCloseLog
+
+    info = (
+        TerminalInfoDocument(initial_amount=initial_amount, physical_amount=physical_amount) if with_info else None
+    )
+    return OpenCloseLog(operation=operation, terminal_info=info)
+
+
+_CASH_SUMMARY = {"cash_in_amount": 1000, "cash_in_count": 1, "cash_out_amount": -500, "cash_out_count": 1}
+
+
+class TestSummarizeOpenCloseLogs:
+    def test_counted_closes_are_summed(self):
+        summary = _maker()._summarize_open_close_logs(
+            [
+                _open_close("open", initial_amount=10000),
+                _open_close("close", physical_amount=12000),
+                _open_close("open", initial_amount=5000),
+                _open_close("close", physical_amount=3000),
+            ]
+        )
+        assert summary == {"initial_amount": 15000, "physical_amount": 15000}
+
+    def test_an_uncounted_close_makes_the_counted_amount_unknown(self):
+        summary = _maker()._summarize_open_close_logs(
+            [
+                _open_close("open", initial_amount=10000),
+                _open_close("close", physical_amount=12000),
+                _open_close("open", initial_amount=5000),
+                _open_close("close", physical_amount=None),
+            ]
+        )
+        assert summary["physical_amount"] is None
+        assert summary["initial_amount"] == 15000
+
+    def test_a_close_without_terminal_info_is_uncounted(self):
+        summary = _maker()._summarize_open_close_logs([_open_close("close", with_info=False)])
+        assert summary["physical_amount"] is None
+
+    def test_an_open_without_a_float_counts_as_zero(self):
+        summary = _maker()._summarize_open_close_logs(
+            [
+                _open_close("open", initial_amount=None),
+                _open_close("open", with_info=False),
+                _open_close("open", initial_amount=3000),
+            ]
+        )
+        assert summary["initial_amount"] == 3000
+
+    def test_no_logs_keeps_the_previous_zero(self):
+        # Date-range reports pass no open/close logs at all.
+        assert _maker()._summarize_open_close_logs([]) == {"initial_amount": 0, "physical_amount": 0}
+
+
+class TestMakeCash:
+    def test_difference_is_counted_minus_expected(self):
+        cash = _maker()._make_cash(
+            _CASH_SUMMARY, {"initial_amount": 0, "physical_amount": 2000}, {"cash": 1000}
+        )
+        assert cash["logical_amount"] == 1500
+        assert cash["physical_amount"] == 2000
+        assert cash["difference_amount"] == 500
+
+    def test_uncounted_drawer_has_no_difference(self):
+        cash = _maker()._make_cash(
+            _CASH_SUMMARY, {"initial_amount": 0, "physical_amount": None}, {"cash": 1000}
+        )
+        assert cash["logical_amount"] == 1500
+        assert cash["physical_amount"] is None
+        assert cash["difference_amount"] is None
+
+
+def _sales_report(physical_amount, difference_amount):
+    from app.models.documents.sales_report_document import SalesReportDocument
+
+    zero = {"amount": 0, "quantity": 0, "count": 0}
+    return SalesReportDocument(
+        tenant_id="T0001",
+        store_code="S0001",
+        store_name="Store",
+        terminal_no=1,
+        business_date="20261029",
+        report_scope="daily",
+        report_type="sales",
+        sales_gross=zero,
+        sales_net=zero,
+        discount_for_lineitems=zero,
+        discount_for_subtotal=zero,
+        returns=zero,
+        taxes=[],
+        payments=[],
+        cash={
+            "logical_amount": 1500,
+            "physical_amount": physical_amount,
+            "difference_amount": difference_amount,
+            "cash_in": {"amount": 1000, "count": 1},
+            "cash_out": {"amount": -500, "count": 1},
+        },
+        generate_date_time="2026-10-29T20:00:00",
+    )
+
+
+def _receipt_body_text(report) -> list[str]:
+    from kugel_common.receipt.receipt_data_model import Page
+
+    from app.services.plugins.sales_report_receipt_data import SalesReportReceiptData
+
+    page = Page()
+    SalesReportReceiptData("sales").make_receipt_body(report, page)
+    texts = []
+    for line in page.lines:
+        columns = getattr(line, "columns", None)
+        texts.append(" ".join(c.value for c in columns) if columns else getattr(line, "value", ""))
+    return texts
+
+
+class TestSalesReportReceiptCash:
+    def test_counted_drawer_prints_all_three_lines(self):
+        texts = _receipt_body_text(_sales_report(2000, 500))
+        assert any("ドロア内現金" in t for t in texts)
+        assert any("あるべき現金" in t for t in texts)
+        assert any("過不足" in t for t in texts)
+
+    def test_uncounted_drawer_prints_only_the_expected_amount(self):
+        texts = _receipt_body_text(_sales_report(None, None))
+        assert not any("ドロア内現金" in t for t in texts)
+        assert any("あるべき現金" in t for t in texts)
+        assert not any("過不足" in t for t in texts)
