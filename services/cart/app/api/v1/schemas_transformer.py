@@ -90,7 +90,7 @@ class SchemasTransformerV1(SchemasTransformer):
         """
         return super().transform_cart(cart_doc, snapshot=snapshot)
 
-    def trasform_tran(self, tranlog: BaseTransaction) -> Tran:
+    def transform_tran(self, tranlog: BaseTransaction) -> Tran:
         """
         Transform a transaction document to a v1 API transaction schema.
 
