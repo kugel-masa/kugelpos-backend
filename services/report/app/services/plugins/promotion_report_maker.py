@@ -214,6 +214,11 @@ class PromotionReportMaker(IReportPlugin):
             {"$match": match_dict},
             # Unwind line items
             {"$unwind": "$line_items"},
+            # Exclude cancelled line items, as the item and category reports do.
+            # Cancelling a line only sets is_cancelled; its quantity, amount and
+            # discounts stay in the tranlog, so without this the promotion report
+            # counts discounts the customer never received.
+            {"$match": {"line_items.is_cancelled": {"$ne": True}}},
             # Unwind discounts on line items
             {"$unwind": {"path": "$line_items.discounts", "preserveNullAndEmptyArrays": False}},
             # Filter to only promotion discounts (those with promotion_code)

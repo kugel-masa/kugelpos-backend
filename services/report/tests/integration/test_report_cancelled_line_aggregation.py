@@ -1,8 +1,9 @@
 # Copyright 2025 masa@kugel
-# Regression tests for sales/item/category report aggregation:
+# Regression tests for sales/item/category/promotion report aggregation:
 #   1. Period sales report only returns 1 day of data (final_group_id had business_date)
 #   2. Item/Category reports include cancelled line_items (no is_cancelled filter)
 #   3. Sales report discount aggregation leaks discounts from cancelled lines
+#   4. Promotion report counts discounts left on cancelled lines
 
 import os
 import pytest
@@ -629,4 +630,142 @@ async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quant
         f"discount_for_subtotal.quantity must exclude cancelled line items with dangling "
         f"discounts_allocated. Expected 1 (only active line A), got {sales_report.discount_for_subtotal.quantity}. "
         f"If 2, the cancelled line's allocation is leaking into the report."
+    )
+
+
+@pytest.mark.asyncio
+async def test_promotion_report_excludes_cancelled_line_items(set_env_vars):
+    """
+    The promotion report unwound line_items without the is_cancelled filter the
+    item and category reports have, so a promotion discount left on a cancelled
+    line was reported as given.
+
+    Scenario: 1 NormalSales transaction with 3 line items.
+      - Item 1: active, 1000 yen less a 100 yen discount from PROMO_A. Must be counted.
+      - Item 2: cancelled, carrying a 200 yen discount from PROMO_A. Must NOT be counted.
+      - Item 3: cancelled, carrying a 50 yen discount from PROMO_B, the only line with it.
+    PROMO_A keeps the active line alone (the filter is not simply dropping everything),
+    and PROMO_B, given on no line that was sold, does not appear at all.
+    """
+    from kugel_common.database import database as local_db_helper
+
+    tenant_id = os.environ.get("TENANT_ID")
+    db_name = f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"
+    db = await local_db_helper.get_db_async(db_name)
+
+    tran_repo = TranlogRepository(db, tenant_id)
+    cash_repo = CashInOutLogRepository(db, tenant_id)
+    open_close_repo = OpenCloseLogRepository(db, tenant_id)
+    daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
+    terminal_info_repo = TerminalInfoWebRepository(tenant_id, "STORE_CLA5")
+
+    collection = db[tran_repo.collection_name]
+
+    test_store = "STORE_CLA5"
+    test_terminal = 74
+    test_date = "20260423"
+
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": test_store,
+        "terminal_no": test_terminal,
+    })
+
+    def promo_discount(code: str, amount: int) -> dict:
+        return {
+            "seq_no": 1,
+            "discount_type": "DiscountAmount",
+            "discount_value": amount,
+            "discount_amount": amount,
+            "detail": code,
+            "promotion_code": code,
+            "promotion_type": "category_promo",
+        }
+
+    tran = _make_normal_sale(
+        tenant_id=tenant_id,
+        store_code=test_store,
+        terminal_no=test_terminal,
+        transaction_no=1,
+        business_date=test_date,
+        base_amount=900,
+        total_discount_amount=100,
+        line_items=[
+            {
+                "line_no": 1,
+                "item_code": "CLA5A",
+                "category_code": "CAT1",
+                "quantity": 1,
+                "unit_price": 1000,
+                "amount": 900,
+                "tax_code": "01",
+                "is_cancelled": False,
+                "discounts": [promo_discount("PROMO_A", 100)],
+            },
+            {
+                "line_no": 2,
+                "item_code": "CLA5B",
+                "category_code": "CAT1",
+                "quantity": 2,
+                "unit_price": 1000,
+                "amount": 1800,
+                "tax_code": "01",
+                "is_cancelled": True,
+                "discounts": [promo_discount("PROMO_A", 200)],
+            },
+            {
+                "line_no": 3,
+                "item_code": "CLA5C",
+                "category_code": "CAT1",
+                "quantity": 1,
+                "unit_price": 500,
+                "amount": 450,
+                "tax_code": "01",
+                "is_cancelled": True,
+                "discounts": [promo_discount("PROMO_B", 50)],
+            },
+        ],
+    )
+    await collection.insert_one(tran.model_dump())
+
+    service = ReportService(
+        tran_repository=tran_repo,
+        cash_in_out_log_repository=cash_repo,
+        open_close_log_repository=open_close_repo,
+        daily_info_repository=daily_info_repo,
+        terminal_info_repository=terminal_info_repo,
+    )
+
+    promotion_report = await service.get_report_for_terminal_async(
+        store_code=test_store,
+        terminal_no=test_terminal,
+        report_scope="flash",
+        report_type="promotion",
+        business_date=test_date,
+        open_counter=1,
+        limit=100,
+        page=1,
+    )
+
+    await collection.delete_many({
+        "tenant_id": tenant_id,
+        "store_code": test_store,
+        "terminal_no": test_terminal,
+    })
+
+    by_code = {p.promotion_code: p for p in promotion_report.promotions}
+    assert set(by_code) == {"PROMO_A"}, (
+        f"Only PROMO_A was given on a line that was sold. Got {sorted(by_code)}; "
+        f"PROMO_B here means cancelled lines are leaking into the promotion report."
+    )
+    promo_a = by_code["PROMO_A"]
+    assert promo_a.discount_amount == 100.0, (
+        f"PROMO_A discount must be the active line's 100. Got {promo_a.discount_amount}; "
+        f"300 means the cancelled line's 200 leaked in."
+    )
+    assert promo_a.gross_amount == 900.0, f"PROMO_A gross must be 900, got {promo_a.gross_amount}"
+    assert promo_a.quantity == 1, f"PROMO_A quantity must be 1, got {promo_a.quantity}"
+    assert promo_a.transaction_count == 1
+    assert promotion_report.total_discount_amount == 100.0, (
+        f"total_discount_amount must be 100, got {promotion_report.total_discount_amount}"
     )
