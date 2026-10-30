@@ -284,6 +284,8 @@ async def test_create_item_book_with_a_populated_tree(http_client, admin_header)
 
     assert response.status_code == status.HTTP_201_CREATED, response.text
     item_book_id = response.json()["data"]["itemBookId"]
+    # The message names the new book, not the placeholder text.
+    assert response.json()["message"] == f"Item Book created successfully. item_book_id: {item_book_id}"
 
     # Read it back: the tree has to survive the round trip, not merely be accepted.
     response = await http_client.get(
