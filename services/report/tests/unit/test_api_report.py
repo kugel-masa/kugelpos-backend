@@ -8,8 +8,8 @@ from app.api.v1.report import router
 from app.dependencies.get_report_service import get_report_service
 from app.dependencies.get_staff_info import get_requesting_staff_id
 from kugel_common.security import get_tenant_id_with_security_by_query_optional
-from kugel_common.exceptions import ServiceException
-from app.exceptions.report_exceptions import TerminalNotClosedException
+from kugel_common.exceptions import ServiceException, register_exception_handlers
+from app.exceptions.report_exceptions import ReportGenerationException, TerminalNotClosedException
 from app.models.documents.sales_report_document import (
     SalesReportDocument,
     SalesReportTemplate as DocSalesTemplate,
@@ -28,6 +28,9 @@ def make_app(
     """Create a FastAPI app with overridden dependencies."""
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
+    # The service's own handlers, as main.py registers them. Without them the
+    # error bodies these tests see are FastAPI's defaults, not what a caller gets.
+    register_exception_handlers(app)
 
     if mock_report_service is None:
         mock_report_service = AsyncMock()
@@ -235,3 +238,73 @@ class TestGetReportForTerminal:
                 params={"report_scope": "daily", "report_type": "sales", "business_date": "20260101"},
             )
         assert resp.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# Error bodies as a caller receives them
+# ---------------------------------------------------------------------------
+# A service exception used to be re-raised as HTTPException(detail=<dict>),
+# which the shared handler wrapped a second time into ApiResponse(message=<dict>).
+# That fails validation, so every report error reached the caller as a 422 with
+# the real code buried in a validation message.
+
+
+async def _get(url: str, mock_service, **params):
+    app = make_app(mock_report_service=mock_service)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.get(url, params={"report_scope": "daily", "report_type": "sales", **params})
+
+
+@pytest.mark.parametrize(
+    "url, method",
+    [
+        (STORE_REPORT_URL, "get_report_for_store_async"),
+        (TERMINAL_REPORT_URL, "get_report_for_terminal_async"),
+    ],
+)
+class TestErrorBodies:
+    @pytest.mark.asyncio
+    async def test_terminal_not_closed_keeps_its_code(self, url, method):
+        mock_service = AsyncMock()
+        getattr(mock_service, method).side_effect = TerminalNotClosedException(message="Terminal 1 not closed")
+
+        resp = await _get(url, mock_service, business_date="20260101")
+
+        assert resp.status_code == 403
+        body = resp.json()
+        assert body["success"] is False
+        assert body["code"] == 403
+        assert body["user_error"]["code"] == "412101"
+
+    @pytest.mark.asyncio
+    async def test_generation_failure_keeps_its_code(self, url, method):
+        mock_service = AsyncMock()
+        getattr(mock_service, method).side_effect = ReportGenerationException(message="boom")
+
+        resp = await _get(url, mock_service, business_date="20260101")
+
+        assert resp.status_code == 500
+        assert resp.json()["user_error"]["code"] == "412003"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"business_date": "2026-01-01"},
+            {"business_date": "20261301"},
+            {"business_date": "202611"},
+            {"business_date": "2026011"},
+            {"business_date_from": "20260101", "business_date_to": "2026/01/31"},
+            {"business_date_from": "x", "business_date_to": "20260131"},
+            {"business_date_from": "20260131", "business_date_to": "20260101"},
+        ],
+    )
+    async def test_malformed_date_is_refused(self, url, method, params):
+        mock_service = AsyncMock()
+
+        resp = await _get(url, mock_service, **params)
+
+        assert resp.status_code == 400
+        assert resp.json()["user_error"]["code"] == "412006"
+        getattr(mock_service, method).assert_not_called()
