@@ -11,6 +11,8 @@ class DBCollectionSettings(BaseSettings):
     DB_COLLECTION_NAME_ITEM_BOOK_MASTER: str = "master_item_book"
     DB_COLLECTION_NAME_PAYMENT_MASTER: str = "master_payment"
     DB_COLLECTION_NAME_SETTINGS_MASTER: str = "master_settings"
-    DB_COLLECTION_NAME_KEY_PRESET_MASTER: str = "master_key_preset"
+    # Where item books were written before they moved to DB_COLLECTION_NAME_ITEM_BOOK_MASTER.
+    # Read only by the tenant setup, which carries any item books left there across.
+    DB_COLLECTION_NAME_ITEM_BOOK_LEGACY: str = "master_key_preset"
     DB_COLLECTION_NAME_TAX_MASTER: str = "master_tax"
     DB_COLLECTION_NAME_PROMOTION_MASTER: str = "master_promotion"

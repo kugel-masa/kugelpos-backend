@@ -26,7 +26,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
             db: MongoDB database instance
             tenant_id: Identifier for the tenant whose data this repository will manage
         """
-        super().__init__(settings.DB_COLLECTION_NAME_KEY_PRESET_MASTER, ItemBookMasterDocument, db)
+        super().__init__(settings.DB_COLLECTION_NAME_ITEM_BOOK_MASTER, ItemBookMasterDocument, db)
         self.tenant_id = tenant_id
 
     async def create_item_book_async(self, document: ItemBookMasterDocument) -> ItemBookMasterDocument:
