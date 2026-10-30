@@ -432,3 +432,64 @@ async def test_button_price_and_name_are_never_stored(http_client, admin_header)
     response = await http_client.get(f"{base}/{item_book_id}/detail", params={"store_code": "IBDISP"}, headers=admin_header)
     assert response.status_code == status.HTTP_200_OK, response.text
     assert _buttons(response) == {item_code: (100, "Real name"), missing_code: (None, None)}
+
+
+# =========================================================================
+# Coordinate 0 and null child lists
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_button_moves_to_coordinate_zero(http_client, admin_header, category_number, tab_number):
+    """Coordinates count from 0. The update read 0 as "not given" and left the
+    button where it was, so nothing could be moved into the first row or column."""
+    tenant_id = os.environ.get("TENANT_ID")
+    await _ensure_tenant(http_client, admin_header, tenant_id)
+    item_book_id = await _create_item_book(http_client, admin_header, tenant_id, title="Zero Move")
+    await _add_category(http_client, admin_header, tenant_id, item_book_id, category_number)
+    await _add_tab(http_client, admin_header, tenant_id, item_book_id, category_number, tab_number)
+    await _add_button(http_client, admin_header, tenant_id, item_book_id, category_number, tab_number, 2, 3)
+
+    response = await http_client.put(
+        f"/api/v1/tenants/{tenant_id}/item_books/{item_book_id}/categories/{category_number}"
+        f"/tabs/{tab_number}/buttons/pos_x/2/pos_y/3",
+        json={"posX": 0, "posY": 0, "size": "Single", "imageUrl": "url1", "colorText": "0xF0FFFF", "itemCode": "49-01"},
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+    response = await http_client.get(f"/api/v1/tenants/{tenant_id}/item_books/{item_book_id}", headers=admin_header)
+    buttons = response.json()["data"]["categories"][0]["tabs"][0]["buttons"]
+    assert [(b["posX"], b["posY"]) for b in buttons] == [(0, 0)]
+
+
+@pytest.mark.asyncio
+async def test_null_child_lists_do_not_break_reads(http_client, admin_header):
+    """A null child list means "none". PUT stored it as sent, and every read of
+    the book, the whole list included, then answered 500."""
+    tenant_id = os.environ.get("TENANT_ID")
+    await _ensure_tenant(http_client, admin_header, tenant_id)
+    item_book_id = await _create_item_book(http_client, admin_header, tenant_id, title="Null Lists")
+
+    response = await http_client.put(
+        f"/api/v1/tenants/{tenant_id}/item_books/{item_book_id}",
+        json={
+            "title": "Null Lists",
+            "categories": [
+                {"categoryNumber": 1, "title": "c", "color": "#fff", "tabs": None},
+                {"categoryNumber": 2, "title": "d", "color": "#fff",
+                 "tabs": [{"tabNumber": 1, "title": "t", "color": "#fff", "buttons": None}]},
+            ],
+        },
+        headers=admin_header,
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+
+    response = await http_client.get(f"/api/v1/tenants/{tenant_id}/item_books/{item_book_id}", headers=admin_header)
+    assert response.status_code == status.HTTP_200_OK, response.text
+    categories = response.json()["data"]["categories"]
+    assert categories[0]["tabs"] == []
+    assert categories[1]["tabs"][0]["buttons"] == []
+
+    response = await http_client.get(f"/api/v1/tenants/{tenant_id}/item_books", params={"limit": 100}, headers=admin_header)
+    assert response.status_code == status.HTTP_200_OK, response.text

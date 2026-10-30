@@ -573,6 +573,24 @@ class TestUpdateButton:
         assert result is not None
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("start, target", [((2, 3), (0, 3)), ((2, 3), (2, 0)), ((2, 3), (0, 0))])
+    async def test_update_button_moves_to_coordinate_zero(self, start, target):
+        """0 is a coordinate, not "not given": the button lands in the first column or row."""
+        svc, book_repo, _, _ = _make_service()
+        btn = _make_button(pos_x=start[0], pos_y=start[1])
+        tab = _make_tab(tab_number=1, buttons=[btn])
+        cat = _make_category(category_number=1, tabs=[tab])
+        doc = _make_item_book(categories=[cat])
+        book_repo.get_item_book_async.return_value = doc
+        book_repo.replace_item_book_async.side_effect = lambda _id, d: d
+
+        result = await svc.update_button_in_tab_in_category_in_item_book_async(
+            "BK-001", 1, 1, start[0], start[1], {"pos_x": target[0], "pos_y": target[1], "item_code": "ITEM-01"}
+        )
+        moved = result.categories[0].tabs[0].buttons[0]
+        assert (moved.pos_x, moved.pos_y) == target
+
+    @pytest.mark.asyncio
     async def test_update_button_not_found_raises(self):
         svc, book_repo, _, _ = _make_service()
         tab = _make_tab(tab_number=1, buttons=[])

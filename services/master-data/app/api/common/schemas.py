@@ -12,7 +12,7 @@ validation and automatic documentation generation.
 """
 
 from typing import Optional, TypeVar
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from kugel_common.utils.misc import to_lower_camel
 from app.enums.button_size import ButtonSize
@@ -477,6 +477,13 @@ class BaseCategoryMasterDeleteResponse(BaseSchemaModel):
 
 
 # Item Book
+def _null_children_as_empty(value):
+    # A client sending null for a child list means "none", as [] does. Taken
+    # as [] here so it is never stored; the document also reads a stored null
+    # as [] for rows written before this.
+    return [] if value is None else value
+
+
 class BaseItemBookButtonRequest(BaseSchemaModel):
     """
     Base Item Book Button Request Schema
@@ -526,6 +533,11 @@ class BaseItemBookTabRequest(BaseSchemaModel):
     color: str
     buttons: Optional[list[BaseItemBookButtonRequest]] = []
 
+    @field_validator("buttons", mode="before")
+    @classmethod
+    def _null_buttons_is_empty(cls, value):
+        return _null_children_as_empty(value)
+
 
 class BaseItemBookTab(BaseItemBookTabRequest):
     """
@@ -550,6 +562,11 @@ class BaseItemBookCategoryRequest(BaseSchemaModel):
     color: str
     tabs: Optional[list[BaseItemBookTabRequest]] = []
 
+    @field_validator("tabs", mode="before")
+    @classmethod
+    def _null_tabs_is_empty(cls, value):
+        return _null_children_as_empty(value)
+
 
 class BaseItemBookCategory(BaseItemBookCategoryRequest):
     """
@@ -572,6 +589,11 @@ class BaseItemBookCreateRequest(BaseSchemaModel):
     title: str
     categories: Optional[list[BaseItemBookCategoryRequest]] = []
 
+    @field_validator("categories", mode="before")
+    @classmethod
+    def _null_categories_is_empty(cls, value):
+        return _null_children_as_empty(value)
+
 
 class BaseItemBookUpdateRequest(BaseSchemaModel):
     """
@@ -583,6 +605,11 @@ class BaseItemBookUpdateRequest(BaseSchemaModel):
 
     title: str
     categories: Optional[list[BaseItemBookCategoryRequest]] = []
+
+    @field_validator("categories", mode="before")
+    @classmethod
+    def _null_categories_is_empty(cls, value):
+        return _null_children_as_empty(value)
 
 
 class BaseItemBookResponse(BaseSchemaModel):
