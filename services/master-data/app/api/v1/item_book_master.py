@@ -97,7 +97,7 @@ async def create_item_book(
     response = ApiResponse(
         success=True,
         code=status.HTTP_201_CREATED,
-        message="Item Book created successfully. item_book_id: {new_item_book.item_book_id}",
+        message=f"Item Book created successfully. item_book_id: {new_item_book.item_book_id}",
         data=return_item_book,
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
