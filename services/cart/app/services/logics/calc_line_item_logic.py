@@ -31,6 +31,14 @@ async def calc_line_item_async(line_item: CartDocument.CartLineItem) -> CartDocu
     for discount in line_item.discounts:
         discount.discount_amount = 0.0
 
+    # A line without a positive quantity has nothing to discount. Requests are
+    # refused before they get here; this keeps a line that still arrives (an
+    # older cached cart) from dividing by zero below, or from a fixed discount
+    # turning into a negative amount.
+    if (line_item.quantity or 0) <= 0:
+        line_item.amount = 0.0
+        return line_item
+
     # Calculate discount amount for DiscountPercentage first
     for discount in line_item.discounts:
         if discount.discount_type == DiscountType.DiscountPercentage.value:

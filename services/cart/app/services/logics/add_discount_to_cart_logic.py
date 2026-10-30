@@ -13,6 +13,7 @@ from app.exceptions import (
     BalanceLessThanDiscountException,
     DiscountAllocationException,
     DiscountRestrictionException,
+    InvalidDiscountValueException,
 )
 from kugel_common.enums import RoundMethod
 from app.models.documents.cart_document import CartDocument
@@ -38,7 +39,8 @@ async def add_discount_to_line_item_async(line_item: CartDocument.CartLineItem, 
     Raises:
         DiscountRestrictionException: If the line item does not allow discounts
         AmountLessThanDiscountException: If the discount amount exceeds the item amount
-        ServiceException: If the discount type or value is invalid
+        InvalidDiscountValueException: If the discount value is out of range
+        ServiceException: If the discount type is invalid
     """
     # Check if discount is restricted
     if line_item.is_discount_restricted:
@@ -54,15 +56,12 @@ async def add_discount_to_line_item_async(line_item: CartDocument.CartLineItem, 
         discount_type = discount["discount_type"]
         discount_value = discount["discount_value"]
         discount_detail = discount["discount_detail"]
+        __check_discount_value(discount_type, discount_value)
         if discount_type == DiscountType.DiscountAmount.value:
             if line_item.amount < discount_value:
                 message = f"The amount is less than the discount value, line_no: {line_item.line_no}, amount: {line_item.amount}, discount_value: {discount_value}"
                 raise AmountLessThanDiscountException(message, logger)
-        elif discount_type == DiscountType.DiscountPercentage.value:
-            if discount_value > 100 or discount_value < 0:
-                message = f"Invalid discount percentage: {discount_value}"
-                raise ServiceException(message, logger)
-        else:
+        elif discount_type != DiscountType.DiscountPercentage.value:
             message = f"Invalid discount type discount: {discount}"
             raise ServiceException(message, logger)
 
@@ -97,9 +96,20 @@ async def add_discount_to_cart_async(cart_doc: CartDocument, add_discount_list: 
 
     Raises:
         BalanceLessThanDiscountException: If the discount amount exceeds the cart balance
+        InvalidDiscountValueException: If the discount value is out of range
         ServiceException: If the discount type is invalid
         DiscountAllocationException: If the discount allocation fails
     """
+    # The request replaces the subtotal discounts, and the balance is net of
+    # the ones it replaces, so they are added back. All of the request's
+    # discounts are checked together: one by one, 600 off twice, or 100% and 1
+    # off, passed a balance of 1,000. Summed as decimals so that 0.1 and 0.2
+    # off a balance of 0.3 is not refused over a float rounding error.
+    available = Decimal(str(cart_doc.balance_amount)) + sum(
+        (Decimal(str(d.discount_amount)) for d in cart_doc.subtotal_discounts), Decimal(0)
+    )
+    requested_total = Decimal(0)
+
     # Clear existing discount information
     cart_doc.subtotal_discounts = []
 
@@ -112,10 +122,8 @@ async def add_discount_to_cart_async(cart_doc: CartDocument, add_discount_list: 
         discount_amount: float = 0.0
 
         # Calculate discount amount
+        __check_discount_value(discount_type, discount_value)
         if discount_type == DiscountType.DiscountAmount.value:
-            if cart_doc.balance_amount < discount_value:
-                message = f"The balance is less than the discount value, cart_id: {cart_doc.cart_id}, balance: {cart_doc.balance_amount}, discount_value: {discount_value}"
-                raise BalanceLessThanDiscountException(message, logger)
             discount_amount = discount_value
         elif discount_type == DiscountType.DiscountPercentage.value:
             target_amout = sum(
@@ -129,6 +137,11 @@ async def add_discount_to_cart_async(cart_doc: CartDocument, add_discount_list: 
         else:
             message = f"Invalid discount type discount: {add_discount}"
             raise ServiceException(message, logger)
+
+        requested_total += Decimal(str(discount_amount))
+        if available < requested_total:
+            message = f"The balance is less than the discount value, cart_id: {cart_doc.cart_id}, balance before subtotal discounts: {available}, discount_value: {discount_value}, discounts in this request: {requested_total}"
+            raise BalanceLessThanDiscountException(message, logger)
 
         # Add discount information
         cart_doc.subtotal_discounts.append(
@@ -221,3 +234,24 @@ def __round(value: Decimal) -> float:
         case RoundMethod.Ceil.value:
             return float(value.to_integral_value(rounding=ROUND_CEILING))
     return float(value)
+
+
+def __check_discount_value(discount_type: str, discount_value: float) -> None:
+    """
+    Refuse a discount value that would raise the price instead of lowering it.
+
+    A negative fixed amount passed the "larger than the line" check and added to
+    the line (100 with -500 off became 600). A percentage outside 0 to 100 was
+    refused with a 500 on a line, and not checked at all on the subtotal. NaN
+    passes every comparison, so it is refused first.
+
+    Raises:
+        InvalidDiscountValueException: A value that is not a finite number, a
+            negative amount, or a percentage outside 0 to 100
+    """
+    if not math.isfinite(discount_value):
+        raise InvalidDiscountValueException(f"Discount value is not a finite number: {discount_value}", logger)
+    if discount_type == DiscountType.DiscountAmount.value and discount_value < 0:
+        raise InvalidDiscountValueException(f"Negative discount amount: {discount_value}", logger)
+    if discount_type == DiscountType.DiscountPercentage.value and not 0 <= discount_value <= 100:
+        raise InvalidDiscountValueException(f"Invalid discount percentage: {discount_value}", logger)

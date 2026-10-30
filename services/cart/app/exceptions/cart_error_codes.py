@@ -34,6 +34,9 @@ class CartErrorCode:
     DISCOUNT_ALLOCATION_ERROR = "402004"  # 値引の按分処理に失敗
     DISCOUNT_RESTRICTION = "402005"  # 値引禁止商品
     LINE_ITEM_NOT_FOUND = "402006"  # 指定の明細行が存在しない
+    QUANTITY_BELOW_MINIMUM = "402007"  # 数量が 1 未満
+    UNIT_PRICE_NEGATIVE = "402008"  # 単価がマイナス
+    INVALID_DISCOUNT_VALUE = "402009"  # 値引の値が範囲外（マイナスの定額、0〜100 以外の率）
 
     # 支払関連エラー (403xx)
     BALANCE_ZERO = "403001"  # 残高が既にゼロ
@@ -99,6 +102,9 @@ class CartErrorMessage:
             CartErrorCode.DISCOUNT_ALLOCATION_ERROR: "値引の按分処理に失敗しました",
             CartErrorCode.DISCOUNT_RESTRICTION: "値引禁止商品です",
             CartErrorCode.LINE_ITEM_NOT_FOUND: "指定の明細行が存在しません",
+            CartErrorCode.QUANTITY_BELOW_MINIMUM: "数量は 1 以上を指定してください",
+            CartErrorCode.UNIT_PRICE_NEGATIVE: "単価にマイナスは指定できません",
+            CartErrorCode.INVALID_DISCOUNT_VALUE: "値引の値が範囲外です",
             # スナップショット/restore 関連
             CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH: "スナップショットの署名が一致しません",
             CartErrorCode.SNAPSHOT_INVALID: "スナップショットの形式が不正です",
@@ -144,6 +150,9 @@ class CartErrorMessage:
             CartErrorCode.DISCOUNT_ALLOCATION_ERROR: "Discount allocation error",
             CartErrorCode.DISCOUNT_RESTRICTION: "Discount restriction",
             CartErrorCode.LINE_ITEM_NOT_FOUND: "Line item not found",
+            CartErrorCode.QUANTITY_BELOW_MINIMUM: "Quantity must be 1 or more",
+            CartErrorCode.UNIT_PRICE_NEGATIVE: "Unit price cannot be negative",
+            CartErrorCode.INVALID_DISCOUNT_VALUE: "Discount value is out of range",
             # スナップショット/restore 関連
             CartErrorCode.SNAPSHOT_SIGNATURE_MISMATCH: "Snapshot signature mismatch",
             CartErrorCode.SNAPSHOT_INVALID: "Invalid snapshot envelope",
