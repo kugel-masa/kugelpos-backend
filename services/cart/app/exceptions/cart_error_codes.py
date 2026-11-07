@@ -26,6 +26,7 @@ class CartErrorCode:
     CART_CREATE_ERROR = "401001"  # カートの作成に失敗
     CART_NOT_FOUND = "401002"  # カートが見つからない
     CART_SAVE_ERROR = "401003"  # カートの保存に失敗
+    CART_STORE_UNAVAILABLE = "401004"  # the store holding this cart cannot be reached right now
 
     # 商品登録関連エラー (402xx)
     ITEM_NOT_FOUND = "402001"  # 対象商品が見つからない
@@ -89,6 +90,7 @@ class CartErrorMessage:
             CartErrorCode.CART_CREATE_ERROR: "カートの作成に失敗しました",
             CartErrorCode.CART_NOT_FOUND: "カートが見つかりません",
             CartErrorCode.CART_SAVE_ERROR: "カートの保存に失敗しました",
+            CartErrorCode.CART_STORE_UNAVAILABLE: "カートの保存先に一時的に接続できません。しばらくしてから再試行するか、新しい取引で続けてください",
             # 商品登録関連
             CartErrorCode.ITEM_NOT_FOUND: "対象商品が見つかりません",
             CartErrorCode.BALANCE_ZERO: "残高はすでに０です",
@@ -138,6 +140,7 @@ class CartErrorMessage:
             CartErrorCode.CART_CREATE_ERROR: "Cart creation failed",
             CartErrorCode.CART_NOT_FOUND: "Cart not found",
             CartErrorCode.CART_SAVE_ERROR: "Failed to save cart",
+            CartErrorCode.CART_STORE_UNAVAILABLE: "The store holding this cart is temporarily unreachable; retry shortly or continue in a new transaction",
             # 商品登録関連
             CartErrorCode.ITEM_NOT_FOUND: "Item not found",
             CartErrorCode.BALANCE_ZERO: "Balance is already zero",

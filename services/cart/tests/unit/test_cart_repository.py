@@ -4,7 +4,6 @@ Shared helpers / imports preserved as-is from the original
 test_repositories.py — splitting by repository class group keeps
 each file under ~700 lines and lets pytest-xdist parallelise faster.
 """
-import time
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
@@ -84,85 +83,6 @@ def _make_aiohttp_context_manager(mock_response):
     cm.__aexit__ = AsyncMock(return_value=False)
     return cm
 
-
-
-class TestCartRepositoryCircuitBreaker:
-    """Tests for the circuit breaker logic inside CartRepository."""
-
-    def _make_repo(self, db=None):
-        db = db or _make_mock_db()
-        terminal_info = _make_terminal_info()
-        repo = CartRepository(db, terminal_info)
-        return repo
-
-    # -- _check_circuit_breaker --
-
-    def test_circuit_closed_by_default(self):
-        repo = self._make_repo()
-        assert repo._check_circuit_breaker() is True
-
-    def test_circuit_open_returns_false(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._last_failure_time = time.time()
-        assert repo._check_circuit_breaker() is False
-
-    def test_circuit_resets_after_timeout(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        # Set failure time well beyond reset timeout
-        repo._last_failure_time = time.time() - (repo._reset_timeout + 10)
-        assert repo._check_circuit_breaker() is True
-        assert repo._circuit_open is False
-        assert repo._failure_count == 0
-
-    # -- _record_failure / _open_circuit --
-
-    def test_record_failure_increments_count(self):
-        repo = self._make_repo()
-        repo._record_failure()
-        assert repo._failure_count == 1
-        assert repo._circuit_open is False
-
-    def test_record_failure_opens_circuit_at_threshold(self):
-        repo = self._make_repo()
-        for _ in range(repo._failure_threshold):
-            repo._record_failure()
-        assert repo._circuit_open is True
-        assert repo._failure_count == repo._failure_threshold
-
-    def test_record_failure_does_not_open_circuit_below_threshold(self):
-        repo = self._make_repo()
-        for _ in range(repo._failure_threshold - 1):
-            repo._record_failure()
-        assert repo._circuit_open is False
-
-    # -- _record_success --
-
-    def test_record_success_resets_failure_count(self):
-        repo = self._make_repo()
-        repo._failure_count = 2
-        repo._record_success()
-        assert repo._failure_count == 0
-        assert repo._circuit_open is False
-
-    def test_record_success_closes_open_circuit(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._failure_count = 3
-        repo._record_success()
-        assert repo._circuit_open is False
-        assert repo._failure_count == 0
-
-    # -- _open_circuit --
-
-    def test_open_circuit_sets_state(self):
-        repo = self._make_repo()
-        before = time.time()
-        repo._open_circuit()
-        after = time.time()
-        assert repo._circuit_open is True
-        assert before <= repo._last_failure_time <= after
 
 
 class TestCartRepositoryShardKey:
@@ -266,576 +186,484 @@ class TestCartRepositoryCreateCart:
         assert len(cart.masters.items) == 1
 
 
-class TestCartRepositoryCacheCartAsync:
-    """Tests for cache_cart_async / get_cached_cart_async / delete_cart_async with circuit breaker integration."""
 
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        repo = CartRepository(db, terminal_info)
-        return repo
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch):
+    monkeypatch.setattr("app.models.repositories.cart_repository.REDIS_RETRY_DELAYS", (0, 0))
+
+
+def _repo():
+    return CartRepository(_make_mock_db(), _make_terminal_info())
+
+
+def _cart(cart_id="cart-1", **kw):
+    return CartDocument(cart_id=cart_id, tenant_id="T001", store_code="S001", business_date="20240601", **kw)
+
+
+def _response(status, json_data=None, text=""):
+    r = AsyncMock()
+    r.status = status
+    r.text = AsyncMock(return_value=text)
+    r.json = AsyncMock(return_value=json_data)
+    return r
+
+
+class _Dapr:
+    """A Dapr state store stand-in: a dict, plus a switch to make it fail."""
+
+    def __init__(self):
+        self.data = {}
+        self.down = False
+        self.calls = []
+
+    def _fail(self):
+        import aiohttp
+
+        raise aiohttp.ClientConnectionError("dapr down")
+
+    def post(self, url, json=None):
+        self.calls.append("post")
+        if self.down:
+            self._fail()
+        for item in json:
+            self.data[item["key"]] = item["value"]
+        return _make_aiohttp_context_manager(_response(204))
+
+    def get(self, url):
+        self.calls.append("get")
+        if self.down:
+            self._fail()
+        key = url.rsplit("/", 1)[-1]
+        if key in self.data:
+            return _make_aiohttp_context_manager(_response(200, json_data=self.data[key]))
+        return _make_aiohttp_context_manager(_response(204))
+
+    def delete(self, url):
+        self.calls.append("delete")
+        if self.down:
+            self._fail()
+        self.data.pop(url.rsplit("/", 1)[-1], None)
+        return _make_aiohttp_context_manager(_response(204))
+
+
+class _Mongo:
+    """Stands in for the cache_cart collection through the repository's own helpers."""
+
+    def __init__(self, repo):
+        self.docs = {}
+
+        async def get_one(search):
+            return self.docs.get(search["cart_id"])
+
+        async def create(doc):
+            self.docs[doc.cart_id] = doc.model_copy(deep=True)
+            return True
+
+        async def update(search, data):
+            self.docs[search["cart_id"]] = CartDocument(**data)
+            return True
+
+        async def delete(search):
+            return self.docs.pop(search["cart_id"], None) is not None
+
+        repo.get_one_async = get_one
+        repo.create_async = create
+        repo.update_one_async = update
+        repo.delete_async = delete
+
+
+@pytest.fixture
+def stores():
+    dapr = _Dapr()
+    with patch("app.models.repositories.cart_repository.get_dapr_statestore_session", AsyncMock(return_value=dapr)):
+        repo = _repo()
+        mongo = _Mongo(repo)
+        yield repo, dapr, mongo
+
+
+def _open_breaker():
+    from app.models.repositories.cart_repository import _breaker
+
+    for _ in range(_breaker.FAILURE_THRESHOLD):
+        _breaker.record_failure()
+    assert _breaker.is_open
+
+
+class TestWhereANewCartIsCreated:
+    @pytest.mark.asyncio
+    async def test_in_redis_normally(self, stores):
+        repo, dapr, mongo = stores
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        assert cart.cache_store == "redis"
+        assert "cart-1" in dapr.data and "cart-1" not in mongo.docs
 
     @pytest.mark.asyncio
-    async def test_cache_cart_falls_back_to_db_when_circuit_open(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._last_failure_time = time.time()
+    async def test_in_mongodb_while_the_breaker_is_open(self, stores):
+        repo, dapr, mongo = stores
+        _open_breaker()
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        assert cart.cache_store == "mongodb"
+        assert "cart-1" in mongo.docs and dapr.calls == []
 
-        cart = CartDocument(cart_id="cart-123", tenant_id="T001", store_code="S001", business_date="20240601")
+    @pytest.mark.asyncio
+    async def test_in_mongodb_when_redis_fails_on_the_first_write(self, stores):
+        # Nothing exists anywhere yet, so there is nothing to be stale against.
+        repo, dapr, mongo = stores
+        dapr.down = True
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        assert cart.cache_store == "mongodb"
+        assert mongo.docs[cart.cart_id].cache_store == "mongodb"
 
-        # Mock the private __save_cart_to_db_async method
-        repo._CartRepository__save_cart_to_db_async = AsyncMock()
 
+class TestAmbiguousFirstWrite:
+    @pytest.mark.asyncio
+    async def test_a_new_cart_moved_to_mongodb_gets_a_new_id(self, stores):
+        # The POST may have landed with only the answer lost; reusing the id would
+        # leave a copy in Redis that a later read prefers over MongoDB.
+        repo, dapr, mongo = stores
+        real_post = dapr.post
+
+        def lands_then_fails(url, json=None):
+            real_post(url, json=json)
+            dapr._fail()
+
+        dapr.post = lands_then_fails
+        cart = _cart("first")
+        await repo.cache_cart_async(cart, isNew=True)
+
+        assert cart.cart_id != "first"
+        assert cart.cache_store == "mongodb"
+        assert set(mongo.docs) == {cart.cart_id}
+        assert "first" in dapr.data, "precondition: the orphan landed in Redis"
+        assert cart.cart_id not in dapr.data
+
+
+class TestRollingUpdate:
+    @pytest.mark.asyncio
+    async def test_a_mongodb_cart_copied_to_redis_by_an_old_replica_is_read_from_mongodb(self, stores):
+        repo, dapr, _mongo = stores
+        dapr.down = True
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        dapr.down = False
+        # An old replica (no cache_store logic) writes its stale view to Redis.
+        dapr.data[cart.cart_id] = cart.model_dump(mode="json")
+        # The real cart moves on in MongoDB.
+        newer = await repo.get_cached_cart_async(cart.cart_id)
+        newer.line_items = [CartDocument.CartLineItem(item_code="A")]
+        await repo.cache_cart_async(newer)
+
+        read = await repo.get_cached_cart_async(cart.cart_id)
+        assert [i.item_code for i in read.line_items] == ["A"]
+
+
+class TestACartNeverMoves:
+    @pytest.mark.asyncio
+    async def test_a_redis_cart_whose_write_fails_is_refused_not_moved(self, stores):
+        from app.exceptions import CartStoreUnavailableException
+
+        repo, dapr, mongo = stores
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        cart.line_items = [CartDocument.CartLineItem(item_code="A")]
+        dapr.down = True
+
+        with pytest.raises(CartStoreUnavailableException):
+            await repo.cache_cart_async(cart)
+
+        assert "cart-1" not in mongo.docs, "a cart in mid-transaction was copied to MongoDB"
+        assert dapr.data["cart-1"]["line_items"] == [], "the previous version must be what Redis keeps"
+
+    @pytest.mark.asyncio
+    async def test_a_redis_cart_is_refused_while_the_breaker_is_open(self, stores):
+        from app.exceptions import CartStoreUnavailableException
+
+        repo, dapr, mongo = stores
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        _open_breaker()
+        dapr.calls.clear()
+
+        with pytest.raises(CartStoreUnavailableException):
+            await repo.cache_cart_async(cart)
+        assert dapr.calls == [] and "cart-1" not in mongo.docs
+
+    @pytest.mark.asyncio
+    async def test_a_mongodb_cart_stays_in_mongodb_after_redis_recovers(self, stores):
+        repo, dapr, mongo = stores
+        dapr.down = True
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        dapr.down = False
+
+        cart = await repo.get_cached_cart_async(cart.cart_id)
+        cart.line_items = [CartDocument.CartLineItem(item_code="A")]
         await repo.cache_cart_async(cart)
 
-        repo._CartRepository__save_cart_to_db_async.assert_awaited_once_with(cart)
+        assert cart.cart_id not in dapr.data, "a MongoDB cart was written to Redis"
+        assert mongo.docs[cart.cart_id].line_items[0].item_code == "A"
+
+
+class TestReading:
+    @pytest.mark.asyncio
+    async def test_a_redis_cart_is_read_from_redis_only(self, stores):
+        repo, _dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        repo.get_one_async = AsyncMock(side_effect=AssertionError("MongoDB must not be read"))
+
+        cart = await repo.get_cached_cart_async("cart-1")
+
+        assert cart.cache_store == "redis"
+        assert cart.staff.id == "staff01"
 
     @pytest.mark.asyncio
-    async def test_cache_cart_records_success_on_dapr_success(self):
-        repo = self._make_repo()
-        repo._failure_count = 2
+    async def test_a_mongodb_cart_is_found_after_a_redis_miss(self, stores):
+        repo, dapr, _mongo = stores
+        dapr.down = True
+        created = _cart()
+        await repo.cache_cart_async(created, isNew=True)
+        dapr.down = False
 
-        cart = CartDocument(cart_id="cart-456", tenant_id="T001", store_code="S001", business_date="20240601")
-
-        # Mock the private __cache_cart_async to succeed
-        repo._CartRepository__cache_cart_async = AsyncMock()
-
-        await repo.cache_cart_async(cart)
-
-        assert repo._failure_count == 0
-        assert repo._circuit_open is False
+        cart = await repo.get_cached_cart_async(created.cart_id)
+        assert cart.cache_store == "mongodb"
 
     @pytest.mark.asyncio
-    async def test_cache_cart_records_failure_and_falls_back_on_exception(self):
-        repo = self._make_repo()
-
-        cart = CartDocument(cart_id="cart-789", tenant_id="T001", store_code="S001", business_date="20240601")
-
-        # Mock Dapr cache to fail
-        repo._CartRepository__cache_cart_async = AsyncMock(side_effect=Exception("Dapr down"))
-        repo._CartRepository__save_cart_to_db_async = AsyncMock()
-
-        await repo.cache_cart_async(cart)
-
-        assert repo._failure_count == 1
-        repo._CartRepository__save_cart_to_db_async.assert_awaited_once_with(cart)
+    async def test_a_cart_in_neither_store_is_not_found(self, stores):
+        repo, _dapr, _mongo = stores
+        with pytest.raises(NotFoundException):
+            await repo.get_cached_cart_async("nope")
 
     @pytest.mark.asyncio
-    async def test_get_cached_cart_falls_back_to_db_when_circuit_open(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._last_failure_time = time.time()
+    async def test_unreachable_redis_and_no_mongodb_copy_is_unavailable_not_not_found(self, stores):
+        # The cart may well be in Redis: answering 404 would tell the till it is gone.
+        from app.exceptions import CartStoreUnavailableException
 
-        expected_cart = CartDocument(cart_id="cart-abc")
-        repo._CartRepository__get_cart_from_db_async = AsyncMock(return_value=expected_cart)
-
-        result = await repo.get_cached_cart_async("cart-abc")
-
-        assert result == expected_cart
+        repo, dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        dapr.down = True
+        with pytest.raises(CartStoreUnavailableException):
+            await repo.get_cached_cart_async("cart-1")
 
     @pytest.mark.asyncio
-    async def test_get_cached_cart_falls_back_on_exception(self):
-        repo = self._make_repo()
+    async def test_while_the_breaker_is_open_redis_is_not_asked(self, stores):
+        repo, dapr, _mongo = stores
+        dapr.down = True
+        created = _cart()
+        await repo.cache_cart_async(created, isNew=True)
+        _open_breaker()
+        dapr.calls.clear()
 
-        expected_cart = CartDocument(cart_id="cart-def")
-        repo._CartRepository__get_cached_cart_async = AsyncMock(side_effect=Exception("cache error"))
-        repo._CartRepository__get_cart_from_db_async = AsyncMock(return_value=expected_cart)
-
-        result = await repo.get_cached_cart_async("cart-def")
-
-        assert result == expected_cart
-        assert repo._failure_count == 1
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_falls_back_to_db_when_circuit_open(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._last_failure_time = time.time()
-
-        repo._CartRepository__delete_cart_from_db_async = AsyncMock()
-
-        await repo.delete_cart_async("cart-xyz")
-
-        repo._CartRepository__delete_cart_from_db_async.assert_awaited_once_with("cart-xyz")
-
-
-# =========================================================================
-# TransactionStatusRepository tests
-# =========================================================================
-
-
-
-class TestCartRepositoryDaprCacheAsync:
-    """Tests for the private __cache_cart_async method (Dapr state store POST)."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    def _make_mock_response(self, status_code, json_data=None, text=""):
-        mock_response = AsyncMock()
-        mock_response.status = status_code
-        mock_response.text = AsyncMock(return_value=text)
-        if json_data is not None:
-            mock_response.json = AsyncMock(return_value=json_data)
-        return mock_response
+        cart = await repo.get_cached_cart_async(created.cart_id)
+        assert cart.cache_store == "mongodb" and dapr.calls == []
 
     @pytest.mark.asyncio
-    async def test_cache_cart_success(self):
-        repo = self._make_repo()
-        cart = CartDocument(cart_id="cart-dapr-01", tenant_id="T001", store_code="S001", business_date="20240601")
+    async def test_a_legacy_copy_without_cache_store_read_from_mongodb_becomes_a_mongodb_cart(self, stores):
+        repo, _dapr, mongo = stores
+        mongo.docs["old"] = _cart("old")
+        cart = await repo.get_cached_cart_async("old")
+        assert cart.cache_store == "mongodb"
 
-        mock_response = self._make_mock_response(204)
-        mock_session = MagicMock()
-        mock_session.post.return_value = _make_aiohttp_context_manager(mock_response)
 
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            await repo._CartRepository__cache_cart_async(cart)
-
-        mock_session.post.assert_called_once()
+class TestNoStaleRead:
+    """The reason a cart never moves: Redis can never hold an older copy of a MongoDB cart."""
 
     @pytest.mark.asyncio
-    async def test_cache_cart_non_204_raises_update_not_work(self):
-        from app.exceptions import UpdateNotWorkException
+    async def test_redis_recovering_does_not_resurface_anything(self, stores):
+        repo, dapr, _mongo = stores
+        # Created while Redis is down -> MongoDB; several updates there.
+        dapr.down = True
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        cart_id = cart.cart_id
+        for code in ("A", "B", "C"):
+            cart = await repo.get_cached_cart_async(cart_id)
+            cart.line_items = [*cart.line_items, CartDocument.CartLineItem(item_code=code)]
+            await repo.cache_cart_async(cart)
+        # Redis comes back, the breaker closes; another replica reads Redis first.
+        dapr.down = False
+        from app.models.repositories.cart_repository import reset_cart_store_breaker
 
-        repo = self._make_repo()
-        cart = CartDocument(cart_id="cart-dapr-02", tenant_id="T001", store_code="S001", business_date="20240601")
+        reset_cart_store_breaker()
+        other_replica = _repo()
+        other_replica.get_one_async = repo.get_one_async
 
-        mock_response = self._make_mock_response(500, text="Internal error")
-        mock_session = MagicMock()
-        mock_session.post.return_value = _make_aiohttp_context_manager(mock_response)
+        cart = await other_replica.get_cached_cart_async(cart_id)
+        assert [i.item_code for i in cart.line_items] == ["A", "B", "C"]
 
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            with pytest.raises(UpdateNotWorkException):
-                await repo._CartRepository__cache_cart_async(cart)
+
+class TestDelete:
+    @pytest.mark.asyncio
+    async def test_a_finished_cart_is_removed_from_both(self, stores):
+        repo, dapr, mongo = stores
+        await repo.cache_cart_async(_cart("r"), isNew=True)
+        dapr.down = True
+        m = _cart("m")
+        await repo.cache_cart_async(m, isNew=True)
+        dapr.down = False
+
+        await repo.delete_cart_async("r")
+        await repo.delete_cart_async(m.cart_id)
+        assert dapr.data == {} and mongo.docs == {}
 
     @pytest.mark.asyncio
-    async def test_cache_cart_400_state_store_not_found(self):
-        from app.exceptions import UpdateNotWorkException
-
-        repo = self._make_repo()
-        cart = CartDocument(cart_id="cart-dapr-03", tenant_id="T001", store_code="S001", business_date="20240601")
-
-        mock_response = self._make_mock_response(
-            400,
-            json_data={"errorCode": "ERR_STATE_STORE_NOT_FOUND", "message": "state store not found"},
-            text="",
-        )
-        mock_session = MagicMock()
-        mock_session.post.return_value = _make_aiohttp_context_manager(mock_response)
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            with pytest.raises(UpdateNotWorkException):
-                await repo._CartRepository__cache_cart_async(cart)
-
-
-class TestCartRepositoryCacheJsonSerialization:
-    """Regression tests for issue #141: the Dapr/Redis cache payload must be JSON-serializable.
-
-    Before the fix, __cache_cart_async called cart.model_dump() (no mode="json"), leaving
-    datetime objects in the payload. aiohttp's stdlib json encoder then raised
-    "Object of type datetime is not JSON serializable" on every write, silently falling
-    back to MongoDB. These tests assert the posted payload survives json.dumps.
-    """
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    def _make_cart_with_datetimes(self) -> CartDocument:
-        from app.models.documents.promotion_master_document import PromotionMasterDocument
-
-        cart = CartDocument(cart_id="cart-dt-01", tenant_id="T001", store_code="S001", business_date="20240601")
-        # Base document datetimes (always present in practice).
-        cart.created_at = datetime(2024, 6, 1, 9, 0, 0)
-        cart.updated_at = datetime(2024, 6, 1, 9, 5, 0)
-        # Embedded master snapshot also carries datetimes.
-        cart.masters.promotions = [
-            PromotionMasterDocument(
-                start_datetime=datetime(2024, 6, 1, 0, 0, 0),
-                end_datetime=datetime(2024, 6, 30, 23, 59, 59),
-            )
-        ]
-        return cart
+    async def test_a_mongodb_cart_is_removed_while_redis_is_down(self, stores):
+        repo, dapr, mongo = stores
+        dapr.down = True
+        m = _cart("m")
+        await repo.cache_cart_async(m, isNew=True)
+        await repo.delete_cart_async(m.cart_id)
+        assert mongo.docs == {}
 
     @pytest.mark.asyncio
-    async def test_cache_payload_is_json_serializable(self):
+    async def test_a_redis_cart_cannot_be_removed_while_redis_is_down(self, stores):
+        from app.exceptions import CartStoreUnavailableException
+
+        repo, dapr, _mongo = stores
+        await repo.cache_cart_async(_cart("r"), isNew=True)
+        dapr.down = True
+        with pytest.raises(CartStoreUnavailableException):
+            await repo.delete_cart_async("r")
+
+
+class TestDeleteFailure:
+    @pytest.mark.asyncio
+    async def test_a_mongodb_outage_does_not_stop_removing_a_redis_cart(self, stores):
+        repo, dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        repo.delete_async = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        await repo.delete_cart_async("cart-1", "redis")
+        assert "cart-1" not in dapr.data
+
+    @pytest.mark.asyncio
+    async def test_a_redis_outage_does_not_stop_removing_a_mongodb_cart(self, stores):
+        repo, dapr, mongo = stores
+        dapr.down = True
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        _open_breaker()
+
+        await repo.delete_cart_async(cart.cart_id, "mongodb")
+        assert mongo.docs == {}
+
+    @pytest.mark.asyncio
+    async def test_without_the_store_mongodb_failure_leaves_redis_untouched(self, stores):
+        repo, dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        repo.delete_async = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with pytest.raises(RuntimeError):
+            await repo.delete_cart_async("cart-1")
+        assert "cart-1" in dapr.data
+
+    @pytest.mark.asyncio
+    async def test_a_mongodb_delete_failure_is_not_reported_as_success(self, stores):
+        repo, dapr, _mongo = stores
+        dapr.down = True
+        cart = _cart()
+        await repo.cache_cart_async(cart, isNew=True)
+        dapr.down = False
+        repo.delete_async = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with pytest.raises(RuntimeError):
+            await repo.delete_cart_async(cart.cart_id, "mongodb")
+
+
+class TestRetryAndBreaker:
+    @pytest.mark.asyncio
+    async def test_a_blip_is_retried(self, stores):
+        repo, dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        real_get = dapr.get
+        failures = {"n": 1}
+
+        def flaky(url):
+            if failures["n"]:
+                failures["n"] -= 1
+                dapr._fail()
+            return real_get(url)
+
+        dapr.get = flaky
+        cart = await repo.get_cached_cart_async("cart-1")
+        assert cart.cart_id == "cart-1"
+
+    @pytest.mark.asyncio
+    async def test_a_5xx_is_retried_and_a_4xx_is_not(self, stores):
+        from app.models.repositories.cart_repository import _RedisRefused, _RedisUnavailable, _with_retry
+
+        calls = {"n": 0}
+
+        async def five():
+            calls["n"] += 1
+            raise _RedisUnavailable("HTTP 500")
+
+        with pytest.raises(_RedisUnavailable):
+            await _with_retry(five)
+        assert calls["n"] == 3
+
+        calls["n"] = 0
+
+        async def four():
+            calls["n"] += 1
+            raise _RedisRefused("HTTP 400")
+
+        with pytest.raises(_RedisRefused):
+            await _with_retry(four)
+        assert calls["n"] == 1
+
+    @pytest.mark.asyncio
+    async def test_the_breaker_is_shared_across_repositories(self, stores):
+        # The old breaker lived on the per-request repository and never opened.
+        _, dapr, _mongo = stores
+        dapr.down = True
+        for i in range(3):
+            other = _repo()
+            _Mongo(other)
+            await other.cache_cart_async(_cart(f"c{i}"), isNew=True)
+        from app.models.repositories.cart_repository import _breaker
+
+        assert _breaker.is_open
+
+    def test_the_breaker_probes_once_after_the_timeout(self, monkeypatch):
+        from app.models.repositories import cart_repository as m
+
+        now = {"t": 1000.0}
+        monkeypatch.setattr(m.time, "monotonic", lambda: now["t"])
+        _open_breaker()
+        assert m._breaker.allow_redis() is False
+        now["t"] += m._CartStoreBreaker.RESET_TIMEOUT
+        assert m._breaker.allow_redis() is True
+        assert m._breaker.allow_redis() is False, "only one probe at a time"
+        m._breaker.record_failure()
+        assert m._breaker.allow_redis() is False, "a failed probe keeps it open"
+        now["t"] += m._CartStoreBreaker.RESET_TIMEOUT
+        assert m._breaker.allow_redis() is True
+        m._breaker.record_success()
+        assert not m._breaker.is_open
+
+
+class TestRedisPayload:
+    """Issue #141: the Dapr payload must be JSON-serializable and round-trip."""
+
+    @pytest.mark.asyncio
+    async def test_payload_is_json_and_round_trips(self, stores):
         import json
 
-        repo = self._make_repo()
-        cart = self._make_cart_with_datetimes()
+        from app.models.documents.promotion_master_document import PromotionMasterDocument
 
-        captured = {}
+        repo, dapr, _mongo = stores
+        cart = _cart()
+        cart.created_at = datetime(2024, 6, 1, 9, 0, 0)
+        cart.masters.promotions = [
+            PromotionMasterDocument(start_datetime=datetime(2024, 6, 1), end_datetime=datetime(2024, 6, 30))
+        ]
+        await repo.cache_cart_async(cart, isNew=True)
 
-        def _capture_post(url, json=None):
-            captured["json"] = json
-            return _make_aiohttp_context_manager(AsyncMock(status=204, text=AsyncMock(return_value="")))
-
-        mock_session = MagicMock()
-        mock_session.post.side_effect = _capture_post
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            await repo._CartRepository__cache_cart_async(cart)
-
-        # The core assertion: the payload aiohttp would encode must not raise.
-        # (With the pre-fix model_dump(), this raises TypeError on the datetime fields.)
-        json.dumps(captured["json"])
-        value = captured["json"][0]["value"]
-        assert isinstance(value["created_at"], str)
-        assert isinstance(value["masters"]["promotions"][0]["start_datetime"], str)
-
-    @pytest.mark.asyncio
-    async def test_cache_payload_round_trips_back_to_datetime(self):
-        repo = self._make_repo()
-        cart = self._make_cart_with_datetimes()
-
-        captured = {}
-
-        def _capture_post(url, json=None):
-            captured["json"] = json
-            return _make_aiohttp_context_manager(AsyncMock(status=204, text=AsyncMock(return_value="")))
-
-        mock_session = MagicMock()
-        mock_session.post.side_effect = _capture_post
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            await repo._CartRepository__cache_cart_async(cart)
-
-        # __get_cached_cart_async rebuilds via CartDocument(**cart_data); pydantic must
-        # parse the ISO strings back into datetimes, preserving the original values.
-        rebuilt = CartDocument(**captured["json"][0]["value"])
+        json.dumps(dapr.data["cart-1"])
+        rebuilt = CartDocument(**dapr.data["cart-1"])
         assert rebuilt.created_at == cart.created_at
-        assert rebuilt.masters.promotions[0].start_datetime == cart.masters.promotions[0].start_datetime
-
-
-class TestCartRepositoryDeleteFallbackCleanup:
-    """Tests for issue #141 secondary fix: delete must also remove the MongoDB fallback copy."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    @pytest.mark.asyncio
-    async def test_delete_removes_redis_and_db_fallback_copy(self):
-        repo = self._make_repo()
-        repo._CartRepository__delete_cached_cart_async = AsyncMock()
-        repo.delete_async = AsyncMock(return_value=True)
-
-        await repo.delete_cart_async("cart-cleanup-01")
-
-        repo._CartRepository__delete_cached_cart_async.assert_awaited_once_with("cart-cleanup-01")
-        repo.delete_async.assert_awaited_once_with({"cart_id": "cart-cleanup-01"})
-
-    @pytest.mark.asyncio
-    async def test_db_fallback_cleanup_failure_does_not_break_delete(self):
-        repo = self._make_repo()
-        repo._CartRepository__delete_cached_cart_async = AsyncMock()
-        repo.delete_async = AsyncMock(side_effect=Exception("db down"))
-
-        # Cleanup failure must be swallowed: the cache delete already succeeded.
-        await repo.delete_cart_async("cart-cleanup-02")
-
-        repo._CartRepository__delete_cached_cart_async.assert_awaited_once_with("cart-cleanup-02")
-        assert repo._circuit_open is False
-
-    @pytest.mark.asyncio
-    async def test_delete_does_not_clean_db_when_circuit_open(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._last_failure_time = time.time()
-        repo._CartRepository__delete_cart_from_db_async = AsyncMock()
-        repo.delete_async = AsyncMock()
-
-        await repo.delete_cart_async("cart-cleanup-03")
-
-        # Circuit-open path deletes directly from DB; the extra best-effort cleanup
-        # is only for the cache-success path and must not run here.
-        repo._CartRepository__delete_cart_from_db_async.assert_awaited_once_with("cart-cleanup-03")
-        repo.delete_async.assert_not_awaited()
-
-
-class TestCartRepositoryDaprGetCachedAsync:
-    """Tests for the private __get_cached_cart_async method (Dapr state store GET)."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    def _make_mock_response(self, status_code, json_data=None):
-        mock_response = AsyncMock()
-        mock_response.status = status_code
-        if json_data is not None:
-            mock_response.json = AsyncMock(return_value=json_data)
-        return mock_response
-
-    @pytest.mark.asyncio
-    async def test_get_cached_cart_success(self):
-        repo = self._make_repo()
-
-        cart_data = CartDocument(
-            cart_id="cart-get-01", tenant_id="T001", store_code="S001", business_date="20240601"
-        ).model_dump()
-
-        mock_response = self._make_mock_response(200, json_data=cart_data)
-        mock_session = MagicMock()
-        mock_session.get.return_value = _make_aiohttp_context_manager(mock_response)
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            result = await repo._CartRepository__get_cached_cart_async("cart-get-01")
-
-        assert isinstance(result, CartDocument)
-        assert result.cart_id == "cart-get-01"
-        # Staff should be overwritten from terminal_info
-        assert result.staff.id == "staff01"
-        assert result.staff.name == "Test Staff"
-
-    @pytest.mark.asyncio
-    async def test_get_cached_cart_not_found_raises(self):
-        repo = self._make_repo()
-
-        mock_response = self._make_mock_response(404)
-        mock_session = MagicMock()
-        mock_session.get.return_value = _make_aiohttp_context_manager(mock_response)
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            with pytest.raises(NotFoundException):
-                await repo._CartRepository__get_cached_cart_async("nonexistent")
-
-
-class TestCartRepositoryDaprDeleteCachedAsync:
-    """Tests for the private __delete_cached_cart_async method (Dapr state store DELETE)."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    def _make_mock_response(self, status_code):
-        mock_response = AsyncMock()
-        mock_response.status = status_code
-        return mock_response
-
-    @pytest.mark.asyncio
-    async def test_delete_cached_cart_success(self):
-        repo = self._make_repo()
-
-        mock_response = self._make_mock_response(204)
-        mock_session = MagicMock()
-        mock_session.delete.return_value = _make_aiohttp_context_manager(mock_response)
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            result = await repo._CartRepository__delete_cached_cart_async("cart-del-01")
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_delete_cached_cart_not_found_raises(self):
-        from app.exceptions import CannotDeleteException
-
-        repo = self._make_repo()
-
-        mock_response = self._make_mock_response(404)
-        mock_session = MagicMock()
-        mock_session.delete.return_value = _make_aiohttp_context_manager(mock_response)
-
-        with patch(
-            "app.models.repositories.cart_repository.get_dapr_statestore_session",
-            return_value=mock_session,
-        ):
-            with pytest.raises(CannotDeleteException):
-                await repo._CartRepository__delete_cached_cart_async("cart-del-02")
-
-
-class TestCartRepositoryDBFallbackSave:
-    """Tests for the private __save_cart_to_db_async method."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    @pytest.mark.asyncio
-    async def test_save_cart_creates_new_when_not_exists(self):
-        repo = self._make_repo()
-        repo.get_one_async = AsyncMock(return_value=None)
-        repo.create_async = AsyncMock(return_value=True)
-
-        cart = CartDocument(cart_id="cart-db-01", tenant_id="T001", store_code="S001", business_date="20240601")
-        await repo._CartRepository__save_cart_to_db_async(cart)
-
-        repo.create_async.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_save_cart_updates_when_exists(self):
-        repo = self._make_repo()
-        existing = CartDocument(cart_id="cart-db-02")
-        repo.get_one_async = AsyncMock(return_value=existing)
-        repo.update_one_async = AsyncMock(return_value=True)
-
-        cart = CartDocument(cart_id="cart-db-02", tenant_id="T001", store_code="S001", business_date="20240601")
-        await repo._CartRepository__save_cart_to_db_async(cart)
-
-        repo.update_one_async.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_save_cart_update_failure_raises(self):
-        from app.exceptions import UpdateNotWorkException
-
-        repo = self._make_repo()
-        existing = CartDocument(cart_id="cart-db-03")
-        repo.get_one_async = AsyncMock(return_value=existing)
-        repo.update_one_async = AsyncMock(return_value=False)
-
-        cart = CartDocument(cart_id="cart-db-03", tenant_id="T001", store_code="S001", business_date="20240601")
-
-        with pytest.raises(UpdateNotWorkException):
-            await repo._CartRepository__save_cart_to_db_async(cart)
-
-    @pytest.mark.asyncio
-    async def test_save_cart_create_failure_raises(self):
-        from app.exceptions import CannotCreateException
-
-        repo = self._make_repo()
-        repo.get_one_async = AsyncMock(return_value=None)
-        repo.create_async = AsyncMock(return_value=False)
-
-        cart = CartDocument(cart_id="cart-db-04", tenant_id="T001", store_code="S001", business_date="20240601")
-
-        with pytest.raises(CannotCreateException):
-            await repo._CartRepository__save_cart_to_db_async(cart)
-
-
-class TestCartRepositoryDBFallbackGet:
-    """Tests for the private __get_cart_from_db_async method."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    @pytest.mark.asyncio
-    async def test_get_cart_from_db_success(self):
-        repo = self._make_repo()
-        expected = CartDocument(cart_id="cart-dbget-01")
-        repo.get_one_async = AsyncMock(return_value=expected)
-
-        result = await repo._CartRepository__get_cart_from_db_async("cart-dbget-01")
-
-        assert result.cart_id == "cart-dbget-01"
-        repo.get_one_async.assert_awaited_once_with({"cart_id": "cart-dbget-01"})
-
-    @pytest.mark.asyncio
-    async def test_get_cart_from_db_not_found_raises(self):
-        repo = self._make_repo()
-        repo.get_one_async = AsyncMock(return_value=None)
-
-        with pytest.raises(NotFoundException):
-            await repo._CartRepository__get_cart_from_db_async("nonexistent")
-
-
-class TestCartRepositoryDBFallbackDelete:
-    """Tests for the private __delete_cart_from_db_async method."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_from_db_success(self):
-        repo = self._make_repo()
-        repo.delete_async = AsyncMock(return_value=True)
-
-        result = await repo._CartRepository__delete_cart_from_db_async("cart-dbdel-01")
-
-        assert result is None
-        repo.delete_async.assert_awaited_once_with({"cart_id": "cart-dbdel-01"})
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_from_db_not_found_raises(self):
-        from app.exceptions import CannotDeleteException
-
-        repo = self._make_repo()
-        repo.delete_async = AsyncMock(return_value=False)
-
-        with pytest.raises(CannotDeleteException):
-            await repo._CartRepository__delete_cart_from_db_async("nonexistent")
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_from_db_exception_raises_cannot_delete(self):
-        from app.exceptions import CannotDeleteException
-
-        repo = self._make_repo()
-        repo.delete_async = AsyncMock(side_effect=Exception("DB error"))
-
-        with pytest.raises(CannotDeleteException):
-            await repo._CartRepository__delete_cart_from_db_async("cart-dbdel-err")
-
-
-class TestCartRepositoryDeleteCartAsync:
-    """Tests for delete_cart_async with circuit breaker and Dapr/DB interaction."""
-
-    def _make_repo(self):
-        db = _make_mock_db()
-        terminal_info = _make_terminal_info()
-        return CartRepository(db, terminal_info)
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_success_records_success(self):
-        repo = self._make_repo()
-        repo._failure_count = 2
-        repo._CartRepository__delete_cached_cart_async = AsyncMock()
-        repo.delete_async = AsyncMock()  # best-effort MongoDB fallback cleanup
-
-        await repo.delete_cart_async("cart-del-ok")
-
-        assert repo._failure_count == 0
-        assert repo._circuit_open is False
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_dapr_failure_records_failure_and_raises(self):
-        repo = self._make_repo()
-        repo._CartRepository__delete_cached_cart_async = AsyncMock(side_effect=Exception("Dapr error"))
-
-        with pytest.raises(Exception, match="Dapr error"):
-            await repo.delete_cart_async("cart-del-fail")
-
-        assert repo._failure_count == 1
-
-    @pytest.mark.asyncio
-    async def test_delete_cart_circuit_open_db_failure_raises(self):
-        repo = self._make_repo()
-        repo._circuit_open = True
-        repo._last_failure_time = time.time()
-        repo._CartRepository__delete_cart_from_db_async = AsyncMock(side_effect=Exception("DB error"))
-
-        with pytest.raises(Exception, match="DB error"):
-            await repo.delete_cart_async("cart-del-dbfail")
+        assert rebuilt.masters.promotions[0].start_datetime == datetime(2024, 6, 1)
+        assert rebuilt.cache_store == "redis"

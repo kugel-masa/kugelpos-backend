@@ -158,3 +158,15 @@ async def http_client(set_env_vars):
     async with AsyncClient(base_url=base_url, timeout=timeout) as client:
         yield client
     print("Closing http client")
+
+
+@pytest.fixture(autouse=True)
+def _closed_cart_store_breaker():
+    """The cart-store breaker is process-wide: every test starts with it closed,
+    so one test's simulated Redis outage does not decide where the next test's
+    carts are created."""
+    from app.models.repositories.cart_repository import reset_cart_store_breaker
+
+    reset_cart_store_breaker()
+    yield
+    reset_cart_store_breaker()

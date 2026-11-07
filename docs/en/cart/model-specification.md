@@ -52,6 +52,7 @@ Document storing state machine-managed active shopping carts.
 | carry_snapshot | boolean | - | Which way the client opened this cart (#192); see below |
 | receipt_counter | integer | - | The terminal's running receipt counter, from which the printed number is derived (#166) |
 | transaction_datetime | string | - | Client-stamped transaction time (set at bill); source of the tranlog's generate_date_time |
+| cache_store | string | - | Where a cache-path cart lives: `redis` or `mongodb`, fixed at creation (None = `redis`); see *Where a cache-path cart lives* |
 
 **What the client carries (issue #156 onward):**
 
@@ -120,7 +121,7 @@ holding, and which way it was opened, without reading the cache.
 - cart_id (unique)
 - created_at (TTL, expiring after `CACHE_CART_TTL_SECONDS`)
 
-The TTL matches the Redis `cartstore` TTL and clears orphaned MongoDB fallback copies. It is
+The TTL matches the Redis `cartstore` TTL and clears carts left in MongoDB that were never finished. It is
 keyed on `created_at` rather than `updated_at`, which can be None on first insert and would
 leave such documents unexpired.
 
@@ -470,10 +471,39 @@ Delivery status update response.
 - **TTL:** `CACHE_CART_TTL_SECONDS` (default 36000 seconds)
 
 ### Secondary Storage: MongoDB
-- **Purpose:** Persistence and fallback (collection `cache_cart`)
+- **Purpose:** Where carts are created while Redis is failing (collection `cache_cart`)
 - **Implementation:** Complete document storage
-- **Synchronization:** Eventual consistency with State Store
+- **Synchronization:** none — a cart is in one store or the other, never both
 - **TTL:** a `created_at` TTL index, aligned with the State Store's
+
+### Where a cache-path cart lives
+
+A cart that is not carried lives in **exactly one** store, chosen when it is
+created and recorded in `cache_store`:
+
+| When the cart is created | `cache_store` | Where it is written and read |
+|---|---|---|
+| Redis answers (normal) | `redis` | the State Store only |
+| The cart-store breaker is open, or Redis fails on this first write | `mongodb` | `cache_cart` only |
+
+- **A cart never moves.** A `redis` cart whose write fails, after short retries, is
+  answered `503` (`401004`) and keeps its previous version in Redis; it is not
+  copied to MongoDB. A `mongodb` cart stays in MongoDB until it is finished, even
+  after Redis recovers.
+- **Reading**: the State Store first; a cart that is not there is looked up in
+  `cache_cart`. While the breaker is open the State Store is skipped. A cart in
+  neither store is `404`, unless Redis could not be asked, which is `503`: the cart
+  may well be there.
+- **Why**: a cart in two stores can be read from the one holding the older copy -
+  after Redis recovers, by any replica - and the lines or payments written since
+  are silently lost. With one store per cart there is no older copy to read.
+- **What it costs**: a cache-path transaction in progress when Redis fails cannot
+  continue until Redis is back; the sale continues in a new cart, which is created
+  in MongoDB. Carried carts are not affected.
+- **The breaker** is process-wide: 3 consecutive failures open it, and after 60
+  seconds one request probes Redis. Replicas each have their own, which is safe
+  because it only decides where new carts are created.
+- Finished carts are removed from both stores.
 
 ### A carried cart is written to neither (issue #192)
 
