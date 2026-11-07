@@ -213,6 +213,51 @@ async def test_carried_cancel_rejects_a_context_without_a_snapshot(http_client, 
     assert r.status_code >= status.HTTP_400_BAD_REQUEST, r.text
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finalize", ["bill", "cancel"])
+@pytest.mark.parametrize("mode", ["DUAL", "REQUIRED"])
+async def test_a_carried_finalize_without_numbering_is_refused(http_client, snapshot_keys, monkeypatch, finalize, mode):
+    """Carrying and numbering go together, whatever the mode.
+
+    Numbering this from the server-side series would give the terminal two
+    receipt-number sources, and the same number could be printed twice. REQUIRED
+    never caught it - it refuses a snapshot-less request, and this one carries a
+    snapshot - so it is refused in every mode, before anything is recorded.
+    """
+    monkeypatch.setattr(settings, "CART_REQUEST_SNAPSHOT_MODE", mode)
+    cart_id, snapshot, _ = await _create_cart_with_items(http_client)
+    if finalize == "bill":
+        snapshot = await _pay_off(http_client, cart_id, snapshot)
+
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/{finalize}?terminal_id={_terminal_id()}",
+        json={"signedSnapshot": snapshot, "payload": {}},
+        headers=_api_headers(),
+    )
+
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, r.text
+    assert "401518" in r.text, r.text
+    assert await _tranlog_count(cart_id) == 0
+
+    # The same snapshot, now carrying its numbering, still finalizes: the
+    # refusal left nothing behind that would get in the way.
+    seq = 9111 if finalize == "bill" else 9112
+    if mode == "REQUIRED":
+        seq += 10
+    r = await http_client.post(
+        f"/api/v1/carts/{cart_id}/{finalize}?terminal_id={_terminal_id()}",
+        json={"signedSnapshot": snapshot, "payload": _numbering(seq)},
+        headers=_api_headers(),
+    )
+    assert r.status_code == status.HTTP_200_OK, r.text
+    assert await _tranlog_count(cart_id) == 1
+
+
+def _numbering(seq: int) -> dict:
+    """A finalize context. A carried bill or cancel has to carry one."""
+    return {"seq": seq, "receiptCounter": seq, "transactionDatetime": f"{TODAY}T06:00:00"}
+
+
 async def _tranlog_count(cart_id: str) -> int:
     from kugel_common.database import database as db_helper
 
@@ -328,9 +373,9 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     assert r2.json()["data"]["transactionNo"] == 5151
 
 
-async def _bill_a_sale(http_client, terminal_id, headers):
-    """Create -> add item -> subtotal -> pay -> (legacy) bill. Returns
-    (transaction_no, paid_amount) for the committed sale."""
+async def _bill_a_sale(http_client, terminal_id, headers, seq):
+    """Create -> add item -> subtotal -> pay -> carried bill numbered ``seq``.
+    Returns (transaction_no, paid_amount) for the committed sale."""
     cart_id, snapshot, _ = await _create_cart_with_items(http_client)
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}",
@@ -349,7 +394,7 @@ async def _bill_a_sale(http_client, terminal_id, headers):
     snapshot = r.json()["data"]["signedSnapshot"]
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
-        json={"signedSnapshot": snapshot, "payload": {}},
+        json={"signedSnapshot": snapshot, "payload": _numbering(seq)},
         headers=headers,
     )
     assert r.status_code == status.HTTP_200_OK, r.text
@@ -367,7 +412,7 @@ async def test_carried_void_uses_signed_finalize_context(http_client, snapshot_k
     terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
     headers = _api_headers()
 
-    transaction_no, paid = await _bill_a_sale(http_client, terminal_id, headers)
+    transaction_no, paid = await _bill_a_sale(http_client, terminal_id, headers, 9141)
 
     # Build the void's signed finalize-context envelope (the terminal would do this).
     from types import SimpleNamespace
@@ -404,7 +449,7 @@ async def test_carried_void_rejects_tampered_seq(http_client, snapshot_keys):
     terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
     headers = _api_headers()
 
-    transaction_no, paid = await _bill_a_sale(http_client, terminal_id, headers)
+    transaction_no, paid = await _bill_a_sale(http_client, terminal_id, headers, 9142)
 
     from types import SimpleNamespace
 
@@ -841,7 +886,7 @@ async def test_a_cart_already_over_budget_can_still_be_finished(http_client, sna
 
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}",
-        json={"signedSnapshot": snapshot, "payload": {}},
+        json={"signedSnapshot": snapshot, "payload": _numbering(9101)},
         headers=_api_headers(),
     )
     assert r.status_code == status.HTTP_200_OK, f"bill refused, the cart is stranded: {r.text}"
@@ -858,7 +903,7 @@ async def test_an_over_budget_cart_can_still_be_cancelled(http_client, snapshot_
 
     r = await http_client.post(
         f"/api/v1/carts/{cart_id}/cancel?terminal_id={terminal_id}",
-        json={"signedSnapshot": snapshot, "payload": {}},
+        json={"signedSnapshot": snapshot, "payload": _numbering(9102)},
         headers=_api_headers(),
     )
 
@@ -922,7 +967,7 @@ async def test_a_whole_transaction_completes_in_required_mode(http_client, snaps
     assert r.status_code == status.HTTP_200_OK, f"payment refused in REQUIRED: {r.text}"
     snapshot = r.json()["data"]["signedSnapshot"]
 
-    r = await _carry(http_client, cart_id, "bill", {}, snapshot)
+    r = await _carry(http_client, cart_id, "bill", _numbering(9103), snapshot)
     assert r.status_code == status.HTTP_200_OK, f"bill refused in REQUIRED: {r.text}"
     assert r.json()["data"].get("transactionNo"), "the sale did not complete"
 
@@ -956,7 +1001,7 @@ async def test_an_over_budget_cart_can_still_be_finished_in_required_mode(
     assert r.status_code == status.HTTP_200_OK, f"payment refused: {r.text}"
     snapshot = r.json()["data"]["signedSnapshot"]
 
-    r = await _carry(http_client, cart_id, "bill", {}, snapshot)
+    r = await _carry(http_client, cart_id, "bill", _numbering(9104), snapshot)
     assert r.status_code == status.HTTP_200_OK, f"bill refused, the till is stuck: {r.text}"
     assert r.json()["data"].get("transactionNo")
 
@@ -970,7 +1015,7 @@ async def test_an_over_budget_cart_can_be_cancelled_in_required_mode(
 
     monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 512)
 
-    r = await _carry(http_client, cart_id, "cancel", {}, snapshot)
+    r = await _carry(http_client, cart_id, "cancel", _numbering(9105), snapshot)
 
     assert r.status_code == status.HTTP_200_OK, f"cancel refused, the till is stuck: {r.text}"
 

@@ -48,6 +48,10 @@ Switched by the `CART_REQUEST_SNAPSHOT_MODE` environment variable.
 | `DUAL` (default) | Snapshot-less requests are accepted and served from the server-side cache |
 | `REQUIRED` | Snapshot-less mutating requests are rejected (`401508`). Switch to this once every client has migrated |
 
+In either mode, a bill or cancel that carries a snapshot must also carry its
+numbering (`seq` / `receiptCounter` / `transactionDatetime`); one that does not is
+refused with `422` (`401518`). See [Two numbering series](#two-numbering-series-while-dual-mode-is-on-168).
+
 ## Transaction numbering
 
 In phase 2 **`transaction_no` is the per-open sequence (seq)**. `business_counter` is a monotonically increasing epoch that advances each time the terminal opens, and `transaction_no` restarts within each one.
@@ -112,6 +116,7 @@ The receipt prints all four fields needed to identify the original (store code /
 | `401513` | 409 | `transaction_no` matches more than one open session (`business_counter` required) |
 | `401514` | 400 | Void is limited to the current business date and open session |
 | `401517` | 403 | A cached cart used by a terminal of another tenant or store |
+| `401518` | 422 | A bill or cancel carried a snapshot but not its numbering (refused in every mode) |
 
 ## Idempotency
 
@@ -308,10 +313,9 @@ An unset or malformed key no longer reaches this point: the service refuses to
 start without a usable one (#192). What remains is a key that loads and then
 fails to sign, which lands here identically — so the detection stays.
 
-This is **detected, not blocked**: refusing the finalize would stop a store
-selling over a key misconfiguration, and the posture for numbering integrity here
-is audit detection rather than enforcement (spec 156 Q58). A finalize that falls
-into the server-side series while the terminal has one of its own logs at ERROR
+A degraded key is **detected, not blocked**: refusing the finalize would stop a
+store selling over a key misconfiguration the client cannot fix. A finalize that
+falls into the server-side series while the terminal has one of its own logs at ERROR
 
 ```
 Finalize numbered from the server-side series while the terminal has its own
@@ -322,16 +326,28 @@ and writes a `numbering_fallback` record to the restore audit trail
 (`log_cart_restore`), with `reject_reason` naming which condition fired (`signing_degraded`,
 `snapshot_without_finalize_context`, or `no_carried_context`).
 
+**A finalize that carries a snapshot but no numbering is refused**, in every mode,
+with `422` (`401518`), and the same record is written with `reject_reason`
+`snapshot_without_finalize_context`. This is not the migration DUAL exists for:
+DUAL accepts a client that has not moved yet and carries nothing. A client that
+carries the cart but leaves the numbering to the server has a defect, and letting
+it through would give it two number series — the sale would look successful and
+the duplicate receipt number would only surface at reconciliation. No transaction
+is written and the cart is left as it was (only the audit record above is kept), so
+the client can repeat the request with the same snapshot and its numbering.
+
 One case is deliberately out of reach: a phase 2 terminal that has not numbered
 anything yet, whose signing is healthy and which carries no snapshot at all,
 looks exactly like a phase 1 terminal. Open seeds every terminal's counter with
 zero, so treating zero as "has its own series" would report every legacy
 finalize as an incident instead.
 
-`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` removes the window entirely — a
-snapshot-less mutating request is rejected, so there is no second series to fall
-into. Until then, a degraded signing key is an incident to fix, and now one that
-is visible per transaction rather than only in the startup log.
+`CART_REQUEST_SNAPSHOT_MODE=REQUIRED` closes what is left — a snapshot-less
+mutating request is rejected, so a degraded or not-yet-carrying terminal has no
+second series to fall into. Until then, a degraded signing key is an incident to
+fix, and now one that is visible per transaction rather than only in the startup
+log. REQUIRED never covered the carried-without-numbering case above, which is
+why that case is refused on its own, whatever the mode.
 
 ## Signing is a requirement, not a feature (#192)
 

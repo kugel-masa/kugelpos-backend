@@ -7,11 +7,17 @@ own counter. The branch is per transaction, so a phase 2 terminal whose snapshot
 signing has degraded silently falls into the other series and can print a number
 it has already issued. This is detected rather than blocked - refusing the
 finalize would stop a store selling over a key misconfiguration.
+
+The one case that is refused is a finalize that carries a snapshot but not its
+numbering: that is a client defect, not a fallback, and it is refused whatever
+`CART_REQUEST_SNAPSHOT_MODE` says.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from app.exceptions import FinalizeNumberingRequiredException
 
 
 def _make_service(stateless=False, terminal_receipt_counter=None):
@@ -94,7 +100,9 @@ class TestWhenItFires:
             await _detect(svc)
 
         assert "issue #168" in caplog.text
-        assert "CART_REQUEST_SNAPSHOT_MODE=REQUIRED" in caplog.text
+        # REQUIRED is not the remedy: it never refused a carried finalize.
+        assert "CART_REQUEST_SNAPSHOT_MODE=REQUIRED" not in caplog.text
+        assert "fix the snapshot signing key" in caplog.text
 
 
 class TestWhenItStaysQuiet:
@@ -125,17 +133,40 @@ class TestTheSnapshotSignal:
     """What a zero counter would otherwise miss."""
 
     @pytest.mark.asyncio
-    async def test_a_snapshot_without_a_finalize_context_is_flagged(self):
+    @pytest.mark.parametrize("mode", ["DUAL", "REQUIRED"])
+    async def test_a_snapshot_without_a_finalize_context_is_refused_in_every_mode(self, mode):
         # Carrying a snapshot makes this a phase 2 client whatever its counter
-        # says, so the finalize going to the server-side series is an incident.
+        # says. Leaving the numbering to the server is a client defect, not a
+        # step along the migration DUAL exists for, so it is refused in DUAL as
+        # well - and recorded, so the refusal is visible in the audit trail.
         svc = _make_service(stateless=True, terminal_receipt_counter=0)
-        with _signer(present=True):
+        with (
+            _signer(present=True),
+            patch("app.services.cart_service.settings.CART_REQUEST_SNAPSHOT_MODE", mode),
+            pytest.raises(FinalizeNumberingRequiredException),
+        ):
             await _detect(svc)
 
-        assert (
-            svc.cart_restore_log_repo.add_record_async.await_args.kwargs["reject_reason"]
-            == "snapshot_without_finalize_context"
-        )
+        kwargs = svc.cart_restore_log_repo.add_record_async.await_args.kwargs
+        assert kwargs["result"] == "numbering_fallback"
+        assert kwargs["reject_reason"] == "snapshot_without_finalize_context"
+
+    @pytest.mark.asyncio
+    async def test_the_refusal_stands_without_the_audit_repository(self):
+        svc = _make_service(stateless=True, terminal_receipt_counter=0)
+        svc.cart_restore_log_repo = None
+        with _signer(present=True), pytest.raises(FinalizeNumberingRequiredException):
+            await _detect(svc)
+
+    @pytest.mark.asyncio
+    async def test_a_degraded_signing_key_is_let_through_even_when_carried(self):
+        # A server-side misconfiguration the client cannot fix: not a reason to
+        # stop the store. It is recorded instead.
+        svc = _make_service(stateless=True, terminal_receipt_counter=42)
+        with _signer(present=False):
+            await _detect(svc)  # must not raise
+
+        assert svc.cart_restore_log_repo.add_record_async.await_args.kwargs["reject_reason"] == "signing_degraded"
 
 
 class TestAuditFailureIsNotFatal:

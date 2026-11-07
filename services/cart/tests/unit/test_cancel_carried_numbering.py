@@ -10,7 +10,7 @@ the server-side counters, whose transaction_no shares the
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.exceptions import SnapshotInvalidException
+from app.exceptions import FinalizeNumberingRequiredException, SnapshotInvalidException
 
 
 def _make_cart_service(stateless=True):
@@ -117,9 +117,11 @@ class TestFallback:
     @pytest.mark.asyncio
     async def test_a_terminal_with_its_own_series_is_reported(self, caplog):
         # #168: the finalize will be numbered from the server-side series while
-        # this terminal numbers its own, so the two can collide.
+        # this terminal numbers its own, so the two can collide. The terminal
+        # carries nothing, so it is reported rather than refused - a carried
+        # cancel without numbering is refused instead (see TestCarriedWithoutNumbering).
         doc = _cart_doc()
-        svc = _arm(_make_cart_service(stateless=True), doc)
+        svc = _arm(_make_cart_service(stateless=False), doc)
         svc.terminal_info.receipt_counter = 42
         svc.cart_restore_log_repo = None  # audit unavailable; the log still has to say it
 
@@ -142,20 +144,43 @@ class TestGuard:
             )
 
 
-class TestBillAlsoAudits:
-    """The wiring, not just the helper: removing the call from bill must fail."""
+def _healthy_signer():
+    # A degraded key is let through on purpose; these tests are about the case
+    # where signing works and the client simply did not carry the numbering.
+    return patch("app.services.cart_service.snapshot_service.get_snapshot_signer", return_value=object())
+
+
+class TestCarriedWithoutNumbering:
+    """Carrying and numbering go together, on both finalize paths.
+
+    Removing the call from either path must fail here.
+    """
 
     @pytest.mark.asyncio
-    async def test_bill_without_a_carried_context_audits_the_fallback(self):
+    async def test_a_carried_bill_without_numbering_is_refused(self):
         doc = _cart_doc()
         doc.balance_amount = 0
         svc = _arm(_make_cart_service(stateless=True), doc)
-        svc.terminal_info.receipt_counter = 42
         svc._CartService__subtotal_async = AsyncMock(return_value=doc)
         svc._CartService__cache_cart_async = AsyncMock()
 
-        await svc.bill_async()
+        with _healthy_signer(), pytest.raises(FinalizeNumberingRequiredException):
+            await svc.bill_async()
 
-        svc.cart_restore_log_repo.add_record_async.assert_awaited_once()
-        assert svc.cart_restore_log_repo.add_record_async.await_args.kwargs["result"] == "numbering_fallback"
-        assert svc.cart_restore_log_repo.add_record_async.await_args.kwargs["api_path"] == "bill"
+        svc.tran_service.create_tranlog_async.assert_not_awaited()
+        kwargs = svc.cart_restore_log_repo.add_record_async.await_args.kwargs
+        assert kwargs["result"] == "numbering_fallback"
+        assert kwargs["reject_reason"] == "snapshot_without_finalize_context"
+        assert kwargs["api_path"] == "bill"
+
+    @pytest.mark.asyncio
+    async def test_a_carried_cancel_without_numbering_is_refused(self):
+        doc = _cart_doc()
+        svc = _arm(_make_cart_service(stateless=True), doc)
+
+        with _healthy_signer(), pytest.raises(FinalizeNumberingRequiredException):
+            await svc.cancel_transaction_async()
+
+        svc.tran_service.create_tranlog_async.assert_not_awaited()
+        svc._CartService__remove_cached_cart_async.assert_not_awaited()
+        assert svc.cart_restore_log_repo.add_record_async.await_args.kwargs["api_path"] == "cancel"

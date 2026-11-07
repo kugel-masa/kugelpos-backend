@@ -25,11 +25,13 @@ import pytest
 from fastapi import status
 
 from kugel_common.utils.hmac_signer import HmacSigner
+from kugel_common.utils.misc import get_app_time
 
 from app.api.common.schemas import SnapshotEnvelope
 from app.config.settings import settings
 from app.services import snapshot_service
 
+TODAY = get_app_time().date().isoformat()
 KEY_SPEC = "it-v1:" + base64.b64encode(b"integration-test-key-32-bytes!!!").decode()
 
 
@@ -166,7 +168,9 @@ async def test_every_mutating_endpoint_answers_the_way_its_path_says(http_client
     data = await step("post", "subtotal")
 
     await step("post", "payments", [{"paymentCode": "01", "amount": int(data["balanceAmount"])}])
-    await step("post", "bill")
+    # A carried bill numbers from the terminal's series, so it carries the context.
+    numbering = {"seq": 7931, "receiptCounter": 7932, "transactionDatetime": f"{TODAY}T04:08:09"}
+    await step("post", "bill", numbering if carried else None)
 
 
 @pytest.mark.asyncio
@@ -217,7 +221,10 @@ async def test_the_cancel_endpoint_answers_the_way_its_path_says(http_client, sn
     cart_id = create_data["cartId"]
     kwargs = {"headers": _api_headers()}
     if carried:
-        kwargs["json"] = _carrying(create_data["signedSnapshot"])
+        # A carried cancel is a finalize and must carry its numbering; without
+        # it the cancel is refused rather than numbered from the server series.
+        numbering = {"seq": 7921, "receiptCounter": 7922, "transactionDatetime": f"{TODAY}T04:07:08"}
+        kwargs["json"] = _carrying(create_data["signedSnapshot"], numbering)
     r = await http_client.post(f"/api/v1/carts/{cart_id}/cancel?terminal_id={_terminal_id()}", **kwargs)
     assert r.status_code == status.HTTP_200_OK, r.text
 
