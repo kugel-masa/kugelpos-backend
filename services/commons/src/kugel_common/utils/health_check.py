@@ -16,12 +16,19 @@
 
 import asyncio
 import time
+import uuid
+from logging import getLogger
 from typing import Optional, Tuple
 
 import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from kugel_common.schemas.health import ComponentHealth, HealthStatus
+
+logger = getLogger(__name__)
+
+# A probe key that could not be removed expires on its own.
+STATE_STORE_PROBE_TTL_SECONDS = 60
 
 
 class HealthChecker:
@@ -179,10 +186,17 @@ class HealthChecker:
         timeout: float = 5.0
     ) -> ComponentHealth:
         """Check Dapr state store functionality.
-        
+
+        Writes a probe key, reads it back and removes it. The key is unique to
+        this call (``test_key`` is only its prefix): every replica of a service
+        probes the same store, and with a shared key one replica's cleanup could
+        remove another's probe between its write and its read and report a
+        healthy store as unhealthy. The probe is written with a short TTL so a
+        key whose removal failed does not stay behind.
+
         Args:
             store_name: Dapr state store component name
-            test_key: Test key name
+            test_key: Prefix of the probe key
             dapr_port: Dapr HTTP port
             timeout: Timeout in seconds
             
@@ -190,17 +204,20 @@ class HealthChecker:
             ComponentHealth object with Dapr state store status
         """
         start_time = time.time()
-        
+        probe_key = f"{test_key}-{uuid.uuid4().hex}"
+        probe_url = f"http://localhost:{dapr_port}/v1.0/state/{store_name}/{probe_key}"
+
         try:
             async with httpx.AsyncClient() as client:
                 # Write test data
                 test_value = {"test": "health-check", "timestamp": time.time()}
-                
+
                 write_response = await client.post(
                     f"http://localhost:{dapr_port}/v1.0/state/{store_name}",
                     json=[{
-                        "key": test_key,
-                        "value": test_value
+                        "key": probe_key,
+                        "value": test_value,
+                        "metadata": {"ttlInSeconds": str(STATE_STORE_PROBE_TTL_SECONDS)},
                     }],
                     timeout=timeout
                 )
@@ -213,21 +230,29 @@ class HealthChecker:
                     )
                 
                 # Read test data
-                read_response = await client.get(
-                    f"http://localhost:{dapr_port}/v1.0/state/{store_name}/{test_key}",
-                    timeout=timeout
-                )
+                read_response = await client.get(probe_url, timeout=timeout)
                 
                 response_time = int((time.time() - start_time) * 1000)
                 
                 if read_response.status_code == 200:
-                    # Clean up test data (fire and forget)
-                    asyncio.create_task(
-                        client.delete(
-                            f"http://localhost:{dapr_port}/v1.0/state/{store_name}/{test_key}"
+                    # Removed here, while this coroutine still holds the client.
+                    # It used to be a fire-and-forget task, which usually ran
+                    # after `async with` had closed the client, so it failed with
+                    # "client has been closed", logged an unretrieved task
+                    # exception on every probe, and left the key behind.
+                    #
+                    # A failed cleanup does not change the verdict: the write and
+                    # the read both succeeded, so the store works. The latency
+                    # is measured above, so awaiting does not change it either.
+                    try:
+                        await client.delete(probe_url, timeout=timeout)
+                    except Exception as cleanup_error:  # noqa: BLE001
+                        logger.warning(
+                            f"Health check could not remove its probe key {probe_key} "
+                            f"from {store_name}: {cleanup_error}"
                         )
-                    )
-                    
+
+
                     return ComponentHealth(
                         status=HealthStatus.HEALTHY,
                         response_time_ms=response_time,

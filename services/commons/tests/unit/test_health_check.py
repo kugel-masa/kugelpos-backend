@@ -113,29 +113,23 @@ class TestCheckDaprPubsub:
         assert result.status == HealthStatus.UNHEALTHY
 
 
+PROBE = r"http://localhost:3500/v1\.0/state/statestore/health-check-key-[0-9a-f]{32}"
+
+
 class TestCheckDaprStateStore:
     @pytest.mark.asyncio
     @respx.mock
-    async def test_healthy_on_write_then_read(self):
-        respx.post("http://localhost:3500/v1.0/state/statestore").mock(
-            return_value=httpx.Response(204)
-        )
-        respx.get(
-            "http://localhost:3500/v1.0/state/statestore/health-check-key"
-        ).mock(return_value=httpx.Response(200, json={"test": "x"}))
-        # The cleanup delete is fire-and-forget; mock it too
-        respx.delete(
-            "http://localhost:3500/v1.0/state/statestore/health-check-key"
-        ).mock(return_value=httpx.Response(204))
+    async def test_healthy_when_write_and_read_succeed(self):
+        respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(204))
+        respx.get(url__regex=PROBE).mock(return_value=httpx.Response(200, json={"test": "x"}))
+        respx.delete(url__regex=PROBE).mock(return_value=httpx.Response(204))
         result = await HealthChecker.check_dapr_state_store()
         assert result.status == HealthStatus.HEALTHY
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_unhealthy_when_write_fails(self):
-        respx.post("http://localhost:3500/v1.0/state/statestore").mock(
-            return_value=httpx.Response(500)
-        )
+        respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(500))
         result = await HealthChecker.check_dapr_state_store()
         assert result.status == HealthStatus.UNHEALTHY
         assert "write failed" in result.error
@@ -143,14 +137,76 @@ class TestCheckDaprStateStore:
     @pytest.mark.asyncio
     @respx.mock
     async def test_unhealthy_when_read_fails(self):
-        respx.post("http://localhost:3500/v1.0/state/statestore").mock(
-            return_value=httpx.Response(204)
-        )
-        respx.get(
-            "http://localhost:3500/v1.0/state/statestore/health-check-key"
-        ).mock(return_value=httpx.Response(500))
+        respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(204))
+        respx.get(url__regex=PROBE).mock(return_value=httpx.Response(500))
         result = await HealthChecker.check_dapr_state_store()
         assert result.status == HealthStatus.UNHEALTHY
+
+
+class TestTheProbeIsCleanedUp:
+    """The cleanup used to be a fire-and-forget task that ran after the client
+    had closed: it failed every time, logged an unretrieved task exception, and
+    left the key behind."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_the_probe_key_is_deleted_before_returning(self):
+        respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(204))
+        read = respx.get(url__regex=PROBE).mock(return_value=httpx.Response(200, json={"test": "x"}))
+        delete = respx.delete(url__regex=PROBE).mock(return_value=httpx.Response(204))
+
+        await HealthChecker.check_dapr_state_store()
+
+        assert delete.call_count == 1, "the probe key was not removed by the time the check returned"
+        assert delete.calls.last.request.url == read.calls.last.request.url
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_no_task_is_left_behind(self):
+        respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(204))
+        respx.get(url__regex=PROBE).mock(return_value=httpx.Response(200, json={"test": "x"}))
+        respx.delete(url__regex=PROBE).mock(return_value=httpx.Response(204))
+        before = asyncio.all_tasks()
+
+        await HealthChecker.check_dapr_state_store()
+
+        assert asyncio.all_tasks() - before == set()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_a_failed_cleanup_does_not_make_a_working_store_unhealthy(self, caplog):
+        respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(204))
+        respx.get(url__regex=PROBE).mock(return_value=httpx.Response(200, json={"test": "x"}))
+        respx.delete(url__regex=PROBE).mock(side_effect=httpx.ConnectError("gone"))
+
+        with caplog.at_level("WARNING"):
+            result = await HealthChecker.check_dapr_state_store()
+
+        assert result.status == HealthStatus.HEALTHY
+        assert "could not remove its probe key" in caplog.text
+
+
+class TestTheProbeIsPrivateToTheCall:
+    """Replicas of a service probe the same store. With one shared key, one
+    replica's cleanup could remove another's probe between its write and its
+    read, and report a healthy store as unhealthy."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_each_call_uses_its_own_key_with_a_ttl(self):
+        write = respx.post("http://localhost:3500/v1.0/state/statestore").mock(return_value=httpx.Response(204))
+        respx.get(url__regex=PROBE).mock(return_value=httpx.Response(200, json={"test": "x"}))
+        respx.delete(url__regex=PROBE).mock(return_value=httpx.Response(204))
+
+        await HealthChecker.check_dapr_state_store()
+        await HealthChecker.check_dapr_state_store()
+
+        import json
+
+        bodies = [json.loads(call.request.content)[0] for call in write.calls]
+        assert bodies[0]["key"] != bodies[1]["key"]
+        assert all(b["key"].startswith("health-check-key-") for b in bodies)
+        assert all(int(b["metadata"]["ttlInSeconds"]) > 0 for b in bodies)
 
 
 class TestDetermineOverallStatus:
