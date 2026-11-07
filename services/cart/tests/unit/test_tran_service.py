@@ -611,3 +611,56 @@ class TestTranServiceClose:
         svc.pubsub_manager.close = AsyncMock()
         await svc.close()
         svc.pubsub_manager.close.assert_awaited_once()
+
+
+class TestVoidAndReturnCarryNoStamp:
+    """A void or a return is built from a copy of the original sale, stamp
+    fields included. It pays money out and issues no receipt for money received,
+    so the copy's stamp is cleared before the receipt is made."""
+
+    def _armed(self):
+        svc = _make_tran_service()
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        pay_doc = MagicMock(payment_code="01", description="Cash", can_deposit_over=False, can_change=False)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=pay_doc)
+        svc._resolve_carried_finalize = AsyncMock(return_value=("new-cart", 8, 300, "2025-01-01T13:00:00", None))
+        svc.receipt_data_strategy = MagicMock()
+        printed = {}
+
+        def receipt(t):
+            printed["stamp"] = (t.sales.is_stamp_duty_applied, t.sales.stamp_duty_amount)
+            return MagicMock(receipt_text="r", journal_text="j")
+
+        svc.receipt_data_strategy.make_receipt_data.side_effect = receipt
+        svc.tranlog_repository.start_transaction = AsyncMock()
+        svc.tranlog_repository.commit_transaction = AsyncMock()
+        svc.tranlog_repository.create_tranlog_async = AsyncMock(side_effect=lambda t: t)
+        svc.tranlog_delivery_status_repo.create_status_async = AsyncMock()
+        svc._publish_tranlog_async = AsyncMock()
+        svc.transaction_status_repo.mark_as_voided_async = AsyncMock()
+        svc.transaction_status_repo.mark_as_refunded_async = AsyncMock()
+        return svc, printed
+
+    def _stamped_sale(self):
+        tran = _make_base_transaction(total_amount=110_000.0)
+        tran.user = None
+        tran.sales.is_stamp_duty_applied = True
+        tran.sales.stamp_duty_target_amount = 100_000
+        tran.sales.stamp_duty_amount = 200.0
+        return tran
+
+    @pytest.mark.asyncio
+    async def test_a_void_of_a_stamped_sale_carries_no_stamp(self):
+        svc, printed = self._armed()
+        result = await svc.void_async(self._stamped_sale(), [{"payment_code": "01", "amount": 110_000, "detail": None}])
+        assert printed["stamp"] == (False, 0.0)
+        assert result.sales.is_stamp_duty_applied is False
+
+    @pytest.mark.asyncio
+    async def test_a_return_of_a_stamped_sale_carries_no_stamp(self):
+        svc, printed = self._armed()
+        result = await svc.return_async(
+            self._stamped_sale(), [{"payment_code": "01", "amount": 110_000, "detail": None}]
+        )
+        assert printed["stamp"] == (False, 0.0)
+        assert result.sales.is_stamp_duty_applied is False
