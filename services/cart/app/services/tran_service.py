@@ -17,6 +17,7 @@ from kugel_common.utils.receipt_numbering import derive_receipt_no
 from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
 from kugel_common.enums import TransactionType
+from app.services.logics.stamp_duty_logic import apply_stamp_duty, clear_stamp_duty
 from kugel_common.utils.slack_notifier import send_warning_notification
 from kugel_common.exceptions import DuplicateKeyException
 
@@ -233,19 +234,9 @@ class TranService:
         staff.name = self.terminal_info.staff.name
         tranlog.staff = staff
 
-        # Set stamp duty if applicable
-        total_amount_with_tax = tranlog.sales.total_amount_with_tax
-        tax_total_amount = sum([tax.tax_amount for tax in tranlog.taxes])
-        total_amount_without_tax = total_amount_with_tax - tax_total_amount
-        cash_amount = sum([payment.amount for payment in tranlog.payments if payment.payment_code == "01"])
-
-        for stamp_duty in settings.STAMP_DUTY_MASTER:
-            target_amount = stamp_duty["target_amount"]
-            if target_amount <= total_amount_without_tax and target_amount <= cash_amount:
-                tranlog.sales.is_stamp_duty_applied = True
-                tranlog.sales.stamp_duty_target_amount = cash_amount
-                tranlog.sales.stamp_duty_amount = float(stamp_duty["stamp_duty_amount"])
-                break
+        # Revenue stamp: on the cash received, tax-exclusive, for a completed
+        # normal sale only (stamp_duty_logic).
+        apply_stamp_duty(tranlog, settings.STAMP_DUTY_MASTER)
         # set invoice registration number
         tranlog.additional_info = {}
         invoice_registration_number = await self._get_setting_value_async("INVOICE_REGISTRATION_NUMBER")
@@ -746,6 +737,9 @@ class TranService:
         ) = await self._resolve_carried_finalize(finalize_envelope)
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for void transaction
+        # Copied from the original sale: a void pays money out and issues no
+        # receipt for money received, so it carries no revenue stamp.
+        clear_stamp_duty(tran)
         tran.business_date = self.terminal_info.business_date
         tran.business_counter = self.terminal_info.business_counter
         tran.open_counter = self.terminal_info.open_counter
@@ -975,6 +969,9 @@ class TranService:
         ) = await self._resolve_carried_finalize(finalize_envelope)
         tran.sales.reference_date_time = tran.generate_date_time
         tran.sales.change_amount = 0  # change amount is not applicable for return transaction
+        # Copied from the original sale: a return pays money out and issues no
+        # receipt for money received, so it carries no revenue stamp.
+        clear_stamp_duty(tran)
         # The return belongs to the terminal performing it, not to the original's
         # store/terminal (issue #156): a return may reference an original from
         # another terminal or another store, and `tran` here is the ORIGINAL

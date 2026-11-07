@@ -156,6 +156,18 @@ backend cannot enforce it, and gaps are expected where a terminal was replaced o
 offline-finalized transaction never arrived. It serves the high-water lookup a replacement
 terminal is reseeded from, and the audit query that walks for holes.
 
+**Revenue stamp (`sales.is_stamp_duty_applied` / `stamp_duty_target_amount` / `stamp_duty_amount`).**
+A stamp is due on a receipt for money received, so only a completed normal sale (`101`, not
+cancelled) is judged; a cancelled cart, a return and a void carry none (a return or void starts as
+a copy of the sale, and the copy's stamp is cleared). The amount it is levied on is the cash
+received, tax-exclusive:
+
+    x = floor(c × (G − T) ÷ G)     c: cash paid, G: total with tax, T: total tax
+
+All cash, x is the total without tax; with another tender, only the cash share counts. The first
+tier of `STAMP_DUTY_MASTER` whose lower bound is at most x is taken, and x is what is recorded as
+`stamp_duty_target_amount`. Computed in Decimal and floored at the end.
+
 ### 3. TransactionStatusDocument (Transaction Status Tracking)
 
 Document tracking void and return operations.
