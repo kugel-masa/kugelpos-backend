@@ -37,6 +37,7 @@ from app.exceptions import (
     CartSizeBudgetExceededException,
     CartScopeViolationException,
     FinalizeNumberingRequiredException,
+    CartStoreUnavailableException,
 )
 from app.models.repositories.cart_repository import CartRepository
 from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
@@ -411,7 +412,7 @@ class CartService(ICartService):
         logger.debug(f"CancelTransaction-> tranlog: {tranlog}")
 
         # Remove cart from cache (transaction data is already saved in MongoDB)
-        await self.__remove_cached_cart_async(self.cart_id)
+        await self.__remove_cached_cart_async(self.cart_id, cart_doc.cache_store)
 
         # Update cart status in memory for response
         cart_doc.status = CartStatus.Cancelled.value
@@ -1035,7 +1036,7 @@ class CartService(ICartService):
         logger.debug(f"Bill-> tranlog: {tranlog}")
 
         # Remove cart from cache (transaction data is already saved in MongoDB)
-        await self.__remove_cached_cart_async(self.cart_id)
+        await self.__remove_cached_cart_async(self.cart_id, cart_doc.cache_store)
 
         # Update cart status in memory for response
         cart_doc.status = CartStatus.Completed.value
@@ -1346,6 +1347,11 @@ class CartService(ICartService):
 
         try:
             await self.cart_repo.cache_cart_async(cart_doc, isNew)
+        except CartStoreUnavailableException:
+            # 503, not 500: the cart is intact in its store and the request can
+            # be retried, or the sale continued in a new cart. The breaker logs
+            # the outage once rather than once per request.
+            raise
         except Exception as e:
             message = f"Failed to cache cart, cart_id: {cart_doc.cart_id}"
             logger.fatal(message)
@@ -1391,6 +1397,9 @@ class CartService(ICartService):
         try:
             cart = await self.cart_repo.get_cached_cart_async(cart_id)
             logger.debug(f"__get_cached_cart_async: cart->{cart}")
+        except CartStoreUnavailableException:
+            # 503, not 404: the cart may well exist in a store that did not answer.
+            raise
         except Exception as e:
             message = f"Failed to get cached cart, cart_id: {cart_id}"
             logger.fatal(message)
@@ -1429,7 +1438,7 @@ class CartService(ICartService):
 
         return cart
 
-    async def __remove_cached_cart_async(self, cart_id: str) -> None:
+    async def __remove_cached_cart_async(self, cart_id: str, cache_store: str | None = None) -> None:
         """
         Remove the cached cart document.
 
@@ -1445,7 +1454,7 @@ class CartService(ICartService):
             # No server-side cache entry to remove on the snapshot-present path.
             return None
         try:
-            await self.cart_repo.delete_cart_async(cart_id)
+            await self.cart_repo.delete_cart_async(cart_id, cache_store)
         except Exception as e:
             message = f"Failed to remove cached cart, cart_id: {cart_id}"
             logger.error(message)

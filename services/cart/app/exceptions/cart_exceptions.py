@@ -43,6 +43,27 @@ class CartNotFoundException(ServiceException):
         )
 
 
+class CartStoreUnavailableException(ServiceException):
+    """
+    Raised when the store that holds a cart cannot be reached.
+
+    A cart lives in exactly one store, chosen when it is created (Redis normally,
+    MongoDB while Redis is failing). When that store is unreachable the cart is
+    neither moved nor guessed at: the request is answered 503 so the client can
+    retry, or start a new transaction, which is created in the store that works.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.CART_STORE_UNAVAILABLE,
+            CartErrorMessage.get_message(CartErrorCode.CART_STORE_UNAVAILABLE),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
 class CartCannotSaveException(ServiceException):
     """
     Exception raised when a cart cannot be saved.

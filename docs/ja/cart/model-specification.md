@@ -52,6 +52,7 @@
 | seq | integer | - | オープンセッション内の取引連番。最初の finalize まで 0（#156） |
 | revision | integer | - | 単調増加のカートリビジョン。スナップショット発行のたびに進む（#165） |
 | carry_snapshot | boolean | - | 作成時にクライアントが宣言した経路（#192）。下記参照 |
+| cache_store | string | - | キャッシュ経路のカートの置き場所。`redis` か `mongodb` で、作成時に決まる（None は `redis`）。「キャッシュ経路のカートの置き場所」参照 |
 | receipt_counter | integer | - | 端末の通算レシートカウンタ。印字番号の導出元（#166） |
 | transaction_datetime | string | - | クライアントが bill 時に押印した取引時刻。tranlog の generate_date_time の源 |
 
@@ -121,7 +122,7 @@
 - cart_id (unique)
 - created_at (TTL、`CACHE_CART_TTL_SECONDS` 秒で失効)
 
-TTL は Redis の `cartstore` 側 TTL と揃えてあり、孤立した MongoDB フォールバック写しを掃除する。
+TTL は Redis の `cartstore` 側 TTL と揃えてあり、MongoDB に置かれたまま終わらなかったカートを掃除する。
 `updated_at` ではなく `created_at` に張るのは、初回 insert で `updated_at` が None になり得るため。
 
 ### 2. TranlogDocument（トランザクション履歴）
@@ -473,10 +474,26 @@ snake_case の `model_dump(mode="json")` 表現に対して行うため、ワイ
 - **TTL:** `CACHE_CART_TTL_SECONDS`（既定 36000 秒）
 
 ### セカンダリストレージ: MongoDB
-- **用途:** 永続化とフォールバック（コレクション `cache_cart`）
+- **用途:** Redis が失敗している間に作られたカートの置き場所（コレクション `cache_cart`）
 - **実装:** 完全なドキュメントストレージ
-- **同期:** State Storeとの結果的整合性
+- **同期:** しない。カートはどちらか一方にだけ置き、両方には置かない
 - **TTL:** `created_at` の TTL インデックスで State Store 側と揃える
+
+### キャッシュ経路のカートの置き場所
+
+スナップショットを運ばないカートは、**どちらか一方だけ**に置く。置き場所は作成時に決め、`cache_store` に記録する。
+
+| カート作成時 | `cache_store` | 読み書きする場所 |
+|---|---|---|
+| Redis が応答する（通常） | `redis` | State Store だけ |
+| cart store のサーキットブレーカーが開いている、またはこの最初の書き込みで Redis が失敗した | `mongodb` | `cache_cart` だけ |
+
+- **カートは移らない。** `redis` のカートの書き込みが短い再試行の後も失敗した場合は `503`（`401004`）を返し、Redis には直前の版が残る。MongoDB へは写さない。`mongodb` のカートは、Redis が復旧しても終わるまで MongoDB で処理する。
+- **読み込み**: まず State Store を読み、無ければ `cache_cart` を読む。サーキットブレーカーが開いている間は State Store を読まない。どちらにも無ければ `404`。ただし Redis に問い合わせられなかったときは `503`（Redis にある可能性がある）。
+- **理由**: 両方にあるカートは、古い版を持つ側から読まれ得る（Redis の復旧後に、どのレプリカからでも）。その間に書いた明細や支払いが黙って失われる。置き場所を 1 つにすれば、古い版そのものが存在しない。
+- **代償**: Redis が落ちた時点で途中だったキャッシュ経路の取引は、Redis が戻るまで続けられない。販売は新しいカート（MongoDB に作られる）で続けられる。スナップショットを運ぶカートは影響を受けない。
+- **サーキットブレーカー**はプロセス単位で、3 回連続の失敗で開き、60 秒後に 1 件だけ Redis を試す。レプリカごとに状態が違ってもよい。決めるのは新しいカートの置き場所だけだからである。
+- 終わったカートは両方から削除する。
 
 ### 持ち回りカートは、ここには書かれない（issue #192）
 

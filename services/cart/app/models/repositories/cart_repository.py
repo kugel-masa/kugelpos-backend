@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
+import asyncio
 import uuid
 import aiohttp
 import time
@@ -18,10 +19,126 @@ from app.models.documents.tax_master_document import TaxMasterDocument
 from app.models.documents.item_master_document import ItemMasterDocument
 from app.models.documents.promotion_master_document import PromotionMasterDocument
 from app.config.settings import settings
-from app.exceptions import NotFoundException, CannotCreateException, UpdateNotWorkException, CannotDeleteException
+from app.exceptions import (
+    NotFoundException,
+    CannotCreateException,
+    UpdateNotWorkException,
+    CartStoreUnavailableException,
+)
 from app.utils.dapr_statestore_session_helper import get_dapr_statestore_session
 
 logger = getLogger(__name__)
+
+CACHE_STORE_REDIS = "redis"
+CACHE_STORE_MONGODB = "mongodb"
+
+# Short retries for a blip, not for an outage: the breaker handles outages.
+REDIS_ATTEMPTS = 3
+REDIS_RETRY_DELAYS = (0.05, 0.1)
+
+
+class _RedisUnavailable(Exception):
+    """The Dapr cart store could not answer (transport error, timeout, 5xx)."""
+
+
+class _RedisRefused(_RedisUnavailable):
+    """The Dapr cart store answered 4xx: not a blip, so not retried."""
+
+
+class _CartStoreBreaker:
+    """
+    Process-wide circuit breaker over the Dapr cart store (Redis).
+
+    It used to live on CartRepository, which is built per request, so its failure
+    count started at zero every time and it never opened. Process-wide, it opens
+    after FAILURE_THRESHOLD consecutive failures; while open, new carts are created
+    in MongoDB and Redis is not tried. After RESET_TIMEOUT one request is let
+    through to probe Redis: success closes it, failure keeps it open.
+
+    Replicas each keep their own; that is safe because the breaker only decides
+    where NEW carts go. Every cart is read from where it was created.
+    """
+
+    FAILURE_THRESHOLD = 3
+    RESET_TIMEOUT = 60.0
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self._failures = 0
+        self._opened_at = None
+        self._probing = False
+
+    @property
+    def is_open(self) -> bool:
+        return self._opened_at is not None
+
+    def allow_redis(self) -> bool:
+        if self._opened_at is None:
+            return True
+        if not self._probing and time.monotonic() - self._opened_at >= self.RESET_TIMEOUT:
+            self._probing = True
+            return True
+        return False
+
+    def record_success(self) -> None:
+        if self._opened_at is not None:
+            logger.info("Cart store (Redis) answered again; new carts go back to Redis")
+        self.reset()
+
+    def record_failure(self) -> None:
+        self._failures += 1
+        self._probing = False
+        if self._opened_at is not None or self._failures >= self.FAILURE_THRESHOLD:
+            if self._opened_at is None:
+                logger.error(
+                    f"Cart store (Redis) failed {self._failures} times in a row; new carts are created in "
+                    f"MongoDB until it answers again (next probe in {self.RESET_TIMEOUT:.0f}s)"
+                )
+            self._opened_at = time.monotonic()
+
+
+_breaker = _CartStoreBreaker()
+
+
+def reset_cart_store_breaker() -> None:
+    """Close the breaker (tests; a process starts closed)."""
+    _breaker.reset()
+
+
+def _store_of(cart: CartDocument) -> str:
+    return cart.cache_store or CACHE_STORE_REDIS
+
+
+def _unexpected_status(op: str, status: int, text: str) -> Exception:
+    if status >= 500:
+        return _RedisUnavailable(f"{op}: HTTP {status} {text[:200]}")
+    # A 4xx is not a blip (a missing state store component, a bad request):
+    # retrying will not help, but the cart store is still not usable.
+    return _RedisRefused(f"{op}: HTTP {status} {text[:200]}")
+
+
+async def _with_retry(op):
+    """Run a Dapr state call, retrying transport errors, timeouts and 5xx briefly."""
+    last = None
+    for attempt in range(REDIS_ATTEMPTS):
+        try:
+            return await op()
+        except (aiohttp.ClientError, TimeoutError) as e:
+            last = _RedisUnavailable(f"{type(e).__name__}: {e}")
+        except _RedisRefused:
+            raise
+        except _RedisUnavailable as e:
+            last = e
+        except Exception as e:  # noqa: BLE001
+            # Anything else from the Dapr call (a session bound to a closed loop,
+            # a body that does not parse) leaves the cart store unusable just the
+            # same; the old code fell back on any exception. Not retried.
+            raise _RedisRefused(f"{type(e).__name__}: {e}") from e
+        if attempt < REDIS_ATTEMPTS - 1:
+            await asyncio.sleep(REDIS_RETRY_DELAYS[min(attempt, len(REDIS_RETRY_DELAYS) - 1)])
+    raise last
 
 
 class CartRepository(AbstractRepository[CartDocument]):
@@ -39,58 +156,8 @@ class CartRepository(AbstractRepository[CartDocument]):
         """
         super().__init__(settings.DB_COLLECTION_NAME_CACHE_CART, CartDocument, db)
         self.terminal_info = terminal_info
-        # Variables for circuit breaker state management
-        self._circuit_open = False
-        self._failure_count = 0
-        self._last_failure_time = 0
-        self._failure_threshold = 3
-        self._reset_timeout = 60  # Reset timeout in seconds
 
     base_url_cartstore = f"{settings.BASE_URL_DAPR}/state/cartstore"
-
-    def _check_circuit_breaker(self):
-        """
-        Check the current state of the circuit breaker.
-        If the circuit is open, check if the reset timeout has elapsed.
-        If it has, close the circuit (move to half-open state).
-
-        Returns:
-            bool: True if the circuit is closed (normal state), False if open
-        """
-        if self._circuit_open:
-            current_time = time.time()
-            if (current_time - self._last_failure_time) > self._reset_timeout:
-                logger.info("Circuit breaker reset timeout elapsed. Moving to half-open state.")
-                self._circuit_open = False
-                self._failure_count = 0
-                return True
-            return False
-        return True
-
-    def _open_circuit(self):
-        """
-        Open the circuit (set the circuit breaker to tripped state)
-        """
-        logger.warning("Circuit breaker tripped. Opening the circuit.")
-        self._circuit_open = True
-        self._last_failure_time = time.time()
-
-    def _record_failure(self):
-        """
-        Record a failure and open the circuit if the threshold is exceeded
-        """
-        self._failure_count += 1
-        if self._failure_count >= self._failure_threshold:
-            self._open_circuit()
-
-    def _record_success(self):
-        """
-        Record a success and reset the failure count
-        """
-        if self._circuit_open:
-            logger.info("Circuit breaker successful request in half-open state. Closing the circuit.")
-        self._circuit_open = False
-        self._failure_count = 0
 
     async def create_cart_async(
         self,
@@ -145,268 +212,207 @@ class CartRepository(AbstractRepository[CartDocument]):
 
     async def cache_cart_async(self, cart: CartDocument, isNew: bool = False) -> None:
         """
-        This is the cache_cart_async method
-        update the cart in the cache by replacing the existing cart
+        Write the cart to the store it lives in.
+
+        A new cart is placed here: in Redis unless the cart-store breaker is open,
+        or Redis fails on this very write - a cart that exists nowhere yet can be
+        put in MongoDB without anything to be stale against. An existing cart is
+        written only to the store recorded on it, and is never moved: a Redis cart
+        whose write fails is answered 503 and keeps its previous version.
+
         args:
             cart: CartDocument
-            isNew: bool
+            isNew: True on the first write of a cart created in this request
         return:
             None
         exceptions:
-            CartCannotCreateException is raised if there is an error when creating the cart
-            UpdateNotWorkException is raised if there is an error when updating the cart
+            CartStoreUnavailableException if the cart's store cannot be reached
         """
-        # Check circuit breaker
-        if not self._check_circuit_breaker():
-            logger.warning("Circuit is open. Bypassing cache and using database directly.")
+        if isNew:
+            cart.cache_store = CACHE_STORE_REDIS if _breaker.allow_redis() else CACHE_STORE_MONGODB
+            if cart.cache_store == CACHE_STORE_REDIS:
+                try:
+                    await self.__redis_save_async(cart)
+                    _breaker.record_success()
+                    return
+                except _RedisUnavailable as e:
+                    _breaker.record_failure()
+                    # The write may have reached Redis with only the answer lost.
+                    # Nobody knows this id yet, so the cart is re-issued under a new
+                    # one: whatever landed in Redis is an orphan no request will name,
+                    # and expires with the store's TTL.
+                    stale_id = cart.cart_id
+                    cart.cart_id = str(uuid.uuid4())
+                    logger.warning(
+                        f"Cart store (Redis) unavailable when creating cart {stale_id}: {e}; "
+                        f"re-issued as {cart.cart_id} in MongoDB"
+                    )
+                    cart.cache_store = CACHE_STORE_MONGODB
+            logger.warning(f"Cart {cart.cart_id} is created in MongoDB (cache_cart) and stays there until it ends")
             await self.__save_cart_to_db_async(cart)
             return
 
-        try:
-            await self.__cache_cart_async(cart, isNew)
-            # Record success
-            self._record_success()
-        except Exception as e:
-            logger.warning(f"Failed to cache cart: {e}")
-            # Record failure
-            self._record_failure()
-            # Fallback to database
+        if _store_of(cart) == CACHE_STORE_MONGODB:
             await self.__save_cart_to_db_async(cart)
+            return
+
+        if not _breaker.allow_redis():
+            raise CartStoreUnavailableException(
+                f"Cart store (Redis) is unavailable; cart {cart.cart_id} lives there and is not moved", logger
+            )
+        try:
+            await self.__redis_save_async(cart)
+            _breaker.record_success()
+        except _RedisUnavailable as e:
+            _breaker.record_failure()
+            raise CartStoreUnavailableException(
+                f"Cart store (Redis) is unavailable; cart {cart.cart_id} lives there and is not moved", logger, e
+            ) from e
 
     async def get_cached_cart_async(self, cart_id: str) -> CartDocument:
         """
-        This is the get_cached_cart_async method
-        get the cart from the cache
+        Read the cart from the store it lives in.
+
+        Redis first, as in normal operation; a cart that is not there is looked up
+        in MongoDB, where only carts created while Redis was failing live. While
+        the breaker is open Redis is skipped.
+
         args:
             cart_id: str
         return:
-            document if the document is found, raise CartNotFoundException otherwise
+            CartDocument
         exceptions:
-            CartNotFoundException is raised if there is an error
+            NotFoundException if the cart is in neither store
+            CartStoreUnavailableException if it is not in MongoDB and Redis could not
+                be asked - it may well be there
         """
-        # Check circuit breaker
-        if not self._check_circuit_breaker():
-            logger.warning("Circuit is open. Bypassing cache and using database directly.")
-            return await self.__get_cart_from_db_async(cart_id)
-
-        try:
-            cart = await self.__get_cached_cart_async(cart_id)
-            # Record success
-            self._record_success()
-            return cart
-        except Exception as e:
-            logger.warning(f"Failed to get cached cart: {e}")
-            # Record failure
-            self._record_failure()
-            # Fallback to database
-            return await self.__get_cart_from_db_async(cart_id)
-
-    async def delete_cart_async(self, cart_id: str) -> None:
-        """
-        This is the delete_cart_async method
-        args:
-            cart_id: str
-        return:
-            None
-        exceptions:
-            CannnotDeleteException is raised if there is an error when deleting the cart
-        """
-        # Check circuit breaker
-        if not self._check_circuit_breaker():
-            logger.warning("Circuit is open. Bypassing cache and using database directly.")
+        redis_unanswered = True
+        if _breaker.allow_redis():
             try:
-                await self.__delete_cart_from_db_async(cart_id)
-                return None
-            except Exception as e:
-                logger.error(f"Failed to delete cart from database: {e}")
-                raise e
+                cart = await self.__redis_get_async(cart_id)
+                _breaker.record_success()
+                redis_unanswered = False
+                if cart is not None and _store_of(cart) == CACHE_STORE_REDIS:
+                    cart.cache_store = CACHE_STORE_REDIS
+                    return self.__with_terminal_staff(cart)
+                if cart is not None:
+                    # A MongoDB cart found in Redis was put there by a replica that
+                    # predates cache_store (a rolling update): MongoDB holds the cart.
+                    logger.warning(f"Cart {cart_id} lives in MongoDB but a copy is in Redis; reading MongoDB")
+            except _RedisUnavailable as e:
+                _breaker.record_failure()
+                logger.warning(f"Cart store (Redis) unavailable when reading cart {cart_id}: {e}")
+
+        cart = await self.get_one_async({"cart_id": cart_id})
+        if cart is not None:
+            # A copy written by a version that predates cache_store lived here
+            # because Redis had failed; reading it from here makes it a MongoDB cart.
+            cart.cache_store = CACHE_STORE_MONGODB
+            return self.__with_terminal_staff(cart)
+        if redis_unanswered:
+            raise CartStoreUnavailableException(
+                f"Cart {cart_id} is not in MongoDB and the cart store (Redis) could not be asked", logger
+            )
+        raise NotFoundException("cart not found", self.collection_name, cart_id, logger)
+
+    async def delete_cart_async(self, cart_id: str, cache_store: str | None = None) -> None:
+        """
+        Remove a finished cart from the store it lives in.
+
+        Only that store is touched, so an outage of the other one cannot stop the
+        removal. A caller that does not know the store (None) clears both, MongoDB
+        first.
+
+        args:
+            cart_id: str
+            cache_store: the cart's cache_store, when the caller has the cart
+        return:
+            None
+        exceptions:
+            CartStoreUnavailableException if Redis could not be asked for a Redis cart
+            whatever MongoDB raises for a MongoDB cart
+        """
+        if cache_store == CACHE_STORE_MONGODB:
+            await self.delete_async({"cart_id": cart_id})
+            return
+
+        removed_from_db = False
+        if cache_store is None:
+            removed_from_db = await self.delete_async({"cart_id": cart_id})
+
+        if not _breaker.allow_redis():
+            if removed_from_db:
+                return
+            raise CartStoreUnavailableException(
+                f"Cart {cart_id} could not be removed: the cart store (Redis) is unavailable", logger
+            )
         try:
-            await self.__delete_cached_cart_async(cart_id)
-            # Record success
-            self._record_success()
-        except Exception as e:
-            logger.error(f"Failed to delete cached cart: {e}")
-            # Record failure
-            self._record_failure()
-            raise e
-        # Best-effort: remove any MongoDB fallback copy left behind by a prior
-        # circuit-open write. Without this, fallback docs accumulate in cache_cart
-        # and are never cleaned up. Failures here must not break the delete contract.
-        await self.__delete_db_fallback_copy_async(cart_id)
+            await self.__redis_delete_async(cart_id)
+            _breaker.record_success()
+        except _RedisUnavailable as e:
+            _breaker.record_failure()
+            if removed_from_db:
+                return
+            raise CartStoreUnavailableException(
+                f"Cart {cart_id} could not be removed: the cart store (Redis) is unavailable", logger, e
+            ) from e
 
-    async def __cache_cart_async(self, cart: CartDocument, isNew: bool = False) -> None:
-        """
-        Cache the cart to Dapr state store.
-        Uses shared aiohttp session with connection pooling for performance.
+    def __with_terminal_staff(self, cart: CartDocument) -> CartDocument:
+        cart.staff = CartDocument.Staff(id=self.terminal_info.staff.id, name=self.terminal_info.staff.name)
+        return cart
 
-        Performance: Shared session eliminates 50-100ms session creation overhead per request.
+    async def __redis_save_async(self, cart: CartDocument) -> None:
+        # mode="json" so datetimes (created_at, the embedded promotion periods)
+        # become ISO strings aiohttp's json encoder can write (issue #141).
+        state_post_data = [{"key": cart.cart_id, "value": cart.model_dump(mode="json")}]
 
-        args:
-            cart: CartDocument to cache
-            isNew: Whether this is a new cart (for logging purposes)
-        return:
-            None
-        exceptions:
-            CartCannotCreateException is raised if there is an error when creating the cart
-            UpdateNotWorkException is raised if there is an error when updating the cart
-        """
-        # Use mode="json" so datetime fields (created_at/updated_at and the embedded
-        # master snapshot's promotion start/end datetimes) become ISO strings that
-        # aiohttp's stdlib json encoder can serialize. Without it, the POST raises
-        # "Object of type datetime is not JSON serializable" on every request and the
-        # cart silently falls back to MongoDB. Round-trip is safe: __get_cached_cart_async
-        # rebuilds via CartDocument(**cart_data), and pydantic parses ISO strings back to datetime.
-        cart_data = cart.model_dump(mode="json")
-        state_post_data = [{"key": cart.cart_id, "value": cart_data}]
-        logger.debug(f"State post data: {state_post_data}")
+        async def post():
+            session = await get_dapr_statestore_session()
+            async with session.post(self.base_url_cartstore, json=state_post_data) as response:
+                if response.status == 204:
+                    return
+                raise _unexpected_status("save", response.status, await response.text())
 
-        # Use shared session with connection pooling (eliminates session creation overhead)
-        session = await get_dapr_statestore_session()
-        async with session.post(self.base_url_cartstore, json=state_post_data) as response:
-            logger.debug(f"Response status: {response.status}")
-            logger.debug(f"Response text: {await response.text()}")
-            if response.status != 204:
-                if response.status == 400:
-                    error_message = await response.json()
-                    if error_message.get("errorCode") == "ERR_STATE_STORE_NOT_FOUND":
-                        logger.error(f"State store not found: {error_message.get('message')}")
-                message = "Failed to cache cart"
-                raise UpdateNotWorkException(message, self.collection_name, cart.cart_id, logger)
-            logger.debug(f"Cart cached: {cart}")
+        await _with_retry(post)
 
-    async def __get_cached_cart_async(self, cart_id: str) -> CartDocument:
-        """
-        Get the cart from Dapr state store cache.
-        Uses shared aiohttp session with connection pooling for performance.
+    async def __redis_get_async(self, cart_id: str) -> CartDocument | None:
+        async def get():
+            session = await get_dapr_statestore_session()
+            async with session.get(f"{self.base_url_cartstore}/{cart_id}") as response:
+                if response.status == 200:
+                    return CartDocument(**(await response.json()))
+                # Dapr answers a missing key with 204 No Content.
+                if response.status in (204, 404):
+                    return None
+                raise _unexpected_status("get", response.status, await response.text())
 
-        Performance: Shared session eliminates 50-100ms session creation overhead per request.
+        return await _with_retry(get)
 
-        args:
-            cart_id: str - Cart ID to retrieve
-        return:
-            CartDocument if found in cache
-        exceptions:
-            NotFoundException is raised if cart not found in cache
-        """
-        # Use shared session with connection pooling (eliminates session creation overhead)
-        session = await get_dapr_statestore_session()
-        async with session.get(f"{self.base_url_cartstore}/{cart_id}") as response:
-            if response.status != 200:
-                message = "cart not found"
-                raise NotFoundException(message, self.collection_name, cart_id, logger)
-            cart_data = await response.json()
-            logger.debug(f"Cart data: {cart_data}")
-            cart_doc = CartDocument(**cart_data)
-            cart_doc.staff = CartDocument.Staff(id=self.terminal_info.staff.id, name=self.terminal_info.staff.name)
-            return cart_doc
+    async def __redis_delete_async(self, cart_id: str) -> None:
+        async def delete():
+            session = await get_dapr_statestore_session()
+            async with session.delete(f"{self.base_url_cartstore}/{cart_id}") as response:
+                if response.status in (200, 204):
+                    return
+                raise _unexpected_status("delete", response.status, await response.text())
 
-    async def __delete_cached_cart_async(self, cart_id: str) -> None:
-        """
-        Delete the cart from Dapr state store cache.
-        Uses shared aiohttp session with connection pooling for performance.
-
-        Performance: Shared session eliminates 50-100ms session creation overhead per request.
-
-        args:
-            cart_id: str - Cart ID to delete
-        return:
-            None
-        exceptions:
-            CannotDeleteException is raised if deletion fails
-        """
-        # Use shared session with connection pooling (eliminates session creation overhead)
-        session = await get_dapr_statestore_session()
-        async with session.delete(f"{self.base_url_cartstore}/{cart_id}") as response:
-            if response.status != 204:
-                message = f"cart not found. cart_id->{cart_id}"
-                raise CannotDeleteException(message, self.collection_name, cart_id, logger)
-            return None
+        await _with_retry(delete)
 
     async def __save_cart_to_db_async(self, cart: CartDocument) -> None:
         """
-        This is the save_cart_async method
-        args:
-            cart: CartDocument
-        return:
-            None
+        Upsert the cart into cache_cart (the MongoDB cart store).
+
         exceptions:
-            CartCannotCreateException is raised if there is an error when creating the cart
-            UpdateNotWorkException is raised if there is an error when updating the cart
+            UpdateNotWorkException / CannotCreateException if MongoDB refuses the write
         """
-        # save cart to the database
         search_dict = {"cart_id": cart.cart_id}
+        cart.shard_key = self.__get_shard_key(cart)
         doc = await self.get_one_async(search_dict)
         if doc is not None:
-            # update the cart
-            cart.shard_key = self.__get_shard_key(cart)
-            result = await self.update_one_async(search_dict, cart.model_dump())
-            if not result:
-                message = "Failed to update cart"
-                raise UpdateNotWorkException(message, self.collection_name, cart.cart_id, logger)
-        else:
-            # create a new cart
-            cart.shard_key = self.__get_shard_key(cart)
-            result = await self.create_async(cart)
-            if not result:
-                message = "Failed to create cart"
-                raise CannotCreateException(message, self.collection_name, cart.cart_id, logger)
-        return None
-
-    async def __get_cart_from_db_async(self, cart_id: str) -> CartDocument:
-        """
-        This is the get_cart_async method
-        args:
-            cart_id: str
-        return:
-            document if the document is found, raise CartNotFoundException otherwise
-        exceptions:
-            CartNotFoundException is raised if there is an error
-        """
-        search_dict = {"cart_id": cart_id}
-        doc = await self.get_one_async(search_dict)
-        if doc is None:
-            message = f"cart not found. cart_id->{cart_id}"
-            raise NotFoundException(message, self.collection_name, cart_id, logger)
-        return doc
-
-    async def __delete_cart_from_db_async(self, cart_id: str) -> None:
-        """
-        This is the delete_cart_async method
-        args:
-            cart_id: str
-        return:
-            None
-        exceptions:
-            CartNotFoundException is raised if there is an error
-        """
-        search_dict = {"cart_id": cart_id}
-        try:
-            result = await self.delete_async(search_dict)
-            if not result:
-                raise NotFoundException("Cart not found", self.collection_name, cart_id, logger)
-            return None
-        except Exception as e:
-            message = f"Failed to delete cart: cart_id->{cart_id} err->{e}"
-            raise CannotDeleteException(message, self.collection_name, cart_id, logger)
-
-    async def __delete_db_fallback_copy_async(self, cart_id: str) -> None:
-        """
-        Best-effort removal of a cart's MongoDB fallback copy in cache_cart.
-
-        Used after a successful Redis (Dapr state store) delete to clean up any
-        document left behind by an earlier circuit-open / fallback write. This is
-        intentionally non-raising: a missing copy is the normal case, and any error
-        must not turn a successful cache delete into a failure.
-
-        args:
-            cart_id: str - Cart ID whose fallback copy should be removed
-        return:
-            None
-        """
-        try:
-            await self.delete_async({"cart_id": cart_id})
-        except Exception as e:
-            logger.warning(f"Failed to delete MongoDB fallback copy for cart_id->{cart_id}: {e}")
+            if not await self.update_one_async(search_dict, cart.model_dump()):
+                raise UpdateNotWorkException("Failed to update cart", self.collection_name, cart.cart_id, logger)
+        elif not await self.create_async(cart):
+            raise CannotCreateException("Failed to create cart", self.collection_name, cart.cart_id, logger)
 
     def __get_shard_key(self, cartDocument: CartDocument):
         """

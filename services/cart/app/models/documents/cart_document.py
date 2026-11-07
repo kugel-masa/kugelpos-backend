@@ -72,3 +72,10 @@ class CartDocument(BaseTransaction):
     receipt_counter: Optional[int] = None
     # Client-stamped transaction time (set at bill), source of tranlog.generate_date_time
     transaction_datetime: Optional[str] = None
+    # Where a cache-path cart lives, fixed when it is created and never changed:
+    #   "redis"   - the Dapr cart store (normal)
+    #   "mongodb" - the cache_cart collection, chosen while Redis was failing
+    #   None      - a cart created before this field existed; treated as "redis"
+    # A cart is never in both, so there is no stale copy to read when Redis
+    # comes back. Unused on the carried path.
+    cache_store: Optional[str] = None
