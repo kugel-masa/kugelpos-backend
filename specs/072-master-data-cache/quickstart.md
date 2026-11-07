@@ -186,9 +186,10 @@ Payment / Promotion / Settings / Tax を順次移行。順番は任意だが、P
 ### 7.1 キーの実際の格納形式を確認
 
 ```bash
-docker compose exec redis redis-cli -n 3
-> KEYS mdcache:*
-> GET mdcache:T001:S001:item_master:gen0:one:ITEM_A
+# キーは DB 0 に、cart の Dapr の接頭辞（cart||）付きで入る。値はハッシュ（data / version）
+docker compose exec redis redis-cli -n 0
+> SCAN 0 MATCH cart||mdcache:* COUNT 1000
+> HGET cart||mdcache:T001:S001:item_master:gen0:one:ITEM_A data
 ```
 
 ### 7.2 個別無効化
@@ -205,7 +206,7 @@ await item_repo.invalidate("ITEM_A")
 ```python
 await item_repo.invalidate_all()
 # 世代カウンタが +1 されていることを Redis CLI で確認
-docker compose exec redis redis-cli -n 3 GET mdcache:T001:S001:item_master:generation
+docker compose exec redis redis-cli -n 0 HGET 'cart||mdcache:T001:S001:item_master:generation' data
 ```
 
 ### 7.4 バックエンド障害時の継続稼働

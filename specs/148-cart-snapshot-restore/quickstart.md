@@ -39,7 +39,7 @@ curl -s -X POST "http://localhost:8003/api/v1/carts/$CART_ID/lineItems?terminal_
 「カートを見たことのないバックエンド」を再現する最も簡単な方法は Redis のカートキーを消すこと:
 
 ```bash
-# サーバ側キャッシュからカートを消す（Redis 直接 / cartstore は databaseIndex に注意）
+# サーバ側キャッシュからカートを消す（Redis 直接。cartstore のキーも DB 0 に `cart||<cart_id>` で入る）
 docker exec -it kugelpos-redis redis-cli -n 0 --scan --pattern "*$CART_ID*" | xargs -r docker exec -i kugelpos-redis redis-cli -n 0 del
 
 # 消えたことを確認（404 になる）

@@ -15,5 +15,10 @@ spec:
     value: "false"
   - name: ttlInSeconds
     value: "36000" # 10h
-  - name: databaseIndex
-    value: "2"
+  # Every state store lives in Redis DB 0. Dapr prefixes each key with the
+  # writing app's id ("<app-id>||"), which keeps apps apart but not stores: the
+  # stores one app uses share its prefix, so their keys must not overlap (cart's
+  # masterstore keys all start with "mdcache:"). state.redis reads the DB number
+  # only from `redisDB`; the `databaseIndex` set here before was never read.
+  # Moving a store to another DB is a migration, not a config tweak: keys already
+  # in DB 0 (carts in flight) stop being found the moment a sidecar switches.
