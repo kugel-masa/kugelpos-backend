@@ -325,22 +325,30 @@ class TranService:
 
         # Save tranlog to database
         # Manual session mgmt (no `async with`): context manager re-aborts after commit ended session — issue #96.
+        repeat = False
         session = await self.tranlog_repository.start_transaction()
         try:
             self.tranlog_delivery_status_repo.set_session(session)
-            await self.tranlog_delivery_status_repo.create_status_async(
-                event_id=event_id,
-                transaction_no=tranlog.transaction_no,
-                payload=event_message,
-                services=event_distinations,
-            )
             submitted = tranlog
             tranlog = await self.tranlog_repository.create_tranlog_async(tranlog)
-            if tranlog is not submitted:
+            repeat = tranlog is not submitted
+            if repeat:
                 # Not a fresh insert: the repository returned a tranlog that was
                 # already there, so this finalize was a repeat (issue #152).
                 await self.__report_finalize_repeat_async(submitted, tranlog, carried)
                 reported = True
+            else:
+                # Only a transaction recorded now is delivered. A repeat gets no
+                # delivery status and is not published: the first finalize already
+                # was, and what this request carried is not what was recorded (with
+                # different numbers, issue #190, it would put a transaction that is
+                # in no log on the wire). Same session, so it commits with the log.
+                await self.tranlog_delivery_status_repo.create_status_async(
+                    event_id=event_id,
+                    transaction_no=tranlog.transaction_no,
+                    payload=event_message,
+                    services=event_distinations,
+                )
             await self.tranlog_repository.commit_transaction()
 
         except FinalizeConflictException:
@@ -396,8 +404,10 @@ class TranService:
             self.tranlog_repository.set_session(session=None)
             self.tranlog_delivery_status_repo.set_session(session=None)
 
-        # Publish tranlog
-        await self._publish_tranlog_async(event_message)
+        # Publish tranlog - a repeat was published by the finalize that recorded it,
+        # just as the concurrent-race recovery above does not publish again.
+        if not repeat:
+            await self._publish_tranlog_async(event_message)
 
         return self.__apply_tranlog_to_cart(cart, tranlog)
 
@@ -767,13 +777,18 @@ class TranService:
         session = await self.tranlog_repository.start_transaction()
         try:
             self.tranlog_delivery_status_repo.set_session(session)
-            await self.tranlog_delivery_status_repo.create_status_async(
-                event_id=event_id,
-                transaction_no=tran.transaction_no,
-                payload=event_message,
-                services=event_distinations,
-            )
+            submitted = tran
             tran = await self.tranlog_repository.create_tranlog_async(tran)
+            repeat = tran is not submitted
+            if not repeat:
+                # Delivered only when recorded now; a repeat was delivered by the
+                # request that recorded it (same rule as the sale finalize).
+                await self.tranlog_delivery_status_repo.create_status_async(
+                    event_id=event_id,
+                    transaction_no=tran.transaction_no,
+                    payload=event_message,
+                    services=event_distinations,
+                )
             await self.tranlog_repository.commit_transaction()
         except Exception as e:
             await self.tranlog_repository.abort_transaction()
@@ -784,8 +799,9 @@ class TranService:
             self.tranlog_repository.set_session(session=None)
             self.tranlog_delivery_status_repo.set_session(session=None)
 
-        # Publish tranlog
-        await self._publish_tranlog_async(event_message)
+        # Publish tranlog (not a repeat: it was published when it was recorded)
+        if not repeat:
+            await self._publish_tranlog_async(event_message)
 
         # Mark the original transaction as voided in history
         await self.transaction_status_repo.mark_as_voided_async(
@@ -999,13 +1015,18 @@ class TranService:
         session = await self.tranlog_repository.start_transaction()
         try:
             self.tranlog_delivery_status_repo.set_session(session)
-            await self.tranlog_delivery_status_repo.create_status_async(
-                event_id=event_id,
-                transaction_no=tran.transaction_no,
-                payload=event_message,
-                services=event_distinations,
-            )
+            submitted = tran
             tran = await self.tranlog_repository.create_tranlog_async(tran)
+            repeat = tran is not submitted
+            if not repeat:
+                # Delivered only when recorded now; a repeat was delivered by the
+                # request that recorded it (same rule as the sale finalize).
+                await self.tranlog_delivery_status_repo.create_status_async(
+                    event_id=event_id,
+                    transaction_no=tran.transaction_no,
+                    payload=event_message,
+                    services=event_distinations,
+                )
             await self.tranlog_repository.commit_transaction()
         except Exception as e:
             await self.tranlog_repository.abort_transaction()
@@ -1016,8 +1037,9 @@ class TranService:
             self.tranlog_repository.set_session(session=None)
             self.tranlog_delivery_status_repo.set_session(session=None)
 
-        # Publish tranlog
-        await self._publish_tranlog_async(event_message)
+        # Publish tranlog (not a repeat: it was published when it was recorded)
+        if not repeat:
+            await self._publish_tranlog_async(event_message)
 
         # Mark the original transaction as refunded in history
         await self.transaction_status_repo.mark_as_refunded_async(

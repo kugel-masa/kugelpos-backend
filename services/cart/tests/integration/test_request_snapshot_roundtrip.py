@@ -372,6 +372,18 @@ async def test_retried_carried_finalize_is_idempotent(http_client, snapshot_keys
     assert r2.status_code == status.HTTP_200_OK, r2.text
     assert r2.json()["data"]["transactionNo"] == 5151
 
+    # Delivered once: the retry is answered with the recorded transaction and is
+    # neither given a delivery status nor published again.
+    assert await _delivery_status_count(cart_id) == 1
+
+
+async def _delivery_status_count(cart_id: str) -> int:
+    from kugel_common.database import database as db_helper
+
+    # Delivery status lives in the shared commons database, not the tenant's.
+    db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_commons")
+    return await db[settings.DB_COLLECTION_NAME_TRAN_LOG_DELIVERY_STATUS].count_documents({"payload.cart_id": cart_id})
+
 
 async def _bill_a_sale(http_client, terminal_id, headers, seq):
     """Create -> add item -> subtotal -> pay -> carried bill numbered ``seq``.

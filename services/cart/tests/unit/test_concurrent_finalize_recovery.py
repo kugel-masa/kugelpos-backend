@@ -190,3 +190,52 @@ class TestReachedFromBothFailureShapes:
 
         with pytest.raises(InternalErrorException):
             await svc.create_tranlog_async(_cart())
+
+
+class TestARepeatIsNotDeliveredAgain:
+    """A sequential repeat (issue #152) is answered with what was recorded and
+    nothing else: no delivery status, no publish. Before, it got both - a
+    'pending' status for an event carrying what this request sent, not what was
+    recorded, and a publish of it."""
+
+    def _armed(self, recorded):
+        svc = _make_service()
+        order = []
+        svc.tranlog_delivery_status_repo.create_status_async = AsyncMock(
+            side_effect=lambda **kw: order.append(("status", kw))
+        )
+        svc.tranlog_repository.start_transaction = AsyncMock(return_value=MagicMock())
+        svc.tranlog_repository.create_tranlog_async = AsyncMock(side_effect=lambda t: recorded or t)
+        svc.tranlog_repository.commit_transaction = AsyncMock(side_effect=lambda: order.append(("commit", None)))
+        svc._get_setting_value_async = AsyncMock(return_value=None)
+        svc._publish_tranlog_async = AsyncMock(side_effect=lambda msg: order.append(("publish", msg)))
+        svc._TranService__report_finalize_repeat_async = AsyncMock()
+        svc.receipt_data_strategy = MagicMock()
+        svc.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
+        return svc, order
+
+    @pytest.mark.asyncio
+    async def test_a_repeat_gets_no_delivery_status_and_is_not_published(self):
+        recorded = _persisted_winner()
+        svc, order = self._armed(recorded)
+        cart = _cart()
+
+        result = await svc.create_tranlog_async(cart)
+
+        assert result is recorded
+        assert cart.receipt_no == recorded.receipt_no
+        assert order == [("commit", None)], f"a repeat was delivered again: {order}"
+        svc._TranService__report_finalize_repeat_async.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_finalize_records_its_status_before_commit_and_publishes_the_same_event(self):
+        svc, order = self._armed(recorded=None)
+
+        await svc.create_tranlog_async(_cart())
+
+        kinds = [k for k, _ in order]
+        assert kinds == ["status", "commit", "publish"]
+        status_kw = order[0][1]
+        published = order[2][1]
+        assert status_kw["event_id"] == published["event_id"]
+        assert status_kw["payload"] is published
