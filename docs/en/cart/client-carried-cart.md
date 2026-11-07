@@ -128,15 +128,15 @@ Duplicate finalizes converge on `cart_id`.
 
 ## Index migration
 
-**The only trigger is the tenant creation API (`POST /api/v1/tenants`)** — it does not run at application startup. A new tenant goes through it on creation, but **an existing tenant is not migrated automatically**. Introducing this feature into a running deployment requires a separate way to run the migration over existing tenants.
+The new indexes reach an existing tenant at startup: every service runs its tenant setup additively over the tenants it has (see the commons specification, *Tenant setup at startup*). That run only **adds** — it never drops the stale unique index, and it logs rather than raises what it could not do. **Retiring the stale index is a migration, and runs only from the tenant API (`POST /api/v1/tenants`)**, once per existing tenant.
 
 The migration itself does the following.
 
 1. Drop the stale unique index (the one without `business_counter`)
 2. Create the new indexes
-3. **Verify the end state and abort startup with `DatabaseException` if it was not reached**
+3. **Verify the end state and fail the tenant setup with `DatabaseException` if it was not reached**
 
-A silently skipped step fails open — a stale unique index blocking finalize inserts, or a missing `cart_id` dedupe index — and looks healthy, so startup fails loudly instead.
+A silently skipped step fails open — a stale unique index blocking finalize inserts, or a missing `cart_id` dedupe index — and looks healthy, so the setup fails loudly instead.
 
 For `status_tran`, a **data migration** runs before the new unique key is enforced: existing records take their epoch from the transaction they refer to. Matching them with "epoch or null" is not viable, because legacy `transaction_no` and `seq` are both 1-based and their ranges overlap completely, so a lookup for this session's `seq=1` would find the terminal's first-ever sale.
 
@@ -236,11 +236,8 @@ A replayed older envelope is the one that goes **down**, which a query over
 `snapshot_info.cart_id` ordered by `request_info.accept_time` finds directly
 (there is an index for it).
 
-The index is created by tenant setup, and nothing creates it at startup — so on
-an environment that already has tenants, `POST /api/v1/tenants/{tenant_id}` has
-to be re-run once per tenant before the query is indexed rather than a
-collection scan. Index creation is idempotent, and this is the same step #156
-needed for its own indexes.
+The index is declared in tenant setup, which every service also runs additively
+at startup over its existing tenants, so it reaches them without a manual step.
 
 Envelopes are issued at `schema_version` 2. Version 1 is still accepted: a client
 that has not migrated presents one, and refusing it would break the failover the

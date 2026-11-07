@@ -70,6 +70,7 @@ kugel_common/
   - Connection string
   - Connection pool settings (max 100, min 10 connections)
   - Timeout settings
+  - `INDEX_ENSURE_ON_STARTUP` (default `true`): tenant setup at startup, see below
 
 #### DBCollectionCommonSettings
 - **Standard Collection Names**
@@ -101,6 +102,31 @@ kugel_common/
 - **Error Handling**: Automatic retry with exponential backoff
 - **Connection Pool**: Configurable pool size and idle timeout
 - **Transactions**: Full MongoDB transaction support
+
+### Tenant setup at startup (`index_startup.py`)
+
+A tenant's collections and indexes are declared in each service's
+`database_setup.execute()`. `POST /api/v1/tenants` runs it when a tenant is
+created; on its own that would never bring an **existing** tenant up to a new or
+changed declaration. So every service also runs it at startup, over the
+tenants it already has:
+
+- **Which tenants**: the service lists its own databases (`{DB_NAME_PREFIX}_{tenant_id}`)
+  and reads the tenant from the name. The shared `{DB_NAME_PREFIX}_commons` database
+  is not a tenant. No tenant is created and no other service's data is touched.
+- **Additive only**: inside `additive_index_ensure()` missing indexes are created and
+  nothing is dropped or changed in place (no retired-index drop, no TTL rebuild or
+  retention change). A drop followed by a failed rebuild would leave a collection
+  with no unique index; an unattended start never takes that chance.
+- **Never blocks**: it runs as a background task. What could not be applied — a
+  unique index blocked by duplicates, a retired index still standing, an index
+  whose options differ — is logged with the documents in the way; the service
+  keeps serving.
+- **The rest of the setup runs too**: insert-if-absent seeding, the `created_at` and
+  `status_tran` backfills and the item-book move are idempotent and run as well.
+- **Migrations that drop or change an index** still go through `POST /api/v1/tenants`,
+  run knowingly for each tenant. The startup log says when one is pending.
+- `INDEX_ENSURE_ON_STARTUP=false` turns it off.
 
 ### Repository Pattern (`abstract_repository.py`)
 

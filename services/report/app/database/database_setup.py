@@ -27,6 +27,11 @@ async def retire_numbering_index_over_every_record(tenant_id: Optional[str], col
     options rather than replace it, and drop_indexes_by_keys would drop it on
     every start. Only an index without the partial filter is dropped here.
     """
+    if db_helper.is_additive_index_ensure():
+        # Startup self-repair never drops: the partial index replacing this one
+        # could fail to build and leave no unique numbering index at all. The
+        # gap is logged by the ensure; POST /api/v1/tenants retires it.
+        return
     db = await db_helper.get_db_async(_db_name(tenant_id))
     existing = await db[collection_name].index_information()
     for name, info in existing.items():

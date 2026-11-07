@@ -35,6 +35,8 @@ class DBSettings(BaseSettings):
         DB_SERVER_SELECTION_TIMEOUT_MS: Server selection timeout in milliseconds (default: 5000)
         DB_CONNECT_TIMEOUT_MS: Connection timeout in milliseconds (default: 10000)
         DB_SOCKET_TIMEOUT_MS: Socket operation timeout in milliseconds (default: 30000)
+        INDEX_ENSURE_ON_STARTUP: Bring existing tenants up to the declared collections
+            and indexes at startup, additively and in the background (default: True)
     """
     MONGODB_URI: str = "mongodb://localhost:27017/?replicaSet=rs0"
     DB_NAME_PREFIX: str = "db_common"
@@ -45,6 +47,7 @@ class DBSettings(BaseSettings):
     DB_SERVER_SELECTION_TIMEOUT_MS: int = 5000
     DB_CONNECT_TIMEOUT_MS: int = 10000
     DB_SOCKET_TIMEOUT_MS: int = 30000
+    INDEX_ENSURE_ON_STARTUP: bool = True
 
 class DBCollectionCommonSettings(BaseSettings):
     """

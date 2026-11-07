@@ -236,6 +236,21 @@ async def startup_event():
     # Set the MongoDB URI from settings and establish a connection
     logger.info("Setting up the MongoDB URI")
     db_helper.MONGODB_URI = settings.MONGODB_URI
+
+    # Bring existing tenants up to the declared collections and indexes. Tenant
+    # setup otherwise runs only from POST /tenants, so a new index never reached
+    # a tenant that already existed. Additive (nothing dropped or changed) and in
+    # the background, so it neither blocks nor fails startup.
+    if settings.INDEX_ENSURE_ON_STARTUP:
+        from kugel_common.database.index_startup import start_index_ensure_in_background
+
+        from app.database import database_setup
+
+        start_index_ensure_in_background(
+            service_name="stock",
+            db_name_prefix=settings.DB_NAME_PREFIX,
+            execute=database_setup.execute,
+        )
     db_client = await db_helper.get_client_async()
     try:
         server_info = await db_client.server_info()
@@ -272,6 +287,9 @@ async def close_event():
     and handles all necessary cleanup tasks.
     """
     logger.info("closing the application")
+    from kugel_common.database.index_startup import stop_index_ensure_async
+
+    await stop_index_ensure_async()
 
     # Stop the alert service
     logger.info("Stopping alert service...")

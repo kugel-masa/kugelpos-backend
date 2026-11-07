@@ -24,6 +24,8 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from logging import getLogger
 from typing import Optional, TypeVar, Callable
 import asyncio
+import contextlib
+import contextvars
 import re
 from functools import wraps
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
@@ -472,6 +474,132 @@ async def backfill_created_at_from_id_async(db_name: str, collection_name: str) 
         return 0
 
 
+# ---------------------------------------------------------------------------
+# Additive index ensure (startup self-repair).
+#
+# `database_setup.execute()` used to run only from `POST /tenants`, so a fixed or
+# new index declaration never reached a tenant that already existed. Each service
+# now runs it at startup over its existing tenant databases, inside this context.
+#
+# A context rather than a parameter because `execute()` reaches this function
+# through dozens of per-collection helpers. A contextvar keeps concurrent tasks
+# apart and is easy to scope in tests.
+#
+# Inside the context:
+#   - Nothing is dropped. Retiring an index and then failing to build its
+#     replacement (duplicates, say) leaves a collection with no unique index at
+#     all; an unattended startup must never open that window.
+#   - Nothing is changed in place either: no TTL rebuild, no retention collMod.
+#     Only indexes that are missing are created.
+#   - A declared index that is still not there is logged at ERROR with what is
+#     in the way, instead of raised. The difference it reports needs a person
+#     (resolving duplicates, a key change); stopping would not fix it.
+# Migrations that have to drop or change an index still go through
+# `POST /api/v1/tenants`, which runs the same declaration without this context.
+# ---------------------------------------------------------------------------
+_additive_index_ensure: contextvars.ContextVar = contextvars.ContextVar(
+    "kugel_common_additive_index_ensure", default=False
+)
+
+
+@contextlib.contextmanager
+def additive_index_ensure():
+    """
+    Switch index provisioning to "create what is missing, change nothing, never raise".
+
+    Meant for the startup self-repair over existing tenants, never for a migration.
+    """
+    token = _additive_index_ensure.set(True)
+    try:
+        yield
+    finally:
+        _additive_index_ensure.reset(token)
+
+
+def is_additive_index_ensure() -> bool:
+    """
+    Whether the caller is inside ``additive_index_ensure()``.
+
+    A setup step that drops or rebuilds an index on its own (outside
+    ``create_collection_with_indexes_async``) checks this and leaves the index alone.
+    """
+    return _additive_index_ensure.get()
+
+
+def _index_options(info: dict) -> tuple:
+    """The options an index is compared on: (unique, partialFilterExpression, expireAfterSeconds)."""
+    ttl = info.get("expireAfterSeconds")
+    return (
+        bool(info.get("unique", False)),
+        info.get("partialFilterExpression") or None,
+        int(ttl) if ttl is not None else None,
+    )
+
+
+async def _log_additive_gaps_async(db, collection_name: str, index_keys_list: list, drop_indexes_by_keys) -> None:
+    """
+    Report, without raising or changing anything, what an additive ensure could not do.
+
+    Args:
+        db: Database handle
+        collection_name: Collection that was provisioned
+        index_keys_list: The declared indexes
+        drop_indexes_by_keys: Indexes the declaration retires (left in place here)
+    """
+    final_info = await db[collection_name].index_information()
+    by_keys = {}
+    for info in final_info.values():
+        by_keys.setdefault(tuple((k, v) for k, v in info.get("key", [])), []).append(info)
+
+    remedy = "run POST /api/v1/tenants for this tenant once it is resolved"
+    for index_info in index_keys_list:
+        keys_dict = index_info.get("keys", {})
+        want = tuple((k, v) for k, v in keys_dict.items())
+        live = by_keys.get(want)
+        problem = None
+        if not live:
+            problem = "is missing"
+        else:
+            # Compared both ways: an option the live index carries and the
+            # declaration dropped is as much a pending migration as one the
+            # declaration added - createIndexes refuses either.
+            wanted = _index_options(index_info)
+            if not any(_index_options(i) == wanted for i in live):
+                found = _index_options(live[0])
+                differing = [
+                    f"{name} {found[k]!r} (declared {wanted[k]!r})"
+                    for k, name in enumerate(("unique", "partialFilterExpression", "expireAfterSeconds"))
+                    if found[k] != wanted[k]
+                ]
+                problem = "exists with different options: " + ", ".join(differing)
+        if problem is None:
+            continue
+
+        blocking = ""
+        if index_info.get("unique"):
+            duplicates = await find_blocking_duplicates_async(
+                db, collection_name, keys_dict, index_info.get("partialFilterExpression")
+            )
+            if duplicates:
+                listed = "; ".join(f"{d.get('_id')} x{d.get('n')}" for d in duplicates)
+                blocking = (
+                    f" Documents share this key and have to be resolved first "
+                    f"(showing up to {BLOCKING_DUPLICATE_SAMPLE}): {listed}."
+                )
+        logger.error(
+            f"Additive index ensure: declared index {want} on {db.name}.{collection_name} {problem}; "
+            f"left as it is.{blocking} To apply it, {remedy}."
+        )
+
+    for drop_keys in drop_indexes_by_keys or []:
+        stale = tuple((k, v) for k, v in drop_keys.items())
+        if stale in by_keys:
+            logger.warning(
+                f"Additive index ensure: retired index {stale} is still on {db.name}.{collection_name}; "
+                f"nothing is dropped at startup. To retire it, {remedy}."
+            )
+
+
 async def create_collection_with_indexes_async(
     db_name: str,
     collection_name: str,
@@ -504,7 +632,8 @@ async def create_collection_with_indexes_async(
         # matches the desired set (matched by key pattern, not name, so it is
         # robust to naming). Used to retire a unique index whose key columns
         # changed (e.g. issue #156 reworked the tranlog/stock uniqueness).
-        if drop_indexes_by_keys:
+        additive_only = is_additive_index_ensure()
+        if drop_indexes_by_keys and not additive_only:
             try:
                 existing = await db[collection_name].index_information()
                 for drop_keys in drop_indexes_by_keys:
@@ -545,6 +674,10 @@ async def create_collection_with_indexes_async(
                 raise
             except Exception as e:  # an already-present/conflicting index must not block startup
                 logger.warning(f"Index {idx_name} ensure skipped on {collection_name}: {e}")
+
+        if additive_only:
+            await _log_additive_gaps_async(db, collection_name, index_keys_list, drop_indexes_by_keys)
+            return
 
         # Migration verification (issue #156 / bug_007): on an EXISTING collection a
         # silently-skipped drop or ensure can leave a stale unique index that blocks
