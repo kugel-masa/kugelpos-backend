@@ -75,12 +75,18 @@ class TestTheTier:
         apply_stamp_duty(tran, MASTER)
         assert tran.sales.is_stamp_duty_applied is False
 
-    def test_a_higher_tier(self):
-        # 1,100,000 with tax, 100,000 tax, all cash: x = 1,000,000 -> 400 yen tier.
-        tran = _tran(1_100_000, 100_000, [(CASH, 1_100_000)])
+    @pytest.mark.parametrize(
+        ("without_tax", "duty"),
+        [(1_000_000, 200), (1_000_001, 400), (2_000_000, 400), (2_000_001, 600)],
+    )
+    def test_a_boundary_belongs_to_the_lower_tier(self, without_tax, duty):
+        # The rate table cuts "up to 1 million" / "more than 1 million": exactly
+        # 1,000,000 is the 200-yen tier.
+        tax = without_tax // 10
+        tran = _tran(without_tax + tax, tax, [(CASH, without_tax + tax)])
         apply_stamp_duty(tran, MASTER)
-        expected = next(t for t in MASTER if t["target_amount"] <= 1_000_000)
-        assert tran.sales.stamp_duty_amount == expected["stamp_duty_amount"]
+        assert tran.sales.stamp_duty_target_amount == without_tax
+        assert tran.sales.stamp_duty_amount == duty
 
 
 class TestWhichTransactions:

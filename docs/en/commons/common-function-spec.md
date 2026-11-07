@@ -58,7 +58,7 @@ kugel_common/
 - **Stamp Duty Settings**
   - Stamp duty master data (based on Japanese tax law)
   - Correspondence table of amount thresholds and stamp duty amounts
-  - 14 tiers of stamp duty classifications (from 50,000 yen to over 1 billion yen)
+  - 14 tiers of stamp duty, following the rate table for document No. 17 (National Tax Agency No. 7141): from "50,000 yen or more, up to 1 million" to "more than 1 billion". A boundary belongs to the lower tier: exactly 1,000,000 yen is 200 yen
 
 #### WebServiceSettings
 - **Inter-Service Communication Settings**
