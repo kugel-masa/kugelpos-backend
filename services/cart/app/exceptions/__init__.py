@@ -63,6 +63,7 @@ from .cart_exceptions import (
     SnapshotScopeViolationException,
     SnapshotTerminalStateException,
     SnapshotRequiredException,
+    FinalizeNumberingRequiredException,
     FinalizeConflictException,
     CartPathMismatchException,
     SnapshotGenerationFailedException,

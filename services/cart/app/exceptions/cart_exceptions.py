@@ -488,6 +488,26 @@ class SnapshotRequiredException(ServiceException):
         )
 
 
+class FinalizeNumberingRequiredException(ServiceException):
+    """Raised when a finalize carries a snapshot but not its numbering.
+
+    A client that carries the cart numbers its own receipts. A carried bill or
+    cancel without ``seq`` / ``receiptCounter`` / ``transactionDatetime`` would
+    be numbered from the server-side series instead, and the two series can
+    issue the same receipt number. This is refused in every snapshot mode.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.FINALIZE_NUMBERING_REQUIRED,
+            CartErrorMessage.get_message(CartErrorCode.FINALIZE_NUMBERING_REQUIRED),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
 class SnapshotCartIdMismatchException(ServiceException):
     """Raised when the carried snapshot addresses a different cart than the URL path
     (issue #156). On the stateless path the reconstructed cart replaces the cached one,

@@ -66,6 +66,7 @@ class CartErrorCode:
     CART_PATH_MISMATCH = "401515"  # the cart was opened for the other path (issue #192)
     CART_SIZE_BUDGET_EXCEEDED = "401516"  # the cart would no longer fit in a request the client can send back
     CART_SCOPE_VIOLATION = "401517"  # the cached cart belongs to another tenant or store than the caller
+    FINALIZE_NUMBERING_REQUIRED = "401518"  # a carried finalize omitted its numbering (seq / receiptCounter / time)
 
     # その他エラー (404xx)
     TERMINAL_STATUS_ERROR = "404001"  # 端末ステータスエラー
@@ -120,6 +121,7 @@ class CartErrorMessage:
             CartErrorCode.CART_PATH_MISMATCH: "このカートは別の経路で開始されています",
             CartErrorCode.CART_SIZE_BUDGET_EXCEEDED: "この明細を追加すると取引が大きくなりすぎます。ここまでで会計を締めて、残りを別取引にしてください",
             CartErrorCode.CART_SCOPE_VIOLATION: "このカートは別のテナントまたは店舗のものです",
+            CartErrorCode.FINALIZE_NUMBERING_REQUIRED: "スナップショットを同梱した確定には採番（seq / receiptCounter / transactionDatetime）が必要です",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "スナップショットのカートIDがURLのカートIDと一致しません",
             CartErrorCode.TRANSACTION_AMBIGUOUS: "取引番号が複数の営業回数に該当します。business_counter を指定してください",
             CartErrorCode.VOID_OUT_OF_SESSION: "取消は当日かつ現在の営業回数の取引のみ可能です。過去の取引は返品で処理してください",
@@ -168,6 +170,7 @@ class CartErrorMessage:
             CartErrorCode.CART_PATH_MISMATCH: "This cart was opened for the other request path",
             CartErrorCode.CART_SIZE_BUDGET_EXCEEDED: "Adding this line would make the transaction too large to carry; settle what is in the cart and start another transaction for the rest",
             CartErrorCode.CART_SCOPE_VIOLATION: "This cart belongs to another tenant or store",
+            CartErrorCode.FINALIZE_NUMBERING_REQUIRED: "A finalize that carries a snapshot must carry its numbering (seq / receiptCounter / transactionDatetime)",
             CartErrorCode.SNAPSHOT_CART_ID_MISMATCH: "Carried snapshot addresses a different cart than the URL",
             CartErrorCode.TRANSACTION_AMBIGUOUS: "transaction_no matches more than one open session",
             CartErrorCode.VOID_OUT_OF_SESSION: "Void is limited to the current business date and open session",

@@ -36,6 +36,7 @@ from app.exceptions import (
     SnapshotCartIdMismatchException,
     CartSizeBudgetExceededException,
     CartScopeViolationException,
+    FinalizeNumberingRequiredException,
 )
 from app.models.repositories.cart_repository import CartRepository
 from app.models.repositories.cart_restore_log_repository import CartRestoreLogRepository
@@ -1171,7 +1172,8 @@ class CartService(ICartService):
     async def __audit_numbering_fallback_async(self, cart_id: str, api_path: str) -> None:
         """
         Record a finalize that will be numbered from the server-side series when
-        the terminal has a series of its own (issue #168).
+        the terminal has a series of its own (issue #168), and refuse the one case
+        that is a client defect rather than a fallback.
 
         DUAL mode keeps two independent receipt-number sources: a carried
         finalize numbers from the terminal's running counter, a snapshot-less one
@@ -1184,10 +1186,22 @@ class CartService(ICartService):
         and then fails to sign, so the check stays - it costs one comparison, and
         the signal it carries is one nothing else would report.
 
-        Detected, not blocked: refusing the finalize would stop a store selling
-        over a key misconfiguration, and this codebase's posture for numbering
-        integrity is audit detection rather than enforcement (spec 156 Q58).
-        `CART_REQUEST_SNAPSHOT_MODE=REQUIRED` is what removes the window.
+        A degraded signing key, and a terminal that carries nothing, are detected
+        rather than blocked: refusing the finalize would stop a store selling over
+        a key misconfiguration, and while the migration is under way a client that
+        has not moved yet has to keep working.
+
+        **A carried finalize that carries no numbering is refused, in every mode.**
+        This docstring used to say ``CART_REQUEST_SNAPSHOT_MODE=REQUIRED`` removed
+        the window; it did not. That setting rejects a *snapshot-less* request, and
+        a request that carries a snapshot but no finalize context went straight
+        past it - which is exactly what a carried-capable client produces when it
+        forgets the numbering. Nor is REQUIRED the right gate: what DUAL exists to
+        accept is a client that has not migrated at all. Carrying the envelope
+        while leaving the numbering to the server is not a step along that
+        migration but a client defect, and its damage - two number series, one
+        receipt number issued twice - lands in accounting data rather than in an
+        error. Refusing it surfaces the defect while someone is still looking.
 
         Args:
             cart_id: The cart being finalized
@@ -1195,6 +1209,10 @@ class CartService(ICartService):
 
         Returns:
             None
+
+        Raises:
+            FinalizeNumberingRequiredException: The request carried a snapshot
+                but no finalize context, and signing is healthy.
         """
         signing_degraded = snapshot_service.get_snapshot_signer() is None
         terminal_counter = getattr(self.terminal_info, "receipt_counter", None)
@@ -1221,11 +1239,28 @@ class CartService(ICartService):
             reason = "snapshot_without_finalize_context"
         else:
             reason = "no_carried_context"
+
+        # Carrying and numbering go together: whatever the mode, a carried
+        # finalize without its numbering is refused. A degraded signing key is
+        # the exception - it is a server-side misconfiguration the client cannot
+        # fix, so it is let through below and left to the audit trail.
+        if carried_a_snapshot and not signing_degraded:
+            await self.__add_restore_audit_async(
+                result="numbering_fallback",
+                audit_meta={"cart_id": cart_id},
+                reject_reason=reason,
+                api_path=api_path,
+            )
+            raise FinalizeNumberingRequiredException(
+                f"A finalize that carries a snapshot must carry its numbering "
+                f"(seq / receiptCounter / transactionDatetime), cart_id: {cart_id}",
+                logger,
+            )
         logger.error(
             "Finalize numbered from the server-side series while the terminal has "
             "its own (issue #168): cart_id=%s reason=%s terminal_receipt_counter=%s "
             "stateless=%s. Receipt numbers from the two series can collide; fix the "
-            "snapshot signing key, or move to CART_REQUEST_SNAPSHOT_MODE=REQUIRED.",
+            "snapshot signing key, or migrate the terminal to carry its numbering.",
             cart_id,
             reason,
             terminal_counter,
