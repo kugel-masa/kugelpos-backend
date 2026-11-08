@@ -696,6 +696,16 @@ class TestTranlogRepository:
         }
 
     @pytest.mark.asyncio
+    async def test_receipt_number_zero_is_a_condition(self):
+        """0 is a receipt number a range may start at; it used to drop the filter."""
+        repo = self._make_repo()
+        repo.get_paginated_list_async = AsyncMock(return_value=MagicMock())
+
+        await repo.get_tranlog_list_by_query_async(store_code="S001", terminal_no=1, receipt_no=0)
+
+        assert repo.get_paginated_list_async.call_args[1]["filter"]["receipt_no"] == 0
+
+    @pytest.mark.asyncio
     async def test_query_excludes_cancelled_by_default(self):
         repo = self._make_repo()
         repo.get_paginated_list_async = AsyncMock(return_value=MagicMock())

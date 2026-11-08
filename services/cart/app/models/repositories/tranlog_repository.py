@@ -252,7 +252,9 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             query["open_counter"] = open_counter
         if transaction_type:
             query["transaction_type"] = {"$in": transaction_type}
-        if receipt_no:
+        # `is not None`, not truthiness: 0 is a receipt number a range may start at,
+        # and dropping the condition returned the terminal's transactions instead.
+        if receipt_no is not None:
             query["receipt_no"] = receipt_no
         if not include_cancelled:
             query["sales.is_cancelled"] = False
