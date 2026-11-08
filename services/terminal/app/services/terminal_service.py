@@ -1216,6 +1216,19 @@ class TerminalService:
             # One bad record must not stop the others from being republished:
             # an exception here used to abort the whole run (#137).
             try:
+                # Heal a record whose services have all acknowledged it before any
+                # timestamp rule applies. Two ACKs that cross can leave the overall
+                # status behind (each derives it from its own read, and the older
+                # decision can land last), and the warning below would then report a
+                # delivered log as not acknowledged. As the stpos fork does.
+                all_services_received = bool(status.services) and all(
+                    service.status == "received" for service in status.services
+                )
+                if all_services_received:
+                    await self._update_delivery_status_internal_async(event_id=status.event_id, status="delivered")
+                    logger.debug(f"Terminallog already delivered: event_id->{status.event_id}")
+                    continue
+
                 # MongoDB returns naive UTC; compared with the local naive clock, any TZ
                 # other than UTC shifts both thresholds by its offset (#236).
                 created_at = status.created_at
