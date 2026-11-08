@@ -249,7 +249,7 @@ class RequestDecompressionMiddleware:
         scope = dict(scope)
         scope["headers"] = replace_body_headers(scope["headers"], len(body), drop_content_encoding=True)
 
-        await self.app(scope, replay_body(body), send)
+        await self.app(scope, replay_body(body, receive), send)
 
 
 def replace_body_headers(headers, length: int, drop_content_encoding: bool = False) -> list:
@@ -278,18 +278,38 @@ def replace_body_headers(headers, length: int, drop_content_encoding: bool = Fal
     return rewritten
 
 
-def replay_body(body: bytes):
-    """Build an ASGI receive callable that delivers ``body`` once, then disconnects."""
+def replay_body(body: bytes, receive=None):
+    """
+    Build an ASGI receive callable that delivers ``body`` once, then defers.
+
+    A middleware that reads the request body before the app runs has to hand it
+    back, or the app sees an empty request. What happens after the body matters:
+    Starlette's StreamingResponse streams while watching this same receive for a
+    client disconnect. Answering it with a fabricated ``http.disconnect`` cuts
+    the response off as it starts - a 200 with an empty body, which reads as no
+    error at all. So once the body is delivered, calls go to the real
+    ``receive``, where a disconnect arrives only if the client disconnected.
+
+    Args:
+        body: The request body the middleware already read
+        receive: The original ASGI receive to defer to after the body. Without
+            it the old behaviour remains, safe only where nothing streams.
+
+    Returns:
+        An ASGI receive callable
+    """
     sent = False
 
-    async def receive():
+    async def _receive():
         nonlocal sent
         if not sent:
             sent = True
             return {"type": "http.request", "body": body, "more_body": False}
+        if receive is not None:
+            return await receive()
         return {"type": "http.disconnect"}
 
-    return receive
+    return _receive
 
 
 async def send_json_error(send, status_code: int, message: str, error_code: str = None) -> None:

@@ -51,9 +51,18 @@ class TextHelper:
         Args:
             value: Numeric value to format
             
+        Negative zero prints as "0". ``-0.0`` is the same number as ``0``, but
+        ``"{:,.0f}"`` keeps its sign: the sales report passes the negated tax
+        total, and a day whose taxes summed to exactly 0.0 (everything returned,
+        or only exempt items sold) printed "税額 -0円". A non-zero value that
+        merely rounds to zero (``-0.4``) keeps its sign: it is negative.
+
         Returns:
             String representation of the number with comma separators
         """
+        # -0.0 == 0, so only negative zero takes this branch.
+        if value == 0:
+            return "0"
         return "{:,.0f}".format(value)
 
     @staticmethod

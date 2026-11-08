@@ -128,3 +128,18 @@ class TestFixedCenter:
 
     def test_already_wide_returns_as_is(self):
         assert TextHelper.fixed_center("hello", 3) == "hello"
+
+
+class TestCommaNegativeZero:
+    """The sales report passes the negated tax total; on a day whose taxes summed
+    to exactly 0.0 it printed "税額 -0円"."""
+
+    def test_negative_zero_prints_as_zero(self):
+        assert TextHelper.comma(-0.0) == "0"
+        assert TextHelper.comma(-(0.0)) == "0"
+
+    def test_a_negative_value_that_rounds_to_zero_keeps_its_sign(self):
+        assert TextHelper.comma(-0.4) == "-0"
+
+    def test_yen_of_negative_zero_is_unaffected(self):
+        assert TextHelper.yen(-0.0) == "\\0"

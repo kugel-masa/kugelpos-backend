@@ -147,7 +147,13 @@ class HttpClientHelper:
             try:
                 logger.debug(f"HTTP request: {method} {url}")
                 # Use async request
-                response = await self.client.request(method, url, headers=headers, params=params, json=payload, **kwargs)
+                # httpx replaces the URL's query with `params` whenever it is
+                # given, so passing the empty default dropped a query the URL
+                # carried (a signed URL, or one built with its query in place).
+                request_kwargs = dict(kwargs)
+                if params:
+                    request_kwargs["params"] = params
+                response = await self.client.request(method, url, headers=headers, json=payload, **request_kwargs)
                 
                 # Check for error status codes
                 if response.status_code >= 400:

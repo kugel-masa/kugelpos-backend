@@ -158,4 +158,4 @@ class SnapshotEnvelopePeelMiddleware:
         if new_body != body:
             scope["headers"] = replace_body_headers(scope["headers"], len(new_body))
 
-        await self.app(scope, replay_body(new_body), send)
+        await self.app(scope, replay_body(new_body, receive), send)
