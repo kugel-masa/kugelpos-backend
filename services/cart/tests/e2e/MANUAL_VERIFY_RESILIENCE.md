@@ -21,11 +21,11 @@ the same fallback path against the live Docker Compose stack.
 ```bash
 ./scripts/start.sh
 ./scripts/run_e2e_tests.sh cart
-# Verify master-data cache keys exist in Redis db=3
-docker compose exec redis redis-cli -n 3 KEYS 'mdcache:*'
+# Verify master-data cache keys exist in Redis (DB 0, under cart's Dapr key prefix)
+docker compose exec redis redis-cli -n 0 --scan --pattern 'cart||mdcache:*'
 ```
 
-Expected: At least one `mdcache:{tenant}:{store}:item_master:gen0:one:{item_code}`
+Expected: At least one `cart||mdcache:{tenant}:{store}:item_master:gen0:one:{item_code}`
 entry per item exercised by the purchase scenarios.
 
 ### 2. Stop Redis and rerun cart E2E
@@ -49,7 +49,7 @@ Expected:
 docker compose start redis
 # Wait a few seconds for Dapr sidecar to reconnect
 ./scripts/run_e2e_tests.sh cart
-docker compose exec redis redis-cli -n 3 KEYS 'mdcache:*'
+docker compose exec redis redis-cli -n 0 --scan --pattern 'cart||mdcache:*'
 ```
 
 Expected: Cache repopulates and warning logs stop appearing.

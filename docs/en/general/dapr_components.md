@@ -28,8 +28,6 @@ spec:
     value: redis:6379
   - name: ttlInSeconds
     value: "3600"
-  - name: databaseIndex
-    value: "1"
 ```
 
 **Use Cases:**
@@ -55,8 +53,6 @@ spec:
     value: redis:6379
   - name: ttlInSeconds
     value: "36000"
-  - name: databaseIndex
-    value: "2"
 ```
 
 **Use Cases:**
@@ -244,16 +240,25 @@ The subscriber routes (`/api/v1/tranlog`, `/api/v1/cashlog` and `/api/v1/openclo
 
 The app and its sidecar need the same value. A subscriber refuses to start without one, or on the development token published in `docker-compose.yaml`, unless `ALLOW_INSECURE_DEV_SECRETS=true` is set. `docker-compose.prod.yaml` requires it. The other services subscribe to nothing, so they do not need it.
 
-## Redis Configuration and Database Separation
+## Redis Configuration and Key Separation
 
-### Database Index Assignment
+### Where the Keys Live
 
-| DB Index | Purpose | TTL | Used by Services |
-|----------|---------|-----|------------------|
-| 0 | Redis default | - | Unused |
-| 1 | statestore (idempotency) | 48 hours (per key) | Report, Journal, Stock |
-| 2 | cartstore (caching) | 10 hours | Cart |
-| 3 | terminalstore | - | Unused |
+Every state store keeps its keys in Redis DB 0. Dapr prefixes each key with the app id of the service that wrote it: `<app-id>||<key>`. The prefix keeps services apart, not stores: the stores one service uses share its prefix, so their keys must not overlap. Cart's cartstore and masterstore both write under `cart||`, and stay apart only because every masterstore key starts with `mdcache:` and a cart id never does. Each value is a Redis hash with `data` and `version` fields, so read it with `HGET <key> data`, not `GET`.
+
+| Store | Key | TTL | Used by Services |
+|-------|-----|-----|------------------|
+| statestore | `<app-id>\|\|<event id>` (idempotency) | 48 hours (per key) | Report, Journal, Stock |
+| cartstore | `cart\|\|<cart_id>` | 10 hours | Cart |
+| masterstore | `cart\|\|mdcache:…` | 300 seconds (default) | Cart |
+| terminalstore | - | - | Unused |
+
+```bash
+docker compose exec redis redis-cli -n 0 --scan --pattern 'cart||*'
+docker compose exec redis redis-cli -n 0 HGET 'cart||<cart_id>' data
+```
+
+Dapr's `state.redis` reads the DB number only from `redisDB`. The components used to set `databaseIndex` (1, 2 and 3), which Dapr never read, so the stores have always been in DB 0. Moving a store to its own DB is a migration, not a configuration change: the moment a sidecar switches, it stops finding the keys already in DB 0, carts in flight among them, and during a rolling update the replicas on the old and the new DB see different carts. It would not protect carts from eviction either, since `maxmemory` and eviction apply to the whole Redis instance.
 
 ### TTL Configuration Rationale
 

@@ -1341,7 +1341,8 @@ This indicates **Redis data had been swapped out to disk**. Redis is an in-memor
 
 #### Dapr State Store Key Structure
 
-- Dapr's cartstore specifies `databaseIndex: 2`, but keys were actually stored in **DB0**
+- Dapr's cartstore specified `databaseIndex: 2` at the time, but keys were actually stored in **DB0**
+  - Cause: Dapr's `state.redis` reads the DB number only from `redisDB`, so `databaseIndex` was ignored. Every state store is in DB 0 under the `<app-id>||` key prefix, and the setting has since been removed (see `dapr_components.md`)
 - Key format: `cart||{cart_id}` (with Dapr prefix)
 - `maxmemory` applies to the entire Redis instance (all DBs combined), so DB separation provides no eviction protection
 

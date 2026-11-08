@@ -1344,7 +1344,8 @@ cart:8w でも master-data 2w で十分な余裕がある。
 
 #### Dapr state store のキー構造
 
-- Dapr の cartstore は `databaseIndex: 2` を指定しているが、実際のキーは **DB0** に格納されていた
+- Dapr の cartstore は当時 `databaseIndex: 2` を指定していたが、実際のキーは **DB0** に格納されていた
+  - 原因: Dapr の `state.redis` が DB 番号として読むのは `redisDB` だけで、`databaseIndex` は無視されていた。ステートストアはすべて DB 0 にあり、キーの先頭に `<app-id>||` が付く。この設定はその後削除した（`dapr_components.md` 参照）
 - キー形式: `cart||{cart_id}`（Dapr のプレフィックス付き）
 - `maxmemory` は Redis インスタンス全体（全DB合計）に適用されるため、DB 分離は eviction の保護にならない
 

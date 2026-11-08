@@ -28,8 +28,6 @@ spec:
     value: redis:6379
   - name: ttlInSeconds
     value: "3600"
-  - name: databaseIndex
-    value: "1"
 ```
 
 **用途:**
@@ -55,8 +53,6 @@ spec:
     value: redis:6379
   - name: ttlInSeconds
     value: "36000"
-  - name: databaseIndex
-    value: "2"
 ```
 
 **用途:**
@@ -244,16 +240,25 @@ event_id は、発行元の delivery-status への通知より前に記録しま
 
 アプリとサイドカーには同じ値が必要です。購読するサービスは、値がないとき、または `docker-compose.yaml` で公開されている開発用トークンのときは、`ALLOW_INSECURE_DEV_SECRETS=true` を設定しない限り起動しません。`docker-compose.prod.yaml` では必須です。ほかのサービスは何も購読しないので、この値は要りません。
 
-## Redis設定とデータベース分離
+## Redis設定とキーの分離
 
-### データベースインデックス割り当て
+### キーの置き場所
 
-| DB Index | 用途 | TTL | 使用サービス |
-|----------|------|-----|-------------|
-| 0 | Redis default | - | 未使用 |
-| 1 | statestore（冪等性） | 48時間（キーごと） | Report, Journal, Stock |
-| 2 | cartstore（キャッシング） | 10時間 | Cart |
-| 3 | terminalstore | - | 未使用 |
+ステートストアのキーは、どれも Redis の DB 0 に入ります。Dapr は、書き込んだサービスの app id をキーの先頭に付けます（`<app-id>||<key>`）。この接頭辞で分かれるのはサービスどうしで、ストアどうしではありません。1 つのサービスが使うストアは同じ接頭辞を共有するので、キーが重ならないようにする必要があります。cart の cartstore と masterstore はどちらも `cart||` の下に書き込みます。重ならないのは、masterstore のキーが必ず `mdcache:` で始まり、カートの ID はそうならないからです。値は `data` と `version` を持つ Redis のハッシュです。読むときは `GET` ではなく `HGET <key> data` を使います。
+
+| ストア | キー | TTL | 使用サービス |
+|--------|------|-----|-------------|
+| statestore | `<app-id>\|\|<event id>`（冪等性） | 48時間（キーごと） | Report, Journal, Stock |
+| cartstore | `cart\|\|<cart_id>` | 10時間 | Cart |
+| masterstore | `cart\|\|mdcache:…` | 300秒（既定値） | Cart |
+| terminalstore | - | - | 未使用 |
+
+```bash
+docker compose exec redis redis-cli -n 0 --scan --pattern 'cart||*'
+docker compose exec redis redis-cli -n 0 HGET 'cart||<cart_id>' data
+```
+
+Dapr の `state.redis` が DB 番号として読むのは `redisDB` だけです。以前のコンポーネントは `databaseIndex`（1・2・3）を指定していましたが、Dapr はこれを読まないので、ストアは最初からすべて DB 0 にありました。ストアを別の DB に移すのは設定の変更ではなく移行です。サイドカーが切り替わった時点で、DB 0 にあるキー（処理中のカートを含む）が見つからなくなります。ローリング更新の途中では、古い DB を見るレプリカと新しい DB を見るレプリカで、見えるカートが食い違います。また、`maxmemory` と追い出しは Redis のインスタンス全体にかかるので、DB を分けてもカートを追い出しから守ることにはなりません。
 
 ### TTL設定理由
 
