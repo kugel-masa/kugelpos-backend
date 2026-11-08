@@ -418,6 +418,7 @@ class TestTerminalServiceRepublishUndelivered:
         repos["terminal_log_delivery_status_repo"].update_delivery_status.return_value = True
 
         status = MagicMock()
+        status.services = [MagicMock(status="pending")]  # not yet acknowledged
         status.event_id = "EVT-100"
         status.status = "pending"
         status.warning_sent_at = None
@@ -446,6 +447,7 @@ class TestTerminalServiceRepublishUndelivered:
         repos["terminal_log_delivery_status_repo"].update_delivery_status.return_value = True
 
         status = MagicMock()
+        status.services = [MagicMock(status="pending")]  # not yet acknowledged
         status.event_id = "EVT-200"
         status.status = "pending"
         status.warning_sent_at = None
@@ -471,6 +473,7 @@ class TestTerminalServiceRepublishUndelivered:
         svc.pubsub_manager = AsyncMock()
 
         status = MagicMock()
+        status.services = [MagicMock(status="pending")]  # not yet acknowledged
         status.event_id = "EVT-300"
         status.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)  # only 1 min ago
         status.payload = {"event_type": "cash_in_out", "event_id": "EVT-300"}
@@ -493,6 +496,7 @@ class TestTerminalServiceRepublishUndelivered:
         repos["terminal_log_delivery_status_repo"].update_delivery_status.return_value = True
 
         status = MagicMock()
+        status.services = [MagicMock(status="pending")]  # not yet acknowledged
         status.event_id = "EVT-400"
         status.status = "pending"
         status.warning_sent_at = None
@@ -517,6 +521,7 @@ class TestTerminalServiceRepublishUndelivered:
     def _status(event_id, payload):
         from datetime import datetime, timedelta, timezone
         status = MagicMock()
+        status.services = [MagicMock(status="pending")]  # not yet acknowledged
         status.event_id = event_id
         status.status = "pending"
         status.warning_sent_at = None
@@ -601,6 +606,7 @@ class TestTerminalServiceRepublishUndelivered:
         repos["terminal_log_delivery_status_repo"].update_delivery_status.return_value = True
 
         status = MagicMock()
+        status.services = [MagicMock(status="pending")]  # not yet acknowledged
         status.event_id = "EVT-500"
         status.status = "pending"
         status.warning_sent_at = None
@@ -619,3 +625,51 @@ class TestTerminalServiceRepublishUndelivered:
         svc.pubsub_manager.publish_message_async.assert_not_called()
         # Should have updated status to failed
         repos["terminal_log_delivery_status_repo"].update_delivery_status.assert_called()
+
+class TestTheRepublishJobHealsAFullyAcknowledgedLog:
+    """Two ACKs that cross can leave the overall status behind with every service
+    acknowledged. The job sets it to delivered before any timestamp rule, so the
+    log is not warned about as unacknowledged, and is not republished."""
+
+    @staticmethod
+    def _acknowledged(created_minutes_ago):
+        from datetime import UTC, datetime, timedelta
+
+        status = MagicMock()
+        status.event_id = "EVT-HEAL"
+        status.status = "partially_delivered"
+        status.warning_sent_at = None
+        status.services = [MagicMock(status="received"), MagicMock(status="received")]
+        status.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=created_minutes_ago)
+        status.payload = {"event_type": "open", "event_id": "EVT-HEAL"}
+        return status
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("created_minutes_ago", [1, 180])
+    @patch("app.services.terminal_service.send_warning_notification", new_callable=AsyncMock)
+    async def test_it_is_set_to_delivered_without_a_warning(self, mock_notify, created_minutes_ago):
+        svc, repos = make_service()
+        svc.pubsub_manager = AsyncMock()
+        repo = repos["terminal_log_delivery_status_repo"]
+        repo.find_pending_deliveries.return_value = [self._acknowledged(created_minutes_ago)]
+        repo.update_delivery_status.return_value = True
+
+        await svc.republish_undelivered_terminallog_async()
+
+        repo.update_delivery_status.assert_awaited_once_with(event_id="EVT-HEAL", status="delivered")
+        mock_notify.assert_not_awaited()
+        svc.pubsub_manager.publish_message_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_log_with_no_services_is_not_taken_for_delivered(self):
+        svc, repos = make_service()
+        svc.pubsub_manager = AsyncMock()
+        svc.pubsub_manager.publish_message_async.return_value = (True, None)
+        status = self._acknowledged(1)
+        status.services = []
+        repos["terminal_log_delivery_status_repo"].find_pending_deliveries.return_value = [status]
+
+        await svc.republish_undelivered_terminallog_async()
+
+        for call in repos["terminal_log_delivery_status_repo"].update_delivery_status.await_args_list:
+            assert call.kwargs.get("status") != "delivered"
