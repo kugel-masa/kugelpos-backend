@@ -211,13 +211,46 @@ class TestCartServiceGetCart:
 
     @pytest.mark.asyncio
     async def test_get_cart_cache_miss(self):
-        """Should raise CartNotFoundException when cache lookup fails."""
+        """A cart in neither store is not found (404), and that is no incident."""
+        from app.exceptions import NotFoundException
+
         svc = _build_service()
-        svc.cart_repo.get_cached_cart_async = AsyncMock(side_effect=Exception("not found"))
-        # Patch send_fatal_error_notification to avoid actual calls
-        with patch("app.services.cart_service.send_fatal_error_notification", new_callable=AsyncMock):
-            with pytest.raises(CartNotFoundException):
-                await svc.get_cart_async()
+        svc.cart_repo.get_cached_cart_async = AsyncMock(
+            side_effect=NotFoundException("cart not found", "cache_cart", "cart-x", None)
+        )
+        with (
+            patch("app.services.cart_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal,
+            pytest.raises(CartNotFoundException) as exc,
+        ):
+            await svc.get_cart_async()
+        assert exc.value.status_code == 404
+        fatal.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failure_while_reading_is_not_reported_as_a_missing_cart(self):
+        """Every failure used to become "cart not found": the cause was lost, and a
+        terminal was told a cart that exists had gone."""
+        svc = _build_service()
+        svc.cart_repo.get_cached_cart_async = AsyncMock(side_effect=AttributeError("boom"))
+        with (
+            patch("app.services.cart_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal,
+            pytest.raises(AttributeError),
+        ):
+            await svc.get_cart_async()
+        fatal.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_signed_out_terminal_is_refused_before_the_cart_is_read(self):
+        """As the carried path refuses it, and with the same exception."""
+        svc = _build_service(terminal_info=_make_terminal_info(staff=False), cart_doc=_make_cart_doc())
+        with (
+            patch("app.services.cart_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal,
+            pytest.raises(SignInOutException) as exc,
+        ):
+            await svc.get_cart_async()
+        assert exc.value.status_code == 400
+        svc.cart_repo.get_cached_cart_async.assert_not_awaited()
+        fatal.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("tenant_id, store_code", [("t2", "S001"), ("t1", "S002")])

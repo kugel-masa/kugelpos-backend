@@ -1393,6 +1393,13 @@ class CartService(ICartService):
             self.current_cart = cart
             return cart
 
+        # A signed-out terminal may not work a cart. The carried path refuses it in
+        # prepare_stateless_from_snapshot; without this the cached path got as far
+        # as the repository, which writes the signed-in staff onto the cart, and
+        # failed there - answered as "cart not found" with a FATAL notification.
+        if self.terminal_info.staff is None:
+            raise SignInOutException("Terminal is not signed in", logger)
+
         # Get cart information from cache
         try:
             cart = await self.cart_repo.get_cached_cart_async(cart_id)
@@ -1400,9 +1407,15 @@ class CartService(ICartService):
         except CartStoreUnavailableException:
             # 503, not 404: the cart may well exist in a store that did not answer.
             raise
+        except NotFoundException as e:
+            # The cart is in neither store: expired, finished, or never there. An
+            # ordinary answer, not an incident, so no FATAL notification.
+            raise CartNotFoundException(f"Cart not found, cart_id: {cart_id}", logger, e) from e
         except Exception as e:
+            # Anything else is a failure, not a missing cart: report it and let it
+            # surface as what it is, rather than tell the terminal the cart is gone.
             message = f"Failed to get cached cart, cart_id: {cart_id}"
-            logger.fatal(message)
+            logger.fatal(f"{message}: {type(e).__name__}: {e}")
 
             # Send Slack notification
             context = (
@@ -1412,7 +1425,7 @@ class CartService(ICartService):
             )
             await send_fatal_error_notification(message=message, error=e, service="cart", context=context)
 
-            raise CartNotFoundException(message, logger, e) from e
+            raise
 
         # The cache is keyed by cart_id alone: hold the cart to the tenant and store
         # of the terminal using it, as the carried snapshot is (FR-005 / FR-012).

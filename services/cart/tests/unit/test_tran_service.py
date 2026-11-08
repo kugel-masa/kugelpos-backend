@@ -664,3 +664,41 @@ class TestVoidAndReturnCarryNoStamp:
         )
         assert printed["stamp"] == (False, 0.0)
         assert result.sales.is_stamp_duty_applied is False
+
+
+class TestTheOperatorOnTheTranlog:
+    """The tranlog records the staff signed in at finalize. The cart service
+    refuses a signed-out terminal before this point; should a caller ever arrive
+    without one, the tranlog takes the staff who created the cart instead of
+    failing on None - which would happen after the payments are in."""
+
+    class _Stop(Exception):
+        pass
+
+    async def _staff_recorded(self, signed_in):
+        from app.models.documents.cart_document import CartDocument
+
+        svc = _make_tran_service()
+        svc.terminal_info.staff = signed_in
+        svc.terminal_counter_repository.numbering_count = AsyncMock(return_value=1)
+        svc._receipt_range_async = AsyncMock(return_value=(1, 9999, None))
+        cart = CartDocument(cart_id="c1", staff=CartDocument.Staff(id="creator", name="Creator"))
+        seen = {}
+
+        def capture(tranlog, _master):
+            seen["staff"] = tranlog.staff
+            raise self._Stop()
+
+        with patch("app.services.tran_service.apply_stamp_duty", side_effect=capture), pytest.raises(self._Stop):
+            await svc.create_tranlog_async(cart)
+        return seen["staff"]
+
+    @pytest.mark.asyncio
+    async def test_the_staff_signed_in_now_is_recorded(self):
+        staff = await self._staff_recorded(SimpleNamespace(id="operator", name="Operator"))
+        assert (staff.id, staff.name) == ("operator", "Operator")
+
+    @pytest.mark.asyncio
+    async def test_without_one_the_cart_creator_is_recorded(self):
+        staff = await self._staff_recorded(None)
+        assert (staff.id, staff.name) == ("creator", "Creator")

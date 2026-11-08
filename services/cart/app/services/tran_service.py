@@ -228,11 +228,18 @@ class TranService:
         tranlog.taxes = cart.taxes
         tranlog.subtotal_discounts = cart.subtotal_discounts
 
-        # Set staff info
-        staff = BaseTransaction.Staff()
-        staff.id = self.terminal_info.staff.id
-        staff.name = self.terminal_info.staff.name
-        tranlog.staff = staff
+        # Set staff info: the staff signed in now. The cart service refuses a
+        # signed-out terminal before it gets here; should a caller ever arrive
+        # without one, record the staff the cart was created by rather than fail
+        # on None after the payments are in.
+        operator = self.terminal_info.staff if self.terminal_info is not None else None
+        if operator is None:
+            operator = cart.staff
+        if operator is not None:
+            staff = BaseTransaction.Staff()
+            staff.id = operator.id
+            staff.name = operator.name
+            tranlog.staff = staff
 
         # Revenue stamp: on the cash received, tax-exclusive, for a completed
         # normal sale only (stamp_duty_logic).
