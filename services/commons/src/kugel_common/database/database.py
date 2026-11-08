@@ -28,7 +28,7 @@ import contextlib
 import contextvars
 import re
 from functools import wraps
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from pymongo.errors import CollectionInvalid, ConnectionFailure, ServerSelectionTimeoutError
 from kugel_common.database.database_exceptions import DatabaseException
 from kugel_common.config.settings import settings
 
@@ -905,6 +905,14 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
             return False  # return false if collection already exists
         await db.create_collection(collection_name)
         logger.info(f"Collection {collection_name} created")
+    except CollectionInvalid:
+        # Another caller created it between the check above and pymongo's own
+        # check inside create_collection (two tenants set up at once both create
+        # the shared {prefix}_commons collections). The collection exists, which
+        # is what was asked; this caller just did not create it. Only this
+        # exception: a broader catch would read a real failure as "created".
+        logger.info(f"Collection {collection_name} was created concurrently")
+        return False
     except (ConnectionFailure, ServerSelectionTimeoutError):
         raise
     except Exception as e:
