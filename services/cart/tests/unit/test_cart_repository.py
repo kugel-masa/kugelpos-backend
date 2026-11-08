@@ -467,6 +467,30 @@ class TestReading:
         assert cart.cache_store == "mongodb"
 
 
+class TestStaffOnRead:
+    """Reading a cart writes the signed-in staff onto it. The cart service refuses a
+    signed-out terminal first; the repository must not fail on None regardless."""
+
+    @pytest.mark.asyncio
+    async def test_the_signed_in_staff_is_written_onto_the_cart(self, stores):
+        repo, _dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(staff=CartDocument.Staff(id="creator", name="Creator")), isNew=True)
+
+        cart = await repo.get_cached_cart_async("cart-1")
+
+        assert cart.staff.id == "staff01"
+
+    @pytest.mark.asyncio
+    async def test_without_a_signed_in_staff_the_cart_keeps_its_own(self, stores):
+        repo, _dapr, _mongo = stores
+        await repo.cache_cart_async(_cart(staff=CartDocument.Staff(id="creator", name="Creator")), isNew=True)
+        repo.terminal_info.staff = None
+
+        cart = await repo.get_cached_cart_async("cart-1")
+
+        assert cart.staff.id == "creator"
+
+
 class TestNoStaleRead:
     """The reason a cart never moves: Redis can never hold an older copy of a MongoDB cart."""
 

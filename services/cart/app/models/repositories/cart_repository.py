@@ -358,7 +358,12 @@ class CartRepository(AbstractRepository[CartDocument]):
             ) from e
 
     def __with_terminal_staff(self, cart: CartDocument) -> CartDocument:
-        cart.staff = CartDocument.Staff(id=self.terminal_info.staff.id, name=self.terminal_info.staff.name)
+        # The cart service refuses a signed-out terminal before it reads a cart, so
+        # staff is set here. Should a caller ever arrive without it, keep the staff
+        # the cart already has (who created it) rather than fail on None.
+        staff = self.terminal_info.staff if self.terminal_info is not None else None
+        if staff is not None:
+            cart.staff = CartDocument.Staff(id=staff.id, name=staff.name)
         return cart
 
     async def __redis_save_async(self, cart: CartDocument) -> None:
