@@ -30,8 +30,9 @@ pytest-asyncio = "*"
 pytest-mock = "*"
 respx = "*"
 # Exercises the brotli branch of the request-decompression middleware; the
-# middleware itself degrades gracefully when brotli is absent.
-brotli = "*"
+# middleware itself degrades gracefully when brotli is absent. 1.2.1 fixes an
+# out-of-bounds write in the decoder (CVE-2026-111497).
+brotli = ">=1.2.1"
 # The handler the services' logging.conf names; test_logging_setup loads those files.
 concurrent-log-handler = "*"
 
