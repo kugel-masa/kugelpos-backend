@@ -3,7 +3,7 @@
 This script is used to republish undelivered tranlog messages.
 """
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 import asyncio
 from logging import getLogger
@@ -36,7 +36,11 @@ async def start_republish_undelivered_tranlog_job():
 
     scheduler.add_job(
         republish_undelivered_tranlog_async,
-        trigger=CronTrigger(minute=f"*/{interval}"),
+        # An interval, not CronTrigger(minute=f"*/{interval}"): the cron minute
+        # field only spans 0-59, so 60 or more raised ValueError and failed the
+        # whole startup, and a value that does not divide 60 (7, 45) fired at
+        # uneven gaps because the step restarts at the top of every hour.
+        trigger=IntervalTrigger(minutes=interval),
         id="republish_undelivered_tranlog",
         replace_existing=True,
         max_instances=1,
