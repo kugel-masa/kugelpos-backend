@@ -19,8 +19,9 @@ wcwidth = "*"
 debugpy = "*"
 apscheduler = "*"
 # Request-body decompression for carried snapshots (issue #156, FR-009);
-# .NET 8 clients send Content-Encoding: br by default.
-brotli = "*"
+# .NET 8 clients send Content-Encoding: br by default. 1.2.1 fixes an
+# out-of-bounds write in the decoder (CVE-2026-111497); never resolve below it.
+brotli = ">=1.2.1"
 # Rotation that is safe across uvicorn workers sharing one log file.
 concurrent-log-handler = "*"
 
