@@ -121,7 +121,7 @@ class RequestBodySizeLimitMiddleware:
         if body is None:
             return
 
-        await self.app(scope, replay_body(body), send)
+        await self.app(scope, replay_body(body, receive), send)
 
 
 def add_request_body_limit_middleware(

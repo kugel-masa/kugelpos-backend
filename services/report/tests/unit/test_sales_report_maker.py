@@ -405,3 +405,28 @@ class TestSalesReportReceiptCash:
         assert not any("ドロア内現金" in t for t in texts)
         assert any("あるべき現金" in t for t in texts)
         assert not any("過不足" in t for t in texts)
+
+
+class TestSalesReportReceiptTaxLine:
+    """The tax line prints the negated tax total. On a day whose taxes summed to
+    exactly 0.0 - everything returned, or only exempt items sold - it printed
+    "税額 -0円"."""
+
+    @staticmethod
+    def _tax_line(tax_amounts):
+        from app.models.documents.sales_report_document import TaxReportTemplate
+
+        report = _sales_report(2000, 500)
+        report.taxes = [
+            TaxReportTemplate(tax_name=f"tax{i}", tax_amount=amount, target_amount=0, target_quantity=0)
+            for i, amount in enumerate(tax_amounts)
+        ]
+        return next(t for t in _receipt_body_text(report) if "税額" in t)
+
+    def test_a_day_whose_taxes_sum_to_zero_prints_zero(self):
+        line = self._tax_line([10.0, -10.0])
+        assert "-0円" not in line
+        assert line.endswith("0円")
+
+    def test_a_day_with_tax_still_prints_it_negated(self):
+        assert self._tax_line([100.0]).endswith("-100円")
