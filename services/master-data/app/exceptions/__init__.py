@@ -21,7 +21,6 @@ from kugel_common.exceptions import (
     # サービス例外
     DocumentNotFoundException,
     DocumentAlreadyExistsException,
-    ItemNotFoundException,
     BadRequestBodyException,
     InvalidRequestDataException,
     EventBadSequenceException,
