@@ -5,13 +5,6 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi import status
 
-# Patch missing ItemNotFoundException in kugel_common.exceptions before
-# app.exceptions.__init__ tries to import it.
-import kugel_common.exceptions as _kc_exc
-
-if not hasattr(_kc_exc, "ItemNotFoundException"):
-    _kc_exc.ItemNotFoundException = type("ItemNotFoundException", (Exception,), {})
-
 from app.exceptions.master_data_error_codes import MasterDataErrorCode, MasterDataErrorMessage
 from app.exceptions.master_data_exceptions import (
     MasterDataNotFoundException,
