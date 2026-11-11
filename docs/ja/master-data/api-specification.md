@@ -152,10 +152,10 @@ Get Categoriesの情報を取得します。
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | 保存された行に無い場合は null（DB に直接書き込まれた行など） |
+| `descriptionShort` | string | No | 保存された行に無い場合は null |
+| `taxCode` | string | No | 保存された行に無い場合は null |
+| `entryDatetime` | string | No | 保存された行に登録日時が無い場合は null |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -234,10 +234,10 @@ Get Categoriesの情報を取得します。
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | 保存された行に無い場合は null（DB に直接書き込まれた行など） |
+| `descriptionShort` | string | No | 保存された行に無い場合は null |
+| `taxCode` | string | No | 保存された行に無い場合は null |
+| `entryDatetime` | string | No | 保存された行に登録日時が無い場合は null |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -296,10 +296,10 @@ Get Categoriesの情報を取得します。
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | 保存された行に無い場合は null（DB に直接書き込まれた行など） |
+| `descriptionShort` | string | No | 保存された行に無い場合は null |
+| `taxCode` | string | No | 保存された行に無い場合は null |
+| `entryDatetime` | string | No | 保存された行に登録日時が無い場合は null |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -375,10 +375,10 @@ Update Categoryを更新します。
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | 保存された行に無い場合は null（DB に直接書き込まれた行など） |
+| `descriptionShort` | string | No | 保存された行に無い場合は null |
+| `taxCode` | string | No | 保存された行に無い場合は null |
+| `entryDatetime` | string | No | 保存された行に登録日時が無い場合は null |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**

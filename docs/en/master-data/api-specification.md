@@ -163,10 +163,10 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | Null when the stored row has none (a row written straight to the database) |
+| `descriptionShort` | string | No | Null when the stored row has none |
+| `taxCode` | string | No | Null when the stored row has none |
+| `entryDatetime` | string | No | Null when the stored row has no creation time |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -255,10 +255,10 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | Null when the stored row has none (a row written straight to the database) |
+| `descriptionShort` | string | No | Null when the stored row has none |
+| `taxCode` | string | No | Null when the stored row has none |
+| `entryDatetime` | string | No | Null when the stored row has no creation time |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -323,10 +323,10 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | Null when the stored row has none (a row written straight to the database) |
+| `descriptionShort` | string | No | Null when the stored row has none |
+| `taxCode` | string | No | Null when the stored row has none |
+| `entryDatetime` | string | No | Null when the stored row has no creation time |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -411,10 +411,10 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `categoryCode` | string | Yes | - |
-| `description` | string | Yes | - |
-| `descriptionShort` | string | Yes | - |
-| `taxCode` | string | Yes | - |
-| `entryDatetime` | string | Yes | - |
+| `description` | string | No | Null when the stored row has none (a row written straight to the database) |
+| `descriptionShort` | string | No | Null when the stored row has none |
+| `taxCode` | string | No | Null when the stored row has none |
+| `entryDatetime` | string | No | Null when the stored row has no creation time |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**

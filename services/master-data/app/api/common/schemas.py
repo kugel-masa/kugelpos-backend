@@ -430,10 +430,14 @@ class BaseCategoryMasterResponse(BaseSchemaModel):
     """
 
     category_code: str
-    description: str
-    description_short: str
-    tax_code: str
-    entry_datetime: str
+    # Optional on the way out even though create/update require them: a row
+    # written straight to the database (a migration, mongoimport, another
+    # system) can lack any of these, and a required str turned one such row
+    # into a 422 for the whole list.
+    description: Optional[str] = None
+    description_short: Optional[str] = None
+    tax_code: Optional[str] = None
+    entry_datetime: Optional[str] = None
     last_update_datetime: Optional[str] = None
 
 
