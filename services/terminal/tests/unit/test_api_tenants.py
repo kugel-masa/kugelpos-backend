@@ -8,6 +8,7 @@ httpx.AsyncClient + ASGITransport with mocked service layer.
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime
+import httpx
 from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI, HTTPException, status
 
@@ -138,6 +139,74 @@ class TestCreateTenant:
         detail = resp.text
         assert "log_tran" in detail, f"the downstream reason was dropped: {detail[:200]}"
         assert "tenants" in detail, "the response did not say which service failed"
+
+    @pytest.mark.asyncio
+    async def test_downstream_calls_use_the_tenant_setup_timeout(self):
+        """httpx defaults to 5 seconds, and a downstream answers only after it has
+        built its collections and indexes. On a remote or busy database that can
+        take longer, and the whole tenant create failed with a ReadTimeout."""
+        from app.api.v1.tenant import TENANT_SETUP_TIMEOUT_SECONDS
+
+        app = make_app()
+        mock_service = AsyncMock()
+        mock_service.create_tenant_async.return_value = _make_tenant_doc(stores=[])
+        with (
+            patch("app.api.v1.tenant.database_setup") as mock_db_setup,
+            patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service),
+            patch("app.api.v1.tenant.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_db_setup.execute = AsyncMock()
+            mock_client_instance = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.is_error = False
+            mock_client_instance.post.return_value = mock_response
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/tenants",
+                    json={"tenant_id": TENANT_ID, "tenant_name": "Test Tenant", "tags": ["test"]},
+                )
+
+        assert resp.status_code == 201
+        assert TENANT_SETUP_TIMEOUT_SECONDS >= 30
+        assert mock_httpx.call_count == 5
+        for call in mock_httpx.call_args_list:
+            assert call.kwargs.get("timeout") == TENANT_SETUP_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [httpx.ReadTimeout("timed out"), httpx.ConnectError("connection refused")],
+        ids=["read-timeout", "connect-error"],
+    )
+    async def test_a_downstream_that_does_not_answer_is_named(self, error):
+        """A timeout or a refused connection never reaches the is_error branch,
+        so it came back as a bare 500 that did not say which service it was."""
+        app = make_app()
+        mock_service = AsyncMock()
+        with (
+            patch("app.api.v1.tenant.database_setup") as mock_db_setup,
+            patch("app.api.v1.tenant.get_tenant_service_async", return_value=mock_service),
+            patch("app.api.v1.tenant.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_db_setup.execute = AsyncMock()
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post.side_effect = error
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/v1/tenants",
+                    json={"tenant_id": TENANT_ID, "tenant_name": "Test Tenant", "tags": ["test"]},
+                )
+
+        assert resp.status_code == 500
+        assert "/tenants" in resp.text, f"the response did not say which service it was: {resp.text[:200]}"
+        assert type(error).__name__ in resp.text
+        mock_service.create_tenant_async.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_downstream_error_page_is_truncated(self):

@@ -32,6 +32,11 @@ from app.dependencies.get_tenant_service import (
 # bounded because a proxy in between answers with a whole HTML page.
 DOWNSTREAM_ERROR_CHARS = 1000
 
+# Each downstream builds its collections and indexes before it answers, which on
+# a remote or busy database can take longer than httpx's 5-second default. Matches
+# HttpClientHelper's default, which every other service-to-service call uses.
+TENANT_SETUP_TIMEOUT_SECONDS = 30.0
+
 router = APIRouter()
 logger = getLogger(__name__)
 audit_logger = getLogger("audit")
@@ -92,10 +97,19 @@ async def create_tenant(
         urls.append(f"{settings.BASE_URL_STOCK}/tenants")
         for url in urls:
             logger.debug(f"Setting up database for tenant: {tenant_id}, url: {url}")
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url, headers={"Authorization": f"Bearer {token}"}, json={"tenant_id": tenant_id}
-                )
+            async with httpx.AsyncClient(timeout=TENANT_SETUP_TIMEOUT_SECONDS) as client:
+                try:
+                    response = await client.post(
+                        url, headers={"Authorization": f"Bearer {token}"}, json={"tenant_id": tenant_id}
+                    )
+                except httpx.TransportError as e:
+                    # A timeout or a refused connection never reaches the
+                    # is_error branch below, so it surfaced as a bare 500 that
+                    # did not say which service stopped answering.
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Tenant setup failed at {url}: {type(e).__name__}",
+                    ) from e
                 if response.is_error:
                     # raise_for_status() reports the URL and the status and drops
                     # the body, which is where the downstream service says which
