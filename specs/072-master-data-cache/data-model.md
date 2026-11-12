@@ -10,7 +10,7 @@
 ## 1. キャッシュエントリのキー形式
 
 ```
-mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}
+mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:s{shape}:{entry_kind}:{logical_key}
 ```
 
 | セグメント | 例 | 役割 |
@@ -20,6 +20,7 @@ mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical
 | `{store_code or '_'}` | `S001` / `_` | 店舗隔離。テナントスコープのマスタは `_` 固定（FR-003 / SC-006b） |
 | `{namespace}` | `item_master` | マスタ種別（cache_namespace） |
 | `gen{N}` | `gen0`, `gen1`... | 名前空間世代カウンタ（`invalidate_all` で +1） |
+| `s{shape}` | `s3f9a0c1b2d4e` | 文書モデルの形の指紋（JSON schema の SHA-256 先頭 12 桁）。モデルを変えた cart が古い形のエントリを読まないため |
 | `{entry_kind}` | `one` / `list` | 単一エントリ参照 / リストエントリ参照の区別（FR-010） |
 | `{logical_key}` | `ITEM001` / `active` | 論理キー（商品コードや「active」など） |
 

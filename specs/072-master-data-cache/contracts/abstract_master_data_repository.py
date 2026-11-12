@@ -16,7 +16,7 @@ Subclasses declare:
 - _fetch_list(logical_key)        (override only when list lookups are used)
 
 Cache key format:
-    mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}
+    mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:s{shape}:{entry_kind}:{logical_key}
 
 Behavior:
 - Per-entry TTL via the backend's `set(..., ttl_seconds)`.
@@ -174,7 +174,7 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
     ) -> str:
         """
         Returns the full cache key in the format:
-            mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}
+            mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:s{shape}:{entry_kind}:{logical_key}
         """
         ...
 

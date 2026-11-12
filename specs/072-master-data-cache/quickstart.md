@@ -189,7 +189,9 @@ Payment / Promotion / Settings / Tax を順次移行。順番は任意だが、P
 # キーは DB 0 に、cart の Dapr の接頭辞（cart||）付きで入る。値はハッシュ（data / version）
 docker compose exec redis redis-cli -n 0
 > SCAN 0 MATCH cart||mdcache:* COUNT 1000
-> HGET cart||mdcache:T001:S001:item_master:gen0:one:ITEM_A data
+# SCAN の結果から実際のキーをコピーして HGET に渡す。s{shape} はモデルの形の
+# 指紋（16 進 12 桁）で、そのまま打っても一致しない。例:
+> HGET cart||mdcache:T001:S001:item_master:gen0:s3f9a0c1b2d4e:one:ITEM_A data
 ```
 
 ### 7.2 個別無効化
