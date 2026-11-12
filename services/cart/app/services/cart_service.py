@@ -533,6 +533,11 @@ class CartService(ICartService):
         Raises:
             CartSizeBudgetExceededException: The snapshot would pass the budget.
         """
+        # Measure what will be returned. The item masters scanned by this
+        # request are moved into the document by the save, which runs after
+        # this check; without doing it here first, the measured envelope is
+        # smaller than the one sent back by exactly those masters.
+        self.__freeze_scanned_item_masters(cart_doc)
         size = snapshot_service.measure_envelope_bytes(cart_doc, self.terminal_info)
         if size is None:
             # No signing key, so no snapshot is issued and nothing has to carry
@@ -545,6 +550,21 @@ class CartService(ICartService):
                 f"({len(cart_doc.line_items)} line items); the client could not send it back",
                 logger,
             )
+
+    def __freeze_scanned_item_masters(self, cart_doc: CartDocument) -> None:
+        """
+        Move the item masters this repository holds into the document.
+
+        The repository is new per request and holds the masters restored from
+        the snapshot plus any scanned in this request; copying them onto the
+        document is what carries them to the next request. Idempotent, so both
+        the size check and the save call it, and they must: the check runs
+        before the save.
+
+        Args:
+            cart_doc: The cart to carry the masters
+        """
+        cart_doc.masters.items = self.item_master_repo.item_master_documents
 
     async def _apply_sales_promotions_async(self, cart_doc: CartDocument, phase: str = "line_item") -> CartDocument:
         """
@@ -1335,7 +1355,7 @@ class CartService(ICartService):
             self.state_manager.set_state(cart_doc.status)
 
         # Save updated item master information to cache
-        cart_doc.masters.items = self.item_master_repo.item_master_documents
+        self.__freeze_scanned_item_masters(cart_doc)
 
         if self._stateless:
             # Snapshot-present path (issue #156): the response snapshot is the
