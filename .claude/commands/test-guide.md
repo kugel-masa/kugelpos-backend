@@ -73,21 +73,21 @@ accepted, and it changes which e2e tests can pass.
 | `DUAL` (default) | accepted | accepted, served from the cache |
 | `REQUIRED` | accepted | **refused, 422 / `401508`** |
 
-That refusal is the point of REQUIRED, not a failure. But 47 of cart's 94 e2e
+That refusal is the point of REQUIRED, not a failure. But 48 of cart's 96 e2e
 tests were written against the cache path and hit it, so a plain run under
 REQUIRED looks like half the suite broke.
 
-Those 47 carry a `dual_only` mark, so the two runs are:
+Those 48 carry a `dual_only` mark, so the two runs are:
 
 ```bash
 # DUAL - the default, nothing special
-cd services/cart && pipenv run pytest tests/e2e            # 94 passed
+cd services/cart && pipenv run pytest tests/e2e            # 96 passed
 
 # REQUIRED - deselect what needs the fallback
 echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
 ./scripts/stop.sh && ./scripts/start.sh                    # REQUIRED
 cd services/cart && pipenv run pytest tests/e2e -m "not dual_only"
-                                                           # 47 passed, 47 deselected
+                                                           # 48 passed, 48 deselected
 ```
 
 **The restart is the step that gets skipped.** A container reads its environment

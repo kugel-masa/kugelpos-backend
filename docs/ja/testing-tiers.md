@@ -141,21 +141,21 @@ cart は「サーバがカートを保持する方式」から「クライアン
 | `DUAL`(既定) | 通る | 通る(キャッシュ経路) |
 | `REQUIRED` | 通る | **422 / `401508` で拒否** |
 
-この拒否は REQUIRED の目的そのものであって不具合ではない。ただし cart の e2e 94 本の
-うち 47 本はキャッシュ経路を前提に書かれているため、REQUIRED でそのまま全量を走らせると
+この拒否は REQUIRED の目的そのものであって不具合ではない。ただし cart の e2e 96 本の
+うち 48 本はキャッシュ経路を前提に書かれているため、REQUIRED でそのまま全量を走らせると
 「半分壊れた」ように見える。
 
-その 47 本には `dual_only` マーカーが付いている。
+その 48 本には `dual_only` マーカーが付いている。
 
 ```bash
 # DUAL(既定) - 特別な指定は不要
-cd services/cart && pipenv run pytest tests/e2e            # 94 passed
+cd services/cart && pipenv run pytest tests/e2e            # 96 passed
 
 # REQUIRED - フォールバック依存を除外する
 echo 'CART_REQUEST_SNAPSHOT_MODE=REQUIRED' >> services/cart/.env
 ./scripts/stop.sh && ./scripts/start.sh                    # 再起動が必須
 cd services/cart && pipenv run pytest tests/e2e -m "not dual_only"
-                                                           # 47 passed, 47 deselected
+                                                           # 48 passed, 48 deselected
 ```
 
 **抜けやすいのは再起動。**コンテナは起動時にしか環境変数を読まないので、動いている

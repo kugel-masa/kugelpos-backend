@@ -155,6 +155,10 @@ class SchemasTransformer:
             store_code=cart_doc.store_code,
             store_name=cart_doc.store_name,
             terminal_no=cart_doc.terminal_no,
+            # Stamped from terminal_info when the cart is created. Every cart-shaped
+            # response comes through here, and this was the one place that left
+            # it out, so they all answered businessDate: null.
+            business_date=cart_doc.business_date,
             total_amount=cart_doc.sales.total_amount,
             total_amount_with_tax=cart_doc.sales.total_amount_with_tax,
             total_discount_amount=cart_doc.sales.total_discount_amount,
