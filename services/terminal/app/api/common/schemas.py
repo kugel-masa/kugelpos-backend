@@ -30,12 +30,15 @@ class BaseStore(BaseSchemmaModel):
     Contains store code, name, status, business date and other essential store details.
     """
 
-    store_code: str
-    store_name: str
+    # Optional on the way out even though create and update require them: a row
+    # written straight to the database (a migration, another system) can lack
+    # any of these, and one such row turned the whole list into an error.
+    store_code: Optional[str] = None
+    store_name: Optional[str] = None
     status: Optional[str] = None
     business_date: Optional[str] = None
     tags: Optional[list[str]] = None
-    entry_datetime: str
+    entry_datetime: Optional[str] = None
     last_update_datetime: Optional[str] = None
 
 
@@ -85,11 +88,14 @@ class BaseTenant(BaseSchemmaModel):
     Contains tenant ID, name, list of stores, and creation timestamps.
     """
 
-    tenant_id: str
-    tenant_name: str
-    tags: list[str]
+    # Optional on the way out even though create and update require them: a row
+    # written straight to the database (a migration, another system) can lack
+    # any of these, and one such row turned the whole list into an error.
+    tenant_id: Optional[str] = None
+    tenant_name: Optional[str] = None
+    tags: Optional[list[str]] = None
     stores: list[BaseStore]
-    entry_datetime: str
+    entry_datetime: Optional[str] = None
     last_update_datetime: Optional[str] = None
 
 
@@ -155,16 +161,19 @@ class BaseTerminal(BaseSchemmaModel):
     status, business date and other essential terminal details.
     """
 
-    terminal_id: str
-    tenant_id: str
-    store_code: str
-    terminal_no: int
-    description: str
-    function_mode: str
-    status: str
+    # Optional on the way out even though create and update require them: a row
+    # written straight to the database (a migration, another system) can lack
+    # any of these, and one such row turned the whole list into an error.
+    terminal_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    store_code: Optional[str] = None
+    terminal_no: Optional[int] = None
+    description: Optional[str] = None
+    function_mode: Optional[str] = None
+    status: Optional[str] = None
     business_date: Optional[str] = None
-    open_counter: int
-    business_counter: int
+    open_counter: Optional[int] = None
+    business_counter: Optional[int] = None
     # The terminal's running receipt counter (issue #166). Exposed so a service
     # reached with an API key - which has no JWT claims to read - can tell a
     # terminal that numbers its own receipts from one that relies on server-side
@@ -174,7 +183,7 @@ class BaseTerminal(BaseSchemmaModel):
     physical_amount: Optional[float] = None
     staff: Optional[BaseStaff] = None
     api_key: Optional[str] = None
-    entry_datetime: str
+    entry_datetime: Optional[str] = None
     last_update_datetime: Optional[str] = None
 
 

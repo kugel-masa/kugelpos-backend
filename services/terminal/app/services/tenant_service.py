@@ -235,16 +235,23 @@ class TenantService:
 
         Raises:
             TenantNotFoundException: If the tenant is not found
+            StoreNotFoundException: If the tenant has no store with that code
             TenantUpdateException: If the update operation fails
         """
         try:
-            return await self.tenant_info_repo.update_store_async(store_code=store_code, update_dict=update_dict)
+            store = await self.tenant_info_repo.update_store_async(store_code=store_code, update_dict=update_dict)
         except NotFoundException as e:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise TenantNotFoundException(message=message, logger=logger, original_exception=e) from e
         except Exception as e:
             message = f"Cannot update store info: tenant_id->{self.tenant_id}"
             raise TenantUpdateException(message=message, logger=logger, original_exception=e) from e
+        # Raised outside the try, so the catch-all above cannot turn it into a
+        # 400 "cannot update": an unknown store is a 404, as get_store answers.
+        if store is None:
+            message = f"Store Not found. store_code->{store_code}, tenant_id->{self.tenant_id}"
+            raise StoreNotFoundException(message=message, logger=logger)
+        return store
 
     async def delete_store_async(self, store_code: str) -> bool:
         """

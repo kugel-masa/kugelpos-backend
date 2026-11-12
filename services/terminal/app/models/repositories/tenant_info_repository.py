@@ -27,6 +27,18 @@ from app.models.documents.tenant_info_document import TenantInfoDocument, StoreI
 logger = getLogger(__name__)
 
 
+def _with_store_list(tenant_doc):
+    """A tenant whose stores were stored as null reads as having none.
+
+    The API always writes a list, but a row written straight to the database (a
+    migration, another system) can carry null, and every store operation here
+    iterates or appends to it.
+    """
+    if tenant_doc is not None and tenant_doc.stores is None:
+        tenant_doc.stores = []
+    return tenant_doc
+
+
 class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
     """
     Tenant Information Repository
@@ -88,7 +100,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
             NotFoundException: If the tenant is not found
         """
         search_dict = {"tenant_id": self.tenant_id}
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
@@ -110,7 +122,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
             UpdateNotWorkException: If the update operation fails
         """
         search_dict = {"tenant_id": self.tenant_id}
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
@@ -156,7 +168,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
             UpdateNotWorkException: If the store addition fails
         """
         search_dict = {"tenant_id": self.tenant_id}
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
@@ -191,7 +203,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
         """
         search_dict = {"tenant_id": self.tenant_id}
         logger.debug(f"search_dict: {search_dict} limit: {limit}, page: {page}, sort: {sort}")
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
@@ -217,7 +229,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
             NotFoundException: If the tenant is not found
         """
         search_dict = {"tenant_id": self.tenant_id}
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
@@ -236,7 +248,8 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
             update_dict: Dictionary containing the fields to update and their new values
 
         Returns:
-            The updated store information object
+            The updated store information object, or None if the tenant has no
+            store with that code (nothing is written then)
 
         Raises:
             NotFoundException: If the tenant is not found
@@ -245,11 +258,12 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
         logger.debug(f"store_code: {store_code}, update_dict: {update_dict}")
 
         search_dict = {"tenant_id": self.tenant_id}
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
 
+        return_store = None
         for store in tenant_doc.stores:
             if store.store_code == store_code:
                 if update_dict.get("store_name"):
@@ -263,6 +277,11 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
                 store.updated_at = get_app_time()
                 return_store = store
                 break
+
+        if return_store is None:
+            # No such store: nothing to write. Returning here also keeps the
+            # name from being read before it was ever assigned.
+            return None
 
         result = await self.replace_one_async(search_dict, tenant_doc)
         if not result:
@@ -285,7 +304,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
             CannotDeleteException: If the store deletion fails
         """
         search_dict = {"tenant_id": self.tenant_id}
-        tenant_doc = await self.get_one_async(search_dict)
+        tenant_doc = _with_store_list(await self.get_one_async(search_dict))
         if tenant_doc is None:
             message = f"Tenant Info Not found. tenant_id->{self.tenant_id}"
             raise NotFoundException(message, self.collection_name, search_dict, logger)
