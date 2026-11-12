@@ -56,7 +56,7 @@ cd services/cart && pipenv run pytest -m unit     # Single service, single tier
 ```
 
 Cart's e2e depends on `CART_REQUEST_SNAPSHOT_MODE`. The default `DUAL` runs all
-94; under `REQUIRED` the 47 marked `dual_only` are refused by design and have to
+96; under `REQUIRED` the 48 marked `dual_only` are refused by design and have to
 be deselected. See `/test-guide`.
 
 **Detailed guides:** `/test-guide` command, `docs/ja/testing-tiers.md`
