@@ -19,7 +19,16 @@ Subclasses declare:
 - _fetch_list(logical_key) -> list   (override only when list lookups are used)
 
 Cache key format:
-    mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}
+    mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:s{shape}:{entry_kind}:{logical_key}
+
+``shape`` is a fingerprint of the document model's structure. An entry is the
+``model_dump`` of the model that wrote it, so without it a cart whose model
+gained a field would read entries an older cart wrote - seeing the new field as
+its default, or failing validation outright if the field has no default or a
+field changed type - until the TTL ran out. During a rolling deploy the old and
+new carts would read each other's entries the same way. A changed model gets
+keys of its own; the old entries are never read again and expire. No deploy step
+is needed.
 
 Behavior summary:
 - Per-entry TTL via the backend.
@@ -31,6 +40,8 @@ Behavior summary:
   to render prior-generation entries unreachable without needing a backend
   bulk-delete API.
 """
+import hashlib
+import json
 import logging
 from abc import ABC, abstractmethod
 from typing import (
@@ -48,6 +59,7 @@ from kugel_common.exceptions.repository_exceptions import NotFoundException
 from kugel_common.models.documents.base_document_model import BaseDocumentModel
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.utils.cache.cache_backend import AbstractCacheBackend
+from pydantic import PydanticUserError
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +69,27 @@ _KEY_PREFIX = "mdcache"
 _ENTRY_ONE = "one"
 _ENTRY_LIST = "list"
 _TENANT_SCOPE_PLACEHOLDER = "_"
+
+_SHAPES: dict[type, str] = {}
+
+
+def document_shape(document_class: type[BaseDocumentModel]) -> str:
+    """A short fingerprint of a document model's structure, nested models included.
+
+    Taken from the model's JSON schema, so adding, removing or retyping a field
+    at any depth changes it, and nothing but the model's code does. Computed once
+    per class.
+    """
+    shape = _SHAPES.get(document_class)
+    if shape is None:
+        try:
+            schema: Any = document_class.model_json_schema()
+        except (PydanticUserError, TypeError, ValueError):  # a model the schema generator cannot describe
+            schema = {name: repr(field.annotation) for name, field in document_class.model_fields.items()}
+        digest = hashlib.sha256(json.dumps(schema, sort_keys=True, default=str).encode("utf-8"))
+        shape = digest.hexdigest()[:12]
+        _SHAPES[document_class] = shape
+    return shape
 
 
 class AbstractMasterDataRepository(Generic[TDoc], ABC):
@@ -211,7 +244,8 @@ class AbstractMasterDataRepository(Generic[TDoc], ABC):
         store_segment = store_code if store_code else _TENANT_SCOPE_PLACEHOLDER
         return (
             f"{_KEY_PREFIX}:{self.tenant_id}:{store_segment}"
-            f":{self.cache_namespace}:gen{generation}:{entry_kind}:{logical_key}"
+            f":{self.cache_namespace}:gen{generation}:s{document_shape(self.document_class)}"
+            f":{entry_kind}:{logical_key}"
         )
 
     def _build_generation_key(self, store_code: Optional[str]) -> str:

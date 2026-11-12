@@ -115,7 +115,7 @@ live in the base; subclasses only implement `_fetch_one` / `_fetch_list`.
 - Backend: Dapr state store `masterstore` (Redis DB 0, like every state store: the
   components set no DB number). Dapr prefixes each key with the app id, so it shares
   `cart||` with cartstore; the `mdcache:` prefix is what keeps the two apart
-- Key format: `mdcache:{tenant}:{store or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}`
+- Key format: `mdcache:{tenant}:{store or '_'}:{namespace}:gen{N}:s{shape}:{entry_kind}:{logical_key}`
 - Tenant-wide masters declare `is_store_scoped = False` (forces store position to `_`)
 
 ## Error Code Structure

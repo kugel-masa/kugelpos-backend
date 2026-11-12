@@ -25,7 +25,7 @@ the same fallback path against the live Docker Compose stack.
 docker compose exec redis redis-cli -n 0 --scan --pattern 'cart||mdcache:*'
 ```
 
-Expected: At least one `cart||mdcache:{tenant}:{store}:item_master:gen0:one:{item_code}`
+Expected: At least one `cart||mdcache:{tenant}:{store}:item_master:gen0:s{shape}:one:{item_code}`
 entry per item exercised by the purchase scenarios.
 
 ### 2. Stop Redis and rerun cart E2E

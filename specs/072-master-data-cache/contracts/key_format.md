@@ -5,7 +5,7 @@
 ## 通常エントリ
 
 ```
-mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical_key}
+mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:s{shape}:{entry_kind}:{logical_key}
 ```
 
 ### セグメント定義
@@ -17,8 +17,9 @@ mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical
 | 3 | `store_code or '_'` | `[A-Za-z0-9_-]+` または `_` | yes | 店舗識別子。テナントスコープのとき `_` 固定 |
 | 4 | `namespace` | `[a-z_]+` | yes | `cache_namespace` クラス属性 |
 | 5 | `gen{N}` | `gen` + 0 以上の整数 | yes | 世代カウンタ。`gen0`, `gen1`, ... |
-| 6 | `entry_kind` | `one` または `list` | yes | エントリ種別 |
-| 7 | `logical_key` | 任意（ただし `:` 禁止） | yes | サブクラスが渡す論理キー |
+| 6 | `s{shape}` | `s` + 16 進 12 桁 | yes | 文書モデルの形の指紋（`model_json_schema()` の SHA-256 先頭 12 桁）。モデルに欄を足したり型を変えたりした cart は別のキーを使うので、古い形のエントリを読まない（既定値で読む・検証で落ちるを防ぐ）。古いエントリは TTL で消える |
+| 7 | `entry_kind` | `one` または `list` | yes | エントリ種別 |
+| 8 | `logical_key` | 任意（ただし `:` 禁止） | yes | サブクラスが渡す論理キー |
 
 ### 制約
 
@@ -30,12 +31,12 @@ mdcache:{tenant_id}:{store_code or '_'}:{namespace}:gen{N}:{entry_kind}:{logical
 
 | シナリオ | キー |
 |---|---|
-| 商品マスタ単一参照（テナント T001、店舗 S001、商品 ITEM_A） | `mdcache:T001:S001:item_master:gen0:one:ITEM_A` |
-| 支払マスタ単一参照（テナント T001、テナントスコープ、CASH） | `mdcache:T001:_:payment_master:gen0:one:CASH` |
-| 販促マスタリスト参照（テナント T001、店舗 S002、active） | `mdcache:T001:S002:promotion_master:gen0:list:active` |
-| 税マスタ単一参照（テナント T001、テナントスコープ、TAX10） | `mdcache:T001:_:tax_master:gen0:one:TAX10` |
-| 設定マスタ全件（テナント T001、店舗 S001） | `mdcache:T001:S001:settings_master:gen0:list:__all__` |
-| 設定マスタテナント設定全件（テナント T001、テナントスコープ） | `mdcache:T001:_:settings_master:gen0:list:__all__` |
+| 商品マスタ単一参照（テナント T001、店舗 S001、商品 ITEM_A） | `mdcache:T001:S001:item_master:gen0:s{shape}:one:ITEM_A` |
+| 支払マスタ単一参照（テナント T001、テナントスコープ、CASH） | `mdcache:T001:_:payment_master:gen0:s{shape}:one:CASH` |
+| 販促マスタリスト参照（テナント T001、店舗 S002、active） | `mdcache:T001:S002:promotion_master:gen0:s{shape}:list:active` |
+| 税マスタ単一参照（テナント T001、テナントスコープ、TAX10） | `mdcache:T001:_:tax_master:gen0:s{shape}:one:TAX10` |
+| 設定マスタ全件（テナント T001、店舗 S001） | `mdcache:T001:S001:settings_master:gen0:s{shape}:list:__all__` |
+| 設定マスタテナント設定全件（テナント T001、テナントスコープ） | `mdcache:T001:_:settings_master:gen0:s{shape}:list:__all__` |
 
 ## 世代カウンタキー
 
