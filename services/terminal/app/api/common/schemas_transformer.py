@@ -58,7 +58,8 @@ class SchemasTransformer:
         logger.debug(f"TenantInfoDocument: {tenant_info}")
 
         stores = []
-        for store in tenant_info.stores:
+        # A row written straight to the database can carry null stores.
+        for store in tenant_info.stores or []:
             return_store = BaseStore(
                 store_code=store.store_code,
                 store_name=store.store_name,
