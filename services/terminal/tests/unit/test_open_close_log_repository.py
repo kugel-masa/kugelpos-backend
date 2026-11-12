@@ -1,17 +1,14 @@
 # Copyright 2026 masa@kugel
 """Unit tests for TestOpenCloseLogRepository (split from
 test_repositories.py by class group)."""
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from kugel_common.exceptions import (
     CannotCreateException,
-    DuplicateKeyException,
 )
 
 from ._helpers import _mock_db, _open_close_log
-
 
 # ===========================================================================
 
@@ -24,43 +21,57 @@ class TestOpenCloseLogRepository:
 
     # -- create_open_close_log ------------------------------------------------
 
+    def _with_collection(self, repo, *, upserted_id=None, existing=None):
+        collection = MagicMock()
+        collection.update_one = AsyncMock(return_value=MagicMock(upserted_id=upserted_id))
+        collection.find_one = AsyncMock(return_value=existing)
+        repo.dbcollection = collection
+        return collection
+
     @pytest.mark.asyncio
     async def test_create_open_close_log_success(self):
         repo = self._make_repo()
-        log = _open_close_log()
-        with patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True):
-            result = await repo.create_open_close_log(log)
-            assert result.shard_key == "T1_S1_1_20260101"
-            assert result is log
+        log = _open_close_log(business_counter=5)
+        collection = self._with_collection(repo, upserted_id="new-id")
+
+        result = await repo.create_open_close_log(log)
+
+        assert result.shard_key == "T1_S1_1_20260101"
+        assert result is log
+        key, update = collection.update_one.call_args[0]
+        assert key == {"tenant_id": "T1", "store_code": "S1", "terminal_no": 1, "business_counter": 5, "operation": "open"}
+        assert "$setOnInsert" in update
+        assert collection.update_one.call_args.kwargs["upsert"] is True
 
     @pytest.mark.asyncio
-    async def test_create_open_close_log_duplicate_replaces(self):
+    async def test_the_same_business_again_overwrites_its_own_log(self):
         repo = self._make_repo()
-        log = _open_close_log()
-        with (
-            patch.object(
-                repo, "create_async", new_callable=AsyncMock,
-                side_effect=DuplicateKeyException("dup", "col", None, None),
-            ),
-            patch.object(repo, "replace_one_async", new_callable=AsyncMock, return_value=True) as mock_replace,
-        ):
+        log = _open_close_log(business_counter=5)
+        self._with_collection(repo, existing={"business_date": "20260101", "open_counter": 1})
+        with patch.object(repo, "replace_one_async", new_callable=AsyncMock, return_value=True) as mock_replace:
             result = await repo.create_open_close_log(log)
-            assert result is log
-            call_filter = mock_replace.call_args[0][0]
-            assert call_filter["tenant_id"] == "T1"
-            assert call_filter["store_code"] == "S1"
-            assert call_filter["terminal_no"] == 1
-            assert call_filter["business_date"] == "20260101"
-            assert call_filter["open_counter"] == 1
-            assert call_filter["operation"] == "open"
+
+        assert result is log
+        assert mock_replace.call_args[0][0]["business_counter"] == 5
 
     @pytest.mark.asyncio
-    async def test_create_open_close_log_create_returns_false(self):
+    async def test_a_different_business_with_the_same_counter_is_refused_not_replaced(self):
         repo = self._make_repo()
-        log = _open_close_log()
-        with patch.object(repo, "create_async", new_callable=AsyncMock, return_value=False):
+        log = _open_close_log(business_counter=5)
+        self._with_collection(repo, existing={"business_date": "20251231", "open_counter": 3})
+        with patch.object(repo, "replace_one_async", new_callable=AsyncMock) as mock_replace:
             with pytest.raises(CannotCreateException):
                 await repo.create_open_close_log(log)
+        mock_replace.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_open_close_log_write_failure(self):
+        repo = self._make_repo()
+        log = _open_close_log(business_counter=5)
+        collection = self._with_collection(repo)
+        collection.update_one.side_effect = RuntimeError("write failed")
+        with pytest.raises(CannotCreateException):
+            await repo.create_open_close_log(log)
 
     # -- shard key ------------------------------------------------------------
 

@@ -4,15 +4,13 @@ test_repositories.py by class group)."""
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from kugel_common.exceptions import (
     CannotCreateException,
     DuplicateKeyException,
 )
-from kugel_common.schemas.pagination import PaginatedResult, Metadata
+from kugel_common.schemas.pagination import Metadata, PaginatedResult
 
-from ._helpers import _mock_db, _cash_log
-
+from ._helpers import _cash_log, _mock_db
 
 # ===========================================================================
 
@@ -35,7 +33,10 @@ class TestCashInOutLogRepository:
             assert result is log
 
     @pytest.mark.asyncio
-    async def test_create_cash_in_out_log_duplicate_replaces(self):
+    async def test_create_cash_in_out_log_duplicate_is_refused_not_replaced(self):
+        # The log is written inside a transaction, which MongoDB aborts on
+        # E11000, so the replace that used to follow always failed (code 251);
+        # outside one it would have overwritten a different cash operation.
         repo = self._make_repo()
         log = _cash_log()
         with (
@@ -45,13 +46,9 @@ class TestCashInOutLogRepository:
             ),
             patch.object(repo, "replace_one_async", new_callable=AsyncMock, return_value=True) as mock_replace,
         ):
-            result = await repo.create_cash_in_out_log(log)
-            assert result is log
-            call_filter = mock_replace.call_args[0][0]
-            assert call_filter["tenant_id"] == "T1"
-            assert call_filter["store_code"] == "S1"
-            assert call_filter["terminal_no"] == 1
-            assert call_filter["generate_date_time"] == "2026-01-01T10:00:00"
+            with pytest.raises(CannotCreateException):
+                await repo.create_cash_in_out_log(log)
+            mock_replace.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_create_cash_in_out_log_create_returns_false(self):

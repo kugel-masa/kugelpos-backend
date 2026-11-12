@@ -715,7 +715,7 @@ class TestOpenCloseLogRepositoryCreate:
     async def test_duplicate_check_filter(self, repo):
         doc = _make_open_close_log(
             tenant_id="TX", store_code="SX", terminal_no=4,
-            business_date="20240301", open_counter=2, operation="close",
+            business_date="20240301", open_counter=2, business_counter=9, operation="close",
         )
         with (
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get,
@@ -726,8 +726,9 @@ class TestOpenCloseLogRepositoryCreate:
                 "tenant_id": "TX",
                 "store_code": "SX",
                 "terminal_no": 4,
-                "business_date": "20240301",
-                "open_counter": 2,
+                # Keyed on business_counter: open_counter restarts when a
+                # terminal is registered again, business_counter does not.
+                "business_counter": 9,
                 "operation": "close",
             }
             mock_get.assert_called_once_with(filter=expected_filter)

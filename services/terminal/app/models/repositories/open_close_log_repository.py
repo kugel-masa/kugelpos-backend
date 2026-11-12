@@ -2,6 +2,7 @@
 from typing import Type
 from logging import getLogger
 from kugel_common.utils.log_utils import mask_loggable
+from kugel_common.utils.misc import get_app_time
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
@@ -39,7 +40,8 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
 
         Records a terminal opening or closing operation, including the business date,
         terminal status, and summary information at the time of the operation.
-        Handles potential duplicate records by updating existing entries.
+        The same business written again overwrites its own log; a log of a
+        different business holding the same business_counter is never overwritten.
 
         Args:
             open_close_log: Open/close log document to create
@@ -53,23 +55,47 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
         try:
             open_close_log.shard_key = self.__get_shard_key(open_close_log)
             logger.debug(f"OpenCloseLog.create_open_close_log: open_close_log->{mask_loggable(open_close_log)}")
-            if not await self.create_async(open_close_log):
-                raise Exception()
-            return open_close_log
-        except DuplicateKeyException as e:
-            filter = {
+            if self.dbcollection is None:
+                await self.initialize()
+            # The unique index's key: one open and one close per business.
+            key = {
                 "tenant_id": open_close_log.tenant_id,
                 "store_code": open_close_log.store_code,
                 "terminal_no": open_close_log.terminal_no,
-                "business_date": open_close_log.business_date,
-                "open_counter": open_close_log.open_counter,
+                "business_counter": open_close_log.business_counter,
                 "operation": open_close_log.operation,
             }
-            logger.warning(
-                f"OpenCloseLog already exists. Updating open_close_log: {mask_loggable(open_close_log)} with filter: {filter}"
+            # Insert only if absent, so a duplicate never reaches the unique index.
+            # This is written inside a transaction (open, close), and MongoDB aborts
+            # the transaction on E11000: the replace that used to follow it as
+            # "recovery" always failed with code 251, whatever its filter.
+            open_close_log.created_at = get_app_time()
+            result = await self.dbcollection.update_one(
+                key, {"$setOnInsert": open_close_log.model_dump()}, upsert=True, session=self.session
             )
-            await self.replace_one_async(filter, open_close_log)
-            return open_close_log
+            if result.upserted_id is not None:
+                return open_close_log
+
+            existing = await self.dbcollection.find_one(key, session=self.session)
+            if (
+                existing is not None
+                and existing.get("business_date") == open_close_log.business_date
+                and existing.get("open_counter") == open_close_log.open_counter
+            ):
+                # The same business written again (a retried open or close).
+                logger.warning(
+                    f"OpenCloseLog already exists for this business, overwriting: {mask_loggable(open_close_log)}"
+                )
+                await self.replace_one_async(key, open_close_log)
+                return open_close_log
+            # Another business already holds this business_counter. Never
+            # overwrite it: that would silently replace a different business's log.
+            raise DuplicateKeyException(
+                "OpenCloseLog of a different business already holds this business_counter",
+                self.collection_name,
+                key,
+                logger,
+            )
         except Exception as e:
             # See the journal repository: CannotCreateException appends the
             # document masked, so the copy here is a duplicate and a leak.
