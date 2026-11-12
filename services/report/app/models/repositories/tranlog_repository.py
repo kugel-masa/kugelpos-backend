@@ -3,11 +3,13 @@ from typing import Type
 from logging import getLogger
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from pymongo.errors import DuplicateKeyError
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
+from app.models.repositories.insert_if_absent import insert_if_absent
 from app.config.settings import settings
 
 logger = getLogger(__name__)
@@ -72,21 +74,18 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
                     "business_counter": tranlog.business_counter,
                     "transaction_no": tranlog.transaction_no,
                 }
-            if await self.get_one_async(filter):
-                logger.warning(f"Transaction already exists. transaction: {tranlog}")
-                return tranlog
-
-            # Create a new transaction log
+            # Stored once on its identity, in one operation (see insert_if_absent).
             tranlog.shard_key = self.__get_shard_key(tranlog)
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")
-            if not await self.create_async(tranlog):
-                raise Exception()
+            if not await insert_if_absent(self, filter, tranlog):
+                logger.warning(f"Transaction already exists. transaction: {tranlog}")
+                return tranlog
             await self.__warn_on_numbering_reuse(tranlog)
             return tranlog
 
-        except DuplicateKeyException:
-            # Concurrent duplicate finalize (issue #156): both passed the
-            # get-then-insert check and one lost the unique-index race. That is
+        except (DuplicateKeyException, DuplicateKeyError):
+            # Concurrent duplicate finalize (issue #156): two upserts raced and
+            # one lost the unique-index race. That is
             # the benign "already converged" signal — skip, do not error. Only
             # the same identity can collide: the numbering index covers records
             # without a cart_id only (issue #230), so a sale reusing a numbering
