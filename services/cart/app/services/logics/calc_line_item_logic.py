@@ -85,4 +85,11 @@ def __round(value: Decimal) -> float:
             return float(value.to_integral_value(rounding="ROUND_HALF_UP"))
         case RoundMethod.Ceil.value:
             return float(value.to_integral_value(rounding="ROUND_CEILING"))
-    return float(value)
+        case _:
+            # Unreachable while Settings validates ROUND_METHOD_FOR_DISCOUNT at
+            # startup. Kept where the value is relied on: falling through used to
+            # return the un-rounded amount, which no caller can tell apart from a
+            # correctly rounded discount.
+            raise ValueError(
+                f"ROUND_METHOD_FOR_DISCOUNT is not a RoundMethod value: {settings.ROUND_METHOD_FOR_DISCOUNT!r}"
+            )
