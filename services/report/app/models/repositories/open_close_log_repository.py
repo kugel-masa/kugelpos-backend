@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
+from app.models.repositories.insert_if_absent import insert_if_absent
 from app.models.documents.open_close_log import OpenCloseLog
 from app.config.settings import settings
 
@@ -62,15 +63,11 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
                 "business_counter": open_close_log.business_counter,
                 "operation": open_close_log.operation,
             }
-            if await self.get_one_async(filter):
-                logger.warning(f"OpenCloseLog already exists. open_close_log: {mask_loggable(open_close_log)}")
-                return open_close_log
-
-            # create new open_close_log
+            # Stored once on its natural key, in one operation (see insert_if_absent).
             open_close_log.shard_key = self.__get_shard_key(open_close_log)
             logger.debug(f"OpenCloseLog.create_open_close_log: open_close_log->{mask_loggable(open_close_log)}")
-            if not await self.create_async(open_close_log):
-                raise Exception()
+            if not await insert_if_absent(self, filter, open_close_log):
+                logger.warning(f"OpenCloseLog already exists. open_close_log: {mask_loggable(open_close_log)}")
             return open_close_log
 
         except Exception as e:

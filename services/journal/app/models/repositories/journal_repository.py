@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import CannotCreateException, DocumentNotFoundException
 from kugel_common.schemas.pagination import PaginatedResult
+from app.models.repositories.insert_if_absent import insert_if_absent
 from app.models.documents.jornal_document import JournalDocument
 from app.config.settings import settings
 
@@ -60,16 +61,12 @@ class JournalRepository(AbstractRepository[JournalDocument]):
                 "generate_date_time": journal_doc.generate_date_time,
             }
 
-            existing_doc = await self.get_one_async(filter=filter)
-            if existing_doc:
-                logger.warning(f"Journal already exists. journal_doc: {journal_doc}")
-                return existing_doc
-
-            # Create a new journal document
+            # Stored once on its natural key, in one operation (see insert_if_absent).
             journal_doc.shard_key = self.__get_shard_key(journal_doc)
             logger.debug(f"JournalRepository.create_journal_async: journal_doc->{journal_doc}")
-            if not await self.create_async(journal_doc):
-                raise Exception()
+            if not await insert_if_absent(self, filter, journal_doc):
+                logger.warning(f"Journal already exists. journal_doc: {journal_doc}")
+                return await self.get_one_async(filter=filter)
             return journal_doc
         except Exception as e:
             message = (

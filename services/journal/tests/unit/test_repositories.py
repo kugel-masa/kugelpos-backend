@@ -39,6 +39,20 @@ from app.models.repositories.open_close_log_repository import OpenCloseLogReposi
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _failing_collection():
+    """A collection whose write fails."""
+    collection = MagicMock()
+    collection.update_one = AsyncMock(side_effect=RuntimeError("write failed"))
+    return collection
+
+
+def _upsert_collection(inserted: bool):
+    """A collection whose upsert either inserted the document or matched a stored one."""
+    collection = MagicMock()
+    collection.update_one = AsyncMock(return_value=MagicMock(upserted_id="new-id" if inserted else None))
+    return collection
+
+
 def _make_mock_db():
     """Create a MagicMock that looks like AsyncIOMotorDatabase."""
     return MagicMock()
@@ -382,8 +396,7 @@ class TestJournalRepositoryCreate:
     async def test_create_sets_shard_key(self, repo):
         doc = _make_journal_doc()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)),
         ):
             result = await repo.create_journal_async(doc)
             assert result.shard_key == "T001_S001_1_20240115"
@@ -391,7 +404,7 @@ class TestJournalRepositoryCreate:
     @pytest.mark.asyncio
     async def test_create_returns_existing_on_duplicate(self, repo):
         existing = _make_journal_doc()
-        with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
+        with patch.object(repo, "dbcollection", _upsert_collection(inserted=False)), patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
             result = await repo.create_journal_async(_make_journal_doc())
             assert result is existing
 
@@ -400,8 +413,7 @@ class TestJournalRepositoryCreate:
         from kugel_common.exceptions import CannotCreateException
         doc = _make_journal_doc()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=False),
+            patch.object(repo, "dbcollection", _failing_collection()),
         ):
             with pytest.raises(CannotCreateException):
                 await repo.create_journal_async(doc)
@@ -451,8 +463,7 @@ class TestTranlogRepositoryCreate:
     async def test_create_sets_shard_key(self, repo):
         doc = _make_tranlog()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)),
         ):
             result = await repo.create_tranlog_async(doc)
             # shard_key = tenant_id + store_code + terminal_no + date part of generate_date_time
@@ -461,7 +472,7 @@ class TestTranlogRepositoryCreate:
     @pytest.mark.asyncio
     async def test_create_returns_existing_on_duplicate(self, repo):
         existing = _make_tranlog()
-        with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
+        with patch.object(repo, "dbcollection", _upsert_collection(inserted=False)), patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
             result = await repo.create_tranlog_async(_make_tranlog())
             assert result is not None
 
@@ -470,8 +481,7 @@ class TestTranlogRepositoryCreate:
         from kugel_common.exceptions import CannotCreateException
         doc = _make_tranlog()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=False),
+            patch.object(repo, "dbcollection", _failing_collection()),
         ):
             with pytest.raises(CannotCreateException):
                 await repo.create_tranlog_async(doc)
@@ -483,8 +493,7 @@ class TestTranlogRepositoryCreate:
             tenant_id="TX", store_code="SX", terminal_no=7, business_counter=3, transaction_no=42
         )
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get,
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)) as mock_coll,
         ):
             await repo.create_tranlog_async(doc)
             # Legacy (no cart_id) dedupe keys on the (business_counter, transaction_no)
@@ -497,7 +506,7 @@ class TestTranlogRepositoryCreate:
                 "business_counter": 3,
                 "transaction_no": 42,
             }
-            mock_get.assert_called_once_with(expected_filter)
+            assert mock_coll.update_one.await_args.args[0] == expected_filter
 
 
 class TestTranlogRepositoryShardKey:
@@ -594,8 +603,7 @@ class TestCashInOutLogRepositoryCreate:
     async def test_create_sets_shard_key(self, repo):
         doc = _make_cash_log()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)),
         ):
             result = await repo.create_cash_in_out_log(doc)
             assert result.shard_key == "T001_S001_1_20240115"
@@ -603,7 +611,7 @@ class TestCashInOutLogRepositoryCreate:
     @pytest.mark.asyncio
     async def test_create_returns_existing_on_duplicate(self, repo):
         existing = _make_cash_log()
-        with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
+        with patch.object(repo, "dbcollection", _upsert_collection(inserted=False)), patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
             result = await repo.create_cash_in_out_log(_make_cash_log())
             assert result is not None
 
@@ -612,8 +620,7 @@ class TestCashInOutLogRepositoryCreate:
         from kugel_common.exceptions import CannotCreateException
         doc = _make_cash_log()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=False),
+            patch.object(repo, "dbcollection", _failing_collection()),
         ):
             with pytest.raises(CannotCreateException):
                 await repo.create_cash_in_out_log(doc)
@@ -626,8 +633,7 @@ class TestCashInOutLogRepositoryCreate:
             generate_date_time="2024-02-01T09:00:00Z",
         )
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get,
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)) as mock_coll,
         ):
             await repo.create_cash_in_out_log(doc)
             expected_filter = {
@@ -638,7 +644,7 @@ class TestCashInOutLogRepositoryCreate:
                 "open_counter": 2,
                 "generate_date_time": "2024-02-01T09:00:00Z",
             }
-            mock_get.assert_called_once_with(expected_filter)
+            assert mock_coll.update_one.await_args.args[0] == expected_filter
 
 
 class TestCashInOutLogRepositoryShardKey:
@@ -687,8 +693,7 @@ class TestOpenCloseLogRepositoryCreate:
     async def test_create_sets_shard_key(self, repo):
         doc = _make_open_close_log()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)),
         ):
             result = await repo.create_open_close_log(doc)
             assert result.shard_key == "T001_S001_1_20240115"
@@ -696,7 +701,7 @@ class TestOpenCloseLogRepositoryCreate:
     @pytest.mark.asyncio
     async def test_create_returns_existing_on_duplicate(self, repo):
         existing = _make_open_close_log()
-        with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
+        with patch.object(repo, "dbcollection", _upsert_collection(inserted=False)), patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=existing):
             result = await repo.create_open_close_log(_make_open_close_log())
             assert result is not None
 
@@ -705,8 +710,7 @@ class TestOpenCloseLogRepositoryCreate:
         from kugel_common.exceptions import CannotCreateException
         doc = _make_open_close_log()
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=False),
+            patch.object(repo, "dbcollection", _failing_collection()),
         ):
             with pytest.raises(CannotCreateException):
                 await repo.create_open_close_log(doc)
@@ -718,8 +722,7 @@ class TestOpenCloseLogRepositoryCreate:
             business_date="20240301", open_counter=2, business_counter=9, operation="close",
         )
         with (
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get,
-            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True),
+            patch.object(repo, "dbcollection", _upsert_collection(inserted=True)) as mock_coll,
         ):
             await repo.create_open_close_log(doc)
             expected_filter = {
@@ -731,7 +734,7 @@ class TestOpenCloseLogRepositoryCreate:
                 "business_counter": 9,
                 "operation": "close",
             }
-            mock_get.assert_called_once_with(filter=expected_filter)
+            assert mock_coll.update_one.await_args.args[0] == expected_filter
 
 
 class TestOpenCloseLogRepositoryShardKey:

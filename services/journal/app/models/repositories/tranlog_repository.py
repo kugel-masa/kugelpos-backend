@@ -8,6 +8,7 @@ from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.exceptions import CannotCreateException
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
+from app.models.repositories.insert_if_absent import insert_if_absent
 from app.config.settings import settings
 from app.exceptions import DocumentNotFoundException
 
@@ -51,16 +52,14 @@ class TranlogRepository(AbstractRepository[BaseTransaction]):
             CannotCreateException: If the transaction log cannot be created
         """
         try:
-            # Check if the transaction log already exists
-            if await self.get_one_async(self.__identity_filter(tranlog)):
-                logger.warning(f"Transaction already exists. transaction: {tranlog}")
-                return tranlog
-
-            # Create a new transaction log
+            # Stored once on its identity, in one operation (see insert_if_absent):
+            # a read-then-insert stored duplicates whenever the unique index was
+            # missing. Runs in the journal's transaction; a match does not abort it.
             tranlog.shard_key = self.__get_shard_key(tranlog)
             logger.debug(f"TranlogRepository.create_tranlog_async: tranlog->{tranlog}")
-            if not await self.create_async(tranlog):
-                raise Exception()
+            if not await insert_if_absent(self, self.__identity_filter(tranlog), tranlog):
+                logger.warning(f"Transaction already exists. transaction: {tranlog}")
+                return tranlog
             await self.__warn_on_numbering_reuse(tranlog)
             return tranlog
 

@@ -6,6 +6,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
 
+from app.models.repositories.insert_if_absent import insert_if_absent
 from app.config.settings import settings
 from app.models.documents.cash_in_out_log import CashInOutLog
 
@@ -59,16 +60,11 @@ class CashInOutLogRepository(AbstractRepository[CashInOutLog]):
                 "open_counter": cash_in_out_log.open_counter,
                 "generate_date_time": cash_in_out_log.generate_date_time,
             }
-            # Check if the log is already created
-            if await self.get_one_async(filter):
-                logger.warning(f"Cashlog already exists. Updating cashlog: {cash_in_out_log} with filter: {filter}")
-                return cash_in_out_log
-
-            # Generate a new cash in/out log
+            # Stored once on its natural key, in one operation (see insert_if_absent).
             cash_in_out_log.shard_key = self.__get_shard_key(cash_in_out_log)
             logger.debug(f"CashInOutLog.create_cash_in_out_log: cash_in_out_log->{cash_in_out_log}")
-            if not await self.create_async(cash_in_out_log):
-                raise Exception()
+            if not await insert_if_absent(self, filter, cash_in_out_log):
+                logger.warning(f"Cashlog already exists. Updating cashlog: {cash_in_out_log} with filter: {filter}")
             return cash_in_out_log
 
         except Exception as e:
