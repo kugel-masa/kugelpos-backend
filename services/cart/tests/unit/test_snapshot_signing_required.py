@@ -267,7 +267,7 @@ class TestTheContractIsInTheSpec:
             "application/json"
         ]["example"]
 
-        assert example["user_error"]["code"] == CartErrorCode.SNAPSHOT_GENERATION_FAILED
+        assert example["userError"]["code"] == CartErrorCode.SNAPSHOT_GENERATION_FAILED
 
     def test_it_says_to_repeat_the_request(self, schema):
         description = schema["paths"]["/carts/{cart_id}/bill"]["post"]["responses"]["503"]["description"]

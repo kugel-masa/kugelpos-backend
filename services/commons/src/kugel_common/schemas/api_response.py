@@ -61,3 +61,23 @@ class ApiResponse(BaseSchemmaModel, Generic[T]):
     data: Optional[T]
     metadata: Optional[Metadata] = None
     operation: Optional[str] = None
+
+    def to_response_body(self) -> dict:
+        """The JSON body of a response built by hand (an error handler, a middleware).
+
+        A route's response goes through FastAPI's response_model and is written
+        with the aliases - ``userError``, as the naming convention and the error
+        code specification say. The bodies built by hand called ``model_dump()``
+        without them, so only an error answered ``user_error``: a client following
+        the convention could not read the error code exactly when it needed it.
+
+        Both names are written during the transition:
+
+        - ``userError``: the convention's name. Read this one.
+        - ``user_error``: **deprecated**. What error responses carried before;
+          kept only so existing clients keep working, and to be removed in a
+          later release (see docs/*/general/error_code_spec.md).
+        """
+        body = self.model_dump(by_alias=True)
+        body["user_error"] = body.get("userError")
+        return body

@@ -100,12 +100,12 @@ class UnhandledErrorMiddleware:
                 raise
             response = build_unexpected_error_response(e, operation="unhandled_error_middleware")
             _log("Unhandled exception answered as %s", response.code)
-            # Emitted through JSONResponse, exactly as the handler does, so the
-            # body is the one clients already parse - `user_error`, `data` and
-            # `operation` included. The middleware error payloads elsewhere in
-            # this package use a different, smaller shape; a 500 must not
-            # silently change shape depending on which layer caught it.
-            await JSONResponse(status_code=response.code, content=response.model_dump())(scope, receive, send)
+            # Emitted through JSONResponse with the same body as the handler, so
+            # a 500 does not change shape depending on which layer caught it:
+            # `userError` (and the deprecated `user_error` during the
+            # transition), `data` and `operation` included. The middleware error
+            # payloads elsewhere in this package use a different, smaller shape.
+            await JSONResponse(status_code=response.code, content=response.to_response_body())(scope, receive, send)
 
 
 def add_unhandled_error_middleware(app: FastAPI) -> None:

@@ -323,12 +323,15 @@ async def send_json_error(send, status_code: int, message: str, error_code: str 
     payload and hand the client an unparseable 415, hiding the very reason the
     request was refused.
 
-    The shape is byte-for-byte what interpolation produced for a message that
-    needed no escaping, so nothing that already parses these responses changes.
+    The shape is what interpolation produced for a message that needed no
+    escaping, plus the deprecated ``user_error`` next to ``userError`` during the
+    transition (see ApiResponse.to_response_body).
     """
     user_error = None if error_code is None else {"code": error_code, "message": message}
     payload = json.dumps(
-        {"success": False, "code": status_code, "message": message, "userError": user_error},
+        # userError is the convention's name (see ApiResponse.to_response_body);
+        # user_error is deprecated and written alongside it during the transition.
+        {"success": False, "code": status_code, "message": message, "userError": user_error, "user_error": user_error},
         ensure_ascii=False,
     ).encode()
     await send(

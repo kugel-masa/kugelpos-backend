@@ -148,7 +148,9 @@ async def _get_terminal_info_by_api_key_scan(api_key: str):
                     store_code=terminal_info.store_code,
                     id=staff_data.get("id"),
                     name=staff_data.get("name"),
-                    pin=staff_data.get("pin"),
+                    # No pin. Nothing downstream of a token reads it, the PIN's
+                    # supply is closed (#136), and copying it back would bring a
+                    # plaintext PIN left over from older records into memory.
                 )
             return terminal_info
 

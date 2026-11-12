@@ -301,7 +301,9 @@ class TestTransformTerminalInfo:
         assert info.staff is not None
         assert info.staff.id == "S1"
         assert info.staff.name == "Alice"
-        assert info.staff.pin == "1234"
+        # The PIN is not restored: a terminal response never carries one
+        # (#136), and a stored document may still hold an old plaintext one.
+        assert info.staff.pin is None
 
     def test_staff_snake_case(self):
         d = {
@@ -314,7 +316,9 @@ class TestTransformTerminalInfo:
         info = transform_terminal_info(d)
         assert info.staff.id == "S2"
         assert info.staff.name == "Bob"
-        assert info.staff.pin == "9999"
+        # The PIN is not restored: a terminal response never carries one
+        # (#136), and a stored document may still hold an old plaintext one.
+        assert info.staff.pin is None
 
 
 # ---------------------------------------------------------------------------
