@@ -198,7 +198,7 @@
 - 複合インデックス: `tenant_id + store_code + terminal_no + business_date + open_counter`
 
 ### log_open_close
-- ユニーク複合インデックス: `tenant_id + store_code + terminal_no + business_date + open_counter + operation`
+- ユニーク複合インデックス: `tenant_id + store_code + terminal_no + business_counter + operation`（1 つの営業に開局と閉局が 1 件ずつ。`business_counter` は端末を登録し直しても引き継がれ、使い回されない。以前のキー `business_date + open_counter + operation` は `POST /api/v1/tenants` で入れ替わる）
 
 ### status_terminal_delivery
 - ユニークインデックス: `event_id`

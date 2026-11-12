@@ -501,6 +501,7 @@ class TestOpenCloseLogRepository:
             terminal_no=3,
             business_date="20250202",
             open_counter=2,
+            business_counter=9,
             operation="close",
         )
         with (
@@ -512,8 +513,9 @@ class TestOpenCloseLogRepository:
                 "tenant_id": "T002",
                 "store_code": "S005",
                 "terminal_no": 3,
-                "business_date": "20250202",
-                "open_counter": 2,
+                # Keyed on business_counter: open_counter restarts when a
+                # terminal is registered again, business_counter does not.
+                "business_counter": 9,
                 "operation": "close",
             }
             mock_get.assert_awaited_once_with(expected_filter)

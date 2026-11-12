@@ -36,8 +36,9 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
         """
         Create a new open/close log in the database.
 
-        This method attempts to store an open/close log document in the database.
-        If a duplicate key error occurs, it will update the existing document instead.
+        This method stores an open/close log document unless the log of the same
+        business (business_counter and operation) is already stored, in which case
+        the delivery is a redelivery and the stored log is kept.
 
         Args:
             open_close_log: Open/close log document to store
@@ -54,8 +55,11 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
                 "tenant_id": open_close_log.tenant_id,
                 "store_code": open_close_log.store_code,
                 "terminal_no": open_close_log.terminal_no,
-                "business_date": open_close_log.business_date,
-                "open_counter": open_close_log.open_counter,
+                # The unique index's key. It was (business_date, open_counter,
+                # operation), and open_counter restarts when a terminal is
+                # registered again: the new business's log then looked "already
+                # created" and was skipped. business_counter is never reused.
+                "business_counter": open_close_log.business_counter,
                 "operation": open_close_log.operation,
             }
             if await self.get_one_async(filter):

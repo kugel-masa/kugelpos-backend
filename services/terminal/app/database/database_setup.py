@@ -201,8 +201,8 @@ async def create_open_close_log_collection(tenant_id: str):
     Creates the open/close log collection with required indexes
 
     This collection stores records of terminal opening and closing operations
-    with a unique index on the terminal identifier, business date,
-    open counter, and operation type
+    with a unique index on the terminal identifier, business counter and
+    operation type
 
     Args:
         tenant_id: Tenant ID to create collection for
@@ -210,19 +210,32 @@ async def create_open_close_log_collection(tenant_id: str):
     name = settings.DB_COLLECTION_NAME_OPEN_CLOSE_LOG
     index_key_list = [
         {
+            # One open and one close per business (open epoch). Keyed on
+            # business_counter, which the terminal carries across a re-registration
+            # and never reuses. The previous key was (business_date, open_counter,
+            # operation), and open_counter restarts at 1 when a terminal is deleted
+            # and registered again: a reopen the same day collided with the previous
+            # registration's log - terminal's open failed, and journal and report
+            # skipped the new business's log as already stored.
             "keys": {
                 "tenant_id": 1,
                 "store_code": 1,
                 "terminal_no": 1,
-                "business_date": 1,
-                "open_counter": 1,
+                "business_counter": 1,
                 "operation": 1,
             },
             "unique": True,
         }
     ]
     await create_some_collection(
-        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+        tenant_id=tenant_id,
+        collection_name=name,
+        index_keys_list=index_key_list,
+        index_name=name + "_index",
+        # Retired on POST /api/v1/tenants; the additive startup ensure only logs it.
+        drop_indexes_by_keys=[
+            {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_date": 1, "open_counter": 1, "operation": 1}
+        ],
     )
 
 

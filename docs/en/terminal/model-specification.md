@@ -189,7 +189,7 @@ Collection for tracking event delivery status.
 - Single index: `generate_date_time`
 
 ### open_close_log
-- Compound index: `tenant_id + store_code + terminal_no + business_date + operation`
+- Unique compound index: `tenant_id + store_code + terminal_no + business_counter + operation` (one open and one close per business; `business_counter` is carried across a terminal re-registration and never reused. The previous key `business_date + open_counter + operation` is replaced on `POST /api/v1/tenants`)
 - Single index: `generate_date_time`
 
 ### terminallog_delivery_status

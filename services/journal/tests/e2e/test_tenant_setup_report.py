@@ -29,6 +29,7 @@ DUPLICATE = {
     "terminal_no": 5,
     "business_date": "20260822",
     "open_counter": 7,
+    "business_counter": 7,
     "operation": "open",
 }
 
@@ -75,7 +76,7 @@ async def test_the_failure_names_the_collection_and_the_documents(http_client, a
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         detail = response.text
         assert "log_open_close" in detail, f"the response did not name the collection: {detail[:300]}"
-        assert "open_counter" in detail, "the response did not name the index"
+        assert "business_counter" in detail, "the response did not name the index"
         assert "x3" in detail, f"the response did not say what is in the way: {detail[:300]}"
     finally:
         await _unblock()

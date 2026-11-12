@@ -37,7 +37,7 @@ class CashInOutLogRepository(AbstractRepository[CashInOutLog]):
         Create a new cash in/out log document in the database
 
         Records a cash transaction (addition or removal) for a terminal's cash drawer.
-        Handles potential duplicate transactions by updating existing records.
+        A duplicate key is refused rather than overwritten.
 
         Args:
             cash_in_out_log: Cash in/out log document to create
@@ -53,18 +53,13 @@ class CashInOutLogRepository(AbstractRepository[CashInOutLog]):
         try:
             cash_in_out_log.shard_key = self.__get_shard_key(cash_in_out_log)
             logger.debug(f"CashInOutLog.create_cash_in_out_log: cash_in_out_log->{cash_in_out_log}")
+            # No replace-on-duplicate "recovery": this is written inside a
+            # transaction, which MongoDB aborts on E11000, so a replace after it
+            # always failed (code 251); outside one it would have overwritten a
+            # different cash operation. The key carries a microsecond timestamp,
+            # so a genuine collision is not expected; if one happens it is refused.
             if not await self.create_async(cash_in_out_log):
                 raise Exception()
-            return cash_in_out_log
-        except DuplicateKeyException as e:
-            filter = {
-                "tenant_id": cash_in_out_log.tenant_id,
-                "store_code": cash_in_out_log.store_code,
-                "terminal_no": cash_in_out_log.terminal_no,
-                "generate_date_time": cash_in_out_log.generate_date_time,
-            }
-            logger.warning(f"Cashlog already exists. Updating cashlog: {cash_in_out_log} with filter: {filter}")
-            await self.replace_one_async(filter, cash_in_out_log)
             return cash_in_out_log
         except Exception as e:
             message = f"Cannot create cash in/out log: {cash_in_out_log}"
