@@ -1,8 +1,9 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from kugel_common.config.settings_app import AppSettings
+from kugel_common.enums import RoundMethod
 from kugel_common.config.settings_auth import AuthSettings
 from kugel_common.config.settings_datetime import DatetimeSettings
 from kugel_common.config.settings_tax import TaxSettings
@@ -41,6 +42,28 @@ class Settings(
     # 4 MB leaves room for the item-master copies, longer names, image URLs and
     # discounts that a real basket carries (issue #195).
     MAX_REQUEST_BODY_BYTES: int = Field(default=4 * 1024 * 1024)
+
+    @field_validator("ROUND_METHOD_FOR_DISCOUNT")
+    @classmethod
+    def _round_method_for_discount_is_known(cls, value: str) -> str:
+        """Refuse a discount rounding method the discount logic cannot act on.
+
+        The discount paths match this value exactly against RoundMethod. Any
+        other value - `round` in lower case is enough - used to match nothing and
+        fall through to the un-rounded amount, so discounts carried sub-yen
+        fractions into line totals, the tax base and the tranlog with nothing in
+        the logs. RoundMethod has no member meaning "do not round", so that was
+        never what the setting asked for.
+
+        Validated here rather than in commons' AppSettings: cart is the only
+        service that reads it, so a mistyped value stops cart, not every service.
+        """
+        allowed = [method.value for method in RoundMethod]
+        if value not in allowed:
+            raise ValueError(
+                f"ROUND_METHOD_FOR_DISCOUNT must be one of {allowed} (case-sensitive), got {value!r}"
+            )
+        return value
 
     @model_validator(mode="after")
     def _honour_deprecated_body_limit_name(self):
