@@ -425,9 +425,12 @@ async def test_the_payload_is_byte_identical_for_a_message_needing_no_escaping()
 
     await send_json_error(send, 413, "Request body too large", "401509")
 
+    # userError, plus the deprecated user_error copy during the transition
+    # (ApiResponse.to_response_body); nothing else in the shape changes.
     expected = (
         b'{"success": false, "code": 413, "message": "Request body too large", '
-        b'"userError": {"code": "401509", "message": "Request body too large"}}'
+        b'"userError": {"code": "401509", "message": "Request body too large"}, '
+        b'"user_error": {"code": "401509", "message": "Request body too large"}}'
     )
     assert messages[-1]["body"] == expected
     assert dict(messages[0]["headers"])[b"content-length"] == str(len(expected)).encode()

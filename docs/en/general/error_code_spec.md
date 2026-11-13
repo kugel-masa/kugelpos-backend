@@ -155,6 +155,14 @@ class ErrorMessage:
 }
 ```
 
+#### `user_error` (deprecated)
+
+During a transition, error responses also carry `user_error`, with the same content as `userError`.
+
+- **Read `userError`.** It is the name the naming convention (lowerCamelCase JSON bodies) and successful responses use.
+- **`user_error` is deprecated.** Error responses (the exception handlers and the unhandled-error middleware) used to answer with this name only, so it is kept for existing clients. It will be removed in a later release.
+- New clients must not read `user_error`. Clients that read it today should move to `userError`.
+
 ## Custom Exception Classes
 
 ### Base Exception Class

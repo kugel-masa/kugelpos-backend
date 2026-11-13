@@ -99,7 +99,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         logger.error(f"HTTPException: {error_response}")
         return JSONResponse(
-            status_code=error_response.code, content=error_response.model_dump()
+            status_code=error_response.code, content=error_response.to_response_body()
         )
 
     # Handler for RequestValidationError
@@ -131,7 +131,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.error(f"RequestValidationError: {error_response}")
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_response.model_dump(),
+            content=error_response.to_response_body(),
         )
 
     # Handler for ValidationError
@@ -152,7 +152,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.error(f"ValidationError: {error_response}")
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_response.model_dump(),
+            content=error_response.to_response_body(),
         )
 
     # Handler for AppException
@@ -190,7 +190,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.error(f"AppException: {error_response}")
         return JSONResponse(
             status_code=status_code,
-            content=error_response.model_dump()
+            content=error_response.to_response_body()
         )
 
     # Handler for general Exception
@@ -206,5 +206,5 @@ def register_exception_handlers(app: FastAPI) -> None:
         error_response = build_unexpected_error_response(exc, operation=f"{inspect.currentframe().f_code.co_name}")
         logger.error(f"Exception: {error_response}")
         return JSONResponse(
-            status_code=error_response.code, content=error_response.model_dump()
+            status_code=error_response.code, content=error_response.to_response_body()
         )

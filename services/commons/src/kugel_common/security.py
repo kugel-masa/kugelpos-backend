@@ -501,7 +501,10 @@ def transform_terminal_info(terminal_dict: dict) -> TerminalInfoDocument:
             "store_code": return_terminal.store_code,
             "id": staff.get("staffId") or staff.get("id"),
             "name": staff.get("staffName") or staff.get("name"),
-            "pin": staff.get("staffPin") or staff.get("pin")
+            # No pin. A terminal response never carries one (#136), and the stored
+            # document can still hold a plaintext PIN from older records:
+            # restoring it here would put it back into every caller's in-memory
+            # terminal, one logging or forwarding slip from leaking.
         }
         return_terminal.staff = StaffMasterDocument(**staff_dict)
     return return_terminal
