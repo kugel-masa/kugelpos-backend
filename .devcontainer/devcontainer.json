@@ -1,0 +1,7 @@
+{
+  "name": "kugelpos-backend",
+  // The image Codespaces picks by default; pinned so this file changes nothing
+  // but the setup below.
+  "image": "mcr.microsoft.com/devcontainers/universal:6",
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}
