@@ -424,11 +424,15 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    # The daprd sidecars wait on this and exit for good if the AMQP port refuses
+    # them. `ping` answers as soon as the Erlang node is up, which on a cold start
+    # is well before the 5672 listener opens; check_port_connectivity waits for it.
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 5
+      start_period: 60s
     networks:
       - kugelpos_net
     volumes:

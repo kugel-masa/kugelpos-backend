@@ -167,7 +167,7 @@ async def create_snapshot(
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
     store_code: str = Path(...),
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
-    snapshot_request: CreateSnapshotRequest = Body(CreateSnapshotRequest(), by_alias=True),
+    snapshot_request: CreateSnapshotRequest = Body(CreateSnapshotRequest()),
     snapshot_service: SnapshotService = Depends(get_snapshot_service),
 ):
     """Create a stock snapshot"""
@@ -408,7 +408,7 @@ async def update_stock(
     store_code: str = Path(...),
     item_code: str = Path(...),
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
-    update_request: StockUpdateRequest = Body(..., by_alias=True),
+    update_request: StockUpdateRequest = Body(...),
     stock_service: StockService = Depends(get_stock_service),
 ):
     """Update stock quantity"""
@@ -513,7 +513,7 @@ async def set_minimum_quantity(
     store_code: str = Path(...),
     item_code: str = Path(...),
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
-    minimum_request: SetMinimumQuantityRequest = Body(..., by_alias=True),
+    minimum_request: SetMinimumQuantityRequest = Body(...),
     stock_service: StockService = Depends(get_stock_service),
 ):
     """Set minimum quantity for an item"""
@@ -558,7 +558,7 @@ async def set_reorder_parameters(
     store_code: str = Path(...),
     item_code: str = Path(...),
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
-    reorder_request: SetReorderParametersRequest = Body(..., by_alias=True),
+    reorder_request: SetReorderParametersRequest = Body(...),
     stock_service: StockService = Depends(get_stock_service),
 ):
     """Set reorder point and quantity for an item"""

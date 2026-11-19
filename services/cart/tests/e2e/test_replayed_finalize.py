@@ -24,10 +24,16 @@ a mock has.
 """
 
 import os
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
 from fastapi import status
+
+# The carried transaction time must fall inside cart's accepted window
+# (-90d / +1d from server time), so it is derived from today rather than
+# pinned to a calendar date that eventually ages out of the window.
+TXN_DATE = (date.today() - timedelta(days=1)).isoformat()
 
 # Kept above the numbering the rest of the suite produces, and removed
 # afterwards; a carried seq has to be unique inside the open session.
@@ -132,7 +138,7 @@ def _finalize(snapshot, seq, counter):
         "payload": {
             "seq": seq,
             "receiptCounter": counter,
-            "transactionDatetime": "2026-08-22T09:00:00",
+            "transactionDatetime": f"{TXN_DATE}T09:00:00",
         },
     }
 
