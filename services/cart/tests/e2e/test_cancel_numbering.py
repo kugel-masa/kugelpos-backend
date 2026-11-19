@@ -16,10 +16,16 @@ not.
 """
 
 import os
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
 from fastapi import status
+
+# The carried transaction time must fall inside cart's accepted window
+# (-90d / +1d from server time), so it is derived from today rather than
+# pinned to a calendar date that eventually ages out of the window.
+TXN_DATE = (date.today() - timedelta(days=2)).isoformat()
 
 RECEIPT_NO_START = 111111
 # Per-open seq values these tests carry; kept above the suite's own numbering and
@@ -88,7 +94,7 @@ async def test_carried_cancel_uses_the_terminals_numbering(http_client, api_head
             "payload": {
                 "seq": 8801,
                 "receiptCounter": 3,
-                "transactionDatetime": "2026-08-20T13:00:00",
+                "transactionDatetime": f"{TXN_DATE}T13:00:00",
             },
         },
         headers=api_header,
@@ -125,7 +131,7 @@ async def test_carried_cancel_does_not_collide_with_a_sale(http_client, api_head
         f"/api/v1/carts/{cart_id}/bill?terminal_id={opened_terminal_id}",
         json={
             "signedSnapshot": response.json()["data"]["signedSnapshot"],
-            "payload": {"seq": 8810, "receiptCounter": 10, "transactionDatetime": "2026-08-20T13:10:00"},
+            "payload": {"seq": 8810, "receiptCounter": 10, "transactionDatetime": f"{TXN_DATE}T13:10:00"},
         },
         headers=api_header,
     )
@@ -138,7 +144,7 @@ async def test_carried_cancel_does_not_collide_with_a_sale(http_client, api_head
         f"/api/v1/carts/{cancel_cart_id}/cancel?terminal_id={opened_terminal_id}",
         json={
             "signedSnapshot": cancel_snapshot,
-            "payload": {"seq": 8811, "receiptCounter": 11, "transactionDatetime": "2026-08-20T13:11:00"},
+            "payload": {"seq": 8811, "receiptCounter": 11, "transactionDatetime": f"{TXN_DATE}T13:11:00"},
         },
         headers=api_header,
     )
@@ -199,7 +205,7 @@ async def test_retried_carried_cancel_is_idempotent(http_client, api_header, ope
         "payload": {
             "seq": SYNTHETIC_SEQ_BASE + 20,
             "receiptCounter": 20,
-            "transactionDatetime": "2026-08-20T13:20:00",
+            "transactionDatetime": f"{TXN_DATE}T13:20:00",
         },
     }
     url = f"/api/v1/carts/{cart_id}/cancel?terminal_id={opened_terminal_id}"

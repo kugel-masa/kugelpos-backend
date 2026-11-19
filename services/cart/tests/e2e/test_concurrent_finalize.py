@@ -16,10 +16,16 @@ had recorded exactly once.
 
 import asyncio
 import os
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
 from fastapi import status
+
+# The carried transaction time must fall inside cart's accepted window
+# (-90d / +1d from server time), so it is derived from today rather than
+# pinned to a calendar date that eventually ages out of the window.
+TXN_DATE = (date.today() - timedelta(days=2)).isoformat()
 
 SYNTHETIC_SEQ_BASE = 9500
 
@@ -111,7 +117,7 @@ async def test_concurrent_identical_bills_both_succeed(http_client, api_header, 
         "payload": {
             "seq": SYNTHETIC_SEQ_BASE + 1,
             "receiptCounter": 41,
-            "transactionDatetime": "2026-08-20T09:00:00",
+            "transactionDatetime": f"{TXN_DATE}T09:00:00",
         },
     }
     url = f"/api/v1/carts/{cart_id}/bill?terminal_id={opened_terminal_id}"
@@ -157,7 +163,7 @@ async def test_concurrent_identical_cancels_both_succeed(http_client, api_header
         "payload": {
             "seq": SYNTHETIC_SEQ_BASE + 2,
             "receiptCounter": 42,
-            "transactionDatetime": "2026-08-20T09:01:00",
+            "transactionDatetime": f"{TXN_DATE}T09:01:00",
         },
     }
     url = f"/api/v1/carts/{cart_id}/cancel?terminal_id={opened_terminal_id}"

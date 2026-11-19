@@ -17,10 +17,16 @@ inert.
 """
 
 import os
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
 from fastapi import status
+
+# The carried transaction time must fall inside cart's accepted window
+# (-90d / +1d from server time), so it is derived from today rather than
+# pinned to a calendar date that eventually ages out of the window.
+TXN_DATE = (date.today() - timedelta(days=2)).isoformat()
 
 # What a tenant gets when nobody overrides the range. Asserted as the expected
 # seeding, not used as a fallback: a lookup that does not answer is the very
@@ -164,7 +170,7 @@ async def test_carried_counter_prints_inside_the_configured_range(
         snapshot,
         seq=9001,
         receiptCounter=1,
-        transactionDatetime="2026-08-20T10:00:00",
+        transactionDatetime=f"{TXN_DATE}T10:00:00",
     )
 
     assert data["receiptNo"] == start
@@ -184,7 +190,7 @@ async def test_counter_advances_within_the_range(http_client, api_header, opened
         snapshot,
         seq=9002,
         receiptCounter=5,
-        transactionDatetime="2026-08-20T10:01:00",
+        transactionDatetime=f"{TXN_DATE}T10:01:00",
     )
 
     assert data["receiptNo"] == start + 4
@@ -204,7 +210,7 @@ async def test_counter_wraps_at_the_end_of_the_range(http_client, api_header, op
         snapshot,
         seq=9003,
         receiptCounter=width + 1,  # first number of the second cycle
-        transactionDatetime="2026-08-20T10:02:00",
+        transactionDatetime=f"{TXN_DATE}T10:02:00",
     )
 
     assert data["receiptNo"] == start
@@ -223,7 +229,7 @@ async def test_last_number_of_a_cycle(http_client, api_header, opened_terminal_i
         snapshot,
         seq=9004,
         receiptCounter=width,
-        transactionDatetime="2026-08-20T10:03:00",
+        transactionDatetime=f"{TXN_DATE}T10:03:00",
     )
 
     assert data["receiptNo"] == end
@@ -251,7 +257,7 @@ async def test_a_named_printed_number_does_not_reach_the_receipt(
         seq=9005,
         receiptCounter=1,
         receiptNo=4242,  # no longer part of the context
-        transactionDatetime="2026-08-20T10:04:00",
+        transactionDatetime=f"{TXN_DATE}T10:04:00",
     )
 
     assert data["receiptNo"] == start
@@ -275,7 +281,7 @@ async def test_a_context_carrying_only_a_printed_number_is_refused(http_client, 
             "payload": {
                 "seq": 9006,
                 "receiptNo": 4242,
-                "transactionDatetime": "2026-08-20T10:05:00",
+                "transactionDatetime": f"{TXN_DATE}T10:05:00",
             },
         },
         headers=api_header,
