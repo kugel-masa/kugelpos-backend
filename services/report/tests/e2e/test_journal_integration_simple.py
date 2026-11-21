@@ -9,6 +9,7 @@ import pytest
 from httpx import AsyncClient
 from datetime import datetime
 from kugel_common.utils.misc import get_app_time
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 @pytest.mark.asyncio
@@ -47,10 +48,7 @@ async def test_api_key_journal_integration():
 
     # Step 2: Get API key for terminal
     print("\n2. Getting API key for terminal...")
-    async with AsyncClient() as client:
-        response = await client.get(
-            f"{base_url_terminal}/terminals/{terminal_id}?include_api_key=true", headers=headers_jwt
-        )
+    response = await issue_terminal_api_key(terminal_id, headers_jwt, base_url_terminal)
 
     if response.status_code != 200:
         print(f"Failed to get terminal info: {response.status_code} - {response.text}")

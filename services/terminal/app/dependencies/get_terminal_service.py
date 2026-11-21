@@ -10,9 +10,11 @@ terminal service instances with all necessary repositories and services.
 from fastapi import Depends, HTTPException, Path, Query, Request, status
 from logging import getLogger
 from typing import Optional
+from datetime import timedelta
 
 from kugel_common.database import database as db_helper
 from kugel_common.utils.log_utils import mask_loggable
+from kugel_common.utils.terminal_auth import create_terminal_token
 from kugel_common.security import (
     get_tenant_id_with_security,
     get_tenant_id_with_security_by_query_optional,
@@ -40,6 +42,9 @@ from app.exceptions import NotFoundException
 
 # Get logger instance
 logger = getLogger(__name__)
+
+# Lifetime of the token minted for the terminal's own outbound calls
+OUTBOUND_TOKEN_MINUTES = 5
 
 
 async def get_terminal_service_async(
@@ -75,6 +80,14 @@ async def get_terminal_service_async(
     except NotFoundException:
         logger.info(f"Terminal {terminal_id} not found in tenant {tenant_id}. Creating new terminal info.")
         terminal_info = None
+
+    if terminal_info is not None:
+        # The terminal's calls to master-data, cart and this service carry the
+        # terminal's own token. They used to carry the stored api_key, which is
+        # now only a digest (issue #136). Short-lived: it lives for one request.
+        terminal_info.jwt_token = create_terminal_token(
+            terminal_info, expires_delta=timedelta(minutes=OUTBOUND_TOKEN_MINUTES)
+        )
 
     staff_master_repo = StaffMasterWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
     store_info_repo = StoreInfoWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)

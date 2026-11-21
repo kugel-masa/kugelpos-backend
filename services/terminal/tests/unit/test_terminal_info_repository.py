@@ -14,6 +14,8 @@ from kugel_common.exceptions import (
 )
 from kugel_common.schemas.pagination import PaginatedResult, Metadata
 
+from kugel_common.utils.terminal_api_key import hash_api_key
+
 from ._helpers import _mock_db, _terminal_info_doc
 
 
@@ -111,6 +113,46 @@ class TestTerminalInfoRepository:
             assert result.api_key is not None
 
     @pytest.mark.asyncio
+    async def test_create_stores_only_the_digest(self):
+        """The key is returned once; the document written holds its digest and
+        no plaintext (issue #136)."""
+        repo = self._make_repo("T1")
+        with (
+            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None),
+            patch.object(repo, "create_async", new_callable=AsyncMock, return_value=True) as mock_create,
+        ):
+            result = await repo.create_terminal_info(store_code="S1", terminal_no=1, description="desc")
+        written = mock_create.await_args.args[0]
+        assert written.api_key is None
+        assert written.api_key_hash == hash_api_key(result.api_key)
+        assert repo.terminal_info.api_key is None
+        assert "api_key" not in {k for k, v in written.model_dump().items() if v}
+
+    @pytest.mark.asyncio
+    async def test_reissue_replaces_the_digest_and_returns_the_new_key_once(self):
+        repo = self._make_repo("T1")
+        old_hash = hash_api_key("old-key")
+        doc = _terminal_info_doc(api_key=None, api_key_hash=old_hash)
+        with (
+            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=doc),
+            patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_update,
+        ):
+            result = await repo.reissue_api_key_async("T1-S1-1")
+        new_key = result.api_key
+        assert new_key and new_key != "old-key"
+        update = mock_update.await_args.args[1]
+        assert update == {"api_key_hash": hash_api_key(new_key), "api_key": None}
+        assert update["api_key_hash"] != old_hash
+        assert repo.terminal_info.api_key is None
+
+    @pytest.mark.asyncio
+    async def test_reissue_unknown_terminal_raises_not_found(self):
+        repo = self._make_repo("T1")
+        with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None):
+            with pytest.raises(NotFoundException):
+                await repo.reissue_api_key_async("T1-S1-999")
+
+    @pytest.mark.asyncio
     async def test_create_terminal_info_already_exists(self):
         repo = self._make_repo("T1")
         existing = _terminal_info_doc()
@@ -150,17 +192,36 @@ class TestTerminalInfoRepository:
     @pytest.mark.asyncio
     async def test_replace_terminal_info_success(self):
         repo = self._make_repo()
-        doc = _terminal_info_doc()
-        with patch.object(repo, "replace_one_async", new_callable=AsyncMock, return_value=True) as mock_replace:
+        doc = _terminal_info_doc(api_key=None, api_key_hash=hash_api_key("key123"), status="Opened")
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_update:
             result = await repo.replace_terminal_info_async("T1-S1-1", doc)
-            mock_replace.assert_awaited_once_with({"terminal_id": "T1-S1-1"}, doc)
-            assert result is True
+        assert result is True
+        filter_, values = mock_update.await_args.args
+        assert filter_ == {"terminal_id": "T1-S1-1"}
+        assert values["status"] == "Opened"
+        assert doc.updated_at is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "credential",
+        [{"api_key": None, "api_key_hash": "stale-digest"}, {"api_key": "stale-plaintext", "api_key_hash": None}],
+    )
+    async def test_replace_never_writes_the_credential(self, credential):
+        """The document was read before the caller's work; writing its key back
+        would undo a reissue that ran in between (issue #136)."""
+        repo = self._make_repo()
+        doc = _terminal_info_doc(**credential)
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_update:
+            await repo.replace_terminal_info_async("T1-S1-1", doc)
+        values = mock_update.await_args.args[1]
+        assert "api_key" not in values
+        assert "api_key_hash" not in values
 
     @pytest.mark.asyncio
     async def test_replace_terminal_info_fails(self):
         repo = self._make_repo()
         doc = _terminal_info_doc()
-        with patch.object(repo, "replace_one_async", new_callable=AsyncMock, return_value=False):
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
             with pytest.raises(UpdateNotWorkException):
                 await repo.replace_terminal_info_async("T1-S1-1", doc)
 

@@ -111,3 +111,16 @@ class TestTheFailurePaths:
             "a failure message reports the live terminal, api_key and staff pin included"
         )
         assert source.count("terminal: {mask_loggable(terminal)}") == 4
+
+
+def test_the_api_key_digest_does_not_travel_either():
+    # Not a credential, but nothing that reads the log needs it (#136)
+    terminal = _terminal()
+    terminal.api_key = None
+    terminal.api_key_hash = "f" * 64
+
+    redacted = _terminal_info_for_log(terminal)
+
+    assert redacted.api_key_hash is None
+    assert "f" * 64 not in str(redacted.model_dump())
+    assert terminal.api_key_hash == "f" * 64

@@ -14,6 +14,7 @@ from datetime import datetime
 from unittest.mock import patch
 from tests.log_maker import make_tran_log
 from kugel_common.utils.misc import get_app_time, get_app_time_str
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 @pytest.mark.asyncio()
@@ -56,9 +57,7 @@ async def test_terminal_id_parsing_with_api_key(http_client):
     header = {"Authorization": f"Bearer {token}"}
 
     # Get API key from terminal info (user JWT can opt-in to unmasked api_key)
-    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
-    async with AsyncClient() as http_terminal_client:
-        response = await http_terminal_client.get(url=terminal_url, headers=header)
+    response = await issue_terminal_api_key(terminal_id, header)
 
     # Skip test if terminal doesn't exist (test_setup_data.py not run)
     if response.status_code == status.HTTP_404_NOT_FOUND:
@@ -227,15 +226,9 @@ async def test_terminal_id_filtering_with_multi_terminal_data(http_client, clean
         else:
             pytest.skip(f"Could not create terminal {terminal_id_2}: {create_response.status_code}")
 
-        # Get API keys for both terminals (user JWT can opt-in to unmasked api_key)
-        response_1 = await http_terminal_client.get(
-            f"{terminal_url_base}/terminals/{terminal_id_1}?include_api_key=true",
-            headers=header
-        )
-        response_2 = await http_terminal_client.get(
-            f"{terminal_url_base}/terminals/{terminal_id_2}?include_api_key=true",
-            headers=header
-        )
+        # Issue API keys for both terminals (they cannot be read back)
+        response_1 = await issue_terminal_api_key(terminal_id_1, header, terminal_url_base)
+        response_2 = await issue_terminal_api_key(terminal_id_2, header, terminal_url_base)
 
     if response_1.status_code == status.HTTP_404_NOT_FOUND:
         pytest.skip(f"Terminal {terminal_id_1} not found. Run test_setup_data.py first.")

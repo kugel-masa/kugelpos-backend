@@ -21,6 +21,7 @@ from app.models.repositories.open_close_log_repository import OpenCloseLogReposi
 from app.models.repositories.daily_info_document_repository import DailyInfoDocumentRepository
 from app.models.repositories.terminal_info_web_repository import TerminalInfoWebRepository
 from app.enums.transaction_type import TransactionType
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 # ============================================================================
@@ -558,10 +559,7 @@ async def test_payment_report_via_api(http_client):
     terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
     
     # Get terminal API key
-    response = await http_client.get(
-        f"http://localhost:8001/api/v1/terminals/{terminal_id}?include_api_key=true",
-        headers=header
-    )
+    response = await issue_terminal_api_key(terminal_id, header, "http://localhost:8001/api/v1")
     
     if response.status_code == status.HTTP_200_OK:
         terminal_data = response.json().get("data")

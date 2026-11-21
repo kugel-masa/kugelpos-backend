@@ -11,6 +11,7 @@ from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepos
 from app.models.documents.cash_in_out_log import CashInOutLog
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.models.documents.open_close_log import OpenCloseLog
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 @pytest_asyncio.fixture()
@@ -86,11 +87,7 @@ async def test_setup_data(setup_db: AsyncIOMotorDatabase, http_client: AsyncClie
     if response.status_code == 400 and "already exists" in res.get("message", ""):
         # Get existing terminal info
         terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
-        terminal_get_url = (
-            f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
-        )
-        async with AsyncClient() as http_terminal_client:
-            response = await http_terminal_client.get(url=terminal_get_url, headers=header)
+        response = await issue_terminal_api_key(terminal_id, header)
         res = response.json()
         print(f"get existing terminal response: {res}")
 

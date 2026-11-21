@@ -918,10 +918,9 @@ Requires token authentication (no terminal ID/API key needed since the terminal 
 Get terminal information
 
 This endpoint retrieves detailed information about a specific terminal.
-
-The optional `include_api_key=true` query is honored only when the caller is
-authenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT
-or X-API-KEY), the api_key is always masked even if the flag is set.
+The api_key is always masked: only its digest is stored (issue #136), so the
+key is readable only in the response that issues it - POST /terminals and
+POST /terminals/{terminal_id}/api-key.
 
 **Path Parameters:**
 
@@ -933,7 +932,7 @@ or X-API-KEY), the api_key is always masked even if the flag is set.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | When true, return the unmasked api_key.  |
+| `include_api_key` | boolean | No | False | Deprecated and ignored: the key is stored only as a digest. Issue a new one with `POST /terminals/{terminal_id}/api-key`. |
 
 **Response:**
 
@@ -1039,7 +1038,88 @@ Requires OAuth2 token authentication.
 }
 ```
 
-### 16. Terminal Cash In
+### 16. Reissue Terminal Api Key
+
+**POST** `/api/v1/terminals/{terminal_id}/api-key`
+
+Issue a new API key for a terminal
+
+The current key stops working at once, and the new one is returned in this
+response only: the key is stored as a digest and cannot be read back (issue
+#136). Use it when a terminal is set up again or replaced, or when its key
+is lost or may have been exposed.
+
+Terminal JWTs already obtained with the old key are not revoked: every
+service verifies them on its own, and they stay valid until they expire
+(TERMINAL_TOKEN_EXPIRE_HOURS, 24 hours by default).
+
+Only a user JWT (tenant admin) may call this. A terminal's own credential
+may not replace itself.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `Terminal`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `receiptCounter` | integer | No | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. Terminal Cash In
 
 **POST** `/api/v1/terminals/{terminal_id}/cash-in`
 
@@ -1109,7 +1189,7 @@ and generates a receipt for the transaction.
 }
 ```
 
-### 17. Terminal Cash Out
+### 18. Terminal Cash Out
 
 **POST** `/api/v1/terminals/{terminal_id}/cash-out`
 
@@ -1179,7 +1259,7 @@ and generates a receipt for the transaction.
 }
 ```
 
-### 18. Terminal Close
+### 19. Terminal Close
 
 **POST** `/api/v1/terminals/{terminal_id}/close`
 
@@ -1270,7 +1350,7 @@ Represents termin |
 }
 ```
 
-### 19. Update Delivery Status
+### 20. Update Delivery Status
 
 **POST** `/api/v1/terminals/{terminal_id}/delivery-status`
 
@@ -1342,7 +1422,7 @@ and generates a receipt for the transaction.
 }
 ```
 
-### 20. Update Terminal Description
+### 21. Update Terminal Description
 
 **PATCH** `/api/v1/terminals/{terminal_id}/description`
 
@@ -1426,7 +1506,7 @@ This endpoint updates the description of a specific terminal.
 }
 ```
 
-### 21. Update Terminal Function Mode
+### 22. Update Terminal Function Mode
 
 **PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
 
@@ -1511,7 +1591,7 @@ The function mode determines what operations are available on the terminal.
 }
 ```
 
-### 22. Terminal Open
+### 23. Terminal Open
 
 **POST** `/api/v1/terminals/{terminal_id}/open`
 
@@ -1606,7 +1686,7 @@ Represents termin |
 }
 ```
 
-### 23. Terminal Signin
+### 24. Terminal Signin
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-in`
 
@@ -1692,7 +1772,7 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 }
 ```
 
-### 24. Terminal Signout
+### 25. Terminal Signout
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-out`
 
@@ -1767,7 +1847,7 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 ### Other
 
-### 25. Create Token
+### 26. Create Token
 
 **POST** `/api/v1/auth/token`
 

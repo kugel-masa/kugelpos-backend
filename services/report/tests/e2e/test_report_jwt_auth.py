@@ -12,6 +12,7 @@ import os
 from fastapi import status
 from httpx import AsyncClient
 import jwt as jose_jwt
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 async def get_terminal_jwt(api_key: str) -> str:
@@ -53,10 +54,9 @@ async def get_terminal_api_key_and_info() -> tuple:
         terminal_id = terminal.get("terminalId")
         store_code = terminal.get("storeCode")
 
-        # Re-fetch the specific terminal with include_api_key=true (user JWT only)
-        detail_resp = await client.get(
-            f"http://localhost:8001/api/v1/terminals/{terminal_id}?include_api_key=true",
-            headers={"Authorization": f"Bearer {admin_token}"},
+        # The key cannot be read back; it is issued (user JWT only)
+        detail_resp = await issue_terminal_api_key(
+            terminal_id, {"Authorization": f"Bearer {admin_token}"}, "http://localhost:8001/api/v1"
         )
         if detail_resp.status_code != status.HTTP_200_OK:
             return None, None, None

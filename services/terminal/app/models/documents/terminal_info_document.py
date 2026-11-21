@@ -1,6 +1,8 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Optional
 
+from pydantic import Field
+
 from kugel_common.utils.misc import to_lower_camel
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
@@ -39,5 +41,12 @@ class TerminalInfoDocument(AbstractDocument):
     staff: Optional[StaffMasterDocument] = None  # Staff member currently signed in to the terminal
     initial_amount: Optional[float] = None  # Initial cash amount when the terminal was opened
     physical_amount: Optional[float] = None  # Physical cash amount counted at terminal close
-    api_key: Optional[str] = None  # API key for terminal authentication
+    # The plaintext key is never stored (issue #136): it is set here only on the
+    # document returned when a key is issued, and on legacy documents that have
+    # not been sealed yet. What is stored is its digest, in api_key_hash.
+    api_key: Optional[str] = None
+    api_key_hash: Optional[str] = None  # SHA-256 of the API key (kugel_common.utils.terminal_api_key)
+    # A short-lived terminal JWT the service mints for its own outbound calls,
+    # since it no longer holds the API key to send. Never stored.
+    jwt_token: Optional[str] = Field(default=None, exclude=True)
     tags: Optional[list[str]] = None  # Additional tags for categorization

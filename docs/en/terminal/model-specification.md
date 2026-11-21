@@ -68,7 +68,7 @@ Collection for managing terminal detailed information and current state.
   },
   "initial_amount": "decimal",
   "physical_amount": "decimal",
-  "api_key": "string (hashed)",
+  "api_key_hash": "string (SHA-256 hex)",
   "created_at": "datetime",
   "updated_at": "datetime"
 }
@@ -80,7 +80,7 @@ Collection for managing terminal detailed information and current state.
 - `status`: Terminal business state
 - `open_counter`: Terminal open count
 - `business_counter`: Business operation counter
-- `api_key`: Terminal authentication API key (SHA-256 hashed)
+- `api_key_hash`: SHA-256 digest of the terminal's API key. The key itself is never stored (`api_key` is absent on sealed records)
 
 ### 3. cash_in_out_log Collection
 
@@ -182,7 +182,7 @@ Collection for tracking event delivery status.
 ### terminal_info
 - Unique index: `terminal_id`
 - Compound index: `tenant_id + store_code + terminal_no`
-- Single index: `api_key`
+- Single index: `api_key_hash` (partial: only where it is a string)
 
 ### cash_in_out_log
 - Compound index: `tenant_id + store_code + terminal_no + business_date`
@@ -229,7 +229,7 @@ Collection for tracking event delivery status.
 
 ### Terminal Lifecycle
 1. **Terminal Creation**: Create with tenant, store, and terminal number specified
-2. **API Key Generation**: Auto-generated and hashed for storage
+2. **API Key Generation**: Auto-generated; only its digest is stored, and the key is returned once in the creation response
 3. **Staff Sign-in**: Associate staff information with terminal
 4. **Opening Process**: Start business, set initial cash
 5. **Daily Operations**: Cash in/out, sales processing
@@ -254,9 +254,15 @@ Tenant
 ## Security
 
 ### API Key Management
-- 32-byte secure random generation
-- SHA-256 hashing for storage
-- Used for terminal authentication
+- 32-byte secure random generation (`secrets.token_urlsafe(32)`)
+- Stored only as its SHA-256 digest in `api_key_hash`, and verified against it in constant time. A random 256-bit key needs no slow hash, and an unsalted digest can still be looked up by index (`POST /auth/token` without a `terminal_id`)
+- Readable only in the response that issues it: `POST /terminals` and `POST /terminals/{terminal_id}/api-key`. `GET /terminals/{terminal_id}` always returns it masked; its `include_api_key` parameter is deprecated and ignored
+- A lost or exposed key is replaced, not retrieved: `POST /terminals/{terminal_id}/api-key` (user JWT only) issues a new key and invalidates the previous one at once. Terminal JWTs already obtained with the previous key are not revoked: each service verifies them on its own, so they stay valid until they expire (`TERMINAL_TOKEN_EXPIRE_HOURS`, 24 hours by default)
+- Records written before the digest existed hold the key in plaintext in `api_key`. They keep working and are sealed (digest written, plaintext removed) the first time the key is verified, and by tenant setup, which also runs for existing tenants at startup
+- Sealing is one-way: a terminal service from before the digest cannot verify a sealed key, and its writes drop `api_key_hash`, leaving the terminal without a credential. Do not run an older terminal revision beside a newer one; switch revisions instead. To keep a rollback open, set `SEAL_LEGACY_TERMINAL_API_KEYS=false` (keys are still verified, and existing records stay as they are) and turn it on once the older revision is gone. It is `true` by default, so a deployment that does not set it seals every existing key at its first startup and cannot be rolled back for them
+- Even with sealing off, a terminal created, or whose key was reissued, after the upgrade holds only a digest. After a rollback it cannot authenticate, and the older revision has no way to issue it a key: roll forward again, or delete and recreate the terminal (its counters and state are lost)
+- The credential changes only through creation, reissue and sealing. The writes of sign-in, sign-out, open and close leave `api_key` and `api_key_hash` out, so they cannot undo a reissue that ran while they were in progress
+- The terminal service's own calls to other services carry a short-lived terminal JWT it mints, not the API key
 
 ### Data Isolation
 - Database isolation per tenant

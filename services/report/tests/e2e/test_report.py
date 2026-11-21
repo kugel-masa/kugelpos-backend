@@ -6,6 +6,7 @@ from datetime import datetime
 from kugel_common.utils.misc import get_app_time
 
 from tests.check_report_data import check_report_data
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 @pytest.mark.asyncio()
@@ -86,9 +87,7 @@ async def test_report_operations(http_client):
 
     # get api key from terminal info (user JWT can opt-in to unmasked api_key)
     terminal_id = os.environ.get("TERMINAL_ID", f"{tenant_id}-{store_code}-{terminal_no}")
-    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
-    async with AsyncClient() as http_terminal_client:
-        response = await http_terminal_client.get(url=terminal_url, headers=header)
+    response = await issue_terminal_api_key(terminal_id, header)
     res = response.json()
     print(f"get terminal response: {res}")
     if response.status_code == 200:
@@ -230,11 +229,7 @@ async def test_flush_backward_compatibility(http_client):
     header = {"Authorization": f"Bearer {token}"}
 
     # Get API key for the terminal (user JWT can opt-in to unmasked api_key)
-    async with AsyncClient() as http_terminal_client:
-        terminal_response = await http_terminal_client.get(
-            f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true",
-            headers=header,
-        )
+    terminal_response = await issue_terminal_api_key(terminal_id, header)
     assert terminal_response.status_code == status.HTTP_200_OK
     api_key = terminal_response.json()["data"]["apiKey"]
 
