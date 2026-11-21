@@ -29,8 +29,8 @@
 
 ## Error Codes
 Format: `XXYYZZ`
-- XX: Service ID (10=account, 20=terminal, 30=cart, etc.)
-- YY: Feature/module ID
+- XX: Error category (10=general, 20=auth, 30=validation, 40=business rule, 50=database, 60=external, 90=system)
+- YY: Subcategory; business-rule services own ranges (cart 401-404, master-data 405, terminal 406-407, account 408-409, journal 410-411, report 412-413, stock 414-415)
 - ZZ: Specific error number
 
 ## Security Guidelines

@@ -17,7 +17,6 @@ FILENAME="dist/kugel_common-${CURRENT_VERSION}-py3-none-any.whl"
 
 # コピー先のディレクトリを配列に格納
 DEST_DIRS=(
-    "../template/commons/dist"
     "../cart/commons/dist"
     "../master-data/commons/dist"
     "../account/commons/dist"

@@ -119,9 +119,12 @@ live in the base; subclasses only implement `_fetch_one` / `_fetch_list`.
 - Tenant-wide masters declare `is_store_scoped = False` (forces store position to `_`)
 
 ## Error Code Structure
-Format: XXYYZZ
-- XX: Service (10=account, 20=terminal, 30=cart, 40=master-data, 50=report, 60=journal, 70=stock)
-- YY: Feature/module
+Format: XXYYZZ (`kugel_common/exceptions/error_codes.py`, `docs/en/general/error_code_spec.md`)
+- XX: Error category (10=general, 20=authentication/authorization, 30=input validation,
+  40=business rule, 50=database/repository, 60=external service, 90=system)
+- YY: Subcategory. Within business rules (40YYZZ) the services own ranges:
+  cart 401–404, master-data 405, terminal 406–407, account 408–409, journal 410–411,
+  report 412–413, stock 414–415
 - ZZ: Specific error
 
 ## Conventions
