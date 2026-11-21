@@ -312,12 +312,15 @@
             "schema": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100,
+                "pattern": "^[^\\x00]*$"
               },
-              "description": "Search keywords",
+              "maxItems": 10,
+              "description": "Search keywords. A journal matches if its text contains any one of them, as a case-sensitive substring; regular-expression syntax is not interpreted and empty keywords are ignored. At most 10 keywords of up to 100 characters each, without NUL.",
               "title": "Keywords"
             },
-            "description": "Search keywords"
+            "description": "Search keywords. A journal matches if its text contains any one of them, as a case-sensitive substring; regular-expression syntax is not interpreted and empty keywords are ignored. At most 10 keywords of up to 100 characters each, without NUL."
           },
           {
             "name": "limit",

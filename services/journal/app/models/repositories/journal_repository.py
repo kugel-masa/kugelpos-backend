@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from typing import Type
+import re
+from typing import Optional, Type
 from datetime import datetime
 from logging import getLogger
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -12,6 +13,27 @@ from app.models.documents.jornal_document import JournalDocument
 from app.config.settings import settings
 
 logger = getLogger(__name__)
+
+
+def _keyword_filter(keywords: Optional[list[str]]) -> Optional[dict]:
+    """
+    The journal_text filter for a keyword search: any one of the keywords, as text
+
+    Each keyword is matched literally (issue #138). They were joined into the
+    regular expression as given, so a keyword was interpreted as a pattern: a
+    caller could match what it did not name, and a pattern such as (a+)+$
+    could keep the database busy backtracking over every journal it scans.
+
+    Args:
+        keywords: The keywords from the request; empty ones are ignored
+
+    Returns:
+        A $regex filter, or None when there is no keyword to search for
+    """
+    literals = [re.escape(keyword) for keyword in keywords or [] if keyword]
+    if not literals:
+        return None
+    return {"$regex": "|".join(literals)}
 
 
 class JournalRepository(AbstractRepository[JournalDocument]):
@@ -142,8 +164,9 @@ class JournalRepository(AbstractRepository[JournalDocument]):
             }
         if receipt_no_from and receipt_no_to:
             query["receipt_no"] = {"$gte": receipt_no_from, "$lte": receipt_no_to}
-        if keywords:
-            query["journal_text"] = {"$regex": "|".join(keywords)}
+        keyword_filter = _keyword_filter(keywords)
+        if keyword_filter:
+            query["journal_text"] = keyword_filter
 
         try:
             logger.debug(f"JournalRepository.get_journals_async: query->{query}, limit->{limit}, sort->{sort}")
@@ -232,8 +255,9 @@ class JournalRepository(AbstractRepository[JournalDocument]):
             }
         if receipt_no_from and receipt_no_to:
             query["receipt_no"] = {"$gte": receipt_no_from, "$lte": receipt_no_to}
-        if keywords:
-            query["journal_text"] = {"$regex": "|".join(keywords)}
+        keyword_filter = _keyword_filter(keywords)
+        if keyword_filter:
+            query["journal_text"] = keyword_filter
 
         try:
             logger.debug(

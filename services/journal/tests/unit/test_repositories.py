@@ -276,6 +276,47 @@ class TestJournalRepositoryGetJournals:
             query = mock.call_args[1]["filter"]
             assert query["journal_text"] == {"$regex": "milk|bread|eggs"}
 
+    # --- keywords are matched as text, not as a pattern (issue #138) ---
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "keywords, expected",
+        [
+            (["(a+)+$"], r"\(a\+\)\+\$"),
+            ([".*"], r"\.\*"),
+            (["1,000円", "a|b"], r"1,000円|a\|b"),
+        ],
+        ids=["redos-pattern", "match-anything", "alternation-inside-a-keyword"],
+    )
+    async def test_keywords_are_escaped(self, repo, keywords, expected):
+        import re
+
+        with patch.object(repo, "get_list_async_with_sort_and_paging", new_callable=AsyncMock) as mock:
+            mock.return_value = []
+            await repo.get_journals_async(store_code="S001", keywords=keywords, limit=10, page=1, sort=[])
+        pattern = mock.call_args[1]["filter"]["journal_text"]["$regex"]
+        assert pattern == expected
+        # Each keyword matches itself and nothing it did not name
+        for keyword in keywords:
+            assert re.search(pattern, f"... {keyword} ...")
+        assert not re.search(pattern, "milk bread")
+
+    @pytest.mark.asyncio
+    async def test_paginated_search_escapes_keywords_too(self, repo):
+        with patch.object(repo, "get_paginated_list_async", new_callable=AsyncMock) as mock:
+            mock.return_value = PaginatedResult(data=[], metadata=Metadata(total=0, page=1, limit=10, sort=None, filter=None))
+            await repo.get_journals_paginated_async(store_code="S001", keywords=["a.b"], limit=10, page=1, sort=[])
+        assert mock.call_args[1]["filter"]["journal_text"] == {"$regex": r"a\.b"}
+
+    @pytest.mark.asyncio
+    async def test_empty_keywords_inside_the_list_are_ignored(self, repo):
+        """An empty keyword joined into the alternation matched every journal."""
+        with patch.object(repo, "get_list_async_with_sort_and_paging", new_callable=AsyncMock) as mock:
+            mock.return_value = []
+            await repo.get_journals_async(store_code="S001", keywords=["", "milk"], limit=10, page=1, sort=[])
+            assert mock.call_args[1]["filter"]["journal_text"] == {"$regex": "milk"}
+            await repo.get_journals_async(store_code="S001", keywords=[""], limit=10, page=1, sort=[])
+            assert "journal_text" not in mock.call_args[1]["filter"]
+
     # --- empty keywords list should NOT add filter ---
     @pytest.mark.asyncio
     async def test_empty_keywords(self, repo):
