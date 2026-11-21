@@ -31,18 +31,26 @@ class AbstractPayment(ABC):
         pass
 
     @abstractmethod
-    async def pay(self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str = None) -> CartDocument:
+    async def pay(
+        self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str = None, **kwargs
+    ) -> CartDocument:
         """
         Process a payment for the cart.
 
         This method must be implemented by concrete payment strategies to handle
         the specific payment method's processing rules.
 
+        Callers may pass keyword arguments beyond these parameters to describe
+        the payment further. Implementations must accept them. One that does not
+        change what is settled may be ignored; one carrying a value the
+        implementation cannot honour must refuse the payment, not be dropped.
+
         Args:
             cart_doc: Cart document to process payment for
             payment_code: Code identifying the payment method
             amount: Payment amount
             detail: Optional payment details (e.g., credit card info)
+            **kwargs: Further payment attributes from the caller (see above)
 
         Returns:
             CartDocument: Updated cart document with payment applied
@@ -54,7 +62,7 @@ class AbstractPayment(ABC):
 
     @abstractmethod
     async def refund(
-        self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str = None
+        self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str = None, **kwargs
     ) -> CartDocument:
         """
         Process a refund for the cart.
@@ -62,11 +70,15 @@ class AbstractPayment(ABC):
         This method must be implemented by concrete payment strategies to handle
         the specific payment method's refund rules.
 
+        As with pay(), callers may pass further keyword arguments, under the
+        same rule.
+
         Args:
             cart_doc: Cart document to process refund for
             payment_code: Code identifying the payment method
             amount: Refund amount
             detail: Optional refund details
+            **kwargs: Further refund attributes from the caller (see pay())
 
         Returns:
             CartDocument: Updated cart document with refund applied

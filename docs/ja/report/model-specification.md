@@ -249,13 +249,25 @@ class IReportPlugin(ABC):
         limit: int,
         page: int,
         sort: list[tuple[str, int]],
+        business_date_from: str = None,
+        business_date_to: str = None,
+        **kwargs,
     ) -> dict[str, any]
+
+    # 任意の機能
+    def merge(self, reports: list[dict]) -> Any
+    def from_saved(self, report: dict) -> Any
 ```
 
+プラグインが実装しなければならないのは `generate_report` だけです。`generate_report` は、引数以外のキーワード引数も受け付ける必要があり、対応しないものは無視してかまいません。`merge`（複数端末の保存済み日報から1つのレポートを作る）と `from_saved`（保存済み日報をレポートに戻す）は任意で、プラグインが実装しない限り `NotImplementedError` を投げます。
+
 ### 実装済みプラグイン
-- **SalesReportPlugin**: 売上レポート生成
-- **CategoryReportPlugin**: カテゴリー別レポート（未実装）
-- **ItemReportPlugin**: 商品別レポート（未実装）
+`app/services/plugins/plugins.json` で設定します。
+- **SalesReportMaker**: 売上レポート
+- **CategoryReportMaker**: カテゴリー別レポート
+- **ItemReportMaker**: 商品別レポート
+- **PaymentReportMaker**: 支払いレポート
+- **PromotionReportMaker**: 販促レポート
 
 ## 特記事項
 

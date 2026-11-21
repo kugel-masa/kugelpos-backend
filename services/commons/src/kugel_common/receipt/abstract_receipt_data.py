@@ -106,8 +106,20 @@ class AbstractReceiptData(ABC, Generic[T]):
     # journal_text (plain text) generation — kept byte-equivalent to the
     # previous PrintData.to_text() implementation.
     #
-    def render_journal_text(self, elements: list[Line]) -> str:
-        width = int(self.width)
+    def render_journal_text(self, elements: list[Line], width: Optional[int] = None) -> str:
+        """Render the plain-text journal of the given elements.
+
+        Args:
+            elements: The print elements; only those routed to the journal
+                (channel J or RJ) are rendered
+            width: Line width in characters; when omitted, the strategy's own width
+
+        Returns:
+            The journal text, one line per rendered row
+        """
+        if width is None:
+            width = self.width
+        width = int(width)
         text = ""
         for element in elements:
             # Only elements routed to the journal (channel J or RJ) are rendered.

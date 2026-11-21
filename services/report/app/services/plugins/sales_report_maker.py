@@ -59,6 +59,7 @@ class SalesReportMaker(IReportPlugin):
         sort: list[tuple[str, int]],
         business_date_from: str = None,
         business_date_to: str = None,
+        **kwargs,
     ) -> dict[str, Any]:
         """
         Generate a sales report
@@ -73,6 +74,7 @@ class SalesReportMaker(IReportPlugin):
             report_type: Report type
             business_date_from: Start date for date range (optional)
             business_date_to: End date for date range (optional)
+            **kwargs: Further keyword arguments from the caller; not used by this report
             limit: Data retrieval limit
             page: Page number
             sort: Sort conditions

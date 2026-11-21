@@ -22,6 +22,8 @@ Located in `strategies/payments/` directory, these strategies handle different p
 
 Each payment method has its own validation rules and processing logic while sharing common functionality through the abstract base class.
 
+`pay(cart_doc, payment_code, amount, detail=None, **kwargs)` and `refund(cart_doc, payment_code, amount, detail=None, **kwargs)` are both `async`. They must accept keyword arguments beyond these parameters. A strategy may ignore a keyword that does not change what is settled. When a keyword carries a value the strategy cannot honour, it refuses the payment instead of dropping the value.
+
 ### 3. Receipt Data Strategies
 
 Located in `strategies/receipt_data/` directory, these strategies handle different formats and content for receipt generation.
@@ -72,9 +74,12 @@ The `plugins.json` file in the cart directory is a configuration file that defin
 
 For each strategy:
 
-- `class_name`: The name of the class that implements the strategy
-- `module_name`: The Python module path where the class is located
-- `parameters`: Parameters to pass to the class constructor when instantiating
+- `module`: The Python module path where the class is located
+- `class`: The name of the class that implements the strategy (or `function`, for a plain function)
+- `args`: Positional arguments passed to the class constructor (a payment strategy takes its payment code)
+- `kwargs`: Keyword arguments passed to the class constructor
+
+The manager reads only these keys and only the groups this service uses (`sales_promo_strategies`, `payment_strategies`, `receipt_data_strategies`). Anything else in the file is ignored.
 
 ### Adding New Strategies
 
