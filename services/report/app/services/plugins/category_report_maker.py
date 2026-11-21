@@ -63,6 +63,7 @@ class CategoryReportMaker(IReportPlugin):
         sort: list[tuple[str, int]],
         business_date_from: str = None,
         business_date_to: str = None,
+        **kwargs,
     ) -> dict[str, Any]:
         """
         Generate a category report
@@ -80,6 +81,7 @@ class CategoryReportMaker(IReportPlugin):
             sort: Sort conditions
             business_date_from: Start date for date range reports
             business_date_to: End date for date range reports
+            **kwargs: Further keyword arguments from the caller; not used by this report
 
         Returns:
             Category report document

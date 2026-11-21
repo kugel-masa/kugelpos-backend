@@ -29,7 +29,7 @@ class PaymentByCashless(AbstractPayment):
         super().__init__()
         self.payment_code = payment_code
 
-    async def pay(self, cart_doc, payment_code, amount, detail):
+    async def pay(self, cart_doc, payment_code, amount, detail=None, **kwargs):
         """
         Process a cashless payment for the cart.
 
@@ -42,6 +42,7 @@ class PaymentByCashless(AbstractPayment):
             payment_code: Code identifying the payment method (should match this strategy)
             amount: Cashless payment amount
             detail: Optional payment details (e.g., card info, transaction ID)
+            **kwargs: Further payment attributes from the caller; this strategy uses none
 
         Returns:
             CartDocument: Updated cart document with cashless payment applied
@@ -60,7 +61,7 @@ class PaymentByCashless(AbstractPayment):
 
         return cart_doc
 
-    def refund(self, cart_doc, payment_code, amount, detail):
+    async def refund(self, cart_doc, payment_code, amount, detail=None, **kwargs):
         """
         Process a cashless refund.
 
@@ -71,6 +72,7 @@ class PaymentByCashless(AbstractPayment):
             payment_code: Code identifying the payment method
             amount: Refund amount
             detail: Optional refund details
+            **kwargs: Further refund attributes from the caller; this strategy uses none
 
         Returns:
             CartDocument: Updated cart document with refund information

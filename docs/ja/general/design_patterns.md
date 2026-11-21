@@ -110,14 +110,16 @@ async def find_with_pagination_async(...) -> Tuple[List[Tdocument], int]
 
 **抽象戦略:** `AbstractPayment`
 ```python
-async def pay(self, cart_doc, payment_code, amount, detail)
-async def refund(self, cart_doc, payment_index)
-async def cancel(self, cart_doc, payment_index)
+async def pay(self, cart_doc, payment_code, amount, detail=None, **kwargs)
+async def refund(self, cart_doc, payment_code, amount, detail=None, **kwargs)
 ```
+
+呼び出し側は、これらの引数以外のキーワード引数を渡すことがあります。戦略はそれを受け付け、精算の結果を変えないものだけを無視します。扱えない値が渡されたときは、支払いを拒否します。
 
 **具体戦略:**
 - `PaymentByCash`: 現金支払い（お釣り計算）
 - `PaymentByCashless`: キャッシュレス支払い（過払いチェック）
+- `PaymentByOthers`: その他の支払い
 
 **税計算戦略:**
 - 外税計算: 税額を価格に加算

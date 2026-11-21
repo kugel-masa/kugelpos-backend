@@ -110,14 +110,16 @@ async def find_with_pagination_async(...) -> Tuple[List[Tdocument], int]
 
 **Abstract Strategy:** `AbstractPayment`
 ```python
-async def pay(self, cart_doc, payment_code, amount, detail)
-async def refund(self, cart_doc, payment_index)
-async def cancel(self, cart_doc, payment_index)
+async def pay(self, cart_doc, payment_code, amount, detail=None, **kwargs)
+async def refund(self, cart_doc, payment_code, amount, detail=None, **kwargs)
 ```
+
+Callers may pass keyword arguments beyond these parameters. A strategy accepts them, and ignores only those that do not change what is settled. A value it cannot honour refuses the payment.
 
 **Concrete Strategies:**
 - `PaymentByCash`: Cash payment (change calculation)
 - `PaymentByCashless`: Cashless payment (overpayment check)
+- `PaymentByOthers`: Other payment methods
 
 **Tax Calculation Strategies:**
 - External tax calculation: Add tax amount to price

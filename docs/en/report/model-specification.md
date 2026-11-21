@@ -338,13 +338,25 @@ class IReportPlugin(ABC):
         limit: int,
         page: int,
         sort: list[tuple[str, int]],
+        business_date_from: str = None,
+        business_date_to: str = None,
+        **kwargs,
     ) -> dict[str, any]
+
+    # Optional capabilities
+    def merge(self, reports: list[dict]) -> Any
+    def from_saved(self, report: dict) -> Any
 ```
 
+`generate_report` is the only method a plugin must implement. It must accept keyword arguments beyond its parameters and may ignore the ones it does not support. `merge` (build one report out of several terminals' stored daily reports) and `from_saved` (turn a stored daily report back into the report document) are optional and raise `NotImplementedError` unless the plugin implements them.
+
 ### Implemented Plugins
-- **SalesReportPlugin**: Sales report generation
-- **CategoryReportPlugin**: Category-wise reports (not implemented)
-- **ItemReportPlugin**: Item-wise reports (not implemented)
+Configured in `app/services/plugins/plugins.json`:
+- **SalesReportMaker**: Sales report
+- **CategoryReportMaker**: Category report
+- **ItemReportMaker**: Item report
+- **PaymentReportMaker**: Payment report
+- **PromotionReportMaker**: Promotion report
 
 ## Special Notes
 
