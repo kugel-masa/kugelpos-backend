@@ -14,6 +14,13 @@ import uuid
 import pytest
 from fastapi import status
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 def _new_tenant_id() -> str:
     """Generate a fresh tenant ID per test so DB drops in conftest don't
@@ -30,6 +37,7 @@ async def test_register_superuser_then_token(http_client):
 
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={"username": "admin", "password": password, "tenant_id": tenant_id},
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
@@ -54,6 +62,7 @@ async def test_register_without_tenant_id_generates_one(http_client):
     """POST /register without tenant_id yields a server-generated tenant ID."""
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={"username": "admin", "password": "pw"},
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
@@ -69,6 +78,7 @@ async def test_register_user_by_superuser(http_client):
 
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={"username": "admin", "password": password, "tenant_id": tenant_id},
     )
     assert response.status_code == status.HTTP_201_CREATED, response.text
@@ -98,6 +108,7 @@ async def test_token_with_bad_password_returns_401(http_client):
     tenant_id = _new_tenant_id()
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={"username": "admin", "password": "correct-pw", "tenant_id": tenant_id},
     )
     assert response.status_code == status.HTTP_201_CREATED
@@ -105,5 +116,18 @@ async def test_token_with_bad_password_returns_401(http_client):
     response = await http_client.post(
         "/api/v1/accounts/token",
         data={"username": "admin", "password": "wrong-pw", "client_id": tenant_id},
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("headers", [{}, {"X-Provisioning-Key": "not-the-key"}], ids=["missing", "wrong"])
+async def test_register_without_the_provisioning_key_is_refused(http_client, headers):
+    """POST /register creates a tenant and a superuser and takes no user token,
+    so it requires the deployment's provisioning key (issue #138)."""
+    response = await http_client.post(
+        "/api/v1/accounts/register",
+        headers=headers,
+        json={"username": "admin", "password": "admin"},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED, response.text

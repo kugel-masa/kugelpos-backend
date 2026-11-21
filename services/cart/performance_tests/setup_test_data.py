@@ -30,6 +30,13 @@ from datetime import datetime
 from httpx import AsyncClient
 from dotenv import load_dotenv
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 class MultiTerminalPerformanceTestDataSetup:
     """Setup test data for performance testing with multiple terminals"""
@@ -111,6 +118,7 @@ class MultiTerminalPerformanceTestDataSetup:
         async with AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{self.base_url_account}/api/v1/accounts/register",
+                headers=PROVISIONING_HEADERS,
                 json={
                     "username": "admin",
                     "password": "admin",

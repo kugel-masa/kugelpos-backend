@@ -25,6 +25,13 @@ import pytest_asyncio
 from dotenv import load_dotenv
 from fastapi import status
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 def ensure_admin_user_exists(tenant_id: str, account_base_url: str):
     """
@@ -47,7 +54,7 @@ def ensure_admin_user_exists(tenant_id: str, account_base_url: str):
         print(f"Registering admin user for tenant: {tenant_id}")
         register_url = f"{account_base_url}/api/v1/accounts/register"
         register_data = {"username": "admin", "password": "admin", "tenant_id": tenant_id}
-        response = client.post(url=register_url, json=register_data)
+        response = client.post(url=register_url, json=register_data, headers=PROVISIONING_HEADERS)
 
         if response.status_code == status.HTTP_201_CREATED:
             print(f"Admin user registered successfully for tenant: {tenant_id}")

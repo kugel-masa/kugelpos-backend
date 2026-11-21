@@ -17,6 +17,13 @@ import pytest_asyncio
 from fastapi import status
 from httpx import AsyncClient, Timeout
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 def _new_tenant_id() -> str:
     """tenant_id MUST NOT contain hyphens — see security.get_tenant_id."""
@@ -32,6 +39,7 @@ async def admin_token():
         # Idempotent register
         await c.post(
             "/api/v1/accounts/register",
+            headers=PROVISIONING_HEADERS,
             json={"username": "admin", "password": "admin", "tenant_id": tenant_id},
         )
         resp = await c.post(
@@ -48,6 +56,7 @@ async def _ephemeral_admin_token(tenant_id: str) -> str:
     async with AsyncClient(base_url=base_account, timeout=Timeout(timeout=None)) as c:
         await c.post(
             "/api/v1/accounts/register",
+            headers=PROVISIONING_HEADERS,
             json={"username": "admin", "password": "admin", "tenant_id": tenant_id},
         )
         resp = await c.post(

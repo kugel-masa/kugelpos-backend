@@ -21,6 +21,13 @@ import pytest
 
 from .test_concurrency import _bootstrap
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 # Match commons.config.settings_auth.SECRET_KEY default (development).
 DEV_SECRET_KEY = "test-secret-key-for-development-only"
@@ -38,7 +45,7 @@ def _new_tenant_id() -> str:
 def _live_admin_token(tenant_id: str) -> str:
     """Register + login admin against the running account service."""
     with _client("URL_ACCOUNT") as c:
-        c.post("/api/v1/accounts/register", json={
+        c.post("/api/v1/accounts/register", headers=PROVISIONING_HEADERS, json={
             "username": "admin", "password": "admin", "tenant_id": tenant_id,
         })
         resp = c.post("/api/v1/accounts/token", data={

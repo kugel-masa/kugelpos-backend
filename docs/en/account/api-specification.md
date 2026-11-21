@@ -81,7 +81,10 @@ Health check endpoint for monitoring service health.
 
 Register a new superuser and create a new tenant
 
-This endpoint is used for initial setup of a tenant and its admin user
+This endpoint is used for initial setup of a tenant and its admin user.
+It requires the deployment's tenant provisioning key in the
+X-Provisioning-Key header (issue #138): it takes no user token, since the
+tenant does not exist yet, and was open to anyone.
 
 **Request Body:**
 

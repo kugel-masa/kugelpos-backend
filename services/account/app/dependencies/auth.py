@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from fastapi import status, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import status, HTTPException, Depends, Security
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
+import hmac
+from typing import Optional
 import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from passlib.context import CryptContext
@@ -36,6 +38,48 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.TOKEN_EXPIRE_MINUTES
 # OAuth2 password bearer for token-based authentication
 # This specifies the URL that the client should use to get a token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/accounts/token")
+audit_logger = getLogger("audit")
+
+# The header POST /accounts/register is authenticated by (issue #138)
+PROVISIONING_KEY_HEADER = "X-Provisioning-Key"
+provisioning_key_header = APIKeyHeader(
+    name=PROVISIONING_KEY_HEADER, scheme_name="TenantProvisioningKey", auto_error=False
+)
+
+
+async def verify_tenant_provisioning_key(
+    provisioning_key: Optional[str] = Security(provisioning_key_header),
+) -> None:
+    """
+    Authenticate a tenant registration by the provisioning key (issue #138)
+
+    Registration creates a tenant and its superuser, and takes no user token -
+    there is no tenant yet - so it was open to anyone. It now requires the
+    deployment's TENANT_PROVISIONING_KEY, compared in constant time.
+
+    Args:
+        provisioning_key: The X-Provisioning-Key header, if any
+
+    Raises:
+        HTTPException: 401 when the header is missing or wrong. An empty
+            configured key refuses every call: the settings refuse to start
+            without one, and nothing should get through if they are bypassed.
+    """
+    expected = settings.TENANT_PROVISIONING_KEY
+    if expected and provisioning_key and hmac.compare_digest(provisioning_key.encode(), expected.encode()):
+        return
+    # The caller gets no detail; the audit log says which check failed.
+    audit_logger.warning(
+        "Tenant registration refused: %s",
+        "no TENANT_PROVISIONING_KEY is configured"
+        if not expected
+        else f"the {PROVISIONING_KEY_HEADER} header is {'missing' if not provisioning_key else 'wrong'}",
+    )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=f"Registering a tenant requires a valid {PROVISIONING_KEY_HEADER} header",
+        headers={"WWW-Authenticate": "API-Key"},
+    )
 
 # Password hashing context using bcrypt for secure password storage
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

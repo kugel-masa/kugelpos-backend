@@ -16,6 +16,13 @@ import os
 from fastapi import status
 from kugel_common.database import database as db_helper
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 @pytest.mark.asyncio()
 async def test_operations(http_client):
@@ -25,7 +32,7 @@ async def test_operations(http_client):
 
     # superuser registration
     response = await http_client.post(
-        "/api/v1/accounts/register", json={"username": "admin", "password": "admin", "tenant_id": tenant_id}
+        "/api/v1/accounts/register", headers=PROVISIONING_HEADERS, json={"username": "admin", "password": "admin", "tenant_id": tenant_id}
     )
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
@@ -44,7 +51,7 @@ async def test_operations(http_client):
 
     # superuser registration with existing tenant_id should succeed generating new tenant_id
     response = await http_client.post(
-        "/api/v1/accounts/register", json={"username": "admin", "password": "admin", "tenant_id": tenant_id}
+        "/api/v1/accounts/register", headers=PROVISIONING_HEADERS, json={"username": "admin", "password": "admin", "tenant_id": tenant_id}
     )
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
@@ -65,7 +72,7 @@ async def test_operations(http_client):
     assert drop_result is True
 
     # superuser registration without tenant_id should succeed generating new tenant_id
-    response = await http_client.post("/api/v1/accounts/register", json={"username": "admin", "password": "admin"})
+    response = await http_client.post("/api/v1/accounts/register", headers=PROVISIONING_HEADERS, json={"username": "admin", "password": "admin"})
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
     print(f"response_data: {response_data}")

@@ -90,7 +90,9 @@ chmod +x quick_start.sh
 
 pub/sub を購読するサービス（report、journal、stock）には、`APP_API_TOKEN` も必要です。これらの経路は、daprd サイドカーが `dapr-api-token` ヘッダーで付けるこのトークンを持つ配送だけを受け付けます。アプリとそのサイドカーに同じ値を設定してください。トークンがないとき、または compose ファイルで公開されている開発用トークンのときは、`ALLOW_INSECURE_DEV_SECRETS=true` を設定しない限り起動しません（issue #134）。
 
-`services/docker-compose.prod.yaml` は、3つの値を渡さないと起動しません。値は次のコマンドで作れます。
+account には `TENANT_PROVISIONING_KEY` も必要です。テナントとそのスーパーユーザーを作る `POST /api/v1/accounts/register` は、このキーを `X-Provisioning-Key` ヘッダーに持つ呼び出しだけを受け付けます。テナントの導入を担う人にだけ渡してください。キーがないとき、または compose ファイルで公開されている開発用のキーのときは、`ALLOW_INSECURE_DEV_SECRETS=true` を設定しない限り起動しません（issue #138）。
+
+`services/docker-compose.prod.yaml` は、4つの値を渡さないと起動しません。値は次のコマンドで作れます。
 
 ```bash
 python -c 'import secrets; print(secrets.token_urlsafe(48))'

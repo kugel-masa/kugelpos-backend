@@ -122,7 +122,7 @@
   },
   "descriptions": {
     "Authenticate user and provide a JWT access token\n\nThe client_id field in the form is used as the tenant_id for multi-tenant support": "ユーザーを認証し、JWTアクセストークンを発行します。",
-    "Register a new superuser and create a new tenant\n\nThis endpoint is used for initial setup of a tenant and its admin user": "スーパーユーザーを登録し、新しいテナントを作成します。",
+    "Register a new superuser and create a new tenant\n\nThis endpoint is used for initial setup of a tenant and its admin user.\nIt requires the deployment's tenant provisioning key in the\nX-Provisioning-Key header (issue #138): it takes no user token, since the\ntenant does not exist yet, and was open to anyone.": "スーパーユーザーを登録し、新しいテナントを作成します。テナントの導入用の鍵を X-Provisioning-Key ヘッダーで渡す必要があります（issue #138）。テナントがまだないためユーザーのトークンは使えず、以前は誰でも呼べました。",
     "Register a new regular user in the tenant by a superuser\n\nThis endpoint is protected and can only be called by authenticated superusers": "スーパーユーザーを登録し、新しいテナントを作成します。",
     "Root endpoint that returns a welcome message.\nUseful for health checks and API verification.": "ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。",
     "Health check endpoint for monitoring service health.": "ヘルスチェックエンドポイントです。サービスの稼働状態を監視します。",

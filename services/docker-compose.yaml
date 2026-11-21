@@ -18,6 +18,9 @@ services:
       # The development stack runs on the published SECRET_KEY and
       # PUBSUB_NOTIFY_API_KEY, which startup refuses without this (issue #132).
       - ALLOW_INSECURE_DEV_SECRETS=${ALLOW_INSECURE_DEV_SECRETS:-true}
+      # What POST /accounts/register requires in X-Provisioning-Key (issue #138).
+      # The tests send the same published value.
+      - TENANT_PROVISIONING_KEY=${TENANT_PROVISIONING_KEY:-dev-tenant-provisioning-key-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_account
       # Needed by the request-logging middleware, not by account's own routes.

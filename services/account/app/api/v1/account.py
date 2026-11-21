@@ -32,6 +32,7 @@ from app.dependencies.auth import (
     authenticate_superuser,
     get_current_user,
     generate_tenant_id,
+    verify_tenant_provisioning_key,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 
@@ -120,6 +121,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     "/register",
     response_model=ApiResponse[UserAccountInDB],
     status_code=status.HTTP_201_CREATED,
+    # Before the tenant ID is looked for or generated (issue #138)
+    dependencies=[Depends(verify_tenant_provisioning_key)],
     responses={
         status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
         status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
@@ -131,7 +134,10 @@ async def register_super_user(user: UserAccount, tenant_id: str = Depends(genera
     """
     Register a new superuser and create a new tenant
 
-    This endpoint is used for initial setup of a tenant and its admin user
+    This endpoint is used for initial setup of a tenant and its admin user.
+    It requires the deployment's tenant provisioning key in the
+    X-Provisioning-Key header (issue #138): it takes no user token, since the
+    tenant does not exist yet, and was open to anyone.
 
     Args:
         user: User information (username, password, optional tenant_id)
