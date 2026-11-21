@@ -193,3 +193,44 @@ class TestParseSort:
     def test_custom_sort(self):
         result = parse_sort(sort="amount:-1,receipt_no:1")
         assert result == [("amount", -1), ("receipt_no", 1)]
+
+
+# ---------------------------------------------------------------------------
+# Keyword bounds (issue #138)
+# ---------------------------------------------------------------------------
+
+class TestKeywordBounds:
+    """journal_text has no index, so a keyword search scans every journal the
+    other filters leave; the keywords are bounded before any query is made."""
+
+    async def _get(self, params):
+        mock_service = AsyncMock()
+        mock_service.get_journals_paginated_async.return_value = PaginatedResult(
+            data=[], metadata=Metadata(total=0, page=1, limit=100, sort=None, filter=None)
+        )
+        app = make_app()
+        app.dependency_overrides[get_tenant_id_with_security_by_query_optional] = lambda: "T001"
+        app.dependency_overrides[get_journal_service] = lambda: mock_service
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/tenants/T001/stores/S001/journals", params=params)
+        return response, mock_service
+
+    @pytest.mark.asyncio
+    async def test_keywords_within_the_bounds_are_searched(self):
+        keywords = ["k" * 100] * 10
+        response, service = await self._get([("keywords", k) for k in keywords])
+
+        assert response.status_code == 200, response.text
+        assert service.get_journals_paginated_async.await_args.kwargs["keywords"] == keywords
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "keywords",
+        [["k"] * 11, ["k" * 101], ["a\x00b"]],
+        ids=["too-many", "too-long", "nul"],
+    )
+    async def test_keywords_beyond_the_bounds_are_refused(self, keywords):
+        response, service = await self._get([("keywords", k) for k in keywords])
+
+        assert response.status_code == 422, response.text
+        service.get_journals_paginated_async.assert_not_awaited()

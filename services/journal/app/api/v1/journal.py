@@ -1,5 +1,8 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+from typing import Annotated
+
 from fastapi import APIRouter, Path, Depends, status, Query
+from pydantic import Field
 from logging import getLogger
 import inspect
 
@@ -11,6 +14,14 @@ from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.api.v1.schemas import JournalSchema
 from app.services.journal_service import JournalService
 from app.dependencies.get_journal_service import get_journal_service
+
+# Bounds on the keyword search (issue #138). journal_text has no index, so a
+# search scans every journal the other filters leave, once per keyword
+# alternative, and twice for the paginated count; MongoDB also refuses a
+# pattern longer than about 32 KB. A NUL is refused by MongoDB's regex engine.
+MAX_KEYWORDS = 10
+MAX_KEYWORD_LENGTH = 100
+Keyword = Annotated[str, Field(max_length=MAX_KEYWORD_LENGTH, pattern=r"^[^\x00]*$")]
 
 # Create a router instance for journal-related endpoints
 router = APIRouter()
@@ -128,7 +139,16 @@ async def get_journals(
     generate_date_time_to: str = Query(None, description="YYYYMMDDTHHMMSS"),
     receipt_no_from: int = Query(None),
     receipt_no_to: int = Query(None),
-    keywords: list[str] = Query(None, description="Search keywords"),
+    keywords: list[Keyword] = Query(
+        None,
+        max_length=MAX_KEYWORDS,
+        description=(
+            "Search keywords. A journal matches if its text contains any one of them, as a "
+            "case-sensitive substring; regular-expression syntax is not interpreted and empty "
+            f"keywords are ignored. At most {MAX_KEYWORDS} keywords of up to "
+            f"{MAX_KEYWORD_LENGTH} characters each, without NUL."
+        ),
+    ),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),

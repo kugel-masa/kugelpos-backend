@@ -158,7 +158,7 @@ the one in the security credentials.
 | `generate_date_time_to` | string | No | - | YYYYMMDDTHHMMSS |
 | `receipt_no_from` | integer | No | - | - |
 | `receipt_no_to` | integer | No | - | - |
-| `keywords` | array | No | - | Search keywords |
+| `keywords` | array | No | - | Search keywords. A journal matches if its text contains any one of them, as a case-sensitive substring; regular-expression syntax is not interpreted and empty keywords are ignored. At most 10 keywords of up to 100 characters each, without NUL. |
 | `limit` | integer | No | 100 | - |
 | `page` | integer | No | 1 | - |
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |

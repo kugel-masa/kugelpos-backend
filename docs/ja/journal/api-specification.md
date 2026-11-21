@@ -150,7 +150,7 @@
 | `generate_date_time_to` | string | No | - | YYYYMMDDTHHMMSS |
 | `receipt_no_from` | integer | No | - | - |
 | `receipt_no_to` | integer | No | - | - |
-| `keywords` | array | No | - | Search keywords |
+| `keywords` | array | No | - | 検索キーワード。いずれか1つを本文に含むジャーナルに一致します（大文字小文字を区別する部分一致）。正規表現の記法は解釈せず、空のキーワードは無視します。キーワードは10個まで、1つ100文字まで、NUL を含まないこと。 |
 | `limit` | integer | No | 100 | - |
 | `page` | integer | No | 1 | - |
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |
