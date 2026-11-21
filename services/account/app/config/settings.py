@@ -23,6 +23,7 @@ from kugel_common.config.settings import (
 )
 from kugel_common.config.settings_http import HttpRequestSettings
 from app.config.settings_database import DBCollectionSettings
+from app.config.settings_provisioning import TenantProvisioningSettings
 
 """
 This is the settings module for the application environment settings.
@@ -40,6 +41,7 @@ class Settings(
     DatetimeSettings,
     AuthSettings,
     HttpRequestSettings,
+    TenantProvisioningSettings,
 ):
     # Override required fields with defaults
     MONGODB_URI: str = Field(default="mongodb://localhost:27017/?replicaSet=rs0")

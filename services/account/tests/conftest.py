@@ -37,6 +37,8 @@ _load_dotenv(os.path.join(_ROOT_DIR, '.env.test'), override=True)
 os.environ.setdefault("DB_NAME_PREFIX", "db_account")
 # The tests run on the published development keys (issue #132).
 os.environ.setdefault("ALLOW_INSECURE_DEV_SECRETS", "true")
+# The development compose file's provisioning key (issue #138)
+os.environ.setdefault("TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only")
 os.environ.setdefault("STORE_CODE", "5678")
 os.environ.setdefault("TERMINAL_ID", f"{os.environ.get('TENANT_ID', 'T9999')}-5678-9")
 import pytest

@@ -101,7 +101,7 @@
     "/api/v1/accounts/register": {
       "post": {
         "summary": "Register Super User",
-        "description": "Register a new superuser and create a new tenant\n\nThis endpoint is used for initial setup of a tenant and its admin user\n\nArgs:\n    user: User information (username, password, optional tenant_id)\n    tenant_id: Generated or verified tenant ID from the dependency\n\nReturns:\n    ApiResponse[UserAccountInDB]: Response with the created user information",
+        "description": "Register a new superuser and create a new tenant\n\nThis endpoint is used for initial setup of a tenant and its admin user.\nIt requires the deployment's tenant provisioning key in the\nX-Provisioning-Key header (issue #138): it takes no user token, since the\ntenant does not exist yet, and was open to anyone.\n\nArgs:\n    user: User information (username, password, optional tenant_id)\n    tenant_id: Generated or verified tenant ID from the dependency\n\nReturns:\n    ApiResponse[UserAccountInDB]: Response with the created user information",
         "operationId": "register_super_user_api_v1_accounts_register_post",
         "requestBody": {
           "content": {
@@ -188,7 +188,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "TenantProvisioningKey": []
+          }
+        ]
       }
     },
     "/api/v1/accounts/register/user": {
@@ -840,6 +845,11 @@
       }
     },
     "securitySchemes": {
+      "TenantProvisioningKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Provisioning-Key"
+      },
       "OAuth2PasswordBearer": {
         "type": "oauth2",
         "flows": {

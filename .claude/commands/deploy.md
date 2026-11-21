@@ -40,6 +40,7 @@ these does not come up (it fails its health check rather than running open).
 | `SECRET_KEY` | all 7 | A secret of your own, the **same** in every service (issue #132) |
 | `PUBSUB_NOTIFY_API_KEY` | all 7 | A secret of your own, the **same** in every service (issue #132) |
 | `APP_API_TOKEN` | report, journal, stock | **Do not set it.** Container Apps injects it (see below) (issue #134) |
+| `TENANT_PROVISIONING_KEY` | account | A secret of your own, held only by whoever onboards tenants: `POST /api/v1/accounts/register` requires it in `X-Provisioning-Key` (issue #138) |
 
 - Never set `ALLOW_INSECURE_DEV_SECRETS`: it exists for the development compose
   stack and the tests only, and lets a service start on the published values.
@@ -75,6 +76,7 @@ Before deploying, verify:
 - [ ] Current branch is clean (`git status`)
 - [ ] `SECRET_KEY` and `PUBSUB_NOTIFY_API_KEY` are set, as secrets of your own,
       to the same values on all 7 container apps (see Required Secrets and Settings)
+- [ ] `TENANT_PROVISIONING_KEY` is set on account, as a secret of your own
 - [ ] `APP_API_TOKEN` and `ALLOW_INSECURE_DEV_SECRETS` are **not** set on any
       container app
 - [ ] Dapr is enabled on report, journal and stock
@@ -154,8 +156,8 @@ echo "y" | ./scripts/update-azure-container-apps.sh -t <PREVIOUS_VERSION>
 - [ ] All components (MongoDB, Dapr) operational
 - [ ] Monitor logs for any errors in first 10 minutes
 - [ ] A service that is not HEALTHY: check its log for a settings error naming
-      `SECRET_KEY`, `PUBSUB_NOTIFY_API_KEY` or `APP_API_TOKEN` (empty, or a
-      published value)
+      `SECRET_KEY`, `PUBSUB_NOTIFY_API_KEY`, `APP_API_TOKEN` or
+      `TENANT_PROVISIONING_KEY` (empty, or a published value)
 - [ ] After a test sale, report, journal and stock received it: the sale shows
       in the report and the journal, and no `Refused a request to /api/v1/...`
       warning appears in their logs. That warning on every delivery means the

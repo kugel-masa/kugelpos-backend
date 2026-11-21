@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,6 +22,13 @@ from httpx import AsyncClient, ASGITransport
 from app.api.v1.account import router
 from app.api.v1.schemas import UserAccountInDB
 from app.dependencies.auth import get_password_hash, create_access_token
+
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
 
 
 def make_app():
@@ -200,6 +208,7 @@ class TestRegisterSuperUser:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
                     "/api/v1/accounts/register",
+                    headers=PROVISIONING_HEADERS,
                     json={"username": "admin", "password": "adminpass"},
                 )
 
@@ -237,11 +246,133 @@ class TestRegisterSuperUser:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 await client.post(
                     "/api/v1/accounts/register",
+                    headers=PROVISIONING_HEADERS,
                     json={"username": "admin", "password": "plainpass"},
                 )
 
         assert inserted.get("hashed_password") != "plainpass"
         assert inserted.get("hashed_password", "").startswith("$2")  # bcrypt prefix
+
+
+class TestRegisterRequiresProvisioningKey:
+    """Registration takes no user token, and was open to anyone (issue #138)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "headers, reason",
+        [({}, "missing"), ({"X-Provisioning-Key": "not-the-key"}, "wrong")],
+    )
+    async def test_refused_without_the_key(self, headers, reason):
+        from app.dependencies.auth import generate_tenant_id as real_generate_tenant_id
+
+        generate = AsyncMock(return_value="T999")
+        app = make_app()
+        app.dependency_overrides[real_generate_tenant_id] = generate
+
+        with patch("app.api.v1.account.database_setup") as mock_setup, \
+             patch("app.api.v1.account.get_user_collection") as mock_col, \
+             patch("app.dependencies.auth.audit_logger") as mock_audit:
+            mock_setup.execute = AsyncMock()
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/accounts/register",
+                    headers=headers,
+                    json={"username": "admin", "password": "adminpass"},
+                )
+
+        assert response.status_code == 401
+        # Refused before a tenant ID is looked for or anything is created
+        generate.assert_not_awaited()
+        mock_setup.execute.assert_not_awaited()
+        mock_col.assert_not_called()
+        warn = [c for c in mock_audit.warning.call_args_list if "refused" in c.args[0]]
+        assert len(warn) == 1
+        assert reason in warn[0].args[1]
+
+    @pytest.mark.asyncio
+    async def test_an_unset_key_refuses_everything(self, monkeypatch):
+        """The settings refuse to start without a key; if they are bypassed,
+        an empty key must not match an empty header."""
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "TENANT_PROVISIONING_KEY", "")
+        app = make_app()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/accounts/register",
+                headers={"X-Provisioning-Key": ""},
+                json={"username": "admin", "password": "adminpass"},
+            )
+        assert response.status_code == 401
+
+
+class TestProvisioningKeySettings:
+    def _settings(self, **env):
+        from app.config.settings_provisioning import TenantProvisioningSettings
+
+        return TenantProvisioningSettings(**env)
+
+    def test_a_key_of_ones_own_is_accepted(self):
+        key = "k" * 32
+        assert self._settings(TENANT_PROVISIONING_KEY=key).TENANT_PROVISIONING_KEY == key
+
+    @pytest.mark.parametrize(
+        "key, message",
+        [
+            (" " + "k" * 32, "printable ASCII"),
+            ("k" * 32 + "\n", "printable ASCII"),
+            ("k" * 31 + " k", "printable ASCII"),
+            ("k" * 31 + "\u00fc", "printable ASCII"),
+            ("k" * 31, "shorter than 32"),
+        ],
+        ids=["leading-space", "trailing-newline", "inner-space", "non-ascii", "short"],
+    )
+    def test_a_key_a_header_cannot_carry_refuses_to_start(self, key, message):
+        """A header loses surrounding whitespace and is not reliably decoded
+        beyond ASCII, so such a key would refuse every call; and nothing rate
+        limits registration, so the key has to be long."""
+        with pytest.raises(ValueError, match=message):
+            self._settings(TENANT_PROVISIONING_KEY=key, ALLOW_INSECURE_DEV_SECRETS=True)
+
+    def test_the_service_settings_read_the_key_from_the_environment(self, monkeypatch):
+        """The check runs on the account service's own Settings, composed from
+        several classes, and reads the environment as deployed."""
+        from app.config.settings import Settings
+
+        monkeypatch.setenv("TENANT_PROVISIONING_KEY", "e" * 40)
+        assert Settings().TENANT_PROVISIONING_KEY == "e" * 40
+
+        # The other secrets of one's own, so that only the provisioning key is refused
+        monkeypatch.setenv("SECRET_KEY", "s" * 48)
+        monkeypatch.setenv("PUBSUB_NOTIFY_API_KEY", "p" * 48)
+        monkeypatch.setenv("ALLOW_INSECURE_DEV_SECRETS", "false")
+        assert Settings().TENANT_PROVISIONING_KEY == "e" * 40
+
+        monkeypatch.setenv("TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only")
+        with pytest.raises(ValueError, match="TENANT_PROVISIONING_KEY is a value published"):
+            Settings()
+
+        monkeypatch.setenv("TENANT_PROVISIONING_KEY", "   ")
+        with pytest.raises(ValueError, match="TENANT_PROVISIONING_KEY is not set"):
+            Settings()
+
+    @pytest.mark.parametrize("key", ["", "   "])
+    def test_an_empty_key_refuses_to_start_even_in_development(self, key):
+        with pytest.raises(ValueError, match="TENANT_PROVISIONING_KEY is not set"):
+            self._settings(TENANT_PROVISIONING_KEY=key, ALLOW_INSECURE_DEV_SECRETS=True)
+
+    def test_the_published_key_refuses_to_start(self):
+        with pytest.raises(ValueError, match="published"):
+            self._settings(
+                TENANT_PROVISIONING_KEY="dev-tenant-provisioning-key-for-development-only",
+                ALLOW_INSECURE_DEV_SECRETS=False,
+            )
+
+    def test_the_published_key_is_allowed_for_development(self):
+        assert self._settings(
+            TENANT_PROVISIONING_KEY="dev-tenant-provisioning-key-for-development-only",
+            ALLOW_INSECURE_DEV_SECRETS=True,
+        )
 
 
 # ---------------------------------------------------------------------------

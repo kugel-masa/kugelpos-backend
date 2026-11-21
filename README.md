@@ -90,7 +90,9 @@ A service will not start if either is empty or one of the values published in th
 
 The pub/sub subscribers (report, journal, stock) also need `APP_API_TOKEN`. Their routes accept only a delivery carrying it, which their daprd sidecar sends as the `dapr-api-token` header, so give each app and its sidecar the same value. They will not start without one, or on the development token the compose file publishes, unless `ALLOW_INSECURE_DEV_SECRETS=true` is set (issue #134).
 
-`services/docker-compose.prod.yaml` refuses to start without all three. Generate each with:
+account also needs `TENANT_PROVISIONING_KEY`. `POST /api/v1/accounts/register`, which creates a tenant and its superuser, accepts only a call carrying it in the `X-Provisioning-Key` header, so give it to whoever onboards tenants and no one else. account will not start without one, or on the development key the compose file publishes, unless `ALLOW_INSECURE_DEV_SECRETS=true` is set (issue #138).
+
+`services/docker-compose.prod.yaml` refuses to start without all four. Generate each with:
 
 ```bash
 python -c 'import secrets; print(secrets.token_urlsafe(48))'

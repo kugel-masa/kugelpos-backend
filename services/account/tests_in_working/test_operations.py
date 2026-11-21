@@ -15,6 +15,13 @@ import pytest
 import os
 from fastapi import status
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 # =============================================================================
 # Superuser Registration Tests
@@ -28,6 +35,7 @@ async def test_superuser_registration_with_tenant_id(init_test_database, http_cl
 
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={
             "username": "admin",
             "password": "admin",
@@ -59,6 +67,7 @@ async def test_superuser_registration_with_existing_tenant_id(init_test_database
     # First registration
     await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={
             "username": "admin",
             "password": "admin",
@@ -69,6 +78,7 @@ async def test_superuser_registration_with_existing_tenant_id(init_test_database
     # Second registration with same tenant_id should generate new tenant_id
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={
             "username": "admin",
             "password": "admin",
@@ -95,6 +105,7 @@ async def test_superuser_registration_without_tenant_id(init_test_database, http
 
     response = await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={
             "username": "admin",
             "password": "admin"
@@ -126,6 +137,7 @@ async def test_superuser_login(init_test_database, http_client):
     # Register superuser first
     await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={
             "username": "admin",
             "password": "admin",
@@ -163,6 +175,7 @@ async def test_user_registration_by_superuser(init_test_database, http_client):
     # Register superuser first
     await http_client.post(
         "/api/v1/accounts/register",
+        headers=PROVISIONING_HEADERS,
         json={
             "username": "admin",
             "password": "admin",

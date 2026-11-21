@@ -33,6 +33,13 @@ import uuid
 import httpx
 import pytest
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 pytestmark = pytest.mark.e2e
 
 STORE = "9001"
@@ -90,7 +97,7 @@ def _exercise(tenant_id: str, planted: dict) -> dict:
     issued: dict[str, str] = {}
 
     with _client("URL_ACCOUNT") as c:
-        c.post("/api/v1/accounts/register", json={
+        c.post("/api/v1/accounts/register", headers=PROVISIONING_HEADERS, json={
             "username": "admin", "password": planted["account password"], "tenant_id": tenant_id})
         resp = c.post("/api/v1/accounts/token", data={
             "username": "admin", "password": planted["account password"], "client_id": tenant_id})

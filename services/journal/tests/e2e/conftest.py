@@ -9,6 +9,13 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, Timeout
 
+# POST /accounts/register requires the tenant provisioning key (issue #138)
+PROVISIONING_HEADERS = {
+    "X-Provisioning-Key": os.environ.get(
+        "TENANT_PROVISIONING_KEY", "dev-tenant-provisioning-key-for-development-only"
+    )
+}
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _setup_journal_db(set_env_vars):
@@ -57,6 +64,7 @@ async def _ensure_admin_user():
             return
         await client.post(
             "/api/v1/accounts/register",
+            headers=PROVISIONING_HEADERS,
             json={"username": "admin", "password": "admin", "tenant_id": tenant_id},
         )
 
