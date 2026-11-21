@@ -210,10 +210,8 @@ async def test_cash_in_cash_out(http_client, admin_token):
     )
     if r.status_code == 400:
         terminal_id = f"{tenant_id}-{store_code}-{terminal_no}"
-        # Fetch existing api_key (user JWT can opt-in to unmasked api_key)
-        r = await http_client.get(
-            f"/api/v1/terminals/{terminal_id}?include_api_key=true", headers=h
-        )
+        # The existing key cannot be read back (#136); issue a new one
+        r = await http_client.post(f"/api/v1/terminals/{terminal_id}/api-key", headers=h)
         api_key = r.json()["data"]["apiKey"]
     else:
         assert r.status_code == 201, r.text

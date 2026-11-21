@@ -95,7 +95,7 @@ def make_app(auth_type: str = "user_jwt"):
     """Build a FastAPI app with auth deps overridden.
 
     auth_type controls what get_auth_context_with_path_terminal returns,
-    which gates whether ?include_api_key=true is honored on GET /terminals/{id}.
+    which gates POST /terminals/{id}/api-key (user JWT only).
     """
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
@@ -274,24 +274,28 @@ class TestGetTerminal:
         assert resp.json()["data"]["apiKey"] != "raw-secret-1234567890"
 
     @pytest.mark.asyncio
-    async def test_include_api_key_honored_for_user_jwt(self):
-        """?include_api_key=true is honored when authenticated via user JWT."""
-        app = make_app(auth_type="user_jwt")
+    @pytest.mark.parametrize("auth_type", ["user_jwt", "terminal_jwt", "api_key"])
+    async def test_include_api_key_no_longer_reveals(self, auth_type):
+        """The key is stored as a digest (issue #136): GET cannot show it, for
+        any caller. The parameter is accepted and ignored."""
+        app = make_app(auth_type=auth_type)
         mock_service = AsyncMock()
         mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
-            api_key="raw-secret-1234567890"
+            api_key=None, api_key_hash="0" * 64
         )
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
         assert resp.status_code == 200
-        assert resp.json()["data"]["apiKey"] == "raw-secret-1234567890"
+        data = resp.json()["data"]
+        assert data["apiKey"] == "****"
+        assert "0" * 64 not in resp.text
 
     @pytest.mark.asyncio
-    async def test_include_api_key_ignored_for_terminal_jwt(self):
-        """?include_api_key=true is silently ignored for terminal JWT auth."""
-        app = make_app(auth_type="terminal_jwt")
+    async def test_include_api_key_masks_a_legacy_plaintext_key(self):
+        """A document not sealed yet still holds its plaintext; GET masks it."""
+        app = make_app(auth_type="user_jwt")
         mock_service = AsyncMock()
         mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
             api_key="raw-secret-1234567890"
@@ -303,52 +307,39 @@ class TestGetTerminal:
         assert resp.status_code == 200
         assert resp.json()["data"]["apiKey"] != "raw-secret-1234567890"
 
-    @pytest.mark.asyncio
-    async def test_include_api_key_ignored_for_api_key_auth(self):
-        """?include_api_key=true is silently ignored for X-API-KEY auth."""
-        app = make_app(auth_type="api_key")
-        mock_service = AsyncMock()
-        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
-            api_key="raw-secret-1234567890"
-        )
 
-        with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
-        assert resp.status_code == 200
-        assert resp.json()["data"]["apiKey"] != "raw-secret-1234567890"
-
+# ---------------------------------------------------------------------------
+# POST /terminals/{terminal_id}/api-key
+# ---------------------------------------------------------------------------
+class TestReissueApiKey:
     @pytest.mark.asyncio
-    async def test_audit_logger_records_honored_reveal(self):
-        """When ?include_api_key=true is honored, audit_logger.info must be called."""
+    async def test_user_jwt_gets_the_new_key_once(self):
         app = make_app(auth_type="user_jwt")
         mock_service = AsyncMock()
-        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
-            api_key="raw-secret-1234567890"
-        )
+        mock_service.reissue_api_key_async.return_value = _make_terminal_doc(api_key="new-key-1234567890")
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
              patch("app.api.v1.terminal.audit_logger") as mock_audit:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
+                resp = await client.post(f"/api/v1/terminals/{TERMINAL_ID}/api-key")
         assert resp.status_code == 200
-        info_calls = [c for c in mock_audit.info.call_args_list if "revealed via GET" in c.args[0]]
+        assert resp.json()["data"]["apiKey"] == "new-key-1234567890"
+        mock_service.reissue_api_key_async.assert_awaited_once()
+        info_calls = [c for c in mock_audit.info.call_args_list if "reissued" in c.args[0]]
         assert len(info_calls) == 1, mock_audit.info.call_args_list
 
     @pytest.mark.asyncio
-    async def test_audit_logger_records_denied_reveal(self):
-        """When ?include_api_key=true is denied (wrong auth_type), audit_logger.warning must be called."""
-        app = make_app(auth_type="api_key")
+    @pytest.mark.parametrize("auth_type", ["terminal_jwt", "api_key"])
+    async def test_a_terminal_credential_cannot_replace_itself(self, auth_type):
+        app = make_app(auth_type=auth_type)
         mock_service = AsyncMock()
-        mock_service.get_terminal_info_async.return_value = _make_terminal_doc(
-            api_key="raw-secret-1234567890"
-        )
 
         with patch("app.api.v1.terminal.get_terminal_service_async", return_value=mock_service), \
              patch("app.api.v1.terminal.audit_logger") as mock_audit:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                resp = await client.get(f"/api/v1/terminals/{TERMINAL_ID}?include_api_key=true")
-        assert resp.status_code == 200
+                resp = await client.post(f"/api/v1/terminals/{TERMINAL_ID}/api-key")
+        assert resp.status_code == 403
+        mock_service.reissue_api_key_async.assert_not_awaited()
         warn_calls = [c for c in mock_audit.warning.call_args_list if "DENIED" in c.args[0]]
         assert len(warn_calls) == 1, mock_audit.warning.call_args_list
 

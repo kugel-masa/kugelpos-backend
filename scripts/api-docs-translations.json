@@ -117,7 +117,8 @@
     "Delete snapshot schedule configuration": "スナップショットスケジュール設定削除",
     "Login For Access Token": "アクセストークン取得",
     "Register Super User": "スーパーユーザー登録",
-    "Register User By Superuser": "ユーザー登録"
+    "Register User By Superuser": "ユーザー登録",
+    "Reissue Terminal Api Key": "端末APIキー再発行"
   },
   "descriptions": {
     "Authenticate user and provide a JWT access token\n\nThe client_id field in the form is used as the tenant_id for multi-tenant support": "ユーザーを認証し、JWTアクセストークンを発行します。",
@@ -251,6 +252,8 @@
     "Add cash to a terminal drawer\n\nThis endpoint records cash being added to the terminal drawer\nand generates a receipt for the transaction.": "現金を入金します。端末のドロワーへの入金を記録し、レシートを生成します。",
     "Remove cash from a terminal drawer\n\nThis endpoint records cash being removed from the terminal drawer\nand generates a receipt for the transaction.": "現金を出金します。端末のドロワーからの出金を記録し、レシートを生成します。",
     "Update the delivery status of a transaction\n\nThis endpoint updates the delivery status of a transaction\nand generates a receipt for the transaction.": "配信状態を更新します。取引の配信追跡情報を更新します。",
-    "Root endpoint that provides basic API information\nReturns a welcome message and supported API versions": "ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。"
+    "Root endpoint that provides basic API information\nReturns a welcome message and supported API versions": "ルートエンドポイントです。ウェルカムメッセージとAPI情報を返します。",
+    "Get terminal information\n\nThis endpoint retrieves detailed information about a specific terminal.\nThe api_key is always masked: only its digest is stored (issue #136), so the\nkey is readable only in the response that issues it - POST /terminals and\nPOST /terminals/{terminal_id}/api-key.": "端末情報を取得します。端末の詳細と現在の状態を返します。APIキーは常にマスクされます。保存しているのはダイジェストだけなので（issue #136）、キーを読めるのは発行したレスポンス（POST /terminals と POST /terminals/{terminal_id}/api-key）だけです。",
+    "Issue a new API key for a terminal\n\nThe current key stops working at once, and the new one is returned in this\nresponse only: the key is stored as a digest and cannot be read back (issue\n#136). Use it when a terminal is set up again or replaced, or when its key\nis lost or may have been exposed.\n\nTerminal JWTs already obtained with the old key are not revoked: every\nservice verifies them on its own, and they stay valid until they expire\n(TERMINAL_TOKEN_EXPIRE_HOURS, 24 hours by default).\n\nOnly a user JWT (tenant admin) may call this. A terminal's own credential\nmay not replace itself.": "端末の新しいAPIキーを発行します。現在のキーはその時点で使えなくなり、新しいキーはこのレスポンスでだけ返されます。キーはダイジェストで保存されるため、後から読み出せません（issue #136）。端末の再セットアップや入れ替え、キーの紛失や漏洩の疑いがあるときに使います。古いキーで取得済みの端末JWTは失効しません。各サービスがその場で検証するため、有効期限（TERMINAL_TOKEN_EXPIRE_HOURS、既定24時間）まで使えます。呼べるのはユーザーJWT（テナント管理者）だけで、端末自身の認証情報では自分のキーを再発行できません。"
   }
 }

@@ -59,6 +59,12 @@ class AuthSettings(BaseSettings):
         ALLOW_INSECURE_DEV_SECRETS: Let the service start with an empty or
             published SECRET_KEY / PUBSUB_NOTIFY_API_KEY. For the development
             stack and the tests only
+        SEAL_LEGACY_TERMINAL_API_KEYS: Replace a terminal API key still stored
+            in plaintext with its digest, when it is verified and in the terminal
+            service's tenant setup (issue #136). The replacement is one-way: a
+            terminal service from before it cannot verify a sealed key. Set to
+            false while an older revision may still run, or to keep a rollback
+            open; the key is verified either way
     """
     SECRET_KEY: str = "test-secret-key-for-development-only"  # Development only; see ALLOW_INSECURE_DEV_SECRETS
     ALGORITHM: str = "HS256"
@@ -67,6 +73,7 @@ class AuthSettings(BaseSettings):
     PUBSUB_NOTIFY_API_KEY: str = "test-api-key-for-development-only"  # Development only; see ALLOW_INSECURE_DEV_SECRETS
     TERMINAL_TOKEN_EXPIRE_HOURS: int = 24
     ALLOW_INSECURE_DEV_SECRETS: bool = False
+    SEAL_LEGACY_TERMINAL_API_KEYS: bool = True
 
     # A settings error reports the values it was given; these include the secrets.
     model_config = SettingsConfigDict(hide_input_in_errors=True)

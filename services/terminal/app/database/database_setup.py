@@ -3,6 +3,11 @@ from typing import Optional
 from app.config.settings import settings
 from logging import getLogger
 from kugel_common.database import database as db_helper
+from kugel_common.utils.terminal_api_key import (
+    API_KEY_HASH_FIELD,
+    LEGACY_API_KEY_FIELD,
+    seal_legacy_api_key_async,
+)
 
 # Setup logger for database operations
 logger = getLogger(__name__)
@@ -78,10 +83,41 @@ async def create_terminal_info_collection(tenant_id: str):
     index_key_list = [
         {"keys": {"terminal_id": 1}, "unique": True},
         {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1}, "unique": True},
+        # POST /auth/token without a terminal_id finds the terminal by the digest
+        # of its key (issue #136)
+        {"keys": {API_KEY_HASH_FIELD: 1}, "partialFilterExpression": {API_KEY_HASH_FIELD: {"$type": "string"}}},
     ]
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
     )
+
+
+async def seal_plaintext_api_keys(tenant_id: str):
+    """
+    Removes every terminal API key still stored in plaintext
+
+    Keys issued before issue #136 were stored as they are. Verification seals a
+    document the first time its key is used, but a terminal that never calls in
+    would keep its key readable; this sweeps them, and also drops a plaintext
+    key left beside a digest. Runs with tenant setup and on startup for existing
+    tenants. Terminals keep working with the same key.
+
+    Sealing is one-way - a terminal service from before it cannot verify a
+    sealed key - so it is skipped while SEAL_LEGACY_TERMINAL_API_KEYS is off.
+
+    Args:
+        tenant_id: Tenant ID whose terminals to seal
+    """
+    if tenant_id is None or not settings.SEAL_LEGACY_TERMINAL_API_KEYS:
+        return
+    db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+    collection = db.get_collection(settings.DB_COLLECTION_NAME_TERMINAL_INFO)
+    sealed = 0
+    async for terminal_dict in collection.find({LEGACY_API_KEY_FIELD: {"$type": "string", "$ne": ""}}):
+        if await seal_legacy_api_key_async(collection, terminal_dict):
+            sealed += 1
+    if sealed:
+        logger.info(f"Sealed {sealed} plaintext terminal api_key(s) for tenant_id:{tenant_id}")
 
 
 async def create_cash_in_out_log_collection(tenant_id: str):
@@ -275,6 +311,7 @@ async def create_collections(tenant_id: str):
         [
             create_tenant_info_collection,
             create_terminal_info_collection,
+            seal_plaintext_api_keys,
             create_cash_in_out_log_collection,
             create_request_log_collection,
             create_open_close_log_collection,

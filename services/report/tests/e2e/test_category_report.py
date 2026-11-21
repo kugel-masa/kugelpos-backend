@@ -18,6 +18,7 @@ from fastapi import status
 from httpx import AsyncClient
 from datetime import datetime
 from kugel_common.utils.misc import get_app_time
+from tests.e2e.terminal_api_key import issue_terminal_api_key
 
 
 def check_category_report_data(report_data: dict):
@@ -176,9 +177,7 @@ async def test_category_report_operations(http_client):
     
     # get api key from terminal info
     terminal_id = os.environ.get("TERMINAL_ID", f"{tenant_id}-{store_code}-{terminal_no}")
-    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
-    async with AsyncClient() as http_terminal_client:
-        response = await http_terminal_client.get(url=terminal_url, headers=header)
+    response = await issue_terminal_api_key(terminal_id, header)
     res = response.json()
     print(f"get terminal response: {res}")
     if response.status_code == 200:

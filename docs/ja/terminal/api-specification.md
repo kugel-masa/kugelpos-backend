@@ -871,13 +871,7 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 **GET** `/api/v1/terminals/{terminal_id}`
 
-Get terminal information
-
-This endpoint retrieves detailed information about a specific terminal.
-
-The optional `include_api_key=true` query is honored only when the caller is
-authenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT
-or X-API-KEY), the api_key is always masked even if the flag is set.
+端末情報を取得します。端末の詳細と現在の状態を返します。APIキーは常にマスクされます。保存しているのはダイジェストだけなので（issue #136）、キーを読めるのは発行したレスポンス（POST /terminals と POST /terminals/{terminal_id}/api-key）だけです。
 
 **パスパラメータ:**
 
@@ -889,7 +883,7 @@ or X-API-KEY), the api_key is always masked even if the flag is set.
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | When true, return the unmasked api_key.  |
+| `include_api_key` | boolean | No | False | 非推奨・無視されます。キーはダイジェストでしか保存されないため、`POST /terminals/{terminal_id}/api-key` で再発行してください。 |
 
 **レスポンス:**
 
@@ -992,7 +986,76 @@ Delete Terminalを削除します。対象をシステムから削除します�
 }
 ```
 
-### 16. 現金入金
+### 16. 端末APIキー再発行
+
+**POST** `/api/v1/terminals/{terminal_id}/api-key`
+
+端末の新しいAPIキーを発行します。現在のキーはその時点で使えなくなり、新しいキーはこのレスポンスでだけ返されます。キーはダイジェストで保存されるため、後から読み出せません（issue #136）。端末の再セットアップや入れ替え、キーの紛失や漏洩の疑いがあるときに使います。古いキーで取得済みの端末JWTは失効しません。各サービスがその場で検証するため、有効期限（TERMINAL_TOKEN_EXPIRE_HOURS、既定24時間）まで使えます。呼べるのはユーザーJWT（テナント管理者）だけで、端末自身の認証情報では自分のキーを再発行できません。
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `Terminal`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `businessDate` | string | No | - |
+| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `receiptCounter` | integer | No | - |
+| `initialAmount` | number | No | - |
+| `physicalAmount` | number | No | - |
+| `staff` | BaseStaff | No | - |
+| `apiKey` | string | No | - |
+| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "terminalId": "string",
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "description": "string",
+    "functionMode": "string",
+    "status": "string",
+    "businessDate": "string",
+    "openCounter": 0,
+    "businessCounter": 0
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. 現金入金
 
 **POST** `/api/v1/terminals/{terminal_id}/cash-in`
 
@@ -1059,7 +1122,7 @@ Delete Terminalを削除します。対象をシステムから削除します�
 }
 ```
 
-### 17. 現金出金
+### 18. 現金出金
 
 **POST** `/api/v1/terminals/{terminal_id}/cash-out`
 
@@ -1126,7 +1189,7 @@ Delete Terminalを削除します。対象をシステムから削除します�
 }
 ```
 
-### 18. 端末閉店
+### 19. 端末閉店
 
 **POST** `/api/v1/terminals/{terminal_id}/close`
 
@@ -1217,7 +1280,7 @@ Represents termin |
 }
 ```
 
-### 19. 配信状態更新
+### 20. 配信状態更新
 
 **POST** `/api/v1/terminals/{terminal_id}/delivery-status`
 
@@ -1286,7 +1349,7 @@ Represents termin |
 }
 ```
 
-### 20. 端末説明更新
+### 21. 端末説明更新
 
 **PATCH** `/api/v1/terminals/{terminal_id}/description`
 
@@ -1368,7 +1431,7 @@ Represents termin |
 }
 ```
 
-### 21. 端末機能モード更新
+### 22. 端末機能モード更新
 
 **PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
 
@@ -1450,7 +1513,7 @@ Represents termin |
 }
 ```
 
-### 22. 端末開店
+### 23. 端末開店
 
 **POST** `/api/v1/terminals/{terminal_id}/open`
 
@@ -1545,7 +1608,7 @@ Represents termin |
 }
 ```
 
-### 23. スタッフサインイン
+### 24. スタッフサインイン
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-in`
 
@@ -1631,7 +1694,7 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 }
 ```
 
-### 24. スタッフサインアウト
+### 25. スタッフサインアウト
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-out`
 
@@ -1706,7 +1769,7 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 ### その他
 
-### 25. Create Token
+### 26. Create Token
 
 **POST** `/api/v1/auth/token`
 

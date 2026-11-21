@@ -11,6 +11,13 @@ from pydantic import BaseModel
 from kugel_common.security import api_key_header, get_terminal_info_for_terminal_service
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.utils.terminal_auth import create_terminal_token
+from kugel_common.utils.terminal_api_key import (
+    API_KEY_HASH_FIELD,
+    LEGACY_API_KEY_FIELD,
+    api_key_matches,
+    hash_api_key,
+    seal_legacy_api_key_async,
+)
 from kugel_common.config.settings import settings
 
 router = APIRouter()
@@ -136,9 +143,14 @@ async def _get_terminal_info_by_api_key_scan(api_key: str):
 
         db = await db_helper.get_db_async(db_name)
         collection = db.get_collection(app_settings.DB_COLLECTION_NAME_TERMINAL_INFO)
-        terminal_dict = await collection.find_one({"api_key": api_key})
+        # By digest; a legacy document still holding its plaintext key is found
+        # by that, and sealed once matched (issue #136)
+        terminal_dict = await collection.find_one({API_KEY_HASH_FIELD: hash_api_key(api_key)})
+        if terminal_dict is None:
+            terminal_dict = await collection.find_one({LEGACY_API_KEY_FIELD: api_key})
 
-        if terminal_dict:
+        if terminal_dict and api_key_matches(terminal_dict, api_key):
+            await seal_legacy_api_key_async(collection, terminal_dict)
             logger.debug(f"Found terminal with API key in database {db_name}")
             terminal_info = TerminalInfoDocument(**terminal_dict)
             staff_data = terminal_dict.get("staff")

@@ -42,21 +42,10 @@ def get_terminal_info():
     return terminal_id, tenant_id, store_code, terminal_no
 
 
-# Helper - fetch the terminal's API key by reading its terminal record
+# Helper - the terminal's API key, issued once for the session by conftest
+# (it cannot be read back, and issuing it again would invalidate it - #136)
 async def get_api_key(http_client, token):
-    tenant_id = os.environ.get("TENANT_ID")
-    terminal_id = os.environ.get("TERMINAL_ID")
-    base_url = os.environ.get("BASE_URL_TERMINAL")
-
-    header = {"Authorization": f"Bearer {token}"}
-
-    async with AsyncClient(base_url=base_url) as terminal_client:
-        response = await terminal_client.get(f"/terminals/{terminal_id}?include_api_key=true", headers=header)
-
-    if response.status_code == status.HTTP_200_OK:
-        res = response.json()
-        return res.get("data", {}).get("apiKey")
-    return None
+    return os.environ.get("API_KEY")
 
 
 # Helper - create a cart with items and bill it (returns billed transaction)

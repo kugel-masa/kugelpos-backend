@@ -1414,7 +1414,7 @@
     "/api/v1/terminals/{terminal_id}": {
       "get": {
         "summary": "Get Terminal",
-        "description": "Get terminal information\n\nThis endpoint retrieves detailed information about a specific terminal.\n\nThe optional `include_api_key=true` query is honored only when the caller is\nauthenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT\nor X-API-KEY), the api_key is always masked even if the flag is set.\n\nArgs:\n    terminal_id: ID of the terminal to retrieve\n    include_api_key: Opt-in to receive the unmasked api_key (user-JWT only)\n    auth_ctx: Auth context (tenant_id + auth_type + subject)\n\nReturns:\n    ApiResponse containing terminal information",
+        "description": "Get terminal information\n\nThis endpoint retrieves detailed information about a specific terminal.\nThe api_key is always masked: only its digest is stored (issue #136), so the\nkey is readable only in the response that issues it - POST /terminals and\nPOST /terminals/{terminal_id}/api-key.\n\nArgs:\n    terminal_id: ID of the terminal to retrieve\n    include_api_key: Deprecated and ignored\n    auth_ctx: Auth context (tenant_id + auth_type + subject)\n\nReturns:\n    ApiResponse containing terminal information",
         "operationId": "get_terminal_api_v1_terminals__terminal_id__get",
         "security": [
           {
@@ -1440,11 +1440,13 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, return the unmasked api_key. Honored only when authenticated via user JWT.",
+              "description": "Ignored. The API key is stored only as a digest and cannot be shown again; issue a new one with POST /terminals/{terminal_id}/api-key.",
+              "deprecated": true,
               "default": false,
               "title": "Include Api Key"
             },
-            "description": "When true, return the unmasked api_key. Honored only when authenticated via user JWT."
+            "description": "Ignored. The API key is stored only as a digest and cannot be shown again; issue a new one with POST /terminals/{terminal_id}/api-key.",
+            "deprecated": true
           }
         ],
         "responses": {
@@ -1647,6 +1649,118 @@
                 },
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/terminals/{terminal_id}/api-key": {
+      "post": {
+        "summary": "Reissue Terminal Api Key",
+        "description": "Issue a new API key for a terminal\n\nThe current key stops working at once, and the new one is returned in this\nresponse only: the key is stored as a digest and cannot be read back (issue\n#136). Use it when a terminal is set up again or replaced, or when its key\nis lost or may have been exposed.\n\nTerminal JWTs already obtained with the old key are not revoked: every\nservice verifies them on its own, and they stay valid until they expire\n(TERMINAL_TOKEN_EXPIRE_HOURS, 24 hours by default).\n\nOnly a user JWT (tenant admin) may call this. A terminal's own credential\nmay not replace itself.\n\nArgs:\n    terminal_id: ID of the terminal to issue a key for\n    auth_ctx: Auth context (tenant_id + auth_type + subject)\n\nReturns:\n    ApiResponse containing the terminal, with the new key unmasked in apiKey",
+        "operationId": "reissue_terminal_api_key_api_v1_terminals__terminal_id__api_key_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "terminal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Terminal_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }

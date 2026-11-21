@@ -101,6 +101,8 @@ def _terminal_info_for_log(terminal: TerminalInfoDocument) -> TerminalInfoDocume
     """
     redacted = terminal.model_copy(deep=True)
     redacted.api_key = MASKED_API_KEY
+    # The digest is no credential, but nothing reading the log needs it (#136)
+    redacted.api_key_hash = None
     if redacted.staff is not None:
         redacted.staff.pin = MASKED_PIN
     return redacted
@@ -175,6 +177,16 @@ class TerminalService:
             self.terminal_id = terminal.terminal_id
 
         return terminal
+
+    async def reissue_api_key_async(self) -> TerminalInfoDocument:
+        """
+        Issue a new API key for this terminal, invalidating the current one
+
+        Returns:
+            The terminal, carrying the new plaintext key on api_key. It is the
+            only time the key can be read: only its digest is stored (#136).
+        """
+        return await self.terminal_info_repo.reissue_api_key_async(self.terminal_id)
 
     async def delete_terminal_async(self) -> bool:
         """

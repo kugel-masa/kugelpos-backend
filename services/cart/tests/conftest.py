@@ -117,12 +117,14 @@ def set_env_vars():
     print(f"auth response: {res}")
     token = res.get("access_token")
 
-    # get api key from terminal service (user JWT can opt-in to unmasked api_key)
+    # Issue the terminal's API key: it is stored as a digest and cannot be read
+    # back (issue #136). Issued once for the session; issuing again invalidates
+    # it, so tests read API_KEY rather than issue their own.
     terminal_id = os.environ.get("TERMINAL_ID")
     header = {"Authorization": f"Bearer {token}"}
-    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}?include_api_key=true"
+    terminal_url = f"{os.environ.get('BASE_URL_TERMINAL')}/terminals/{terminal_id}/api-key"
     with Client() as http_terminal_client:
-        response = http_terminal_client.get(url=terminal_url, headers=header)
+        response = http_terminal_client.post(url=terminal_url, headers=header)
     res = response.json()
     print(f"terminal response: {res}")
     api_key = res.get("data").get("apiKey")

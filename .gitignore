@@ -17,6 +17,8 @@ data/*
 *.txt
 # ignore all files with the extension .log
 *.log
+# and the files a log rotates into (app.log.1, ...), which carry the same content
+*.log.*
 # lock files of concurrent-log-handler, next to each log file
 .__*.lock
 # ignore all files with the extension .bak

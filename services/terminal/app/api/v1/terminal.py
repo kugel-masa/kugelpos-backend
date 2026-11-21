@@ -164,7 +164,11 @@ async def get_terminal(
     terminal_id: str,
     include_api_key: bool = Query(
         False,
-        description="When true, return the unmasked api_key. Honored only when authenticated via user JWT.",
+        deprecated=True,
+        description=(
+            "Ignored. The API key is stored only as a digest and cannot be shown again; "
+            "issue a new one with POST /terminals/{terminal_id}/api-key."
+        ),
     ),
     auth_ctx: dict = Depends(get_auth_context_with_path_terminal),
 ):
@@ -172,29 +176,24 @@ async def get_terminal(
     Get terminal information
 
     This endpoint retrieves detailed information about a specific terminal.
-
-    The optional `include_api_key=true` query is honored only when the caller is
-    authenticated via a user JWT (tenant admin). For terminal-level auth (terminal JWT
-    or X-API-KEY), the api_key is always masked even if the flag is set.
+    The api_key is always masked: only its digest is stored (issue #136), so the
+    key is readable only in the response that issues it - POST /terminals and
+    POST /terminals/{terminal_id}/api-key.
 
     Args:
         terminal_id: ID of the terminal to retrieve
-        include_api_key: Opt-in to receive the unmasked api_key (user-JWT only)
+        include_api_key: Deprecated and ignored
         auth_ctx: Auth context (tenant_id + auth_type + subject)
 
     Returns:
         ApiResponse containing terminal information
     """
     tenant_id = auth_ctx["tenant_id"]
-    auth_type = auth_ctx["auth_type"]
 
-    # Honor include_api_key only for user JWT (tenant admin). Mask otherwise.
-    reveal_api_key = include_api_key and auth_type == "user_jwt"
-    if include_api_key and not reveal_api_key:
-        audit_logger.warning(
-            "api_key reveal requested but DENIED on GET /terminals/{id} "
-            "(auth_type=%s, subject=%s, terminal_id=%s)",
-            auth_type,
+    if include_api_key:
+        logger.info(
+            "include_api_key=true ignored on GET /terminals/{id}: the key is not stored "
+            "(subject=%s, terminal_id=%s)",
             auth_ctx.get("subject"),
             terminal_id,
         )
@@ -203,18 +202,9 @@ async def get_terminal(
     terminal_service = await get_terminal_service_async(tenant_id, terminal_id)
     try:
         terminal_info = await terminal_service.get_terminal_info_async()
-        return_json = SchemasTransformerV1().transform_terminal(
-            terminal_info, include_api_key=reveal_api_key
-        ).model_dump()
+        return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
     except Exception as e:
         raise e
-
-    if reveal_api_key:
-        audit_logger.info(
-            "api_key revealed via GET /terminals/{id} (subject=%s, terminal_id=%s)",
-            auth_ctx.get("subject"),
-            terminal_id,
-        )
 
     response = ApiResponse(
         success=True,
@@ -224,6 +214,75 @@ async def get_terminal(
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
+
+
+@router.post(
+    "/terminals/{terminal_id}/api-key",
+    status_code=status.HTTP_200_OK,
+    response_model=ApiResponse[Terminal],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
+        status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def reissue_terminal_api_key(
+    terminal_id: str,
+    auth_ctx: dict = Depends(get_auth_context_with_path_terminal),
+):
+    """
+    Issue a new API key for a terminal
+
+    The current key stops working at once, and the new one is returned in this
+    response only: the key is stored as a digest and cannot be read back (issue
+    #136). Use it when a terminal is set up again or replaced, or when its key
+    is lost or may have been exposed.
+
+    Terminal JWTs already obtained with the old key are not revoked: every
+    service verifies them on its own, and they stay valid until they expire
+    (TERMINAL_TOKEN_EXPIRE_HOURS, 24 hours by default).
+
+    Only a user JWT (tenant admin) may call this. A terminal's own credential
+    may not replace itself.
+
+    Args:
+        terminal_id: ID of the terminal to issue a key for
+        auth_ctx: Auth context (tenant_id + auth_type + subject)
+
+    Returns:
+        ApiResponse containing the terminal, with the new key unmasked in apiKey
+    """
+    if auth_ctx["auth_type"] != "user_jwt":
+        audit_logger.warning(
+            "api_key reissue DENIED on POST /terminals/{id}/api-key (auth_type=%s, subject=%s, terminal_id=%s)",
+            auth_ctx["auth_type"],
+            auth_ctx.get("subject"),
+            terminal_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Issuing a terminal API key requires a user token",
+        )
+
+    terminal_service = await get_terminal_service_async(auth_ctx["tenant_id"], terminal_id)
+    terminal_info = await terminal_service.reissue_api_key_async()
+    return_json = SchemasTransformerV1().transform_terminal(terminal_info, include_api_key=True).model_dump()
+
+    audit_logger.info(
+        "api_key reissued via POST /terminals/{id}/api-key; the previous key is invalid, "
+        "terminal JWTs it obtained stay valid until they expire (subject=%s, terminal_id=%s)",
+        auth_ctx.get("subject"),
+        terminal_id,
+    )
+
+    return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Terminal API key issued. terminal_id: {terminal_id}",
+        data=return_json,
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
 
 
 @router.delete(

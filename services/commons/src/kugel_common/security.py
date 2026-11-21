@@ -25,6 +25,7 @@ from kugel_common.models.documents.terminal_info_document import TerminalInfoDoc
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
 from kugel_common.utils.http_client_helper import get_pooled_client, HttpClientError
 from kugel_common.utils.log_utils import mask_sensitive_data
+from kugel_common.utils.terminal_api_key import api_key_matches, seal_legacy_api_key_async
 
 logger = getLogger(__name__)
 # Audit logger for security events. Uses the shared "audit" qualname so each
@@ -417,8 +418,11 @@ async def get_terminal_info_for_terminal_service(
     # `mask_dict_api_key` is shallow and covers only the document's own
     # api_key; the embedded staff carries a plaintext pin (issue #211).
     logger.debug(f"TerminalInfo: {mask_sensitive_data(terminal_dict) if terminal_dict else None}")
-    # verify api_key
-    if (terminal_dict is None) or (terminal_dict.get("api_key") != api_key):
+    # verify api_key against its stored digest (a legacy plaintext key is
+    # accepted once more and sealed - issue #136)
+    if terminal_dict is not None and api_key_matches(terminal_dict, api_key):
+        await seal_legacy_api_key_async(collection, terminal_dict)
+    else:
         if api_key != settings.PUBSUB_NOTIFY_API_KEY:
             # allow pubsub notify api key
             audit_logger.warning(
@@ -432,6 +436,9 @@ async def get_terminal_info_for_terminal_service(
                 headers={"WWW-Authenticate": "API-Key"}
             )
     return_terminal = transform_terminal_info(terminal_dict)
+    # The stored document holds a digest, not the key. Carry the key the caller
+    # proved, as get_terminal_info_from_terminal_service does.
+    return_terminal.api_key = api_key
     logger.debug(f"return_terminal: {mask_sensitive_data(return_terminal.model_dump())}")
     return return_terminal
 

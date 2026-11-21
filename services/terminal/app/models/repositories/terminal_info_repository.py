@@ -13,6 +13,7 @@ from kugel_common.exceptions import (
 )
 from kugel_common.utils.misc import get_app_time
 from kugel_common.utils.log_utils import mask_loggable
+from kugel_common.utils.terminal_api_key import hash_api_key
 from kugel_common.schemas.pagination import PaginatedResult
 
 from app.config.settings import settings
@@ -49,6 +50,12 @@ def make_api_key():
         A secure random API key string
     """
     return secrets.token_urlsafe(32)
+
+
+# The credential fields. They change only through create_terminal_info,
+# reissue_api_key_async and sealing, never through a rewrite of the whole
+# terminal (issue #136).
+CREDENTIAL_FIELDS = ("api_key", "api_key_hash")
 
 
 class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
@@ -121,19 +128,46 @@ class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
         terminal_info.staff = None
         terminal_info.terminal_id = terminal_id
         terminal_info.shard_key = self.__make_shard_key(terminal_info)
-        terminal_info.api_key = make_api_key()
+        api_key = make_api_key()
+        terminal_info.api_key_hash = hash_api_key(api_key)
         terminal_info.tags = tags
 
         resutl = await self.create_async(terminal_info)
         if not resutl:
-            # `api_key` was generated four lines up, and this message is both
-            # logged and returned to the caller (issue #211).
             message = f"Cannot create terminal info: {mask_loggable(terminal_info)}"
             raise CannotCreateException(message, self.collection_name, terminal_info, logger)
 
         self.terminal_info = terminal_info
 
-        return terminal_info
+        # Only the digest was stored (issue #136). The caller gets the key once,
+        # on a copy, so the plaintext cannot reach a later write of this document.
+        return terminal_info.model_copy(update={"api_key": api_key})
+
+    async def reissue_api_key_async(self, terminal_id: str) -> TerminalInfoDocument:
+        """
+        Issue a new API key for a terminal, invalidating the current one
+
+        The key cannot be shown again once issued - only its digest is stored -
+        so a lost or exposed key is replaced rather than retrieved.
+
+        Args:
+            terminal_id: The terminal ID to issue a key for
+
+        Returns:
+            The terminal document, carrying the new plaintext key on api_key
+
+        Raises:
+            NotFoundException: If the terminal is not found
+            UpdateNotWorkException: If the update fails
+        """
+        terminal_info = await self.get_terminal_info_by_id_async(terminal_id)
+        api_key = make_api_key()
+        api_key_hash = hash_api_key(api_key)
+        await self.update_terminal_info_async(terminal_id, {"api_key_hash": api_key_hash, "api_key": None})
+        terminal_info.api_key_hash = api_key_hash
+        terminal_info.api_key = None
+        self.terminal_info = terminal_info
+        return terminal_info.model_copy(update={"api_key": api_key})
 
     async def get_terminal_info_list_async(
         self,
@@ -234,24 +268,30 @@ class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
 
     async def replace_terminal_info_async(self, terminal_id: str, terminal_info: TerminalInfoDocument) -> bool:
         """
-        Replace an entire terminal information document
+        Write back every field of a terminal information document but its credential
 
-        This replaces the entire document rather than just updating specific fields
+        Sign-in, sign-out, open and close read the terminal, do their work and
+        write it back. The credential is left out of that write: the document was
+        read before the work, and writing its key back would undo a reissue that
+        ran in between - the new key refused, the revoked one valid again (#136).
 
         Args:
-            terminal_id: The terminal ID to replace
-            terminal_info: New terminal information document
+            terminal_id: The terminal ID to write
+            terminal_info: Terminal information document as modified by the caller
 
         Returns:
-            True if replacement was successful
+            True if the write was successful
 
         Raises:
-            UpdateNotWorkException: If the replace operation fails
+            UpdateNotWorkException: If the write fails
         """
         search_dict = {"terminal_id": terminal_id}
-        result = await self.replace_one_async(search_dict, terminal_info)
+        # As replace_one_async did: the caller's document carries the new time
+        terminal_info.updated_at = get_app_time()
+        values = terminal_info.model_dump(exclude=set(CREDENTIAL_FIELDS))
+        result = await self.update_one_async(search_dict, values)
         if not result:
-            message = f"Cannot replace terminal info: {terminal_id}"
+            message = f"Cannot write terminal info: {terminal_id}"
             raise UpdateNotWorkException(message, self.collection_name, terminal_id, logger)
         return result
 
