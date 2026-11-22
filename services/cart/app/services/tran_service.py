@@ -50,6 +50,8 @@ from app.exceptions import (
     InternalErrorException,
     AlreadyVoidedException,
     AlreadyRefundedException,
+    RefundNotAllowedException,
+    RefundLimitExceededException,
     FinalizeConflictException,
     SnapshotInvalidException,
     VoidOutOfSessionException,
@@ -872,6 +874,40 @@ class TranService:
             logger.warning(f"Failed to resolve own store name; keeping {fallback}: {e}")
             return fallback
 
+    @staticmethod
+    def _check_refund_allowed(payments: list[BaseTransaction.Payment], masters: dict[str, Any]) -> None:
+        """
+        Refuse a return refunded by a method its payment master does not allow.
+
+        A method with can_refund=false cannot refund. A positive limit_amount
+        caps what one method refunds, its lines together; zero or less means no
+        limit.
+
+        Args:
+            payments: The return's payment lines
+            masters: Payment master of each payment code in the lines
+
+        Raises:
+            RefundNotAllowedException: If a method's master has can_refund=false
+            RefundLimitExceededException: If a method refunds more than its limit
+        """
+        refunded: dict[str, float] = {}
+        for payment in payments:
+            refunded[payment.payment_code] = refunded.get(payment.payment_code, 0.0) + max(payment.amount or 0.0, 0.0)
+        for payment_code, amount in refunded.items():
+            pay_doc = masters[payment_code]
+            # Only an explicit false refuses: the master's default is refundable.
+            if pay_doc.can_refund is False:
+                message = f"Payment method cannot be used to refund: payment_code->{payment_code}"
+                raise RefundNotAllowedException(message, logger)
+            limit = pay_doc.limit_amount
+            if limit is not None and limit > 0 and amount > limit:
+                message = (
+                    f"Refund exceeds the limit of its method: payment_code->{payment_code}, "
+                    f"amount->{amount}, limit->{limit}"
+                )
+                raise RefundLimitExceededException(message, logger)
+
     async def return_async(
         self,
         tran: BaseTransaction,
@@ -897,6 +933,8 @@ class TranService:
             InternalErrorException: If there's an error processing the return transaction
             ExternalServiceException: If there's an error publishing the transaction event
             AlreadyRefundedException: If the transaction has already been refunded
+            RefundNotAllowedException: If a payment method's master has can_refund=false
+            RefundLimitExceededException: If the refund by a method exceeds its master's limit_amount
         """
         # Check if the transaction has already been refunded or voided from history.
         # The epoch is part of the identity (issue #156) — see void_async.
@@ -938,6 +976,7 @@ class TranService:
             raise BadRequestBodyException(message, logger)
 
         tran.payments = []
+        refund_masters = {}
         for payment in add_payment_list:
             payment_code = payment.get("payment_code")
             pay_doc = await self.payment_master_repo.get_payment_by_code_async(payment_code)
@@ -954,6 +993,9 @@ class TranService:
             tran_payment.amount = payment.get("amount")
             tran_payment.detail = payment.get("detail")
             tran.payments.append(tran_payment)
+            refund_masters[pay_doc.payment_code] = pay_doc
+
+        self._check_refund_allowed(tran.payments, refund_masters)
 
         # Check if payment amount is valid
         total_payment_amount = sum([payment.amount for payment in tran.payments])

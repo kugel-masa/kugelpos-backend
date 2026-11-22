@@ -14,6 +14,7 @@ from app.config.settings import settings
 from app.exceptions import SnapshotInvalidException
 from app.services import snapshot_service
 from app.services.tran_service import TranService
+from app.models.documents.payment_master_document import PaymentMasterDocument
 from app.models.documents.transaction_status_document import TransactionStatusDocument
 from app.exceptions import (
     DocumentNotFoundException,
@@ -21,6 +22,8 @@ from app.exceptions import (
     InternalErrorException,
     AlreadyVoidedException,
     AlreadyRefundedException,
+    RefundLimitExceededException,
+    RefundNotAllowedException,
 )
 from kugel_common.enums import TransactionType
 from kugel_common.models.documents.base_tranlog import BaseTransaction
@@ -345,6 +348,8 @@ class TestVoidAsync:
         pay_doc.description = "Cash"
         pay_doc.can_deposit_over = False
         pay_doc.can_change = False
+        pay_doc.can_refund = True
+        pay_doc.limit_amount = 0.0
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=pay_doc)
 
         with pytest.raises(BadRequestBodyException):
@@ -372,7 +377,10 @@ class TestVoidAsync:
         tran = _make_base_transaction(transaction_type=TransactionType.ReturnSales.value, transaction_no=7)
         tran.user = None
         svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
-        pay_doc = MagicMock(payment_code="01", description="Cash", can_deposit_over=False, can_change=False)
+        pay_doc = MagicMock(
+            payment_code="01", description="Cash", can_deposit_over=False, can_change=False,
+            can_refund=True, limit_amount=0.0,
+        )
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=pay_doc)
         svc._resolve_carried_finalize = AsyncMock(return_value=("void-cart", 8, 300, "2025-01-01T13:00:00", None))
         svc.receipt_data_strategy = MagicMock()
@@ -404,6 +412,35 @@ class TestVoidAsync:
         svc.transaction_status_repo.reset_refund_status_async.assert_awaited_once_with(
             tenant_id="test_tenant", store_code="S0009", terminal_no=3, transaction_no=42, business_counter=5
         )
+
+
+class TestVoidIgnoresTheRefundSettings:
+    """A void reverses the original payments as they were (issue #309)."""
+
+    @pytest.mark.asyncio
+    async def test_a_void_by_a_method_that_cannot_refund_and_over_its_limit_goes_through(self):
+        svc = _make_tran_service()
+        tran = _make_base_transaction(total_amount=1000.0)
+        tran.payments[0].payment_code = "11"  # the sale was paid by 11
+        tran.user = None
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=_payment_master("11", can_refund=False, limit_amount=100.0)
+        )
+        svc._resolve_carried_finalize = AsyncMock(return_value=("void-cart", 8, 300, "2025-01-01T13:00:00", None))
+        svc.receipt_data_strategy = MagicMock()
+        svc.receipt_data_strategy.make_receipt_data.return_value = MagicMock(receipt_text="r", journal_text="j")
+        svc.tranlog_repository.start_transaction = AsyncMock()
+        svc.tranlog_repository.commit_transaction = AsyncMock()
+        svc.tranlog_repository.create_tranlog_async = AsyncMock(side_effect=lambda t: t)
+        svc.tranlog_delivery_status_repo.create_status_async = AsyncMock()
+        svc._publish_tranlog_async = AsyncMock()
+        svc.transaction_status_repo.mark_as_voided_async = AsyncMock()
+
+        voided = await svc.void_async(tran, [{"payment_code": "11", "amount": 1000, "detail": None}])
+
+        assert [p.payment_code for p in voided.payments] == ["11"]
+        svc.transaction_status_repo.mark_as_voided_async.assert_awaited_once()
 
 
 class TestReturnAsync:
@@ -482,10 +519,113 @@ class TestReturnAsync:
         pay_doc.description = "Cash"
         pay_doc.can_deposit_over = False
         pay_doc.can_change = False
+        pay_doc.can_refund = True
+        pay_doc.limit_amount = 0.0
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=pay_doc)
 
         with pytest.raises(BadRequestBodyException):
             await svc.return_async(tran, [{"payment_code": "01", "amount": 500, "detail": None}])
+
+
+
+def _payment_master(code: str, can_refund: bool = True, limit_amount: float = 0.0) -> PaymentMasterDocument:
+    return PaymentMasterDocument(
+        payment_code=code, description=f"pay {code}", limit_amount=limit_amount, can_refund=can_refund,
+        can_deposit_over=False, can_change=False, is_active=True,
+    )
+
+
+def _refund_line(code: str, amount: float) -> BaseTransaction.Payment:
+    line = BaseTransaction.Payment()
+    line.payment_code = code
+    line.amount = amount
+    return line
+
+
+class TestReturnFollowsThePaymentMaster:
+    """A return is refunded only by methods whose payment master allows it (issue #309)."""
+
+    @pytest.mark.asyncio
+    async def test_a_method_that_cannot_refund_is_refused(self):
+        svc = _make_tran_service()
+        tran = _make_base_transaction(total_amount=1000.0)
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=_payment_master("11", can_refund=False)
+        )
+
+        with pytest.raises(RefundNotAllowedException) as exc_info:
+            await svc.return_async(tran, [{"payment_code": "11", "amount": 1000, "detail": None}])
+        assert exc_info.value.error_code == "403014"
+
+    @pytest.mark.asyncio
+    async def test_a_refund_over_the_limit_is_refused_with_the_lines_of_a_method_together(self):
+        svc = _make_tran_service()
+        tran = _make_base_transaction(total_amount=1000.0)
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=_payment_master("01", limit_amount=800.0)
+        )
+
+        with pytest.raises(RefundLimitExceededException) as exc_info:
+            await svc.return_async(
+                tran,
+                [
+                    {"payment_code": "01", "amount": 500, "detail": None},
+                    {"payment_code": "01", "amount": 500, "detail": None},
+                ],
+            )
+        assert exc_info.value.error_code == "403015"
+
+    @pytest.mark.asyncio
+    async def test_a_method_that_cannot_refund_is_refused_beside_one_that_can(self):
+        svc = _make_tran_service()
+        tran = _make_base_transaction(total_amount=1000.0)
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        masters = {"01": _payment_master("01"), "11": _payment_master("11", can_refund=False)}
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(side_effect=lambda code: masters[code])
+
+        with pytest.raises(RefundNotAllowedException):
+            await svc.return_async(
+                tran,
+                [
+                    {"payment_code": "01", "amount": 600, "detail": None},
+                    {"payment_code": "11", "amount": 400, "detail": None},
+                ],
+            )
+
+    @pytest.mark.asyncio
+    async def test_the_method_is_checked_before_the_total(self):
+        """A refused method is reported as such even when the total is also wrong."""
+        svc = _make_tran_service()
+        tran = _make_base_transaction(total_amount=1000.0)
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=_payment_master("11", can_refund=False)
+        )
+
+        with pytest.raises(RefundNotAllowedException):
+            await svc.return_async(tran, [{"payment_code": "11", "amount": 500, "detail": None}])
+
+    def test_an_unset_can_refund_is_refundable(self):
+        """Only an explicit false refuses; the master's default is refundable."""
+        master = _payment_master("01")
+        master.can_refund = None
+        TranService._check_refund_allowed([_refund_line("01", 100.0)], {"01": master})
+
+    def test_a_refund_up_to_the_limit_passes(self):
+        TranService._check_refund_allowed(
+            [_refund_line("01", 500.0), _refund_line("01", 300.0)], {"01": _payment_master("01", limit_amount=800.0)}
+        )
+
+    def test_a_limit_of_zero_means_no_limit(self):
+        TranService._check_refund_allowed([_refund_line("01", 10**7)], {"01": _payment_master("01", limit_amount=0.0)})
+
+    def test_each_method_is_held_to_its_own_limit(self):
+        masters = {"01": _payment_master("01", limit_amount=1000.0), "11": _payment_master("11", limit_amount=100.0)}
+        TranService._check_refund_allowed([_refund_line("01", 900.0), _refund_line("11", 100.0)], masters)
+        with pytest.raises(RefundLimitExceededException):
+            TranService._check_refund_allowed([_refund_line("01", 50.0), _refund_line("11", 101.0)], masters)
 
 
 class TestParseJsonOrLiteral:
@@ -621,7 +761,10 @@ class TestVoidAndReturnCarryNoStamp:
     def _armed(self):
         svc = _make_tran_service()
         svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
-        pay_doc = MagicMock(payment_code="01", description="Cash", can_deposit_over=False, can_change=False)
+        pay_doc = MagicMock(
+            payment_code="01", description="Cash", can_deposit_over=False, can_change=False,
+            can_refund=True, limit_amount=0.0,
+        )
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=pay_doc)
         svc._resolve_carried_finalize = AsyncMock(return_value=("new-cart", 8, 300, "2025-01-01T13:00:00", None))
         svc.receipt_data_strategy = MagicMock()

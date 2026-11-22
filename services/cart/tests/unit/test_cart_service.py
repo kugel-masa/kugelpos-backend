@@ -511,6 +511,28 @@ class TestCartServicePayment:
         assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_a_payment_over_its_limit_is_answered_as_itself(self):
+        """403017 passes through as a 400, not wrapped into a 500 ServiceException (issue #309)."""
+        from app.exceptions import PaymentLimitExceededException
+
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+
+        refused = PaymentLimitExceededException("over the limit")
+        mock_pay_strategy = MagicMock()
+        mock_pay_strategy.payment_code = "11"
+        mock_pay_strategy.pay = AsyncMock(side_effect=refused)
+        svc.payment_strategies = [mock_pay_strategy]
+
+        with pytest.raises(PaymentLimitExceededException) as exc_info:
+            await svc.add_payment_to_cart_async(
+                [{"payment_code": "11", "amount": 1000, "detail": None}]
+            )
+        assert exc_info.value is refused
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_add_payment_other_failure_is_service_exception(self):
         """Any other failure inside a strategy is still wrapped as a ServiceException."""
         cart = _make_cart_doc(status="Paying", balance=1000.0)

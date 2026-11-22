@@ -149,7 +149,7 @@ POS画面のUI階層（カテゴリー/タブ/ボタン）を管理するドキ�
 | tenant_id | string | - | テナント識別子 |
 | payment_code | string | - | 支払方法コード |
 | description | string | - | 説明 |
-| limit_amount | float | - | 上限金額（デフォルト: 0.0） |
+| limit_amount | float | - | 上限金額（デフォルト: 0.0 = 上限なし） |
 | can_refund | boolean | - | 返金可能フラグ（デフォルト: true） |
 | can_deposit_over | boolean | - | 預り金超過可能フラグ（デフォルト: false） |
 | can_change | boolean | - | お釣り可能フラグ（デフォルト: false） |
@@ -157,6 +157,18 @@ POS画面のUI階層（カテゴリー/タブ/ボタン）を管理するドキ�
 
 **インデックス:**
 - ユニーク: (tenant_id, payment_code)
+
+**cart での適用:**
+
+| 設定 | 支払い | 返品 |
+|------|--------|------|
+| `can_deposit_over` が false | 残額を超える預かりは拒否（403004） | - |
+| `can_deposit_over` が true、`can_change` が true | 残額までを充当し、超過分をお釣りにする | - |
+| `can_deposit_over` が true、`can_change` が false | 残額までを充当し、超過分は預かりとして行に残す。お釣りは出さない | - |
+| `limit_amount` が 0 より大きい | 1 つのカートでその支払方法が充当する額（行の合計）が上限を超えると拒否（403017） | その支払方法での返金額が上限を超えると拒否（403015） |
+| `can_refund` が false | - | その支払方法では返金できない（403014） |
+
+`limit_amount` が 0 以下のときは上限なしです。取消は元の支払いをそのまま戻すため、確かめません。通常は、現金で `can_deposit_over` と `can_change` を true にし、キャッシュレスでは false にします。
 
 ### 6. SettingsMasterDocument（設定マスター）
 

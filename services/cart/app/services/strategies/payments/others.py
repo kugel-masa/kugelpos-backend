@@ -13,8 +13,8 @@ class PaymentByOthers(PaymentByCashless):
     that aren't specifically cash or standard cashless methods. Examples might
     include gift cards, store credit, or other specialized payment types.
 
-    This strategy inherits all behavior from the cashless payment strategy,
-    following the same validation rules (no change given, payment cannot exceed balance).
+    This strategy inherits all behavior from the cashless payment strategy:
+    the payment master decides deposit over the balance, change and the limit.
 
     This payment method is typically identified by the payment code "12" in the system.
     """

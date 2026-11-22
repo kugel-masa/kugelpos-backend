@@ -1,10 +1,11 @@
 # Copyright 2026 masa@kugel
 """Unit tests for payment strategy plugins.
 
-Each strategy implements the AbstractPayment contract differently:
-  * cash:     allows over-deposit, gives change
-  * cashless: rejects over-deposit (no change given)
-  * others:   inherits cashless rules
+Every strategy settles a payment as its payment master says (issue #309):
+  * can_deposit_over false: a deposit above the balance is refused
+  * can_deposit_over true:  the payment covers the balance; the excess is
+                            change when can_change is true, else kept as deposit
+  * limit_amount > 0:       caps what the method covers in the cart
 
 Bugs in these calculations directly affect customer transactions
 (missing change, wrong balance, accepted-but-shouldnt'-be payments).
@@ -15,7 +16,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.exceptions import BalanceMinusException, BalanceZeroException, DepositOverException
+from app.exceptions import (
+    BalanceMinusException,
+    BalanceZeroException,
+    DepositOverException,
+    PaymentLimitExceededException,
+)
 from app.models.documents.cart_document import CartDocument
 from app.models.documents.payment_master_document import PaymentMasterDocument
 from app.models.repositories.payment_master_web_repository import PaymentMasterWebRepository
@@ -26,11 +32,19 @@ from kugel_common.exceptions import NotFoundException, RepositoryException
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 
 
-def _make_payment_master(code: str, description: str = "Test") -> PaymentMasterDocument:
+# The usual settings of each method: cash takes a deposit over the balance and
+# gives change; cashless and others take no more than the balance.
+CASH = {"can_deposit_over": True, "can_change": True}
+NO_OVER_DEPOSIT = {"can_deposit_over": False, "can_change": False}
+
+
+def _make_payment_master(
+    code: str, description: str = "Test", limit_amount: float = 0.0, **settings
+) -> PaymentMasterDocument:
+    flags = {**(CASH if code == "01" else NO_OVER_DEPOSIT), **settings}
     return PaymentMasterDocument(
         payment_code=code, description=description,
-        limit_amount=0.0, can_refund=True, can_deposit_over=True,
-        can_change=True, is_active=True,
+        limit_amount=limit_amount, can_refund=True, is_active=True, **flags,
     )
 
 
@@ -43,10 +57,11 @@ def _make_cart(balance: float = 100.0) -> CartDocument:
     return cart
 
 
-def _attach_repo(strategy, payment_code="01"):
-    """Wire a mocked payment-master repo so create_cart_payment_async works."""
+def _attach_repo(strategy, payment_code=None, **master):
+    """Wire a mocked payment-master repo; master overrides the method's usual settings."""
+    payment_code = payment_code or strategy.payment_code
     repo = AsyncMock(spec=PaymentMasterWebRepository)
-    repo.get_payment_by_code_async = AsyncMock(return_value=_make_payment_master(payment_code))
+    repo.get_payment_by_code_async = AsyncMock(return_value=_make_payment_master(payment_code, **master))
     strategy.payment_master_repo = repo
     return strategy
 
@@ -139,7 +154,7 @@ class TestPaymentByCashless:
 
     @pytest.mark.asyncio
     async def test_over_deposit_rejected(self):
-        """Cashless > balance must reject — no change is given for cards/digital."""
+        """Cashless > balance is refused when its master does not take a deposit over."""
         strategy = _attach_repo(PaymentByCashless("11"))
         cart = _make_cart(balance=100.0)
 
@@ -166,12 +181,103 @@ class TestPaymentByCashless:
 class TestPaymentByOthers:
     @pytest.mark.asyncio
     async def test_others_inherits_cashless_no_change(self):
-        """`others` strategy must follow cashless rules: no over-deposit allowed."""
+        """`others` follows its master like cashless: no deposit over the balance here."""
         strategy = _attach_repo(PaymentByOthers("12"))
         cart = _make_cart(balance=100.0)
 
         with pytest.raises(DepositOverException):
             await strategy.pay(cart, "12", 200.0, None)
+
+
+# ---------------------------------------------------------------------------
+# The payment master decides, not the strategy (issue #309)
+# ---------------------------------------------------------------------------
+
+
+class TestThePaymentMasterDecides:
+    @pytest.mark.asyncio
+    async def test_cash_refuses_a_deposit_over_the_balance_when_its_master_does(self):
+        strategy = _attach_repo(PaymentByCash("01"), can_deposit_over=False, can_change=False)
+        cart = _make_cart(balance=100.0)
+
+        with pytest.raises(DepositOverException):
+            await strategy.pay(cart, "01", 150.0, None)
+        assert cart.payments == [] and cart.balance_amount == 100.0
+
+    @pytest.mark.asyncio
+    async def test_cashless_gives_change_when_its_master_allows_it(self):
+        strategy = _attach_repo(PaymentByCashless("11"), can_deposit_over=True, can_change=True)
+        cart = _make_cart(balance=100.0)
+
+        await strategy.pay(cart, "11", 150.0, None)
+
+        assert cart.balance_amount == 0.0
+        assert cart.sales.change_amount == 50.0
+        assert (cart.payments[0].amount, cart.payments[0].deposit_amount) == (100.0, 150.0)
+
+    @pytest.mark.parametrize("strategy_class, code", [(PaymentByCash, "01"), (PaymentByOthers, "12")])
+    @pytest.mark.asyncio
+    async def test_a_deposit_over_without_change_covers_the_balance_and_keeps_the_excess(self, strategy_class, code):
+        """A voucher handed over for more than the balance: accepted, no change."""
+        strategy = _attach_repo(strategy_class(code), can_deposit_over=True, can_change=False)
+        cart = _make_cart(balance=100.0)
+
+        await strategy.pay(cart, code, 150.0, None)
+
+        assert cart.balance_amount == 0.0
+        assert cart.sales.change_amount == 0.0
+        assert (cart.payments[0].amount, cart.payments[0].deposit_amount) == (100.0, 150.0)
+
+    @pytest.mark.asyncio
+    async def test_a_payment_over_the_limit_is_refused(self):
+        strategy = _attach_repo(PaymentByCashless("11"), limit_amount=50.0)
+        cart = _make_cart(balance=100.0)
+
+        with pytest.raises(PaymentLimitExceededException) as exc_info:
+            await strategy.pay(cart, "11", 60.0, None)
+        assert exc_info.value.error_code == "403017"
+        assert cart.payments == [] and cart.balance_amount == 100.0
+
+    @pytest.mark.asyncio
+    async def test_the_limit_counts_the_lines_of_a_method_together(self):
+        """Splitting a payment does not pass the limit."""
+        strategy = _attach_repo(PaymentByCashless("11"), limit_amount=50.0)
+        cart = _make_cart(balance=100.0)
+
+        await strategy.pay(cart, "11", 30.0, None)
+        await strategy.pay(cart, "11", 20.0, None)  # up to the limit
+        with pytest.raises(PaymentLimitExceededException):
+            await strategy.pay(cart, "11", 1.0, None)
+        assert cart.balance_amount == 50.0
+
+    @pytest.mark.asyncio
+    async def test_the_limit_is_on_what_is_covered_not_on_what_is_handed_over(self):
+        """Cash handed over above the balance counts only up to the balance."""
+        strategy = _attach_repo(PaymentByCash("01"), limit_amount=100.0)
+        cart = _make_cart(balance=100.0)
+
+        await strategy.pay(cart, "01", 150.0, None)
+
+        assert cart.payments[0].amount == 100.0
+        assert cart.sales.change_amount == 50.0
+
+    @pytest.mark.asyncio
+    async def test_another_method_does_not_count_toward_the_limit(self):
+        cart = _make_cart(balance=100.0)
+        await _attach_repo(PaymentByCash("01")).pay(cart, "01", 60.0, None)
+
+        await _attach_repo(PaymentByCashless("11"), limit_amount=40.0).pay(cart, "11", 40.0, None)
+
+        assert cart.balance_amount == 0.0
+
+    @pytest.mark.asyncio
+    async def test_a_limit_of_zero_means_no_limit(self):
+        strategy = _attach_repo(PaymentByCashless("11"), limit_amount=0.0)
+        cart = _make_cart(balance=10**7)
+
+        await strategy.pay(cart, "11", 10**7, None)
+
+        assert cart.balance_amount == 0.0
 
 
 # ---------------------------------------------------------------------------

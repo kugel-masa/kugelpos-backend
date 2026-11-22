@@ -46,6 +46,9 @@ class CartErrorCode:
     DEPOSIT_OVER = "403004"  # 預かり金額が残高より多い
     ALREADY_VOIDED = "403005"  # 既に取消済み
     ALREADY_REFUNDED = "403006"  # 既に返品済み
+    REFUND_NOT_ALLOWED = "403014"  # the payment method cannot be used to refund (can_refund=false)
+    REFUND_LIMIT_EXCEEDED = "403015"  # the refund by a payment method exceeds its limit_amount
+    PAYMENT_LIMIT_EXCEEDED = "403017"  # the amount a payment method covers in the cart exceeds its limit_amount
 
     # Snapshot / restore errors (4015xx, issue #148)
     SNAPSHOT_SIGNATURE_MISMATCH = "401501"  # Signature verification failed (tampered)
@@ -99,6 +102,9 @@ class CartErrorMessage:
             CartErrorCode.DEPOSIT_OVER: "預かり金額が残高より多いです",
             CartErrorCode.ALREADY_VOIDED: "この取引は既に取消済みです",
             CartErrorCode.ALREADY_REFUNDED: "この取引は既に返品済みです",
+            CartErrorCode.REFUND_NOT_ALLOWED: "返金に使えない支払方法です",
+            CartErrorCode.REFUND_LIMIT_EXCEEDED: "支払方法の返金上限額を超えています",
+            CartErrorCode.PAYMENT_LIMIT_EXCEEDED: "この支払方法の上限額を超えています",
             # ディスカウント関連
             CartErrorCode.AMOUNT_LESS_THAN_DISCOUNT: "値引金額が商品金額より多いです",
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "値引金額が残高より多いです",
@@ -149,6 +155,9 @@ class CartErrorMessage:
             CartErrorCode.DEPOSIT_OVER: "Deposit amount is more than balance",
             CartErrorCode.ALREADY_VOIDED: "This transaction has already been voided",
             CartErrorCode.ALREADY_REFUNDED: "This transaction has already been refunded",
+            CartErrorCode.REFUND_NOT_ALLOWED: "This payment method cannot be used to refund",
+            CartErrorCode.REFUND_LIMIT_EXCEEDED: "The refund exceeds the limit configured for this payment method",
+            CartErrorCode.PAYMENT_LIMIT_EXCEEDED: "The payment exceeds the limit configured for this payment method",
             # ディスカウント関連
             CartErrorCode.AMOUNT_LESS_THAN_DISCOUNT: "Amount is less than discount",
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "Balance is less than discount",

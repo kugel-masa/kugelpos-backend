@@ -1,6 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from app.services.strategies.payments.abstract_payment import AbstractPayment
-from app.models.documents.cart_document import CartDocument, CartDocument
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -13,8 +12,10 @@ class PaymentByCashless(AbstractPayment):
     This class implements the payment strategy for cashless transactions
     such as credit cards, debit cards, or digital payment methods.
 
-    Cashless payments have specific validation rules, particularly that
-    the payment amount cannot exceed the remaining balance (no change is given).
+    Whether a deposit above the balance is accepted and gives change, and the
+    limit per transaction, are set by the payment master (can_deposit_over,
+    can_change, limit_amount); a cashless method usually refuses a deposit
+    above the balance.
 
     This payment method is typically identified by the payment code "11" in the system.
     """
@@ -33,9 +34,8 @@ class PaymentByCashless(AbstractPayment):
         """
         Process a cashless payment for the cart.
 
-        Handles cashless payment processing including creating payment information,
-        validating that the payment amount doesn't exceed the balance,
-        updating the remaining balance, and adding the payment to the cart.
+        Settles the payment as the payment master says: a deposit above the
+        balance, the limit, and the remaining balance.
 
         Args:
             cart_doc: Cart document to process payment for
@@ -47,19 +47,7 @@ class PaymentByCashless(AbstractPayment):
         Returns:
             CartDocument: Updated cart document with cashless payment applied
         """
-        # Create payment information
-        payment: CartDocument.Payment = await self.create_cart_payment_async(cart_doc, payment_code, amount, detail)
-
-        # Check that payment doesn't exceed balance (no change given for cashless)
-        self.check_deposit_over(cart_doc, payment.deposit_amount)
-
-        # Update remaining balance
-        self.update_cart_balance(cart_doc, payment.amount)
-
-        # Add payment information
-        cart_doc.payments.append(payment)
-
-        return cart_doc
+        return await self.settle_payment_async(cart_doc, payment_code, amount, detail)
 
     async def refund(self, cart_doc, payment_code, amount, detail=None, **kwargs):
         """

@@ -667,6 +667,52 @@ class AlreadyRefundedException(ServiceException):
         )
 
 
+class PaymentLimitExceededException(ServiceException):
+    """Raised when a payment would take a method past its master's limit_amount.
+
+    The limit is on what the method covers in the cart, all its lines together:
+    a limit checked per line could be passed by splitting the payment.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.PAYMENT_LIMIT_EXCEEDED,
+            CartErrorMessage.get_message(CartErrorCode.PAYMENT_LIMIT_EXCEEDED),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class RefundNotAllowedException(ServiceException):
+    """Raised when a return is refunded by a method whose master has can_refund=false."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.REFUND_NOT_ALLOWED,
+            CartErrorMessage.get_message(CartErrorCode.REFUND_NOT_ALLOWED),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class RefundLimitExceededException(ServiceException):
+    """Raised when a return refunds more by one method than its master's limit_amount."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.REFUND_LIMIT_EXCEEDED,
+            CartErrorMessage.get_message(CartErrorCode.REFUND_LIMIT_EXCEEDED),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
 class CartSizeBudgetExceededException(ServiceException):
     """Raised when adding a line would grow the cart past what the client can send back.
 
