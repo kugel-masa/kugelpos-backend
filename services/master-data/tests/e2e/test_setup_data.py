@@ -83,22 +83,30 @@ async def test_master_data_tenant_setup(http_client, admin_header):
         status.HTTP_404_NOT_FOUND,
     )
 
-    # Payments — Cash (01), Cashless (11), Others (12)
+    # Payments — Cash (01), Cashless (11), Others (12). cart applies these
+    # settings (#309) and its e2e relies on them, so a payment left by an earlier
+    # run is brought back to them rather than kept as it was.
     for code, desc, limit in [
         ("01", "Cash", 0.0),
         ("11", "Cashless", 100000.0),
         ("12", "Others", 100000.0),
     ]:
+        settings = {
+            "description": desc,
+            "limitAmount": limit,
+            "canRefund": code == "01",
+            "canDepositOver": code == "01",
+            "canChange": code == "01",
+            "isActive": True,
+        }
         response = await http_client.post(
             f"/api/v1/tenants/{tenant_id}/payments",
-            json={
-                "paymentCode": code, "description": desc,
-                "limitAmount": limit,
-                "canRefund": code == "01",
-                "canDepositOver": code == "01",
-                "canChange": code == "01",
-                "isActive": True,
-            },
+            json={"paymentCode": code, **settings},
             headers=admin_header,
         )
         _ok(response, status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST)
+        if response.status_code == status.HTTP_400_BAD_REQUEST:
+            response = await http_client.put(
+                f"/api/v1/tenants/{tenant_id}/payments/{code}", json=settings, headers=admin_header
+            )
+            _ok(response, status.HTTP_200_OK)
