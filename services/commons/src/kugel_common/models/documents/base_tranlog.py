@@ -58,8 +58,15 @@ class BaseTransaction(AbstractDocument):
         payment_code: Optional[str] = None
         deposit_amount: Optional[float] = 0.0
         amount: Optional[float] = 0.0
+        # The variant's name when the line was recorded with a payment variant,
+        # otherwise the payment method's name (issue #311).
         description: Optional[str] = None
         detail: Optional[str] = None
+        # The payment variant the line was recorded with; None when it has none (issue #311).
+        variant_code: Optional[str] = None
+        # The payment method's name at the time of the sale. ``description`` holds the
+        # variant's name, so a total by payment method takes its name from here (issue #311).
+        builtin_description: Optional[str] = None
 
     class DiscountInfo(BaseDocumentModel):
         """

@@ -31,9 +31,9 @@ description: "Task list for 311-payment-variants"
 
 **Purpose**: 取引の支払行の項目追加（commons）。cart・report・journal がこの版に依存する
 
-- [ ] T001 `services/commons/src/kugel_common/models/documents/base_tranlog.py` の `BaseTransaction.Payment` に `variant_code: Optional[str] = None` と `builtin_description: Optional[str] = None` を追加する。各項目に英語のコメント（`variant_code`: the payment variant the line was recorded with; `builtin_description`: the payment method's name at the time of the sale, since `description` holds the variant's name）を付ける（data-model.md「kugel_common」・research R-9）
-- [ ] T002 `services/commons/tests/unit/test_base_tranlog_payment_variant.py` を新設し、(a) 2 項目を持たない取引ログの辞書から `BaseTransaction` を作ると両方 `None` になる、(b) 2 項目を持つ辞書は値を保つ、(c) `model_dump()` に 2 項目が出る、を確かめる
-- [ ] T003 `./scripts/update_common_and_rebuild.sh --increment-version` で commons の版を上げて各サービスへ配り、各サービスの `Pipfile`・`Pipfile.lock` の `kugel_common` の wheel の版が上がったことを確かめる（cart・report・journal・master-data ほか、スクリプトが更新する全サービス）
+- [X] T001 `services/commons/src/kugel_common/models/documents/base_tranlog.py` の `BaseTransaction.Payment` に `variant_code: Optional[str] = None` と `builtin_description: Optional[str] = None` を追加する。各項目に英語のコメント（`variant_code`: the payment variant the line was recorded with; `builtin_description`: the payment method's name at the time of the sale, since `description` holds the variant's name）を付ける（data-model.md「kugel_common」・research R-9）
+- [X] T002 `services/commons/tests/unit/test_base_tranlog_payment_variant.py` を新設し、(a) 2 項目を持たない取引ログの辞書から `BaseTransaction` を作ると両方 `None` になる、(b) 2 項目を持つ辞書は値を保つ、(c) `model_dump()` に 2 項目が出る、を確かめる
+- [X] T003 `./scripts/update_common_and_rebuild.sh --increment-version` で commons の版を上げて各サービスへ配り、各サービスの `Pipfile`・`Pipfile.lock` の `kugel_common` の wheel の版が上がったことを確かめる（cart・report・journal・master-data ほか、スクリプトが更新する全サービス）
 
 **Checkpoint**: 全サービスが新しい commons で `pipenv run pytest -m unit` を通る
 
