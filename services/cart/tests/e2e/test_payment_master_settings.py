@@ -82,7 +82,8 @@ async def test_a_payment_over_the_limit_of_its_method_is_refused(http_client: As
 async def test_a_return_by_a_method_that_cannot_refund_is_refused(http_client: AsyncClient):
     terminal_id, tenant_id, store_code, terminal_no = _terminal()
     cart_id, balance = await _cart_in_payment(http_client, quantity=1)
-    assert (await _pay(http_client, cart_id, "01", balance)).status_code == status.HTTP_200_OK
+    # Paid by cashless: a return refunds by a tender of the sale or by cash (issue #311)
+    assert (await _pay(http_client, cart_id, "11", balance)).status_code == status.HTTP_200_OK
     response = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", headers=_header())
     assert response.status_code == status.HTTP_200_OK
     transaction_no = response.json()["data"]["transactionNo"]

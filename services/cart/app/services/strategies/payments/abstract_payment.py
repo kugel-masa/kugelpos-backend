@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from abc import ABC, abstractmethod
+from typing import Optional
 from logging import getLogger
 from app.models.documents.cart_document import CartDocument
 from app.models.documents.payment_master_document import PaymentMasterDocument
@@ -48,6 +49,12 @@ class AbstractPayment(ABC):
         To settle the payment as its payment master says (deposit over the
         balance, change, limit), call settle_payment_async(). The lower-level
         helpers below apply none of the master's settings.
+
+        The caller passes the payment's variant (issue #311) as the keyword
+        arguments ``variant_code``, ``variant_name`` and ``builtin_description``,
+        decided before any strategy is called. An implementation passes them on
+        to settle_payment_async(), or refuses the payment if it cannot record
+        them; the caller checks that the lines it added carry the variant.
 
         Callers may pass keyword arguments beyond these parameters to describe
         the payment further. Implementations must accept them. One that does not
@@ -116,7 +123,15 @@ class AbstractPayment(ABC):
         self.payment_master_repo = payment_master_repo
 
     async def settle_payment_async(
-        self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str = None
+        self,
+        cart_doc: CartDocument,
+        payment_code: str,
+        amount: float,
+        detail: str = None,
+        *,
+        variant_code: Optional[str] = None,
+        variant_name: Optional[str] = None,
+        builtin_description: Optional[str] = None,
     ) -> CartDocument:
         """
         Settle a payment on the cart as its payment master says.
@@ -136,6 +151,9 @@ class AbstractPayment(ABC):
             payment_code: Code identifying the payment method
             amount: Amount the customer hands over
             detail: Optional payment details
+            variant_code: Variant the line is recorded with, or None (issue #311)
+            variant_name: The variant's name, recorded as the line's description
+            builtin_description: The payment method's name at the time of the sale
 
         Returns:
             CartDocument: The cart with the payment added and its balance updated
@@ -147,7 +165,15 @@ class AbstractPayment(ABC):
             NotFoundException: If the payment method is not found
         """
         pay_doc = await self._get_payment_master_async(cart_doc, payment_code, amount)
-        payment = self._build_cart_payment(cart_doc, pay_doc, amount, detail)
+        payment = self._build_cart_payment(
+            cart_doc,
+            pay_doc,
+            amount,
+            detail,
+            variant_code=variant_code,
+            variant_name=variant_name,
+            builtin_description=builtin_description,
+        )
 
         balance = cart_doc.balance_amount
         change_amount = 0.0
@@ -239,13 +265,26 @@ class AbstractPayment(ABC):
 
     @staticmethod
     def _build_cart_payment(
-        cart_doc: CartDocument, pay_doc: PaymentMasterDocument, amount: float, detail: str
+        cart_doc: CartDocument,
+        pay_doc: PaymentMasterDocument,
+        amount: float,
+        detail: str,
+        *,
+        variant_code: Optional[str] = None,
+        variant_name: Optional[str] = None,
+        builtin_description: Optional[str] = None,
     ) -> CartDocument.Payment:
-        """A payment line for the whole amount handed over; the caller settles its amount."""
+        """A payment line for the whole amount handed over; the caller settles its amount.
+
+        A line recorded with a variant is named after the variant; the payment
+        method's name is kept in ``builtin_description`` either way (issue #311).
+        """
         payment = CartDocument.Payment()
         payment.payment_no = len(cart_doc.payments) + 1
         payment.payment_code = pay_doc.payment_code
-        payment.description = pay_doc.description
+        payment.description = variant_name or pay_doc.description
+        payment.variant_code = variant_code
+        payment.builtin_description = builtin_description or pay_doc.description
         payment.deposit_amount = amount
         payment.amount = amount
         payment.detail = detail

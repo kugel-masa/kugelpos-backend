@@ -27,6 +27,9 @@ from app.exceptions import (
     BalanceMinusException,
     DepositOverException,
     PaymentLimitExceededException,
+    PaymentVariantNotFoundException,
+    PaymentVariantInactiveException,
+    PaymentVariantRequiredException,
     BalanceGreaterThanZeroException,
     TerminalStatusException,
     SignInOutException,
@@ -68,6 +71,7 @@ from app.services.logics import add_discount_to_cart_logic
 from app.services.logics import calc_line_item_logic
 from app.services.logics import calc_subtotal_logic
 from app.services.logics import line_amount_guard
+from app.services.logics.payment_variant_logic import VariantDecision, resolve_sale_variant
 from app.services.strategies.payments.abstract_payment import AbstractPayment
 from app.services.strategies.sales_promo.abstract_sales_promo import AbstractSalesPromo
 from app.services.tran_service import TranService
@@ -928,14 +932,16 @@ class CartService(ICartService):
         # Check if the event can be accepted in the current state
         self.state_manager.check_event_sequence(self)
 
-        # Add payments to cart
-        for add_payment in add_payment_list:
-            # Check balance
-            if cart_doc.balance_amount == 0:
-                message = f"The balance is equal to 0, cart_id: {self.cart_id}, balance: {cart_doc.balance_amount}, payments: {add_payment_list}, add_payment: {add_payment}"
-                raise BalanceZeroException(message, logger)
+        # A cart with nothing left to pay is refused first, as before any lookup
+        if cart_doc.balance_amount == 0:
+            message = f"The balance is equal to 0, cart_id: {self.cart_id}, balance: {cart_doc.balance_amount}, payments: {add_payment_list}"
+            raise BalanceZeroException(message, logger)
 
-            # Get payment plugin
+        # Find every payment's strategy and decide its variant (issue #311) before
+        # any strategy runs: a refused variant then refuses the whole request with
+        # nothing recorded, rather than after the first payments were settled.
+        planned: list[tuple[dict[str, any], AbstractPayment, VariantDecision]] = []
+        for add_payment in add_payment_list:
             pay_strategy: AbstractPayment = next(
                 (
                     pay_strategy
@@ -947,19 +953,39 @@ class CartService(ICartService):
             if pay_strategy is None:
                 message = f"Payment strategy not found, payment_code: {add_payment['payment_code']}"
                 raise StrategyPluginException(message, logger)
+            pay_doc = await self.payment_master_repo.get_payment_by_code_async(add_payment["payment_code"])
+            decision = resolve_sale_variant(pay_doc, add_payment.get("variant_code"))
+            planned.append((add_payment, pay_strategy, decision))
+
+        # Add payments to cart
+        for add_payment, pay_strategy, decision in planned:
+            # Check balance
+            if cart_doc.balance_amount == 0:
+                message = f"The balance is equal to 0, cart_id: {self.cart_id}, balance: {cart_doc.balance_amount}, payments: {add_payment_list}, add_payment: {add_payment}"
+                raise BalanceZeroException(message, logger)
 
             logger.debug(f"AddPayment-> pay_strategy: {pay_strategy}")
 
             # Delegate payment to payment plugin
+            lines_before = len(cart_doc.payments)
             try:
                 cart_doc = await pay_strategy.pay(
-                    cart_doc, add_payment["payment_code"], add_payment["amount"], add_payment["detail"]
+                    cart_doc,
+                    add_payment["payment_code"],
+                    add_payment["amount"],
+                    add_payment["detail"],
+                    variant_code=decision.variant_code,
+                    variant_name=decision.name,
+                    builtin_description=decision.builtin_description,
                 )
             except (
                 BalanceZeroException,
                 BalanceMinusException,
                 DepositOverException,
                 PaymentLimitExceededException,
+                PaymentVariantNotFoundException,
+                PaymentVariantInactiveException,
+                PaymentVariantRequiredException,
             ) as e:
                 # Re-raise business logic exceptions as-is
                 raise e
@@ -970,6 +996,16 @@ class CartService(ICartService):
             except Exception as e:
                 message = f"Failed to pay, payment_code: {add_payment['payment_code']}, amount: {add_payment['amount']}"
                 raise ServiceException(message, logger, e) from e
+
+            # A strategy that drops the variant it was given would record the
+            # payment unclassified; refuse that rather than keep it silently.
+            added = cart_doc.payments[lines_before:]
+            if any(line.variant_code != decision.variant_code for line in added):
+                message = (
+                    f"Payment strategy did not record the payment's variant: payment_code->{add_payment['payment_code']}, "
+                    f"variant_code->{decision.variant_code}, strategy->{type(pay_strategy).__name__}"
+                )
+                raise ServiceException(message, logger)
 
         # Calculate subtotal
         cart_doc = await self.__subtotal_async(cart_doc)

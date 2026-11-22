@@ -41,12 +41,22 @@ class PaymentByCash(AbstractPayment):
             payment_code: Code identifying the payment method (should match this strategy)
             amount: Cash payment amount
             detail: Optional payment details
-            **kwargs: Further payment attributes from the caller; this strategy uses none
+            **kwargs: Further payment attributes from the caller; the payment's variant
+                (variant_code, variant_name, builtin_description, issue #311) is passed
+                on to settle_payment_async(), the rest is unused
 
         Returns:
             CartDocument: Updated cart document with cash payment applied
         """
-        return await self.settle_payment_async(cart_doc, payment_code, amount, detail)
+        return await self.settle_payment_async(
+            cart_doc,
+            payment_code,
+            amount,
+            detail,
+            variant_code=kwargs.get("variant_code"),
+            variant_name=kwargs.get("variant_name"),
+            builtin_description=kwargs.get("builtin_description"),
+        )
 
     async def refund(self, cart_doc, payment_code, amount, detail=None, **kwargs):
         """

@@ -37,6 +37,11 @@ EXCEPTION_TEST_CASES = [
     ("PaymentLimitExceededException", CartErrorCode.PAYMENT_LIMIT_EXCEEDED, status.HTTP_400_BAD_REQUEST),
     ("RefundNotAllowedException", CartErrorCode.REFUND_NOT_ALLOWED, status.HTTP_400_BAD_REQUEST),
     ("RefundLimitExceededException", CartErrorCode.REFUND_LIMIT_EXCEEDED, status.HTTP_400_BAD_REQUEST),
+    ("PaymentVariantNotFoundException", CartErrorCode.PAYMENT_VARIANT_NOT_FOUND, status.HTTP_400_BAD_REQUEST),
+    ("PaymentVariantInactiveException", CartErrorCode.PAYMENT_VARIANT_INACTIVE, status.HTTP_400_BAD_REQUEST),
+    ("PaymentVariantRequiredException", CartErrorCode.PAYMENT_VARIANT_REQUIRED, status.HTTP_400_BAD_REQUEST),
+    ("ReturnTenderNotAllowedException", CartErrorCode.RETURN_TENDER_NOT_ALLOWED, status.HTTP_400_BAD_REQUEST),
+    ("ReturnAmountExceedsOriginalException", CartErrorCode.RETURN_AMOUNT_EXCEEDS_ORIGINAL, status.HTTP_400_BAD_REQUEST),
 ]
 
 

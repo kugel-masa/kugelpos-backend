@@ -56,6 +56,9 @@ class BasePaymentRequest(BaseSchemmaModel):
     payment_code: str
     amount: int
     detail: Optional[str] = None
+    # Variant (sub-code) of the payment method (issue #311). Optional on a sale;
+    # a void or a return names the sale's tender with it.
+    variant_code: Optional[str] = None
 
 
 class BaseDiscount(BaseSchemmaModel):
@@ -107,6 +110,8 @@ class BaseTranPayment(BaseSchemmaModel):
     payment_name: str
     payment_amount: float
     payment_detail: Optional[str] = "no detail"
+    variant_code: Optional[str] = None  # Variant the line was recorded with (issue #311)
+    builtin_payment_name: Optional[str] = None  # The payment method's name at the time of the sale (issue #311)
 
 
 class BaseTranTax(BaseSchemmaModel):

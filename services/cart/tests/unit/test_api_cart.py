@@ -574,3 +574,54 @@ async def test_resume_item_entry_error():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/api/v1/carts/test-cart-id-123/resume-item-entry")
     assert resp.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# payment variants (issue #311)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_payments_pass_the_variant_code_to_the_service():
+    app = _make_app()
+    svc = _make_cart_service_mock()
+    svc.add_payment_to_cart_async.return_value = _make_cart_doc_mock()
+
+    app.dependency_overrides[get_cart_service_with_cart_id_async] = lambda: svc
+
+    with _patch_transformer():
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/carts/test-cart-id-123/payments",
+                json=[{"paymentCode": "11", "amount": 1100, "variantCode": "PAYPAY"}, {"paymentCode": "01", "amount": 1}],
+            )
+    assert resp.status_code == 200
+    sent = svc.add_payment_to_cart_async.await_args.kwargs["add_payment_list"]
+    assert [p["variant_code"] for p in sent] == ["PAYPAY", None]
+
+
+def test_a_payment_line_answers_its_variant_and_the_method_name():
+    from app.api.v1.schemas_transformer import SchemasTransformerV1
+    from app.models.documents.cart_document import CartDocument
+
+    lines = [
+        CartDocument.Payment(
+            payment_no=1,
+            payment_code="11",
+            amount=1100.0,
+            description="PayPay",
+            variant_code="PAYPAY",
+            builtin_description="Cashless",
+        ),
+        CartDocument.Payment(payment_no=2, payment_code="01", amount=100.0, description="Cash"),
+    ]
+
+    answered = [p.model_dump(by_alias=True) for p in SchemasTransformerV1().transform_payments(lines)]
+
+    assert (answered[0]["paymentName"], answered[0]["variantCode"], answered[0]["builtinPaymentName"]) == (
+        "PayPay",
+        "PAYPAY",
+        "Cashless",
+    )
+    assert (answered[1]["variantCode"], answered[1]["builtinPaymentName"]) == (None, None)
