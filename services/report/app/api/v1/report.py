@@ -31,11 +31,14 @@ logger = getLogger(__name__)
 
 def _validate_business_dates(**dates: Optional[str]) -> None:
     """
-    Refuse a business date that is not YYYYMMDD, or a range that ends before it starts.
+    Refuse a business date that is not YYYYMMDD, a range given by one end only,
+    or a range that ends before it starts.
 
     The dates are compared as strings against the stored ones, so a malformed
     value matched nothing and the report came back empty with a 200, which reads
-    as "no sales" rather than as a bad request.
+    as "no sales" rather than as a bad request. A range given by one end next to
+    a business_date was ignored, and the report for that single date came back
+    as if it had been asked (#314).
     """
     for name, value in dates.items():
         if value is None:
@@ -49,6 +52,10 @@ def _validate_business_dates(**dates: Optional[str]) -> None:
         except ValueError:
             raise ReportDateException(f"Invalid {name}: {value!r}. Expected YYYYMMDD.", logger)
     date_from, date_to = dates.get("business_date_from"), dates.get("business_date_to")
+    if bool(date_from) != bool(date_to):
+        raise ReportDateException(
+            "business_date_from and business_date_to must be provided together.", logger
+        )
     # The makers refuse a reversed range too, but with a ValueError that
     # surfaces as a 500 "report generation failed"; it is the caller's mistake.
     if date_from and date_to and date_from > date_to:

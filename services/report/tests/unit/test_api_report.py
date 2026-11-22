@@ -298,6 +298,10 @@ class TestErrorBodies:
             {"business_date_from": "20260101", "business_date_to": "2026/01/31"},
             {"business_date_from": "x", "business_date_to": "20260131"},
             {"business_date_from": "20260131", "business_date_to": "20260101"},
+            {"business_date": "20260122", "business_date_from": "20260101"},
+            {"business_date": "20260122", "business_date_to": "20260131"},
+            {"business_date_from": "20260101"},
+            {"business_date_to": "20260131"},
         ],
     )
     async def test_malformed_date_is_refused(self, url, method, params):
