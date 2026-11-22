@@ -1,6 +1,8 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Optional
 
+from pydantic import Field
+
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.models.documents.base_document_model import BaseDocumentModel
 from kugel_common.models.documents.staff_master_document import StaffMasterDocument
@@ -34,17 +36,32 @@ class TaxReportTemplate(BaseDocumentModel):
     tax_type: Optional[str] = None  # Type of tax (External, Internal, Exempt)
 
 
+class PaymentVariantReport(BaseDocumentModel):
+    """
+    One variant (sub-code) of a payment method in a report's breakdown (issue #311).
+
+    ``variant_code`` is None for the payments taken without a variant.
+    """
+
+    variant_code: Optional[str] = None
+    variant_name: Optional[str] = None
+    amount: float = 0.0
+    count: int = 0
+
+
 class PaymentReportTemplate(BaseDocumentModel):
     """
     Template class for payment information in a report.
 
     This class represents payment method data including method name,
-    total amount, and transaction count.
+    total amount, and transaction count, with a breakdown by variant.
     """
 
     payment_name: str  # Name of the payment method
     amount: float  # Total amount paid with this method
     count: int  # Number of transactions using this method
+    payment_code: Optional[str] = None  # Code of the payment method (issue #311)
+    variants: list[PaymentVariantReport] = Field(default_factory=list)  # Breakdown by variant (issue #311)
 
 
 class CashInOutReportTemplate(BaseDocumentModel):

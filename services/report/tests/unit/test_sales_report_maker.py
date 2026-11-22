@@ -430,3 +430,144 @@ class TestSalesReportReceiptTaxLine:
 
     def test_a_day_with_tax_still_prints_it_negated(self):
         assert self._tax_line([100.0]).endswith("-100円")
+
+
+# ---------------------------------------------------------------------------
+# Payments by method with a breakdown by variant (issue #311)
+# ---------------------------------------------------------------------------
+
+
+def _summary_row(transaction_type, payments):
+    """A full aggregation row as _summarize_sales_report reads it."""
+    row = {
+        "_id": {"transaction_type": transaction_type},
+        "taxes": [],
+        "payments": payments,
+    }
+    for key in (
+        "total_amount",
+        "total_amount_with_tax",
+        "total_tax_amount",
+        "total_quantity",
+        "total_change_amount",
+        "total_discount_amount",
+        "total_transaction_count",
+        "total_line_items_discount_amount",
+        "total_line_items_discount_count",
+        "total_line_items_discount_quantity",
+        "total_sub_total_discount_amount",
+        "total_sub_total_discount_count",
+        "total_sub_total_discount_quantity",
+    ):
+        row[key] = 0
+    return row
+
+
+def _pay(code, variant, amount, count, name, method_name, when="2026-11-01T10:00:00"):
+    return {
+        "payment_code": code,
+        "variant_code": variant,
+        "description": method_name,
+        "variant_name": name,
+        "latest_date_time": when,
+        "amount": amount,
+        "count": count,
+    }
+
+
+class TestPaymentVariantBreakdown:
+    def test_a_method_is_one_row_with_its_variants_beneath(self):
+        maker = _maker()
+        summary = maker._summarize_sales_report(
+            [
+                _summary_row(
+                    TransactionType.NormalSales.value,
+                    [
+                        _pay("11", "VISA", 1000.0, 1, "VISA", "Cashless"),
+                        _pay("11", "PAYPAY", 2500.0, 2, "PayPay", "Cashless"),
+                        _pay("01", None, 500.0, 1, "Cash", "Cash"),
+                    ],
+                )
+            ]
+        )
+
+        payments = maker._make_payments(summary)
+
+        cashless = next(p for p in payments if p["payment_code"] == "11")
+        assert (cashless["payment_name"], cashless["amount"], cashless["count"]) == ("Cashless", 3500.0, 3)
+        assert [(v["variant_code"], v["variant_name"], v["amount"], v["count"]) for v in cashless["variants"]] == [
+            ("PAYPAY", "PayPay", 2500.0, 2),
+            ("VISA", "VISA", 1000.0, 1),
+        ]
+        cash = next(p for p in payments if p["payment_code"] == "01")
+        assert [(v["variant_code"], v["amount"]) for v in cash["variants"]] == [(None, 500.0)]
+
+    def test_voids_and_returns_take_their_sign_in_the_breakdown(self):
+        maker = _maker()
+        summary = maker._summarize_sales_report(
+            [
+                _summary_row(
+                    TransactionType.NormalSales.value,
+                    [_pay("11", "VISA", 1000.0, 1, "VISA", "Cashless"), _pay("11", "PAYPAY", 2000.0, 1, "PayPay", "Cashless")],
+                ),
+                _summary_row(TransactionType.VoidSales.value, [_pay("11", "VISA", 1000.0, 1, "VISA", "Cashless")]),
+            ]
+        )
+
+        cashless = maker._make_payments(summary)[0]
+        assert (cashless["amount"], cashless["count"]) == (2000.0, 1)
+        assert [(v["variant_code"], v["amount"], v["count"]) for v in cashless["variants"]] == [
+            ("PAYPAY", 2000.0, 1),
+            ("VISA", 0.0, 0),
+        ]
+
+    def test_the_line_without_a_variant_comes_last(self):
+        maker = _maker()
+        summary = maker._summarize_sales_report(
+            [
+                _summary_row(
+                    TransactionType.NormalSales.value,
+                    [
+                        _pay("11", None, 300.0, 1, "Cashless", "Cashless"),
+                        _pay("11", "VISA", 100.0, 1, "VISA", "Cashless"),
+                        _pay("11", "AMEX", 200.0, 1, "AMEX", "Cashless"),
+                    ],
+                )
+            ]
+        )
+
+        variants = maker._make_payments(summary)[0]["variants"]
+        assert [v["variant_code"] for v in variants] == ["AMEX", "VISA", None]
+
+    def test_the_newest_names_win_whatever_order_rows_arrive_in(self):
+        rows = [
+            _summary_row(
+                TransactionType.NormalSales.value,
+                [_pay("11", "VISA", 100.0, 1, "VISA old", "Cards old", when="2026-11-01T10:00:00")],
+            ),
+            _summary_row(
+                TransactionType.ReturnSales.value,
+                [_pay("11", "VISA", 50.0, 1, "VISA new", "Cards new", when="2026-11-02T10:00:00")],
+            ),
+        ]
+        for ordered in (rows, list(reversed(rows))):
+            maker = _maker()
+            payment = maker._make_payments(maker._summarize_sales_report(ordered))[0]
+            assert payment["payment_name"] == "Cards new"
+            assert payment["variants"][0]["variant_name"] == "VISA new"
+
+    def test_breakdown_sums_to_the_row(self):
+        maker = _maker()
+        summary = maker._summarize_sales_report(
+            [
+                _summary_row(
+                    TransactionType.NormalSales.value,
+                    [_pay("11", "VISA", 1000.0, 2, "VISA", "Cashless"), _pay("11", None, 700.0, 3, "Cashless", "Cashless")],
+                ),
+                _summary_row(TransactionType.ReturnSales.value, [_pay("11", None, 200.0, 1, "Cashless", "Cashless")]),
+            ]
+        )
+
+        row = maker._make_payments(summary)[0]
+        assert sum(v["amount"] for v in row["variants"]) == row["amount"]
+        assert sum(v["count"] for v in row["variants"]) == row["count"]

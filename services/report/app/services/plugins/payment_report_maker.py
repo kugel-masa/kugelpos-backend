@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
 import os
 from datetime import datetime
@@ -11,6 +11,8 @@ from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.models.documents.payment_report_document import PaymentReportDocument
+from app.models.documents.sales_report_document import PaymentVariantReport
+from app.utils.payment_variant_breakdown import sort_variant_breakdown
 from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
 from app.services.plugins.payment_report_receipt_data import PaymentReportReceiptData
@@ -91,7 +93,9 @@ class PaymentReportMaker(IReportPlugin):
                 raise ValueError(f"Invalid date range: business_date_from ({business_date_from}) is after business_date_to ({business_date_to})")
 
         # Fetch payment master data from master-data service
-        payment_master_map = await self._fetch_payment_master(self.tran_repository.tenant_id, store_code)
+        payment_master_map, variant_name_map = await self._fetch_payment_master(
+            self.tran_repository.tenant_id, store_code
+        )
         logger.info(f"Fetched payment master data: {payment_master_map}")
 
         # Create pipeline for retrieving payment report data
@@ -116,6 +120,20 @@ class PaymentReportMaker(IReportPlugin):
         payment_summary = self._summarize_payment_report(tran_results, payment_master_map)
         logger.info(f"Payment summary: {payment_summary}")
 
+        # Break each payment method down by variant (issue #311)
+        variant_pipeline = self._create_pipeline_for_payment_variants(
+            store_code=store_code,
+            terminal_no=terminal_no,
+            business_date=business_date,
+            open_counter=open_counter,
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
+        )
+        variant_results = await self.tran_repository.execute_pipeline(variant_pipeline)
+        breakdown = self._summarize_payment_variants(variant_results, variant_name_map)
+        for payment in payment_summary:
+            payment["variants"] = breakdown.get(payment["payment_code"], [])
+
         # Calculate totals and composition ratios
         total_amount = sum(p["amount"] for p in payment_summary)
         total_count = sum(p["count"] for p in payment_summary)
@@ -139,7 +157,8 @@ class PaymentReportMaker(IReportPlugin):
                     payment_name=payment["payment_name"],
                     count=payment["count"],
                     amount=payment["amount"],
-                    ratio=payment["ratio"]
+                    ratio=payment["ratio"],
+                    variants=[PaymentVariantReport(**variant) for variant in payment.get("variants", [])],
                 )
             )
 
@@ -184,18 +203,25 @@ class PaymentReportMaker(IReportPlugin):
         
         return report_doc
 
-    async def _fetch_payment_master(self, tenant_id: str, store_code: str) -> dict[str, str]:
+    async def _fetch_payment_master(
+        self, tenant_id: str, store_code: str
+    ) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
         """
         Fetch payment master data from master-data service
+
+        Every page of the list is read, so a tenant with more payment methods than
+        one page holds still finds them all.
 
         Args:
             tenant_id: Tenant ID
             store_code: Store code
 
         Returns:
-            Dictionary mapping payment_code to payment description
+            A dictionary mapping payment_code to payment description, and one mapping
+            (payment_code, variant_code) to the variant's name (issue #311)
         """
         payment_map = {}
+        variant_map: dict[tuple[str, str], str] = {}
         
         try:
             # Use BASE_URL_MASTER_DATA from settings (consistent with other report makers)
@@ -213,20 +239,29 @@ class PaymentReportMaker(IReportPlugin):
                     "X-Store-Code": store_code
                 }
                     
-                # HttpClientHelper.get() returns the JSON data directly, not a response object
-                data = await client.get(
-                    f"{base_url}/tenants/{tenant_id}/payments",
-                    params={"limit": 100, "page": 1},
-                    headers=headers
-                )
-                
-                if data.get("success") and data.get("data"):
+                page = 1
+                while True:
+                    # HttpClientHelper.get() returns the JSON data directly, not a response object
+                    data = await client.get(
+                        f"{base_url}/tenants/{tenant_id}/payments",
+                        params={"limit": self.PAYMENT_MASTER_PAGE_SIZE, "page": page},
+                        headers=headers
+                    )
+                    if not (data.get("success") and data.get("data")):
+                        break
                     for payment in data["data"]:
                         payment_code = payment.get("paymentCode")  # Changed from payment_code to paymentCode
                         description = payment.get("description", f"Payment {payment_code}")
                         if payment_code:
                             payment_map[payment_code] = description
-                else:
+                            for variant in payment.get("variants") or []:
+                                if variant.get("variantCode"):
+                                    variant_map[(payment_code, variant["variantCode"])] = variant.get("name")
+                    if not self._has_next_page(data.get("metadata"), page, len(data["data"])):
+                        break
+                    page += 1
+
+                if not payment_map:
                     # If no data or API error, use default mapping for testing
                     logger.warning(f"Failed to fetch payment master data: {data.get('message', 'No data available')}")
                     payment_map = {
@@ -244,7 +279,130 @@ class PaymentReportMaker(IReportPlugin):
                 "12": "Others",
             }
         
-        return payment_map
+        return payment_map, variant_map
+
+    PAYMENT_MASTER_PAGE_SIZE = 100
+
+    def _has_next_page(self, metadata: Optional[dict], page: int, received: int) -> bool:
+        """Whether the payment master list has a page after ``page``."""
+        if metadata:
+            has_next = metadata.get("has_next", metadata.get("hasNext"))
+            if has_next is not None:
+                return bool(has_next)
+            total_pages = metadata.get("total_pages", metadata.get("totalPages"))
+            if total_pages is not None:
+                return page < total_pages
+        return received >= self.PAYMENT_MASTER_PAGE_SIZE
+
+    def _create_pipeline_for_payment_variants(
+        self,
+        store_code: str,
+        terminal_no: int,
+        business_date: str,
+        open_counter: int,
+        business_date_from: str = None,
+        business_date_to: str = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Create the pipeline that breaks payments down by variant (issue #311)
+
+        Counts are of transactions, as in the payment rows, so one transaction that
+        used two variants of a method counts once under each. Payments are taken
+        newest first, so each group's name is the newest in the period.
+
+        Returns:
+            MongoDB pipeline yielding one document per (payment_code, variant_code,
+            transaction_type)
+        """
+        match_pipeline = self._create_pipeline_for_payment_report(
+            store_code=store_code,
+            terminal_no=terminal_no,
+            business_date=business_date,
+            open_counter=open_counter,
+            limit=0,
+            page=1,
+            sort=[],
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
+        )[0]
+        return [
+            match_pipeline,
+            {"$unwind": "$payments"},
+            {"$sort": {"generate_date_time": -1}},
+            {
+                "$group": {
+                    "_id": {
+                        "payment_code": "$payments.payment_code",
+                        "variant_code": "$payments.variant_code",
+                        "transaction_type": "$transaction_type",
+                    },
+                    "amount": {"$sum": "$payments.amount"},
+                    "unique_transactions": {"$addToSet": "$_id"},
+                    "variant_name": {"$first": "$payments.description"},
+                    "latest_date_time": {"$first": "$generate_date_time"},
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "payment_code": "$_id.payment_code",
+                    "variant_code": "$_id.variant_code",
+                    "transaction_type": "$_id.transaction_type",
+                    "amount": 1,
+                    "count": {"$size": "$unique_transactions"},
+                    "variant_name": 1,
+                    "latest_date_time": 1,
+                }
+            },
+        ]
+
+    def _summarize_payment_variants(
+        self, results: list[dict], variant_name_map: dict[tuple[str, str], str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        """
+        Sum the variant pipeline's rows into a breakdown per payment code (issue #311)
+
+        Args:
+            results: Rows of the variant pipeline
+            variant_name_map: (payment_code, variant_code) to the variant's current name
+
+        Returns:
+            payment_code to its variants (code order, the line without a variant last),
+            each with variant_code, variant_name, amount and count
+        """
+        breakdown: dict[str, list[dict[str, Any]]] = {}
+        for result in results:
+            payment_code = result.get("payment_code")
+            if payment_code is None:
+                continue
+            factor = self._return_factor(result["transaction_type"])
+            variants = breakdown.setdefault(payment_code, [])
+            variant_code = result.get("variant_code")
+            variant = next((v for v in variants if v["variant_code"] == variant_code), None)
+            latest = result.get("latest_date_time")
+            if variant is None:
+                variant = {
+                    "variant_code": variant_code,
+                    "variant_name": result.get("variant_name"),
+                    "amount": 0,
+                    "count": 0,
+                    "latest_date_time": latest,
+                }
+                variants.append(variant)
+            elif latest is not None and (variant["latest_date_time"] is None or latest > variant["latest_date_time"]):
+                variant["variant_name"] = result.get("variant_name")
+                variant["latest_date_time"] = latest
+            variant["amount"] += result.get("amount", 0) * factor
+            variant["count"] += result.get("count", 0) * factor
+
+        for payment_code, variants in breakdown.items():
+            for variant in variants:
+                variant.pop("latest_date_time", None)
+                current = variant_name_map.get((payment_code, variant["variant_code"]))
+                if current:
+                    variant["variant_name"] = current
+            breakdown[payment_code] = sort_variant_breakdown(variants)
+        return breakdown
 
     def _create_pipeline_for_payment_report(
         self,

@@ -109,7 +109,21 @@ class SchemasTransformer:
             ],
             # Transform all payment information into a list of payment templates
             payments=[
-                PaymentReportTemplate(payment_name=payment.payment_name, amount=payment.amount, count=payment.count)
+                PaymentReportTemplate(
+                    payment_name=payment.payment_name,
+                    amount=payment.amount,
+                    count=payment.count,
+                    payment_code=payment.payment_code,
+                    variants=[
+                        PaymentVariantReportTemplate(
+                            variant_code=variant.variant_code,
+                            variant_name=variant.variant_name,
+                            amount=variant.amount,
+                            count=variant.count,
+                        )
+                        for variant in payment.variants
+                    ],
+                )
                 for payment in report_doc.payments
             ],
             # Transform cash balance information

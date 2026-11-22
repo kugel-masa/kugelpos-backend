@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Generic, TypeVar
 
 from kugel_common.utils.misc import to_lower_camel
@@ -59,16 +59,31 @@ class TaxReportTemplate(BaseSchemaModel):
     target_quantity: int  # Quantity of items to which tax was applied
 
 
+class PaymentVariantReportTemplate(BaseSchemaModel):
+    """
+    One variant (sub-code) of a payment method in the breakdown (issue #311).
+
+    ``variant_code`` is None for the payments taken without a variant.
+    """
+
+    variant_code: Optional[str] = None
+    variant_name: Optional[str] = None
+    amount: float
+    count: int
+
+
 class PaymentReportTemplate(BaseSchemaModel):
     """
     Template for payment method reporting.
 
-    Aggregates payments by payment method.
+    Aggregates payments by payment method, with a breakdown by variant.
     """
 
     payment_name: str  # Name of payment method (e.g., "Cash", "Credit Card")
     amount: float  # Total amount paid using this method
     count: int  # Number of transactions using this method
+    payment_code: Optional[str] = None  # Code of the payment method (issue #311)
+    variants: list[PaymentVariantReportTemplate] = Field(default_factory=list)  # Breakdown by variant (issue #311)
 
 
 class CashInOutReportTemplate(BaseSchemaModel):
