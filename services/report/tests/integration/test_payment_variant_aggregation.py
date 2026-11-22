@@ -195,3 +195,130 @@ async def test_lines_from_before_variants_fall_under_no_variant(set_env_vars):
     row = report.payments[0]
     assert row.payment_name == "Cashless"
     assert [(v.variant_code, v.variant_name, v.amount) for v in row.variants] == [(None, "Cashless", 700)]
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups (PR #313)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_sales_report_response_answers_the_breakdown_in_camel_case(set_env_vars):
+    from app.api.v1.schemas_transformer import SchemasTransformerV1
+
+    service, collection = await _service_with([T1, T2])
+    try:
+        report = await _report(service, "sales")
+    finally:
+        await collection.delete_many({"store_code": STORE})
+
+    answered = SchemasTransformerV1().transform_sales_report_response(report).model_dump(by_alias=True)
+
+    payment = answered["payments"][0]
+    assert (payment["paymentCode"], payment["paymentName"], payment["amount"], payment["count"]) == (
+        "11",
+        "Cashless",
+        3500,
+        3,
+    )
+    assert payment["variants"] == [
+        {"variantCode": "PAYPAY", "variantName": "PayPay", "amount": 2500, "count": 2},
+        {"variantCode": "VISA", "variantName": "VISA", "amount": 1000, "count": 1},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_missing_variant_and_an_explicit_null_are_one_line_without_a_variant(set_env_vars):
+    # A log written before the field existed has no variant_code at all; one written
+    # since has it as null. MongoDB groups the two apart; the report must not.
+    legacy = _tran(
+        31,
+        TransactionType.NormalSales.value,
+        [{"payment_no": 1, "payment_code": "11", "description": "Cashless", "amount": 700}],
+        "2024-02-11T10:00:00",
+    )
+    for key in ("variant_code", "builtin_description"):
+        legacy["payments"][0].pop(key, None)
+    recent = _tran(
+        32,
+        TransactionType.NormalSales.value,
+        [_pay(1, None, "Cashless", 300), _pay(2, None, "Cashless", 100)],
+        "2024-02-11T11:00:00",
+    )
+    service, collection = await _service_with([legacy, recent])
+    try:
+        sales = await _report(service, "sales")
+        payment = await _report(service, "payment")
+    finally:
+        await collection.delete_many({"store_code": STORE})
+
+    assert [(v.variant_code, v.amount, v.count) for v in sales.payments[0].variants] == [(None, 1100, 3)]
+    assert [(v.variant_code, v.amount, v.count) for v in payment.payment_summary[0].variants] == [(None, 1100, 2)]
+
+
+@pytest.mark.asyncio
+async def test_two_taxes_and_two_variants_count_each_payment_once(set_env_vars):
+    # The taxes and payments are unwound together; the per-transaction $addToSet must
+    # still see each payment line once (issue #78), variant fields included.
+    tran = _tran(
+        41,
+        TransactionType.NormalSales.value,
+        [_pay(1, "VISA", "VISA", 1000), _pay(2, "PAYPAY", "PayPay", 2000)],
+        "2024-02-11T10:00:00",
+    )
+    tran["taxes"] = [
+        {"tax_no": 1, "tax_code": "01", "tax_name": "Tax 10%", "tax_amount": 200, "target_amount": 2000, "target_quantity": 1},
+        {"tax_no": 2, "tax_code": "02", "tax_name": "Tax 8%", "tax_amount": 80, "target_amount": 1000, "target_quantity": 1},
+    ]
+    service, collection = await _service_with([tran])
+    try:
+        sales = await _report(service, "sales")
+    finally:
+        await collection.delete_many({"store_code": STORE})
+
+    row = sales.payments[0]
+    assert (row.amount, row.count) == (3000, 2)
+    assert [(v.variant_code, v.amount, v.count) for v in row.variants] == [("PAYPAY", 2000, 1), ("VISA", 1000, 1)]
+
+
+@pytest.mark.asyncio
+async def test_one_variant_split_over_two_lines_counts_lines_in_sales_and_one_transaction_in_payments(set_env_vars):
+    tran = _tran(
+        51,
+        TransactionType.NormalSales.value,
+        [_pay(1, "VISA", "VISA", 400), _pay(2, "VISA", "VISA", 600)],
+        "2024-02-11T10:00:00",
+    )
+    service, collection = await _service_with([tran])
+    try:
+        sales = await _report(service, "sales")
+        payment = await _report(service, "payment")
+    finally:
+        await collection.delete_many({"store_code": STORE})
+
+    assert [(v.variant_code, v.amount, v.count) for v in sales.payments[0].variants] == [("VISA", 1000, 2)]
+    assert [(v.variant_code, v.amount, v.count) for v in payment.payment_summary[0].variants] == [("VISA", 1000, 1)]
+
+
+@pytest.mark.asyncio
+async def test_a_return_and_its_void_take_their_signs_in_the_breakdown(set_env_vars):
+    returned = _tran(
+        61, TransactionType.ReturnSales.value, [_pay(1, "PAYPAY", "PayPay", 2000)], "2024-02-11T13:00:00"
+    )
+    void_of_return = _tran(
+        62, TransactionType.VoidReturn.value, [_pay(1, "PAYPAY", "PayPay", 2000)], "2024-02-11T14:00:00"
+    )
+
+    for trans, paypay in (([T1, T2, returned], (500, 1)), ([T1, T2, returned, void_of_return], (2500, 2))):
+        service, collection = await _service_with(trans)
+        try:
+            sales = await _report(service, "sales")
+            payment = await _report(service, "payment")
+        finally:
+            await collection.delete_many({"store_code": STORE})
+
+        sales_variants = {v.variant_code: (v.amount, v.count) for v in sales.payments[0].variants}
+        payment_variants = {v.variant_code: (v.amount, v.count) for v in payment.payment_summary[0].variants}
+        assert sales_variants["PAYPAY"] == paypay
+        assert payment_variants["PAYPAY"] == paypay
+        assert sales_variants["VISA"] == payment_variants["VISA"] == (1000, 1)
