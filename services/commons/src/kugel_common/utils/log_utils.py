@@ -167,10 +167,14 @@ _DEPTH_CAPPED = "<depth capped>"
 
 
 def _normalize_key(key: Any) -> str:
-    """Fold a field name to its comparison form (lowercase, no separators)."""
+    """Fold a field name to its comparison form (lowercase, no separators).
+
+    A dotted MongoDB path is judged by its last segment, so `staff.pin` or
+    `variants.$.api_key` is recognised as the field it names (#316).
+    """
     if not isinstance(key, str):
         return ""
-    return key.replace("_", "").replace("-", "").lower()
+    return key.rsplit(".", 1)[-1].replace("_", "").replace("-", "").lower()
 
 
 def mask_sensitive_data(data: Any, depth: int = 0) -> Any:
@@ -204,6 +208,10 @@ def mask_sensitive_data(data: Any, depth: int = 0) -> Any:
 
     if isinstance(data, list):
         return [mask_sensitive_data(item, depth + 1) for item in data]
+
+    if isinstance(data, tuple):
+        # A filter built in code may hold its clauses in a tuple (#316)
+        return tuple(mask_sensitive_data(item, depth + 1) for item in data)
 
     return data
 

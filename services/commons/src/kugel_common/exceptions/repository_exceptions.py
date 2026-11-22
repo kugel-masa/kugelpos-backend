@@ -30,7 +30,7 @@ class NotFoundException(RepositoryException):
     resulting in a 404 Not Found response.
     """
     def __init__(self, message, collection_name, find_key, logger=None, original_exception=None):
-        message = f"{message}: find_key->{find_key}"
+        message = f"{message}: find_key->{mask_loggable(find_key)}"
         super().__init__(
             message, 
             collection_name, 
@@ -75,7 +75,7 @@ class CannotDeleteException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, delete_key, logger=None, original_exception=None):
-        message = f"{message}: delete_key->{delete_key}"
+        message = f"{message}: delete_key->{mask_loggable(delete_key)}"
         super().__init__(
             message, 
             collection_name, 
@@ -94,7 +94,7 @@ class UpdateNotWorkException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, update_key, logger=None, original_exception=None):
-        message = f"{message}: update_key->{update_key}"
+        message = f"{message}: update_key->{mask_loggable(update_key)}"
         super().__init__(
             message, 
             collection_name, 
@@ -113,7 +113,7 @@ class ReplaceNotWorkException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, update_key, logger=None, original_exception=None):
-        message = f"{message}: update_key->{update_key}"
+        message = f"{message}: update_key->{mask_loggable(update_key)}"
         super().__init__(
             message, 
             collection_name, 
@@ -132,7 +132,7 @@ class DeleteChildExistException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, delete_key, logger=None, original_exception=None):
-        message = f"{message}: delete_key->{delete_key}"
+        message = f"{message}: delete_key->{mask_loggable(delete_key)}"
         super().__init__(
             message, 
             collection_name, 
@@ -151,7 +151,7 @@ class AlreadyExistException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, find_key, logger=None, original_exception=None):
-        message = f"{message}: find_key->{find_key}"
+        message = f"{message}: find_key->{mask_loggable(find_key)}"
         super().__init__(
             message, 
             collection_name, 
@@ -170,7 +170,7 @@ class DuplicateKeyException(RepositoryException):
     resulting in a 400 Bad Request response.
     """
     def __init__(self, message, collection_name, key, logger=None, original_exception=None):
-        message = f"{message}: key->{key}"
+        message = f"{message}: key->{mask_loggable(key)}"
         super().__init__(
             message, 
             collection_name, 

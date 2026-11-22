@@ -272,11 +272,11 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 )
             if result_set is None:
                 logger.info(
-                    f"No documents found in database for filter: {filter} of collection: {self.collection_name}"
+                    f"No documents found in database for filter: {mask_loggable(filter)} of collection: {self.collection_name}"
                 )
             return [self.__create_document(**result) for result in result_set]
         except Exception as e:
-            message = f"Failed to get document from app.database: filter->{filter}"
+            message = f"Failed to get document from app.database: filter->{mask_loggable(filter)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def get_list_async_with_sort_and_paging(
@@ -313,13 +313,13 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             result_set = await cursor.to_list(None if limit == 0 else limit)
             if result_set is None:
                 logger.info(
-                    f"No documents found in database for filter: {filter} of collection: {self.collection_name}"
+                    f"No documents found in database for filter: {mask_loggable(filter)} of collection: {self.collection_name}"
                 )
                 result_set = []
 
             return [self.__create_document(**result) for result in result_set]
         except Exception as e:
-            message = f"Failed to get document from app.database: filter->{filter} sort->{sort} page->{page} limit->{limit} e.message->{e}"
+            message = f"Failed to get document from app.database: filter->{mask_loggable(filter)} sort->{sort} page->{page} limit->{limit}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
     
     async def get_paginated_list_async(
@@ -359,7 +359,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             result_set = await cursor.to_list(None if limit == 0 else limit)
             if result_set is None:
                 logger.info(
-                    f"No documents found in database for filter: {filter} of collection: {self.collection_name}"
+                    f"No documents found in database for filter: {mask_loggable(filter)} of collection: {self.collection_name}"
                 )
                 result_set = []
             
@@ -376,7 +376,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             )
 
         except Exception as e:
-            message = f"Failed to get document from app.database: filter->{filter} sort->{sort} page->{page} limit->{limit} e.message->{e}"
+            message = f"Failed to get document from app.database: filter->{mask_loggable(filter)} sort->{sort} page->{page} limit->{limit}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def get_one_async(self, filter: dict) -> Tdocument:
@@ -400,12 +400,12 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             result = await self.dbcollection.find_one(filter)
             if result is None:
                 logger.debug(
-                    f"Document not found in database for filter: {filter} of collection: {self.collection_name}"
+                    f"Document not found in database for filter: {mask_loggable(filter)} of collection: {self.collection_name}"
                 )
                 return None
             return self.__create_document(**result)
         except Exception as e:
-            message = f"Failed to get document from app.database: filter->{filter}"
+            message = f"Failed to get document from app.database: filter->{mask_loggable(filter)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def replace_one_async(self, filter: dict, document: Tdocument) -> bool:
@@ -434,12 +434,12 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             )
             if response.modified_count != 1:
                 logger.info(
-                    f"Document not replaced in database for filter: {filter} of collection: {self.collection_name}"
+                    f"Document not replaced in database for filter: {mask_loggable(filter)} of collection: {self.collection_name}"
                 )
                 return False
             return True
         except Exception as e:
-            message = f"Failed to replace document in database: filter->{filter} document->{mask_loggable(document)}"
+            message = f"Failed to replace document in database: filter->{mask_loggable(filter)} document->{mask_loggable(document)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def update_one_async(self, filter: dict, new_values: dict, max_retries: int = 3, retry_interval: float = 0.1) -> bool:
@@ -471,7 +471,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 )
                 if response.modified_count != 1:
                     logger.info(
-                        f"Document not updated in database for filter: {filter} of collection: {self.collection_name}"
+                        f"Document not updated in database for filter: {mask_loggable(filter)} of collection: {self.collection_name}"
                     )
                     return False
                 return True
@@ -483,13 +483,13 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                         await asyncio.sleep(retry_interval * attempt)
                         continue
                     else:
-                        message = f"WriteConflict (code 112) after {max_retries} retries: filter->{filter} new_values->{new_values}"
+                        message = f"WriteConflict (code 112) after {max_retries} retries: filter->{mask_loggable(filter)} new_values->{mask_loggable(new_values)}"
                         raise RepositoryException(message, self.collection_name, logger, e) from e
                 else:
-                    message = f"OperationFailure (code {getattr(e, 'code', None)}) on update_one_async: filter->{filter} new_values->{new_values}"
+                    message = f"OperationFailure (code {getattr(e, 'code', None)}) on update_one_async: filter->{mask_loggable(filter)} new_values->{mask_loggable(new_values)}"
                     raise RepositoryException(message, self.collection_name, logger, e) from e
             except Exception as e:
-                message = f"Failed to update document in database: filter->{filter} new_values->{new_values}"
+                message = f"Failed to update document in database: filter->{mask_loggable(filter)} new_values->{mask_loggable(new_values)}"
                 raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def delete_async(self, search_dict: dict) -> bool:
@@ -514,7 +514,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             response = await self.dbcollection.find_one(search_dict)
             if response is None:
                 logger.info(
-                    f"Document not found in database for filter: {search_dict} of collection: {self.collection_name}"
+                    f"Document not found in database for filter: {mask_loggable(search_dict)} of collection: {self.collection_name}"
                 )
                 return False
             response = await self.dbcollection.delete_one(
@@ -522,14 +522,18 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             )
             if response.deleted_count != 1:
                 logger.info(
-                    f"Document not deleted in database for filter: {search_dict} of collection: {self.collection_name}"
+                    f"Document not deleted in database for filter: {mask_loggable(search_dict)} of collection: {self.collection_name}"
                 )
                 raise CannotDeleteException(
                     "Document not deleted", self.collection_name, search_dict, logger
                 )
             return True
+        except RepositoryException:
+            # Raised above with its own status and code (CannotDeleteException);
+            # wrapping it again would answer as a generic repository failure (#316)
+            raise
         except Exception as e:
-            message = f"Failed to delete document from app.database: search_dict->{search_dict} e.message->{e}"
+            message = f"Failed to delete document from app.database: search_dict->{mask_loggable(search_dict)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
     async def execute_pipeline(self, pipeline: list[dict]) -> list[dict]:
@@ -554,11 +558,11 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             result_set = await self.dbcollection.aggregate(pipeline).to_list(None)
             if result_set is None:
                 logger.info(
-                    f"No documents found in database for pipeline: {pipeline} of collection: {self.collection_name}"
+                    f"No documents found in database for pipeline: {mask_loggable(pipeline)} of collection: {self.collection_name}"
                 )
             return result_set
         except Exception as e:
-            message = f"Failed to execute pipeline in app.database: pipeline->{pipeline}"
+            message = f"Failed to execute pipeline in app.database: pipeline->{mask_loggable(pipeline)}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
     
     def make_shard_key(self, keys: list[str]) -> str:

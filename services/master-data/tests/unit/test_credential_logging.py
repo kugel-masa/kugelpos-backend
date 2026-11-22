@@ -19,6 +19,7 @@ import pytest
 
 from pymongo.errors import DuplicateKeyError
 
+from kugel_common.exceptions import RepositoryException
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.api.v1 import schemas_transformer
 from app.models.documents.staff_master_document import StaffMasterDocument
@@ -109,6 +110,60 @@ class TestTheGenericCreatePath:
         assert PIN not in str(exc_info.value)
         assert PIN not in _emitted(caplog)
         assert "S001" in str(exc_info.value)
+
+
+class _UpdateFails:
+    async def update_one(self, *args, **kwargs):
+        raise RuntimeError("the database said no")
+
+
+@pytest.mark.asyncio
+class TestTheGenericUpdatePath:
+    """The staff update passes the request body, PIN included, as the update values (#316)."""
+
+    async def test_a_failed_staff_update_does_not_report_the_pin(self, caplog):
+        from app.models.repositories.staff_master_repository import StaffMasterRepository
+
+        repo = StaffMasterRepository(db=None, tenant_id="T1")
+        repo.dbcollection = _UpdateFails()
+        update = _staff().model_dump(include={"id", "name", "pin"})
+
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(RepositoryException) as exc_info:
+                await repo.update_staff_async("S001", update)
+
+        # exc.message is what the error response carries
+        assert PIN not in exc_info.value.message, "the failed staff update reports its pin"
+        assert PIN not in _emitted(caplog)
+        assert "S001" in exc_info.value.message
+
+    async def test_a_staff_lookup_does_not_log_a_pin_in_its_filter(self, caplog):
+        from app.models.repositories.staff_master_repository import StaffMasterRepository
+
+        class _FindsNothing:
+            def find(self, *args, **kwargs):
+                class _Cursor:
+                    def skip(self, *a):
+                        return self
+
+                    def limit(self, *a):
+                        return self
+
+                    def sort(self, *a):
+                        return self
+
+                    async def to_list(self, *a):
+                        return []
+
+                return _Cursor()
+
+        repo = StaffMasterRepository(db=None, tenant_id="T1")
+        repo.dbcollection = _FindsNothing()
+
+        with caplog.at_level(logging.DEBUG):
+            await repo.get_staff_by_filter_async({"pin": PIN}, 10, 1, [("id", 1)])
+
+        assert PIN not in _emitted(caplog)
 
 
 class TestTheStaffTransformer:
