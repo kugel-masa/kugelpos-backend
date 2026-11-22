@@ -24,7 +24,12 @@ curl -s "$MD/payments/11" -H "Authorization: Bearer $TOKEN" | jq '.data.variants
 
 ## 2. サブコードで支払う
 
-cart の支払マスタのキャッシュの有効期限（`PAYMENT_MASTER_CACHE_TTL_SECONDS`）が過ぎてから行う。
+cart の支払マスタのキャッシュの有効期限（`PAYMENT_MASTER_CACHE_TTL_SECONDS`、既定 600 秒）が過ぎてから行う。すぐに試すときは、特権の利用者のトークンで cart のキャッシュを無効化する:
+
+```bash
+curl -s -X DELETE "http://localhost:8003/api/v1/cache/master-data?namespace=payment_master" -H "Authorization: Bearer $TOKEN"
+```
+
 
 ```bash
 CART=http://localhost:8003/api/v1

@@ -24,7 +24,7 @@
 ## R-2: サブコードの一意性と更新の原子性
 
 **Decision**: 一意性は「支払方法の中で一意」（FR-002）。索引ではなく、条件付きの原子更新で守る。
-- 追加: フィルタ `{tenant_id, payment_code, "variants.variant_code": {"$ne": code}}` に `$push`。一致 0 件なら、支払方法の有無を引き直して「支払方法が無い」（404）か「重複」（409 相当の既存の例外）を返す
+- 追加: フィルタ `{tenant_id, payment_code, "variants.variant_code": {"$ne": code}}` に `$push`。一致 0 件なら、支払方法の有無を引き直して「支払方法が無い」（404）か「重複」（既存の `DocumentAlreadyExistsException`・HTTP 400）を返す
 - 変更: フィルタ `{tenant_id, payment_code, "variants.variant_code": code}` に位置指定の `$set`（`variants.$.name`・`variants.$.is_active`・`variants.$.updated_at`）と文書の `updated_at`。時刻の項目名は、master-data のリポジトリが継承している共通ライブラリの `AbstractRepository` に合わせる（`created_at`・`updated_at`。master-data の `app/models/repositories/abstract_repository.py` は使われていない古い複製で、`updated_on` を書くが参照しない・#312）
 
 **Rationale**:
@@ -185,7 +185,7 @@ cart の API の支払行の応答（`BaseTranPayment`）に `variant_code: Opti
 
 **Rationale**:
 - キャッシュの鍵は文書の型の構造の指紋（`document_shape`）を含む。型に項目が増えると指紋が変わり、項目の無い古いキャッシュは読まれずに取得し直される。配備の直後に「サブコードがあるのに 0 件と読む」ことは起きない
-- サブコードの変更が cart に効くのは TTL（`PAYMENT_MASTER_CACHE_TTL_SECONDS`）の経過後。支払方法の設定の変更（#309）と同じ扱い（spec Edge Cases）
+- サブコードの変更が cart に効くのは TTL（`PAYMENT_MASTER_CACHE_TTL_SECONDS`、既定 600 秒）の経過後。支払方法の設定の変更（#309）と同じ扱い（spec Edge Cases）。すぐに効かせるときは cart の `DELETE /api/v1/cache/master-data?namespace=payment_master`（特権の利用者・サービスアカウントだけ。世代を上げて以後の読み取りを取得し直させる）を使う
 
 ---
 

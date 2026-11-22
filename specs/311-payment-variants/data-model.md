@@ -129,3 +129,15 @@ ReturnLineDecision
 | `count` | int | 売上レポートは支払行の数、支払レポートは取引の数（ともに符号付き） |
 
 並び: `variant_code` の昇順、`None` は末尾。
+
+---
+
+## 呼び名の対応（支払方法の名前・サブコードの名前）
+
+| 層 | 支払行の名前（サブコードの名前 or 支払方法の名前） | 販売時点の支払方法の名前 | サブコード |
+|---|---|---|---|
+| 取引ログ・カートの文書（`BaseTransaction.Payment`） | `description` | `builtin_description` | `variant_code` |
+| cart の API の応答（`BaseTranPayment`・camelCase） | `paymentName` | `builtinPaymentName` | `variantCode` |
+| report のパイプラインの中間値 | `variant_name` | `builtin_name` | `variant_code` |
+| 売上レポートの応答（camelCase） | 内訳の `variantName` | 行の `paymentName` | 内訳の `variantCode` |
+| 支払レポートの応答（snake_case） | 内訳の `variant_name`（現在のマスタ優先） | 行の `payment_name`（現在のマスタ） | 内訳の `variant_code` |

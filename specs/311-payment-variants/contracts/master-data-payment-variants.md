@@ -65,7 +65,7 @@ JSON は既存の API と同じく camelCase。応答は既存の `ApiResponse` 
 | 場面 | HTTP | 例外 |
 |---|---|---|
 | 支払方法が無い | 404 | `DocumentNotFoundException` |
-| 同じ支払方法に同じ `variantCode` がある | 409 相当（既存の `DocumentAlreadyExistsException` の応答） | `DocumentAlreadyExistsException` |
+| 同じ支払方法に同じ `variantCode` がある | 400（既存の `DocumentAlreadyExistsException` の応答。支払マスタの重複と同じ） | `DocumentAlreadyExistsException` |
 | `variantCode`・`name` の形式違反 | 422 | 検証エラー |
 | パスのテナントとトークンのテナントが違う・端末からの呼び出し | 既存の支払マスタの作成と同じ | |
 
