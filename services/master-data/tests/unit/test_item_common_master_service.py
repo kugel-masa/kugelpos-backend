@@ -98,28 +98,33 @@ class TestItemCommonMasterService:
         with pytest.raises(DocumentNotFoundException):
             await service.update_item_async("NONEXISTENT", {})
 
+    @pytest.mark.parametrize("is_logical", [False, True], ids=["physical", "logical"])
     @pytest.mark.asyncio
-    async def test_delete_physical_success(self, service, repo):
-        """Physical delete (is_logical=False): uses get_item_by_filter_async."""
-        repo.get_item_by_filter_async.return_value = [ItemCommonMasterDocument()]
+    async def test_delete_success(self, service, repo, is_logical):
+        repo.delete_item_async.return_value = True
 
-        await service.delete_item_async("ITEM-01", is_logical=False)
-        repo.delete_item_async.assert_called_once_with("ITEM-01", False)
+        await service.delete_item_async("ITEM-01", is_logical=is_logical)
 
+        repo.delete_item_async.assert_called_once_with("ITEM-01", is_logical)
+
+    @pytest.mark.parametrize("is_logical", [False, True], ids=["physical", "logical"])
     @pytest.mark.asyncio
-    async def test_delete_logical_success(self, service, repo):
-        """Logical delete (is_logical=True): uses get_item_by_code_async."""
-        repo.get_item_by_code_async.return_value = ItemCommonMasterDocument()
-
-        await service.delete_item_async("ITEM-01", is_logical=True)
-        repo.delete_item_async.assert_called_once_with("ITEM-01", True)
-
-    @pytest.mark.asyncio
-    async def test_delete_not_found_raises(self, service, repo):
-        repo.get_item_by_filter_async.return_value = None
+    async def test_delete_of_nothing_is_not_found(self, service, repo, is_logical):
+        # The repository's one write found nothing to delete: an unknown code, or one
+        # a concurrent delete removed first (#312)
+        repo.delete_item_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
-            await service.delete_item_async("NONEXISTENT", is_logical=False)
+            await service.delete_item_async("NONEXISTENT", is_logical=is_logical)
+
+    @pytest.mark.asyncio
+    async def test_delete_does_not_look_the_item_up_first(self, service, repo):
+        repo.delete_item_async.return_value = True
+
+        await service.delete_item_async("ITEM-01", is_logical=False)
+
+        repo.get_item_by_filter_async.assert_not_called()
+        repo.get_item_by_code_async.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
