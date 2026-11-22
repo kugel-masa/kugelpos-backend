@@ -10,6 +10,7 @@
 Tenant-scoped: payment methods are defined at tenant level (not per store),
 so is_store_scoped=False forces the store position in the cache key to "_".
 """
+
 from logging import getLogger
 
 from kugel_common.exceptions import NotFoundException, RepositoryException
@@ -44,9 +45,19 @@ class PaymentMasterWebRepository(AbstractMasterDataRepository[PaymentMasterDocum
             cache_backend=cache_backend,
             store_code=None,
         )
+        # Payment masters already read during this request (issue #311). The
+        # repository is built per request, so nothing outlives it: a payment is
+        # read once for its variant and once more when its strategy settles it,
+        # and both now see the same document with one cache or master-data call.
+        self._read_this_request: dict[str, PaymentMasterDocument] = {}
 
     async def get_payment_by_code_async(self, payment_code: str) -> PaymentMasterDocument:
-        return await self.get_or_fetch_one(payment_code)
+        payment = self._read_this_request.get(payment_code)
+        if payment is None:
+            payment = await self.get_or_fetch_one(payment_code)
+            self._read_this_request[payment_code] = payment
+        # A copy, so one caller changing what it got cannot change what the next reads
+        return payment.model_copy(deep=True)
 
     async def _fetch_one(self, payment_code: str) -> PaymentMasterDocument:
         client = await get_pooled_client("master-data")
