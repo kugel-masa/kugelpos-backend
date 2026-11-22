@@ -1,7 +1,10 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Optional, List
+
+from pydantic import Field
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.models.documents.base_document_model import BaseDocumentModel
+from app.models.documents.sales_report_document import PaymentVariantReport
 
 
 class PaymentReportDocument(AbstractDocument):
@@ -25,6 +28,9 @@ class PaymentReportDocument(AbstractDocument):
         count: int  # Number of transactions
         amount: float  # Total amount
         ratio: float  # Composition ratio (percentage)
+        # Breakdown by variant (issue #311); counts are of transactions, so one
+        # transaction that used two variants counts once under each
+        variants: List[PaymentVariantReport] = Field(default_factory=list)
     
     class PaymentTotal(BaseDocumentModel):
         """

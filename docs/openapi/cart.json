@@ -3929,6 +3929,28 @@
             ],
             "title": "Paymentdetail",
             "default": "no detail"
+          },
+          "variantCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variantcode"
+          },
+          "builtinPaymentName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Builtinpaymentname"
           }
         },
         "type": "object",
@@ -4729,6 +4751,17 @@
               }
             ],
             "title": "Detail"
+          },
+          "variantCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variantcode"
           }
         },
         "type": "object",

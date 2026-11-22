@@ -356,3 +356,47 @@ class TestPaymentMasterLookupFailures:
 
         assert not isinstance(exc_info.value, NotFoundException)
         assert exc_info.value.__cause__ is cause
+
+
+# ---------------------------------------------------------------------------
+# Payment variants (issue #311)
+# ---------------------------------------------------------------------------
+
+
+class TestPaymentVariantOnTheLine:
+    @pytest.mark.asyncio
+    async def test_settle_records_the_variant_and_both_names(self):
+        strategy = _attach_repo(PaymentByCashless("11"), description="Cashless")
+        cart = _make_cart(balance=100.0)
+
+        await strategy.settle_payment_async(
+            cart, "11", 100.0, None, variant_code="PAYPAY", variant_name="PayPay", builtin_description="Cashless"
+        )
+
+        line = cart.payments[-1]
+        assert (line.variant_code, line.description, line.builtin_description) == ("PAYPAY", "PayPay", "Cashless")
+
+    @pytest.mark.asyncio
+    async def test_settle_without_a_variant_names_the_line_after_the_method(self):
+        strategy = _attach_repo(PaymentByCashless("11"), description="Cashless")
+        cart = _make_cart(balance=100.0)
+
+        await strategy.settle_payment_async(cart, "11", 100.0)
+
+        line = cart.payments[-1]
+        assert (line.variant_code, line.description, line.builtin_description) == (None, "Cashless", "Cashless")
+
+    @pytest.mark.parametrize(
+        "strategy_class,code", [(PaymentByCash, "01"), (PaymentByCashless, "11"), (PaymentByOthers, "12")]
+    )
+    @pytest.mark.asyncio
+    async def test_each_strategy_passes_the_variant_on(self, strategy_class, code):
+        strategy = _attach_repo(strategy_class(code), description="Method")
+        cart = _make_cart(balance=100.0)
+
+        await strategy.pay(
+            cart, code, 100.0, None, variant_code="V1", variant_name="Variant one", builtin_description="Method"
+        )
+
+        line = cart.payments[-1]
+        assert (line.variant_code, line.description, line.builtin_description) == ("V1", "Variant one", "Method")

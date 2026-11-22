@@ -755,3 +755,73 @@ class CartScopeViolationException(ServiceException):
             CartErrorMessage.get_message(CartErrorCode.CART_SCOPE_VIOLATION),
             status_code=status.HTTP_403_FORBIDDEN,
         )
+
+
+class PaymentVariantNotFoundException(ServiceException):
+    """Raised when a payment names a variant its payment method does not have (issue #311)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.PAYMENT_VARIANT_NOT_FOUND,
+            CartErrorMessage.get_message(CartErrorCode.PAYMENT_VARIANT_NOT_FOUND),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class PaymentVariantInactiveException(ServiceException):
+    """Raised when a payment names a stopped variant (issue #311)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.PAYMENT_VARIANT_INACTIVE,
+            CartErrorMessage.get_message(CartErrorCode.PAYMENT_VARIANT_INACTIVE),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class PaymentVariantRequiredException(ServiceException):
+    """Raised when a payment names no variant and the system cannot choose one (issue #311)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.PAYMENT_VARIANT_REQUIRED,
+            CartErrorMessage.get_message(CartErrorCode.PAYMENT_VARIANT_REQUIRED),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class ReturnTenderNotAllowedException(ServiceException):
+    """Raised when a return refunds by neither a tender of the sale nor cash (issue #311)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.RETURN_TENDER_NOT_ALLOWED,
+            CartErrorMessage.get_message(CartErrorCode.RETURN_TENDER_NOT_ALLOWED),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class ReturnAmountExceedsOriginalException(ServiceException):
+    """Raised when a return refunds a tender of the sale more than the sale took by it (issue #311)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            CartErrorCode.RETURN_AMOUNT_EXCEEDS_ORIGINAL,
+            CartErrorMessage.get_message(CartErrorCode.RETURN_AMOUNT_EXCEEDS_ORIGINAL),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )

@@ -6,7 +6,7 @@ from kugel_common.exceptions import (
     DocumentAlreadyExistsException,
     InvalidRequestDataException,
 )
-from app.models.documents.payment_master_document import PaymentMasterDocument
+from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.models.repositories.payment_master_repository import PaymentMasterRepository
 
 logger = getLogger(__name__)
@@ -172,3 +172,88 @@ class PaymentMasterService:
             raise DocumentNotFoundException(message, logger)
         await self.payment_master_repository.delete_payment_async(payment_code)
         return None
+
+    async def add_variant_async(
+        self, payment_code: str, variant_code: str, name: str, is_active: bool = True
+    ) -> PaymentVariant:
+        """
+        Add a variant (sub-code) to a payment method (issue #311).
+
+        Args:
+            payment_code: Code of the payment method
+            variant_code: Code of the new variant, unique within the payment method
+            name: Name of the variant
+            is_active: Whether the variant takes new payments
+
+        Returns:
+            The added variant
+
+        Raises:
+            DocumentNotFoundException: If no payment method with the given code exists
+            DocumentAlreadyExistsException: If the payment method already has a variant with this code
+        """
+        variant = PaymentVariant(variant_code=variant_code, name=name, is_active=is_active)
+        added = await self.payment_master_repository.add_variant_async(payment_code, variant)
+        if not added:
+            payment = await self.payment_master_repository.get_payment_by_code(payment_code)
+            if payment is None:
+                message = f"PaymentMasterService.add_variant_async: payment_code->{payment_code} not found"
+                raise DocumentNotFoundException(message, logger)
+            message = (
+                f"PaymentMasterService.add_variant_async: variant_code->{variant_code} "
+                f"already exists under payment_code->{payment_code}"
+            )
+            raise DocumentAlreadyExistsException(message, logger)
+        return await self.get_variant_async(payment_code, variant_code)
+
+    async def get_variants_async(self, payment_code: str) -> list[PaymentVariant]:
+        """
+        List a payment method's variants, stopped ones included, in variant code order.
+
+        Raises:
+            DocumentNotFoundException: If no payment method with the given code exists
+        """
+        payment = await self.payment_master_repository.get_payment_by_code(payment_code)
+        if payment is None:
+            message = f"PaymentMasterService.get_variants_async: payment_code->{payment_code} not found"
+            raise DocumentNotFoundException(message, logger)
+        return sorted(payment.variants, key=lambda v: v.variant_code or "")
+
+    async def get_variant_async(self, payment_code: str, variant_code: str) -> PaymentVariant:
+        """
+        Get one variant of a payment method.
+
+        Raises:
+            DocumentNotFoundException: If the payment method or the variant does not exist
+        """
+        variants = await self.get_variants_async(payment_code)
+        variant = next((v for v in variants if v.variant_code == variant_code), None)
+        if variant is None:
+            message = (
+                f"PaymentMasterService.get_variant_async: variant_code->{variant_code} "
+                f"not found under payment_code->{payment_code}"
+            )
+            raise DocumentNotFoundException(message, logger)
+        return variant
+
+    async def update_variant_async(
+        self, payment_code: str, variant_code: str, name: str, is_active: bool
+    ) -> PaymentVariant:
+        """
+        Change a variant's name and active flag. Its code cannot change.
+
+        Raises:
+            DocumentNotFoundException: If the payment method or the variant does not exist
+        """
+        updated = await self.payment_master_repository.update_variant_async(payment_code, variant_code, name, is_active)
+        if not updated:
+            payment = await self.payment_master_repository.get_payment_by_code(payment_code)
+            if payment is None:
+                message = f"PaymentMasterService.update_variant_async: payment_code->{payment_code} not found"
+            else:
+                message = (
+                    f"PaymentMasterService.update_variant_async: variant_code->{variant_code} "
+                    f"not found under payment_code->{payment_code}"
+                )
+            raise DocumentNotFoundException(message, logger)
+        return await self.get_variant_async(payment_code, variant_code)

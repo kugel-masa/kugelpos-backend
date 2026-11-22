@@ -24,6 +24,8 @@ from app.exceptions import (
     AlreadyRefundedException,
     RefundLimitExceededException,
     RefundNotAllowedException,
+    ReturnAmountExceedsOriginalException,
+    ReturnTenderNotAllowedException,
 )
 from kugel_common.enums import TransactionType
 from kugel_common.models.documents.base_tranlog import BaseTransaction
@@ -542,13 +544,26 @@ def _refund_line(code: str, amount: float) -> BaseTransaction.Payment:
     return line
 
 
+def _paid_by(tran, *tenders):
+    """Make the sale paid by the given (payment_code, amount) tenders."""
+    tran.payments = [
+        BaseTransaction.Payment(payment_no=i + 1, payment_code=code, description=code, amount=amount)
+        for i, (code, amount) in enumerate(tenders)
+    ]
+    return tran
+
+
 class TestReturnFollowsThePaymentMaster:
-    """A return is refunded only by methods whose payment master allows it (issue #309)."""
+    """A return is refunded only by methods whose payment master allows it (issue #309).
+
+    A return refunds by a tender of the sale or by cash (issue #311), so the sales
+    here are paid by the method refunded with.
+    """
 
     @pytest.mark.asyncio
     async def test_a_method_that_cannot_refund_is_refused(self):
         svc = _make_tran_service()
-        tran = _make_base_transaction(total_amount=1000.0)
+        tran = _paid_by(_make_base_transaction(total_amount=1000.0), ("11", 1000.0))
         svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
             return_value=_payment_master("11", can_refund=False)
@@ -580,7 +595,7 @@ class TestReturnFollowsThePaymentMaster:
     @pytest.mark.asyncio
     async def test_a_method_that_cannot_refund_is_refused_beside_one_that_can(self):
         svc = _make_tran_service()
-        tran = _make_base_transaction(total_amount=1000.0)
+        tran = _paid_by(_make_base_transaction(total_amount=1000.0), ("01", 600.0), ("11", 400.0))
         svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
         masters = {"01": _payment_master("01"), "11": _payment_master("11", can_refund=False)}
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(side_effect=lambda code: masters[code])
@@ -598,7 +613,7 @@ class TestReturnFollowsThePaymentMaster:
     async def test_the_method_is_checked_before_the_total(self):
         """A refused method is reported as such even when the total is also wrong."""
         svc = _make_tran_service()
-        tran = _make_base_transaction(total_amount=1000.0)
+        tran = _paid_by(_make_base_transaction(total_amount=1000.0), ("11", 1000.0))
         svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
         svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
             return_value=_payment_master("11", can_refund=False)
@@ -845,3 +860,112 @@ class TestTheOperatorOnTheTranlog:
     async def test_without_one_the_cart_creator_is_recorded(self):
         staff = await self._staff_recorded(None)
         assert (staff.id, staff.name) == ("creator", "Creator")
+
+
+class TestVoidAndReturnRecordTheVariant:
+    """Voids and returns name the sale's tenders, variant included (issue #311).
+
+    The full void and return go on to numbering and publishing; these tests stop
+    right after the payment lines are built and read them off the transaction.
+    """
+
+    @staticmethod
+    def _sale():
+        tran = _make_base_transaction(total_amount=3000.0)
+        tran.payments = [
+            BaseTransaction.Payment(
+                payment_no=1, payment_code="12", amount=1000.0, description="VISA", variant_code="VISA",
+                builtin_description="Others",
+            ),
+            BaseTransaction.Payment(
+                payment_no=2, payment_code="12", amount=2000.0, description="PayPay", variant_code="PAYPAY",
+                builtin_description="Others",
+            ),
+        ]
+        return tran
+
+    @staticmethod
+    def _service(masters):
+        svc = _make_tran_service()
+        svc.transaction_status_repo.get_status_by_transaction_async = AsyncMock(return_value=None)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(side_effect=lambda code: masters[code])
+        return svc
+
+    @pytest.mark.asyncio
+    async def test_a_void_records_each_tender_with_the_sales_names(self):
+        svc = self._service({"12": _payment_master("12")})
+        tran = self._sale()
+        tran.sales.total_amount_with_tax = 3001.0  # stops the void right after its lines are built
+
+        with pytest.raises(BadRequestBodyException, match="Invalid payment amount"):
+            await svc.void_async(
+                tran,
+                [
+                    {"payment_code": "12", "amount": 1000.0, "variant_code": "VISA"},
+                    {"payment_code": "12", "amount": 2000.0, "variant_code": "PAYPAY"},
+                ],
+            )
+
+        assert [(p.variant_code, p.description, p.builtin_description) for p in tran.payments] == [
+            ("VISA", "VISA", "Others"),
+            ("PAYPAY", "PayPay", "Others"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_void_without_the_variant_does_not_match(self):
+        svc = self._service({"12": _payment_master("12")})
+
+        with pytest.raises(BadRequestBodyException, match="not found in original"):
+            await svc.void_async(self._sale(), [{"payment_code": "12", "amount": 3000.0}])
+
+    @pytest.mark.asyncio
+    async def test_a_return_records_the_sales_tender_and_cash_by_the_master(self):
+        cash = _payment_master("01")
+        cash.description = "Cash"
+        svc = self._service({"12": _payment_master("12"), "01": cash})
+        tran = self._sale()
+
+        with patch.object(TranService, "_check_refund_allowed", side_effect=RuntimeError("stop")):
+            with pytest.raises(RuntimeError, match="stop"):
+                await svc.return_async(
+                    tran,
+                    [
+                        {"payment_code": "12", "amount": 2000.0, "variant_code": "PAYPAY"},
+                        {"payment_code": "01", "amount": 1000.0},
+                    ],
+                )
+
+        assert [(p.payment_code, p.variant_code, p.description, p.builtin_description) for p in tran.payments] == [
+            ("12", "PAYPAY", "PayPay", "Others"),
+            ("01", None, "Cash", "Cash"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_cash_the_sale_did_not_take_follows_the_sales_variant_rule(self):
+        from app.models.documents.payment_master_document import PaymentVariant
+
+        cash = _payment_master("01")
+        cash.description = "Cash"
+        cash.variants = [PaymentVariant(variant_code="JPY", name="Yen", is_active=True)]
+        svc = self._service({"01": cash})
+        tran = self._sale()
+
+        with patch.object(TranService, "_check_refund_allowed", side_effect=RuntimeError("stop")):
+            with pytest.raises(RuntimeError, match="stop"):
+                await svc.return_async(tran, [{"payment_code": "01", "amount": 3000.0}])
+
+        assert (tran.payments[0].variant_code, tran.payments[0].description) == ("JPY", "Yen")
+
+    @pytest.mark.asyncio
+    async def test_a_return_by_a_tender_the_sale_did_not_take_is_refused(self):
+        svc = self._service({"11": _payment_master("11")})
+
+        with pytest.raises(ReturnTenderNotAllowedException):
+            await svc.return_async(self._sale(), [{"payment_code": "11", "amount": 3000.0}])
+
+    @pytest.mark.asyncio
+    async def test_a_return_beyond_what_the_sale_took_is_refused(self):
+        svc = self._service({"12": _payment_master("12")})
+
+        with pytest.raises(ReturnAmountExceedsOriginalException):
+            await svc.return_async(self._sale(), [{"payment_code": "12", "amount": 3000.0, "variant_code": "VISA"}])

@@ -2124,6 +2124,7 @@ the one in the security credentials.
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2146,6 +2147,15 @@ the one in the security credentials.
       "canDepositOver": true,
       "canChange": true,
       "isActive": true,
+      "variants": [
+        {
+          "variantCode": "string",
+          "name": "string",
+          "isActive": true,
+          "entryDatetime": "string",
+          "lastUpdateDatetime": "string"
+        }
+      ],
       "entryDatetime": "string",
       "lastUpdateDatetime": "string"
     }
@@ -2228,6 +2238,7 @@ the one in the security credentials.
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2249,6 +2260,15 @@ the one in the security credentials.
     "canDepositOver": true,
     "canChange": true,
     "isActive": true,
+    "variants": [
+      {
+        "variantCode": "string",
+        "name": "string",
+        "isActive": true,
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
     "entryDatetime": "string",
     "lastUpdateDatetime": "string"
   },
@@ -2302,6 +2322,7 @@ the one in the security credentials.
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2323,6 +2344,15 @@ the one in the security credentials.
     "canDepositOver": true,
     "canChange": true,
     "isActive": true,
+    "variants": [
+      {
+        "variantCode": "string",
+        "name": "string",
+        "isActive": true,
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
     "entryDatetime": "string",
     "lastUpdateDatetime": "string"
   },
@@ -2402,6 +2432,7 @@ the one in the security credentials.
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2423,6 +2454,15 @@ the one in the security credentials.
     "canDepositOver": true,
     "canChange": true,
     "isActive": true,
+    "variants": [
+      {
+        "variantCode": "string",
+        "name": "string",
+        "isActive": true,
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
     "entryDatetime": "string",
     "lastUpdateDatetime": "string"
   },
@@ -2499,7 +2539,288 @@ the one in the security credentials.
 }
 ```
 
-### 34. Get Promotions
+### 34. Get Payment Variants
+
+**GET** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants`
+
+List a payment method's variants, stopped ones included, in variant code order.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `array[PaymentVariantResponse]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "variantCode": "string",
+      "name": "string",
+      "isActive": true,
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 35. Create Payment Variant
+
+**POST** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants`
+
+Add a variant (sub-code) to a payment method.
+
+A variant classifies the payments a method takes, such as a card brand under
+cashless. Its code is free format and unique within the payment method. The
+behaviour (limit, refund, deposit over, change) stays with the payment method.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id of an API-key caller; such c |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | No | - |
+
+**Request Example:**
+```json
+{
+  "variantCode": "string",
+  "name": "string",
+  "isActive": true
+}
+```
+
+**Response:**
+
+**data Field:** `PaymentVariantResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "variantCode": "string",
+    "name": "string",
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 36. Get Payment Variant
+
+**GET** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants/{variant_code}`
+
+Get one variant of a payment method.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `variant_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `PaymentVariantResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "variantCode": "string",
+    "name": "string",
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 37. Update Payment Variant
+
+**PUT** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants/{variant_code}`
+
+Change a variant's name and active flag.
+
+The code cannot be changed. A variant that is no longer used is stopped with
+isActive=false rather than deleted, so past transactions keep naming it.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `variant_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id of an API-key caller; such c |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+
+**Request Example:**
+```json
+{
+  "name": "string",
+  "isActive": true
+}
+```
+
+**Response:**
+
+**data Field:** `PaymentVariantResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "variantCode": "string",
+    "name": "string",
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 38. Get Promotions
 
 **GET** `/api/v1/tenants/{tenant_id}/promotions`
 
@@ -2587,7 +2908,7 @@ the one in the security credentials.
 }
 ```
 
-### 35. Create Promotion
+### 39. Create Promotion
 
 **POST** `/api/v1/tenants/{tenant_id}/promotions`
 
@@ -2701,7 +3022,7 @@ the one in the security credentials.
 }
 ```
 
-### 36. Get Active Promotions
+### 40. Get Active Promotions
 
 **GET** `/api/v1/tenants/{tenant_id}/promotions/active`
 
@@ -2793,7 +3114,7 @@ Authentication is required via token or API key.
 }
 ```
 
-### 37. Get Promotion
+### 41. Get Promotion
 
 **GET** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
 
@@ -2874,7 +3195,7 @@ the one in the security credentials.
 }
 ```
 
-### 38. Update Promotion
+### 42. Update Promotion
 
 **PUT** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
 
@@ -2985,7 +3306,7 @@ the one in the security credentials.
 }
 ```
 
-### 39. Delete Promotion
+### 43. Delete Promotion
 
 **DELETE** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
 
@@ -3043,7 +3364,7 @@ the one in the security credentials.
 }
 ```
 
-### 40. Get Settings Master Async
+### 44. Get Settings Master Async
 
 **GET** `/api/v1/tenants/{tenant_id}/settings`
 
@@ -3120,7 +3441,7 @@ the one in the security credentials.
 }
 ```
 
-### 41. Create Settings Master Async
+### 45. Create Settings Master Async
 
 **POST** `/api/v1/tenants/{tenant_id}/settings`
 
@@ -3218,7 +3539,7 @@ the one in the security credentials.
 }
 ```
 
-### 42. Get Settings Master By Name Async
+### 46. Get Settings Master By Name Async
 
 **GET** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -3291,7 +3612,7 @@ the one in the security credentials.
 }
 ```
 
-### 43. Update Settings Master Async
+### 47. Update Settings Master Async
 
 **PUT** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -3384,7 +3705,7 @@ the one in the security credentials.
 }
 ```
 
-### 44. Delete Settings Master Async
+### 48. Delete Settings Master Async
 
 **DELETE** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -3443,7 +3764,7 @@ the one in the security credentials.
 }
 ```
 
-### 45. Get Settings Value By Name Async
+### 49. Get Settings Value By Name Async
 
 **GET** `/api/v1/tenants/{tenant_id}/settings/{name}/value`
 
@@ -3508,7 +3829,7 @@ the one in the security credentials.
 }
 ```
 
-### 46. Get Taxes
+### 50. Get Taxes
 
 **GET** `/api/v1/tenants/{tenant_id}/taxes`
 
@@ -3585,7 +3906,7 @@ the one in the security credentials.
 }
 ```
 
-### 47. Get Tax
+### 51. Get Tax
 
 **GET** `/api/v1/tenants/{tenant_id}/taxes/{tax_code}`
 
@@ -3659,7 +3980,7 @@ the one in the security credentials.
 
 ### Store
 
-### 48. Get Item Store Master All Async
+### 52. Get Item Store Master All Async
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
@@ -3730,7 +4051,7 @@ the one in the security credentials.
 }
 ```
 
-### 49. Create Item Master Async
+### 53. Create Item Master Async
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
@@ -3813,7 +4134,7 @@ the one in the security credentials.
 }
 ```
 
-### 50. Get Item Store Master Async
+### 54. Get Item Store Master Async
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3879,7 +4200,7 @@ the one in the security credentials.
 }
 ```
 
-### 51. Update Item Store Master Async
+### 55. Update Item Store Master Async
 
 **PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3957,7 +4278,7 @@ the one in the security credentials.
 }
 ```
 
-### 52. Delete Item Store Master Async
+### 56. Delete Item Store Master Async
 
 **DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -4018,7 +4339,7 @@ the one in the security credentials.
 }
 ```
 
-### 53. Get Item Store Master Detail Async
+### 57. Get Item Store Master Detail Async
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}/details`
 
@@ -4107,7 +4428,7 @@ the one in the security credentials.
 
 ### Staff
 
-### 54. Get Staff Master All Async
+### 58. Get Staff Master All Async
 
 **GET** `/api/v1/tenants/{tenant_id}/staff`
 
@@ -4180,7 +4501,7 @@ the one in the security credentials.
 }
 ```
 
-### 55. Create Staff Master Async
+### 59. Create Staff Master Async
 
 **POST** `/api/v1/tenants/{tenant_id}/staff`
 
@@ -4269,7 +4590,7 @@ the one in the security credentials.
 }
 ```
 
-### 56. Get Staff Master Async
+### 60. Get Staff Master Async
 
 **GET** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
@@ -4337,7 +4658,7 @@ the one in the security credentials.
 }
 ```
 
-### 57. Update Staff Master Async
+### 61. Update Staff Master Async
 
 **PUT** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
@@ -4425,7 +4746,7 @@ the one in the security credentials.
 }
 ```
 
-### 58. Delete Staff Master Async
+### 62. Delete Staff Master Async
 
 **DELETE** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 

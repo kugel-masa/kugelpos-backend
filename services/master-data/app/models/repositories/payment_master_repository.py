@@ -2,8 +2,10 @@
 from logging import getLogger
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from kugel_common.exceptions import RepositoryException
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
-from app.models.documents.payment_master_document import PaymentMasterDocument
+from kugel_common.utils.misc import get_app_time
+from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.config.settings import settings
 
 logger = getLogger(__name__)
@@ -150,6 +152,78 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         if self.dbcollection is None:
             await self.initialize()
         return await self.dbcollection.count_documents(query_filter)
+
+    async def add_variant_async(self, payment_code: str, variant: PaymentVariant) -> bool:
+        """
+        Add a variant to a payment method, unless the method already has one with its code.
+
+        The check and the write are one conditional update on one document, so two
+        concurrent additions of the same code cannot both land.
+
+        Args:
+            payment_code: Code of the payment method the variant belongs to
+            variant: The variant to add
+
+        Returns:
+            True when the variant was added; False when no payment method with this
+            code exists or it already has a variant with this code
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        now = get_app_time()
+        variant.created_at = now
+        variant.updated_at = None
+        query_filter = {
+            "tenant_id": self.tenant_id,
+            "payment_code": payment_code,
+            "variants.variant_code": {"$ne": variant.variant_code},
+        }
+        update = {"$push": {"variants": variant.model_dump()}, "$set": {"updated_at": now}}
+        try:
+            response = await self.dbcollection.update_one(query_filter, update, session=self.session)
+        except Exception as e:
+            message = (
+                f"Failed to add a payment variant: payment_code->{payment_code}, variant_code->{variant.variant_code}"
+            )
+            raise RepositoryException(message, self.collection_name, logger, e) from e
+        return response.matched_count == 1
+
+    async def update_variant_async(self, payment_code: str, variant_code: str, name: str, is_active: bool) -> bool:
+        """
+        Change a variant's name and active flag.
+
+        Args:
+            payment_code: Code of the payment method the variant belongs to
+            variant_code: Code of the variant to change
+            name: New name of the variant
+            is_active: New active flag of the variant
+
+        Returns:
+            True when the variant was found and changed; False when the payment
+            method or the variant does not exist
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        now = get_app_time()
+        query_filter = {
+            "tenant_id": self.tenant_id,
+            "payment_code": payment_code,
+            "variants.variant_code": variant_code,
+        }
+        update = {
+            "$set": {
+                "variants.$.name": name,
+                "variants.$.is_active": is_active,
+                "variants.$.updated_at": now,
+                "updated_at": now,
+            }
+        }
+        try:
+            response = await self.dbcollection.update_one(query_filter, update, session=self.session)
+        except Exception as e:
+            message = f"Failed to update a payment variant: payment_code->{payment_code}, variant_code->{variant_code}"
+            raise RepositoryException(message, self.collection_name, logger, e) from e
+        return response.matched_count == 1
 
     def __get_shard_key(self, payment_doc: PaymentMasterDocument) -> str:
         """

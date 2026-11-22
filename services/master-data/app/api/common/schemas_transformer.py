@@ -8,6 +8,7 @@ from app.api.common.schemas import (
     BaseItemStoreResponse,
     BaseItemStoreDetailResponse,
     BasePaymentResponse,
+    BasePaymentVariantResponse,
     BaseSettingsMasterResponse,
     BaseSettingsMasterValue,
     BaseCategoryMasterResponse,
@@ -22,7 +23,7 @@ from app.api.common.schemas import (
 from app.models.documents.item_common_master_document import ItemCommonMasterDocument
 from app.models.documents.item_store_master_document import ItemStoreMasterDocument
 from app.models.documents.item_store_detail_document import ItemStoreDetailDocument
-from app.models.documents.payment_master_document import PaymentMasterDocument
+from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.models.documents.settings_master_document import SettingsMasterDocument
 from app.models.documents.category_master_document import CategoryMasterDocument
 from app.models.documents.item_book_master_document import (
@@ -116,10 +117,23 @@ class SchemasTransformer:
             can_deposit_over=payment_doc.can_deposit_over,
             can_change=payment_doc.can_change,
             is_active=payment_doc.is_active,
+            variants=[
+                self.transform_payment_variant(variant)
+                for variant in sorted(payment_doc.variants or [], key=lambda v: v.variant_code or "")
+            ],
             entry_datetime=payment_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if payment_doc.created_at else None,
             last_update_datetime=(
                 payment_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if payment_doc.updated_at else None
             ),
+        )
+
+    def transform_payment_variant(self, variant: PaymentVariant) -> BasePaymentVariantResponse:
+        return BasePaymentVariantResponse(
+            variant_code=variant.variant_code,
+            name=variant.name,
+            is_active=variant.is_active,
+            entry_datetime=variant.created_at.strftime("%Y-%m-%d %H:%M:%S") if variant.created_at else None,
+            last_update_datetime=variant.updated_at.strftime("%Y-%m-%d %H:%M:%S") if variant.updated_at else None,
         )
 
     def transform_settings_master(self, settings_doc: SettingsMasterDocument) -> BaseSettingsMasterResponse:

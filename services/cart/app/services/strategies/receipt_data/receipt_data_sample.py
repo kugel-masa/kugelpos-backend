@@ -500,7 +500,10 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
                 sum_list.append(payment.model_copy())
                 continue
 
-            sum_pay = next((x for x in sum_list if x.payment_code == "01"), None)
+            # Cash lines of one variant print as one line; variants stay apart (issue #311)
+            sum_pay = next(
+                (x for x in sum_list if x.payment_code == "01" and x.variant_code == payment.variant_code), None
+            )
             if sum_pay is None:
                 sum_list.append(payment.model_copy())
                 continue
@@ -511,14 +514,19 @@ class ReceiptDataSample(AbstractReceiptData[BaseTransaction]):
         sum_list.sort(key=lambda x: x.payment_code)
 
         return_lines = []
+        # Deposit and change are the transaction's cash, printed once however many
+        # cash variants it used (issue #311)
+        cash_deposit = sum(p.deposit_amount for p in sum_list if p.payment_code == "01" and p.amount != 0)
+        cash_block_printed = False
         for payment in sum_list:
             if payment.amount == 0:
                 continue
 
             # only cash payment
-            if payment.payment_code == "01":  # HACK: 01 is cash payment
+            if payment.payment_code == "01" and not cash_block_printed:  # HACK: 01 is cash payment
+                cash_block_printed = True
                 left_str = "お預り"
-                right_str = self.yen(payment.deposit_amount) + self.space(2)
+                right_str = self.yen(cash_deposit) + self.space(2)
                 return_lines.append(self.line_split(left_str, right_str))
                 left_str = "お釣り"
                 right_str = self.yen(tran.sales.change_amount) + self.space(2)

@@ -49,6 +49,11 @@ class CartErrorCode:
     REFUND_NOT_ALLOWED = "403014"  # the payment method cannot be used to refund (can_refund=false)
     REFUND_LIMIT_EXCEEDED = "403015"  # the refund by a payment method exceeds its limit_amount
     PAYMENT_LIMIT_EXCEEDED = "403017"  # the amount a payment method covers in the cart exceeds its limit_amount
+    PAYMENT_VARIANT_NOT_FOUND = "403018"  # the payment method has no variant with the given code (issue #311)
+    PAYMENT_VARIANT_INACTIVE = "403019"  # the given payment variant is stopped (issue #311)
+    PAYMENT_VARIANT_REQUIRED = "403020"  # several active variants and none given (issue #311)
+    RETURN_TENDER_NOT_ALLOWED = "403021"  # a return refunds by neither a tender of the sale nor cash (issue #311)
+    RETURN_AMOUNT_EXCEEDS_ORIGINAL = "403022"  # a refund to a sale tender over what it took (issue #311)
 
     # Snapshot / restore errors (4015xx, issue #148)
     SNAPSHOT_SIGNATURE_MISMATCH = "401501"  # Signature verification failed (tampered)
@@ -105,6 +110,11 @@ class CartErrorMessage:
             CartErrorCode.REFUND_NOT_ALLOWED: "返金に使えない支払方法です",
             CartErrorCode.REFUND_LIMIT_EXCEEDED: "支払方法の返金上限額を超えています",
             CartErrorCode.PAYMENT_LIMIT_EXCEEDED: "この支払方法の上限額を超えています",
+            CartErrorCode.PAYMENT_VARIANT_NOT_FOUND: "指定したサブコードはこの支払方法にありません",
+            CartErrorCode.PAYMENT_VARIANT_INACTIVE: "指定したサブコードは停止中です",
+            CartErrorCode.PAYMENT_VARIANT_REQUIRED: "この支払方法はサブコードの指定が必要です",
+            CartErrorCode.RETURN_TENDER_NOT_ALLOWED: "返品は売上時の支払種別か現金でのみ返金できます",
+            CartErrorCode.RETURN_AMOUNT_EXCEEDS_ORIGINAL: "売上時の支払金額を超えて返金することはできません",
             # ディスカウント関連
             CartErrorCode.AMOUNT_LESS_THAN_DISCOUNT: "値引金額が商品金額より多いです",
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "値引金額が残高より多いです",
@@ -158,6 +168,11 @@ class CartErrorMessage:
             CartErrorCode.REFUND_NOT_ALLOWED: "This payment method cannot be used to refund",
             CartErrorCode.REFUND_LIMIT_EXCEEDED: "The refund exceeds the limit configured for this payment method",
             CartErrorCode.PAYMENT_LIMIT_EXCEEDED: "The payment exceeds the limit configured for this payment method",
+            CartErrorCode.PAYMENT_VARIANT_NOT_FOUND: "The payment method has no variant with this code",
+            CartErrorCode.PAYMENT_VARIANT_INACTIVE: "The payment variant is stopped",
+            CartErrorCode.PAYMENT_VARIANT_REQUIRED: "This payment method needs a variant to be given",
+            CartErrorCode.RETURN_TENDER_NOT_ALLOWED: "A return can only be refunded by a tender of the sale or by cash",
+            CartErrorCode.RETURN_AMOUNT_EXCEEDS_ORIGINAL: "The refund exceeds what the sale took by this tender",
             # ディスカウント関連
             CartErrorCode.AMOUNT_LESS_THAN_DISCOUNT: "Amount is less than discount",
             CartErrorCode.BALANCE_LESS_THAN_DISCOUNT: "Balance is less than discount",

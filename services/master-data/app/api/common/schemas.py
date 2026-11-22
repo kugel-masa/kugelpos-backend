@@ -12,7 +12,7 @@ validation and automatic documentation generation.
 """
 
 from typing import Optional, TypeVar
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from kugel_common.utils.misc import to_lower_camel
 from app.enums.button_size import ButtonSize
@@ -248,6 +248,62 @@ class BaseItemStoreDetailResponse(BaseSchemaModel):
     last_update_datetime: Optional[str] = None
 
 
+# Payment variant (issue #311)
+PAYMENT_VARIANT_CODE_PATTERN = r"^[A-Za-z0-9_-]{1,20}$"
+
+
+def _require_name(value: str) -> str:
+    if value is None or not value.strip():
+        raise ValueError("name must not be empty")
+    return value
+
+
+class BasePaymentVariantResponse(BaseSchemaModel):
+    """
+    Base Payment Variant Response Schema
+
+    A variant (sub-code) of a payment method: its code, name, active flag,
+    and creation and last update datetimes.
+    """
+
+    variant_code: str
+    name: str
+    is_active: bool
+    entry_datetime: Optional[str] = None
+    last_update_datetime: Optional[str] = None
+
+
+class BasePaymentVariantCreateRequest(BaseSchemaModel):
+    """
+    Base Payment Variant Creation Request Schema
+
+    The code is free format within ``PAYMENT_VARIANT_CODE_PATTERN`` and unique
+    within its payment method; it cannot be changed later.
+    """
+
+    variant_code: str = Field(pattern=PAYMENT_VARIANT_CODE_PATTERN)
+    name: str
+    is_active: bool = True
+
+    _name_not_empty = field_validator("name")(_require_name)
+
+
+class BasePaymentVariantUpdateRequest(BaseSchemaModel):
+    """
+    Base Payment Variant Update Request Schema
+
+    Changes the name and the active flag. The code is in the path and cannot be
+    changed, so a body carrying it, or any other field, is refused.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_lower_camel, extra="forbid")
+
+    name: str
+    is_active: bool
+
+    _name_not_empty = field_validator("name")(_require_name)
+
+
 # Payment
 class BasePaymentResponse(BaseSchemaModel):
     """
@@ -266,6 +322,7 @@ class BasePaymentResponse(BaseSchemaModel):
     can_deposit_over: bool
     can_change: bool
     is_active: bool
+    variants: list[BasePaymentVariantResponse] = Field(default_factory=list)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 

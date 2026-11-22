@@ -94,6 +94,12 @@ def _build_service(terminal_info=None, cart_doc=None):
     item_master_repo.item_master_documents = []
     item_master_repo.set_item_master_documents = MagicMock()
     item_master_repo.get_item_by_code_async = AsyncMock()
+    # Payment masters without variants unless a test sets its own (issue #311)
+    from app.models.documents.payment_master_document import PaymentMasterDocument
+
+    payment_master_repo.get_payment_by_code_async = AsyncMock(
+        side_effect=lambda code: PaymentMasterDocument(payment_code=code, description=f"Payment {code}")
+    )
     settings_master_repo.set_settings_master_documents = MagicMock()
     tax_master_repo.set_tax_master_documents = MagicMock()
     tax_master_repo.tax_master_documents = []
@@ -549,6 +555,137 @@ class TestCartServicePayment:
                 [{"payment_code": "01", "amount": 1000, "detail": None}]
             )
         assert not isinstance(exc_info.value, NotFoundException)
+
+
+class TestCartServicePaymentVariant:
+    """add_payment_to_cart_async decides each payment's variant before any strategy runs (issue #311)."""
+
+    @staticmethod
+    def _payment_master(code, *variants):
+        from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
+
+        return PaymentMasterDocument(
+            payment_code=code,
+            description="Cashless",
+            variants=[PaymentVariant(variant_code=v, name=v.title(), is_active=True) for v in variants],
+        )
+
+    @staticmethod
+    def _recording_strategy(code, cart):
+        """A strategy that records a line with whatever variant it is given."""
+
+        async def pay(cart_doc, payment_code, amount, detail=None, **kwargs):
+            line = CartDocument.Payment(
+                payment_no=len(cart_doc.payments) + 1,
+                payment_code=payment_code,
+                amount=amount,
+                description=kwargs.get("variant_name") or "Cashless",
+                variant_code=kwargs.get("variant_code"),
+                builtin_description=kwargs.get("builtin_description"),
+            )
+            cart_doc.payments.append(line)
+            return cart_doc
+
+        strategy = MagicMock()
+        strategy.payment_code = code
+        strategy.pay = AsyncMock(side_effect=pay)
+        return strategy
+
+    @pytest.mark.asyncio
+    async def test_the_variant_is_passed_to_the_strategy(self):
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=self._payment_master("11", "VISA", "PAYPAY")
+        )
+        strategy = self._recording_strategy("11", cart)
+        svc.payment_strategies = [strategy]
+
+        await svc.add_payment_to_cart_async(
+            [{"payment_code": "11", "amount": 1000, "detail": None, "variant_code": "PAYPAY"}]
+        )
+
+        kwargs = strategy.pay.await_args.kwargs
+        assert (kwargs["variant_code"], kwargs["variant_name"], kwargs["builtin_description"]) == (
+            "PAYPAY",
+            "Paypay",
+            "Cashless",
+        )
+        assert cart.payments[-1].variant_code == "PAYPAY"
+
+    @pytest.mark.asyncio
+    async def test_a_refused_second_variant_runs_no_strategy_and_saves_nothing(self):
+        from app.exceptions import PaymentVariantNotFoundException
+
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=self._payment_master("11", "VISA", "PAYPAY")
+        )
+        strategy = self._recording_strategy("11", cart)
+        svc.payment_strategies = [strategy]
+
+        with pytest.raises(PaymentVariantNotFoundException):
+            await svc.add_payment_to_cart_async(
+                [
+                    {"payment_code": "11", "amount": 500, "detail": None, "variant_code": "VISA"},
+                    {"payment_code": "11", "amount": 500, "detail": None, "variant_code": "JCB"},
+                ]
+            )
+
+        strategy.pay.assert_not_awaited()
+        svc.cart_repo.cache_cart_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_several_active_variants_need_one_to_be_given(self):
+        from app.exceptions import PaymentVariantRequiredException
+
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(
+            return_value=self._payment_master("11", "VISA", "PAYPAY")
+        )
+        svc.payment_strategies = [self._recording_strategy("11", cart)]
+
+        with pytest.raises(PaymentVariantRequiredException) as exc_info:
+            await svc.add_payment_to_cart_async([{"payment_code": "11", "amount": 1000, "detail": None}])
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_a_strategy_that_drops_the_variant_is_refused(self):
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+        svc.payment_master_repo.get_payment_by_code_async = AsyncMock(return_value=self._payment_master("11", "VISA"))
+
+        async def pay_ignoring_variant(cart_doc, payment_code, amount, detail=None, **kwargs):
+            cart_doc.payments.append(CartDocument.Payment(payment_no=1, payment_code=payment_code, amount=amount))
+            return cart_doc
+
+        strategy = MagicMock()
+        strategy.payment_code = "11"
+        strategy.pay = AsyncMock(side_effect=pay_ignoring_variant)
+        svc.payment_strategies = [strategy]
+
+        with pytest.raises(ServiceException):
+            await svc.add_payment_to_cart_async([{"payment_code": "11", "amount": 1000, "detail": None}])
+        svc.cart_repo.cache_cart_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_method_without_variants_records_as_before(self):
+        cart = _make_cart_doc(status="Paying", balance=1000.0)
+        svc = _build_service(cart_doc=cart)
+        svc.state_manager.set_state(CartStatus.Paying.value)
+        strategy = self._recording_strategy("01", cart)
+        svc.payment_strategies = [strategy]
+
+        await svc.add_payment_to_cart_async([{"payment_code": "01", "amount": 1000, "detail": None}])
+
+        assert strategy.pay.await_args.kwargs["variant_code"] is None
+        assert cart.payments[-1].variant_code is None
 
 
 class TestCartServiceBill:

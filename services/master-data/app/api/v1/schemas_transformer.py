@@ -3,9 +3,14 @@ from logging import getLogger
 
 from app.models.documents.staff_master_document import StaffMasterDocument
 from kugel_common.utils.log_utils import mask_loggable
-from app.api.common.schemas import BasePaymentResponse, BaseStaffResponse, BasePromotionResponse
+from app.api.common.schemas import (
+    BasePaymentResponse,
+    BasePaymentVariantResponse,
+    BaseStaffResponse,
+    BasePromotionResponse,
+)
 from app.api.common.schemas_transformer import SchemasTransformer
-from app.models.documents.payment_master_document import PaymentMasterDocument
+from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.models.documents.promotion_master_document import PromotionMasterDocument
 
 logger = getLogger(__name__)
@@ -30,6 +35,14 @@ class SchemasTransformerV1(SchemasTransformer):
             return super().transform_payment(payment_doc)
         except Exception as e:
             logger.error(f"Error transforming payment document: {e}")
+            raise e
+
+    def transform_payment_variant(self, variant: PaymentVariant) -> BasePaymentVariantResponse:
+        logger.debug(f"Transforming payment variant: {variant}")
+        try:
+            return super().transform_payment_variant(variant)
+        except Exception as e:
+            logger.error(f"Error transforming payment variant: {e}")
             raise e
 
     def transform_promotion(self, promotion_doc: PromotionMasterDocument) -> BasePromotionResponse:

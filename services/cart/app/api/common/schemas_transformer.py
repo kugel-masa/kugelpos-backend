@@ -104,6 +104,8 @@ class SchemasTransformer:
                 payment_name=payment.description,
                 payment_amount=payment.amount,
                 payment_detail=payment.detail,
+                variant_code=payment.variant_code,
+                builtin_payment_name=payment.builtin_description,
             )
             return_payments.append(return_payment)
         return return_payments

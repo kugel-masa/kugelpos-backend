@@ -69,7 +69,9 @@ Collection storing transaction logs. Converts BaseTransaction to TransactionLogM
       "payment_code": "string",
       "payment_name": "string",
       "amount": "decimal",
-      "change_amount": "decimal"
+      "change_amount": "decimal",
+      "variant_code": "string | null",
+      "builtin_description": "string | null"
     }
   ],
   "tax_aggregation": [
@@ -228,7 +230,15 @@ Generic collection storing aggregated data. Stores both flash and daily reports.
         "payment_code": "string",
         "payment_name": "string",
         "transaction_count": "integer",
-        "total_amount": "decimal"
+        "total_amount": "decimal",
+        "variants": [
+          {
+            "variant_code": "string | null",
+            "variant_name": "string",
+            "amount": "decimal",
+            "count": "integer"
+          }
+        ]
       }
     ],
     "cash": {
@@ -366,3 +376,23 @@ Configured in `app/services/plugins/plugins.json`:
 4. **Extensibility**: Addition of new report types via plugin architecture
 5. **Circuit Breaker**: External communication failure handling via DaprClientHelper
 6. **Data Integrity**: Strict data validation before daily report generation
+
+## Payments by Variant (issue #311)
+
+A payment line in the transaction log may carry `variant_code` (the payment
+method's variant, or sub-code) and `builtin_description` (the payment method's
+name at the time of the sale; `description` then holds the variant's name).
+
+- **Sales report:** payments are summed by payment method; each row carries
+  `variants`, its breakdown by variant (code order, the line without a variant
+  last). The row is named from `builtin_description`, falling back to the line's
+  description for lines recorded before variants, and both names are taken from
+  the newest sale in the period. `count` is the number of payment lines, so the
+  breakdown sums to the row.
+- **Payment report:** each `payment_summary` row carries `variants` too. Counts are
+  of transactions, as in the row, so a transaction that used two variants of one
+  method counts under both and the breakdown's counts may exceed the row's.
+  Names come from the current payment master (every page of it), falling back to
+  the newest line's name.
+- Transaction types keep their sign in the breakdown (returns and voids subtract).
+- The printed receipts are unchanged.

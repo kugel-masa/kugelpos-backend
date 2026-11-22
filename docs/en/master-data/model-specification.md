@@ -158,9 +158,23 @@ Document managing available payment methods and constraints.
 | can_refund | boolean | - | Refund allowed flag (default: true) |
 | can_deposit_over | boolean | - | Deposit over allowed flag (default: false) |
 | can_change | boolean | - | Change allowed flag (default: false) |
+| variants | PaymentVariant[] | - | Variants (sub-codes) of the payment method (default: empty) |
 
 **Indexes:**
 - Unique: (tenant_id, payment_code)
+
+**PaymentVariant (embedded):** one classification of the payments the method takes, such as a card brand under cashless (issue #311). A variant carries only its identity; the behaviour stays with the payment method.
+
+| Field Name | Type | Required | Description |
+|------------|------|----------|-------------|
+| variant_code | string | ✓ | Free format (`^[A-Za-z0-9_-]{1,20}$`, case-sensitive), unique within the payment method; cannot be changed |
+| name | string | ✓ | Name; a payment line recorded with the variant is named after it |
+| is_active | boolean | - | A stopped variant takes no new payment (default: true) |
+| created_at / updated_at | datetime | - | Registration and last change |
+
+Variants are added and changed through `/tenants/{tenant_id}/payments/{payment_code}/variants` and are never deleted: one no longer used is stopped. Updating the payment method keeps its variants; deleting it takes them with it. Uniqueness within a method is held by one conditional update, not an index.
+
+**Deployment order:** register variants only after commons, cart and report run the version that knows them. An older cart ignores the variants and records payments without one. cart caches payment masters (600 s by default); `DELETE /api/v1/cache/master-data?namespace=payment_master` on cart (privileged caller) makes a change take effect at once.
 
 **How cart applies these settings:**
 
@@ -173,6 +187,8 @@ Document managing available payment methods and constraints.
 | `can_refund` false | - | The method cannot be used to refund (403014) |
 
 A `limit_amount` of 0 or less means no limit. A void is not checked: it reverses the original payments as they were. The usual settings are `can_deposit_over` and `can_change` true for cash, and false for cashless methods.
+
+**How cart uses variants (issue #311):** a payment may name a variant. A named variant must be an active variant of that method (403018 unknown, 403019 stopped). With none named, a method with one active variant records it, one with several refuses the payment (403020), and one with none records no variant. A void names the sale's tenders (method and variant) for what the sale took by each; a return refunds by a tender of the sale, up to what the sale took by it (403022), or by cash (`01`), and by nothing else (403021).
 
 ### 6. SettingsMasterDocument (Settings Master)
 
@@ -335,6 +351,18 @@ Payment method response.
 | canRefund | boolean | Refund allowed flag |
 | canDepositOver | boolean | Deposit over allowed flag |
 | canChange | boolean | Change allowed flag |
+| variants | PaymentVariantResponse[] | Variants, in variant code order, stopped ones included |
+
+#### PaymentVariantResponse
+Payment variant response (issue #311).
+
+| Field Name (JSON) | Type | Description |
+|-------------------|------|-------------|
+| variantCode | string | Variant code |
+| name | string | Name |
+| isActive | boolean | Active flag |
+| entryDatetime | string | Registration datetime |
+| lastUpdateDatetime | string | Last change datetime (null until changed) |
 
 ### Settings Management Schemas
 

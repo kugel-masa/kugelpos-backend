@@ -1,9 +1,23 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Optional
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.utils.misc import to_lower_camel
+
+
+class PaymentVariant(BaseModel):
+    """
+    A variant (sub-code) of a payment method as master-data returns it (issue #311).
+
+    Only what deciding a payment's variant needs: its code, name and active flag.
+    """
+
+    variant_code: Optional[str] = None
+    name: Optional[str] = None
+    is_active: Optional[bool] = True
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_lower_camel)
 
 
 class PaymentMasterDocument(AbstractDocument):
@@ -23,6 +37,7 @@ class PaymentMasterDocument(AbstractDocument):
     can_deposit_over: Optional[bool] = False  # Flag indicating if over-payment is allowed
     can_change: Optional[bool] = False  # Flag indicating if change can be given
     is_active: Optional[bool] = True  # Flag indicating if the payment method is active
+    variants: list[PaymentVariant] = Field(default_factory=list)  # Variants of the payment method (issue #311)
 
     # Configuration for Pydantic model to use camelCase field names in JSON
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_lower_camel)

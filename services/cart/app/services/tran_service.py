@@ -18,6 +18,11 @@ from kugel_common.receipt.abstract_receipt_data import AbstractReceiptData
 from kugel_common.utils.misc import get_app_time_str, get_app_time
 from kugel_common.enums import TransactionType
 from app.services.logics.stamp_duty_logic import apply_stamp_duty, clear_stamp_duty
+from app.services.logics.payment_variant_logic import (
+    match_return_payments,
+    match_void_payments,
+    resolve_sale_variant,
+)
 from kugel_common.utils.slack_notifier import send_warning_notification
 from kugel_common.exceptions import DuplicateKeyException
 
@@ -686,20 +691,12 @@ class TranService:
             message = "Payment list is required for return transaction"
             raise BadRequestBodyException(message, logger)
 
-        # Check if payment list is included in the original transaction
-        for payment in add_payment_list:
-            payment_code = payment.get("payment_code")
-            if payment_code not in [p.payment_code for p in tran.payments]:
-                message = f"Payment not found in original transaction: payment_code->{payment_code}"
-                raise BadRequestBodyException(message, logger)
-            payment_amount = payment.get("amount")
-            payment_amount_original = sum([p.amount for p in tran.payments if p.payment_code == payment_code])
-            if payment_amount != payment_amount_original:
-                message = f"Payment amount must be equal for void transaction: payment_code->{payment_code}, payment_amount->{payment_amount}, payment_amount_original->{payment_amount_original}"
-                raise BadRequestBodyException(message, logger)
+        # A void reverses the sale: summed by payment code and variant (issue #311),
+        # its payments must be exactly the sale's tenders, each for what it took.
+        decisions = match_void_payments(tran.payments, add_payment_list)
 
         tran.payments = []
-        for payment in add_payment_list:
+        for payment, decision in zip(add_payment_list, decisions):
             payment_code = payment.get("payment_code")
             pay_doc = await self.payment_master_repo.get_payment_by_code_async(payment_code)
             if pay_doc is None:
@@ -709,7 +706,9 @@ class TranService:
             tran_payment = BaseTransaction.Payment()
             tran_payment.payment_no = len(tran.payments) + 1
             tran_payment.payment_code = pay_doc.payment_code
-            tran_payment.description = pay_doc.description
+            tran_payment.description = decision.name or pay_doc.description
+            tran_payment.variant_code = decision.variant_code
+            tran_payment.builtin_description = decision.builtin_description or pay_doc.description
             if pay_doc.can_deposit_over and pay_doc.can_change:
                 tran_payment.deposit_amount = payment.get("amount")
             tran_payment.amount = payment.get("amount")
@@ -975,19 +974,36 @@ class TranService:
             message = "Payment list is required for return transaction"
             raise BadRequestBodyException(message, logger)
 
+        # A return refunds by a tender of the sale, up to what the sale took by
+        # it, or by cash (issue #311).
+        decisions = match_return_payments(tran.payments, add_payment_list)
+
         tran.payments = []
         refund_masters = {}
-        for payment in add_payment_list:
+        for payment, decision in zip(add_payment_list, decisions):
             payment_code = payment.get("payment_code")
             pay_doc = await self.payment_master_repo.get_payment_by_code_async(payment_code)
             if pay_doc is None:
                 message = f"PaymentMaster not found: payment_code->{payment_code}"
                 raise DocumentNotFoundException(message, logger)
 
+            if decision.from_original:
+                variant_code = decision.variant_code
+                name = decision.name or pay_doc.description
+                builtin_description = decision.builtin_description or pay_doc.description
+            else:
+                # Cash the sale did not take: its variant follows the sale's rule
+                sale_variant = resolve_sale_variant(pay_doc, payment.get("variant_code"))
+                variant_code = sale_variant.variant_code
+                name = sale_variant.name or pay_doc.description
+                builtin_description = sale_variant.builtin_description
+
             tran_payment = BaseTransaction.Payment()
             tran_payment.payment_no = len(tran.payments) + 1
             tran_payment.payment_code = pay_doc.payment_code
-            tran_payment.description = pay_doc.description
+            tran_payment.description = name
+            tran_payment.variant_code = variant_code
+            tran_payment.builtin_description = builtin_description
             if pay_doc.can_deposit_over and pay_doc.can_change:
                 tran_payment.deposit_amount = payment.get("amount")
             tran_payment.amount = payment.get("amount")

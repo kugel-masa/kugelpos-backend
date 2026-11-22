@@ -16,6 +16,7 @@ from app.models.documents.open_close_log import OpenCloseLog
 from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
 from app.services.plugins.sales_report_receipt_data import SalesReportReceiptData
+from app.utils.payment_variant_breakdown import add_payment_with_variant, sort_variant_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -474,6 +475,11 @@ class SalesReportMaker(IReportPlugin):
                         "payment_code": "$$payment.payment_code",
                         "amount": "$$payment.amount",
                         "description": "$$payment.description",
+                        # Issue #311: the variant, the method's name at the time of the
+                        # sale, and when, so the newest name in the period is chosen
+                        "variant_code": "$$payment.variant_code",
+                        "builtin_description": "$$payment.builtin_description",
+                        "generate_date_time": "$generate_date_time",
                     },
                 }
             },
@@ -646,12 +652,26 @@ class SalesReportMaker(IReportPlugin):
             # Process payments - unwind twice
             {"$unwind": "$all_payments"},
             {"$unwind": "$all_payments"},
-            # Group by payment code
+            # Newest sale first, so $first below takes the newest name in the period
+            # whatever order the groups come in (issue #311)
+            {"$sort": {"all_payments.generate_date_time": -1}},
+            # Group by payment code and variant (issue #311)
             {
                 "$group": {
-                    "_id": dict(list(final_group_id.items()) + [("payment_code", "$all_payments.payment_code"), ("description", "$all_payments.description")]),
+                    "_id": dict(
+                        list(final_group_id.items())
+                        + [
+                            ("payment_code", "$all_payments.payment_code"),
+                            ("variant_code", "$all_payments.variant_code"),
+                        ]
+                    ),
                     "payment_amount": {"$sum": "$all_payments.amount"},
                     "payment_count": {"$sum": 1},
+                    "variant_name": {"$first": "$all_payments.description"},
+                    "builtin_name": {
+                        "$first": {"$ifNull": ["$all_payments.builtin_description", "$all_payments.description"]}
+                    },
+                    "latest_date_time": {"$first": "$all_payments.generate_date_time"},
                     # Preserve fields
                     "total_amount": {"$first": "$total_amount"},
                     "total_amount_with_tax": {"$first": "$total_amount_with_tax"},
@@ -690,7 +710,10 @@ class SalesReportMaker(IReportPlugin):
                     "payments": {
                         "$push": {
                             "payment_code": "$_id.payment_code",
-                            "description": "$_id.description",
+                            "variant_code": "$_id.variant_code",
+                            "description": "$builtin_name",
+                            "variant_name": "$variant_name",
+                            "latest_date_time": "$latest_date_time",
                             "amount": "$payment_amount",
                             "count": "$payment_count",
                         }
@@ -786,23 +809,13 @@ class SalesReportMaker(IReportPlugin):
                     tax_dict["target_amount"] += target_amount
                     tax_dict["target_quantity"] += target_quantity
 
-            # Aggregate payment methods
+            # Aggregate payment methods, each with its breakdown by variant (issue #311)
             for payment in result["payments"]:
                 payment_code = payment.get("payment_code")
-                description = payment.get("description")
                 # Skip if payment_code is None (e.g., empty payments array)
                 if payment_code is None:
                     continue
-                amount = payment.get("amount", 0) * factor
-                count = payment.get("count", 0) * factor
-                payment_dict = next((payment for payment in total["payments"] if payment.get("payment_code") == payment_code), None)
-                if payment_dict is None:
-                    total["payments"].append(
-                        {"payment_code": payment_code, "description": description, "amount": amount, "count": count}
-                    )
-                else:
-                    payment_dict["amount"] += amount
-                    payment_dict["count"] += count
+                add_payment_with_variant(total["payments"], payment, factor)
             logger.debug(f"Summarize sales report: total -> {total}")
         return total
 
@@ -1059,6 +1072,17 @@ class SalesReportMaker(IReportPlugin):
                 "payment_name": payment.get("description"),
                 "amount": payment.get("amount", 0),
                 "count": payment.get("count", 0),
+                "variants": sort_variant_breakdown(
+                    [
+                        {
+                            "variant_code": variant.get("variant_code"),
+                            "variant_name": variant.get("variant_name"),
+                            "amount": variant.get("amount", 0),
+                            "count": variant.get("count", 0),
+                        }
+                        for variant in payment.get("variants", [])
+                    ]
+                ),
             }
             for payment in payments
             if payment.get("payment_code") is not None  # Filter out null payment_code (e.g., empty payments array)

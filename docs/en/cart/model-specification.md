@@ -101,9 +101,13 @@ holding, and which way it was opened, without reading the cache.
 |------------|------|----------|-------------|
 | payment_no | integer | ✓ | Payment number |
 | payment_code | string | ✓ | Payment method code |
-| payment_name | string | - | Payment method name |
+| payment_name | string | - | Name of the line: the variant's name when recorded with a variant, otherwise the payment method's |
 | payment_amount | float | ✓ | Payment amount |
 | payment_detail | string | - | Payment details |
+| variant_code | string | - | Variant (sub-code) the line was recorded with; null without one (issue #311) |
+| builtin_payment_name | string | - | The payment method's name at the time of the sale (issue #311) |
+
+In the stored cart and the transaction log the line's name is `description` and the method's name `builtin_description`.
 
 **TaxDocument Sub-document:**
 
@@ -399,6 +403,13 @@ Payment processing request.
 | paymentCode | string | ✓ | Payment method code |
 | amount | integer | ✓ | Payment amount (in smallest currency unit) |
 | detail | string | - | Payment detail information |
+| variantCode | string | - | Variant (sub-code) of the payment method (issue #311) |
+
+How `variantCode` is read (issue #311):
+
+- **Payment:** a named variant must be an active variant of the method (403018 unknown, 403019 stopped). With none named, a method with one active variant records it, one with several refuses the payment (403020), one with none records no variant. Every payment's variant is decided before any is settled, so one refused variant records none of the request.
+- **Void:** summed by method and variant (leaving the variant out means none), the payments must be exactly the sale's tenders, each for what the sale took by it; a tender may be split over lines. Amounts of voids and returns must be above zero.
+- **Return:** each payment refunds by a tender of the sale, up to what the sale took by it (403022), or by cash (`01`); any other method is refused (403021). A variant of the sale is taken even if stopped since.
 
 ### Transaction Representation Schemas
 
