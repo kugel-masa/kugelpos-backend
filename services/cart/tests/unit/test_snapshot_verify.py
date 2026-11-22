@@ -262,3 +262,66 @@ def test_a_private_key_is_not_reported(monkeypatch, caplog):
     assert not any("published in this repository" in record.message for record in caplog.records), caplog.text
 
     snapshot_service.init_snapshot_signer(force=True)
+
+
+class TestSnapshotsAcrossTheVariantRelease:
+    """Snapshots carried across the release of payment variants (issue #311)."""
+
+    @staticmethod
+    def _signed(cart_document: dict) -> dict:
+        signer = snapshot_service.init_snapshot_signer(force=True)
+        payload = {
+            "schema_version": 2,
+            "issued_at": "2026-06-12T00:00:00Z",
+            "kid": signer.current_kid,
+            "tenant_id": "T001",
+            "store_code": "S001",
+            "terminal_no": 1,
+            "cart_document": cart_document,
+        }
+        return {**payload, "signature": signer.sign(payload)}
+
+    def test_a_snapshot_issued_before_the_fields_existed_verifies_and_restores(self, monkeypatch):
+        monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", KEY_V1)
+        cart = _make_cart()
+        cart.payments = [CartDocument.Payment(payment_no=1, payment_code="11", amount=50.0, description="Cashless")]
+        document = cart.model_dump(mode="json")
+        for line in document["payments"]:
+            # What a cart signed by the previous release carries: no variant fields at all
+            line.pop("variant_code")
+            line.pop("builtin_description")
+        try:
+            restored = snapshot_service.verify_envelope(self._signed(document))
+        finally:
+            snapshot_service.init_snapshot_signer(force=True)
+
+        line = restored.payments[0]
+        assert (line.payment_code, line.description, line.variant_code, line.builtin_description) == (
+            "11",
+            "Cashless",
+            None,
+            None,
+        )
+
+    def test_a_variant_on_a_payment_line_survives_the_round_trip(self, monkeypatch):
+        monkeypatch.setattr(settings, "SNAPSHOT_HMAC_KEYS", KEY_V1)
+        snapshot_service.init_snapshot_signer(force=True)
+        cart = _make_cart()
+        cart.payments = [
+            CartDocument.Payment(
+                payment_no=1,
+                payment_code="11",
+                amount=50.0,
+                description="PayPay",
+                variant_code="PAYPAY",
+                builtin_description="Cashless",
+            )
+        ]
+        try:
+            envelope = snapshot_service.build_envelope(cart, _make_terminal_info())
+            restored = snapshot_service.verify_envelope(envelope)
+        finally:
+            snapshot_service.init_snapshot_signer(force=True)
+
+        line = restored.payments[0]
+        assert (line.variant_code, line.description, line.builtin_description) == ("PAYPAY", "PayPay", "Cashless")

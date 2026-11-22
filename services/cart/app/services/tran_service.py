@@ -691,8 +691,8 @@ class TranService:
             message = "Payment list is required for return transaction"
             raise BadRequestBodyException(message, logger)
 
-        # A void reverses the sale: each payment must name a tender the sale took,
-        # its payment code and variant (issue #311), for what the sale took by it.
+        # A void reverses the sale: summed by payment code and variant (issue #311),
+        # its payments must be exactly the sale's tenders, each for what it took.
         decisions = match_void_payments(tran.payments, add_payment_list)
 
         tran.payments = []

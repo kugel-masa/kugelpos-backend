@@ -310,6 +310,61 @@ async def test_a_line_keeps_its_variant_when_the_variant_is_stopped_before_the_b
         assert response.status_code == status.HTTP_200_OK, response.text
         billed = response.json()["data"]["payments"]
         assert [(p["variantCode"], p["paymentName"]) for p in billed] == [(visa, "VISA"), (paypay, "PayPay")]
+
+        # The transaction log, what report and journal receive, carries the variants too
+        await _assert_tranlog_payments(cart_id, [(visa, "VISA"), (paypay, "PayPay")])
+    finally:
+        db = await _cart_db()
+        await db[settings.DB_COLLECTION_NAME_TRAN_LOG].delete_many({"cart_id": cart_id})
+
+
+async def _assert_tranlog_payments(cart_id: str, expected: list[tuple]):
+    db = await _cart_db()
+    tranlog = await db[settings.DB_COLLECTION_NAME_TRAN_LOG].find_one({"cart_id": cart_id})
+    assert tranlog is not None, f"no transaction log for cart {cart_id}"
+    assert [(p.get("variant_code"), p.get("description")) for p in tranlog["payments"]] == expected
+    assert {p.get("builtin_description") for p in tranlog["payments"]} == {"Others"}
+
+
+@pytest.mark.dual_only  # the cache path: no snapshot is carried
+@pytest.mark.asyncio
+async def test_a_variant_survives_the_cart_cache_and_reaches_the_transaction_log(
+    http_client, opened_terminal_id, master
+):
+    paypay = await master.add("PAYPAY", "PayPay")
+    terminal_id = opened_terminal_id
+    response = await http_client.post(
+        f"/api/v1/carts?terminal_id={terminal_id}",
+        json={"transaction_type": 101, "user_id": "99", "user_name": "Variants cache"},
+        headers=_api_header(),
+    )
+    assert response.status_code == status.HTTP_201_CREATED, response.text
+    cart_id = response.json()["data"]["cartId"]
+    try:
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/lineItems?terminal_id={terminal_id}",
+            json=[{"itemCode": "49-01", "quantity": 1}],
+            headers=_api_header(),
+        )
+        assert response.status_code == status.HTTP_200_OK, response.text
+        response = await http_client.post(f"/api/v1/carts/{cart_id}/subtotal?terminal_id={terminal_id}", headers=_api_header())
+        assert response.status_code == status.HTTP_200_OK, response.text
+        balance = response.json()["data"]["balanceAmount"]
+
+        # The payment is cached; the bill reads the cart back from the cache
+        response = await http_client.post(
+            f"/api/v1/carts/{cart_id}/payments?terminal_id={terminal_id}",
+            json=[{"paymentCode": OTHERS, "amount": int(balance), "variantCode": paypay}],
+            headers=_api_header(),
+        )
+        assert response.status_code == status.HTTP_200_OK, response.text
+        line = response.json()["data"]["payments"][-1]
+        assert (line["variantCode"], line["paymentName"]) == (paypay, "PayPay")
+
+        response = await http_client.post(f"/api/v1/carts/{cart_id}/bill?terminal_id={terminal_id}", headers=_api_header())
+        assert response.status_code == status.HTTP_200_OK, response.text
+
+        await _assert_tranlog_payments(cart_id, [(paypay, "PayPay")])
     finally:
         db = await _cart_db()
         await db[settings.DB_COLLECTION_NAME_TRAN_LOG].delete_many({"cart_id": cart_id})
