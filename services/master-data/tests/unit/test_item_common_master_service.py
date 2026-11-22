@@ -116,10 +116,29 @@ class TestItemCommonMasterService:
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, repo):
-        repo.get_item_by_filter_async.return_value = None
+        # The lookup answers an empty list when nothing matches, as the repository does (#312)
+        repo.get_item_by_filter_async.return_value = []
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_item_async("NONEXISTENT", is_logical=False)
+        repo.delete_item_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_logical_not_found_raises(self, service, repo):
+        repo.get_item_by_code_async.return_value = None
+
+        with pytest.raises(DocumentNotFoundException):
+            await service.delete_item_async("NONEXISTENT", is_logical=True)
+        repo.delete_item_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_physical_delete_looks_the_code_up_whatever_its_deleted_flag(self, service, repo):
+        repo.get_item_by_filter_async.return_value = [ItemCommonMasterDocument(is_deleted=True)]
+
+        await service.delete_item_async("ITEM-01", is_logical=False)
+
+        assert repo.get_item_by_filter_async.call_args.kwargs["query_filter"] == {"item_code": "ITEM-01"}
+        repo.delete_item_async.assert_called_once_with("ITEM-01", False)
 
 
 # ---------------------------------------------------------------------------

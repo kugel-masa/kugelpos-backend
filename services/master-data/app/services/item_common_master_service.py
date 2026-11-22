@@ -191,16 +191,20 @@ class ItemCommonMasterService:
         """
 
         if is_logical:
-            item = await self.item_common_master_repo.get_item_by_code_async(
-                item_code=item_code, is_logical_deleted=False
+            exists = (
+                await self.item_common_master_repo.get_item_by_code_async(item_code=item_code, is_logical_deleted=False)
+                is not None
             )
         else:
-            # check if item exists without checking is_deleted
-            item = await self.item_common_master_repo.get_item_by_filter_async(
-                query_filter={"item_code": item_code}, limit=1000, page=1, sort={"created_on": -1}
+            # A physical delete also removes a logically deleted item, so look the
+            # code up whatever its is_deleted. The lookup answers a list, empty when
+            # nothing matches - never None (#312).
+            items = await self.item_common_master_repo.get_item_by_filter_async(
+                query_filter={"item_code": item_code}, limit=1, page=1, sort=None
             )
+            exists = bool(items)
 
-        if item is None:
+        if not exists:
             message = f"item with item_code {item_code} not found"
             raise DocumentNotFoundException(message, logger)
 
