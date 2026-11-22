@@ -6,6 +6,8 @@ from app.config.settings import settings
 
 from logging import getLogger
 
+from kugel_common.utils.log_utils import mask_loggable
+
 logger = getLogger(__name__)
 
 
@@ -80,7 +82,7 @@ class StaffMasterRepository(AbstractRepository[StaffMasterDocument]):
             List of staff member documents matching the query parameters
         """
         query_filter["tenant_id"] = self.tenant_id
-        logger.debug(f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}")
+        logger.debug(f"query_filter: {mask_loggable(query_filter)} limit: {limit} page: {page} sort: {sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
     async def update_staff_async(self, staff_id: str, update_data: dict) -> StaffMasterDocument:

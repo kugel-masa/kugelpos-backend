@@ -52,3 +52,40 @@ def test_the_original_document_is_not_modified():
     CannotCreateException("inserted_id is None", "staff_master", document)
 
     assert document.pin == "1234"
+
+
+# The other repository exceptions mask the key they report (issue #316)
+
+
+def test_every_repository_exception_masks_the_key_it_reports():
+    from kugel_common.exceptions.repository_exceptions import (
+        AlreadyExistException,
+        CannotDeleteException,
+        DeleteChildExistException,
+        DuplicateKeyException,
+        NotFoundException,
+        ReplaceNotWorkException,
+        UpdateNotWorkException,
+    )
+
+    key = {"tenant_id": "T1", "api_key": "abcd1234efgh5678"}
+    for exc in (
+        NotFoundException("m", "c", key),
+        CannotDeleteException("m", "c", key),
+        UpdateNotWorkException("m", "c", key),
+        ReplaceNotWorkException("m", "c", key),
+        DeleteChildExistException("m", "c", key),
+        AlreadyExistException("m", "c", key),
+        DuplicateKeyException("m", "c", key),
+    ):
+        assert "abcd1234efgh5678" not in exc.message, type(exc).__name__
+        assert "T1" in exc.message, type(exc).__name__
+
+
+def test_dotted_paths_and_tuples_are_masked():
+    from kugel_common.utils.log_utils import mask_loggable
+
+    masked = mask_loggable({"staff.pin": "1234", "variants.$.api_key": "abcd1234efgh5678", "$and": ({"pin": "1234"},)})
+
+    assert "1234" not in str(masked) and "abcd1234efgh5678" not in str(masked)
+    assert isinstance(masked["$and"], tuple)
