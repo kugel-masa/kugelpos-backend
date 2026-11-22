@@ -111,6 +111,31 @@ class TestTheGenericCreatePath:
         assert "S001" in str(exc_info.value)
 
 
+class _UpdateFails:
+    async def update_one(self, *args, **kwargs):
+        raise RuntimeError("the database said no")
+
+
+@pytest.mark.asyncio
+class TestTheGenericUpdatePath:
+    """The staff update passes the request body, PIN included, as the update values (#316)."""
+
+    async def test_a_failed_staff_update_does_not_report_the_pin(self, caplog):
+        from app.models.repositories.staff_master_repository import StaffMasterRepository
+
+        repo = StaffMasterRepository(db=None, tenant_id="T1")
+        repo.dbcollection = _UpdateFails()
+        update = _staff().model_dump(include={"id", "name", "pin", "roles"})
+
+        with caplog.at_level(logging.DEBUG):
+            with pytest.raises(Exception) as exc_info:
+                await repo.update_staff_async("S001", update)
+
+        assert PIN not in str(exc_info.value), "the failed staff update reports its pin"
+        assert PIN not in _emitted(caplog)
+        assert "S001" in str(exc_info.value)
+
+
 class TestTheStaffTransformer:
     def test_transforming_a_staff_record_does_not_report_its_pin(self, caplog):
         with caplog.at_level(logging.DEBUG):
