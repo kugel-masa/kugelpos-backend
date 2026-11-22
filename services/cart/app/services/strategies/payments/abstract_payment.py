@@ -6,7 +6,12 @@ from app.models.documents.payment_master_document import PaymentMasterDocument
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.repositories.payment_master_web_repository import PaymentMasterWebRepository
 from kugel_common.exceptions import RepositoryException
-from app.exceptions import BalanceZeroException, BalanceMinusException, DepositOverException
+from app.exceptions import (
+    BalanceZeroException,
+    BalanceMinusException,
+    DepositOverException,
+    PaymentLimitExceededException,
+)
 
 logger = getLogger(__name__)
 
@@ -39,6 +44,10 @@ class AbstractPayment(ABC):
 
         This method must be implemented by concrete payment strategies to handle
         the specific payment method's processing rules.
+
+        To settle the payment as its payment master says (deposit over the
+        balance, change, limit), call settle_payment_async(). The lower-level
+        helpers below apply none of the master's settings.
 
         Callers may pass keyword arguments beyond these parameters to describe
         the payment further. Implementations must accept them. One that does not
@@ -106,6 +115,92 @@ class AbstractPayment(ABC):
         """
         self.payment_master_repo = payment_master_repo
 
+    async def settle_payment_async(
+        self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str = None
+    ) -> CartDocument:
+        """
+        Settle a payment on the cart as its payment master says.
+
+        The master decides what happens to a deposit above the balance:
+
+        - ``can_deposit_over`` false: the payment is refused (DepositOverException).
+        - ``can_deposit_over`` true: the payment covers the balance. The excess
+          becomes change when ``can_change`` is true; otherwise it stays on the
+          line as deposit and no change is given.
+
+        A positive ``limit_amount`` caps what the method covers in the cart, its
+        lines together; zero or less means no limit.
+
+        Args:
+            cart_doc: Cart document to settle the payment on
+            payment_code: Code identifying the payment method
+            amount: Amount the customer hands over
+            detail: Optional payment details
+
+        Returns:
+            CartDocument: The cart with the payment added and its balance updated
+
+        Raises:
+            BalanceZeroException: If the cart balance is less than 1
+            DepositOverException: If the deposit exceeds the balance and the master refuses that
+            PaymentLimitExceededException: If the payment takes the method past its limit
+            NotFoundException: If the payment method is not found
+        """
+        pay_doc = await self._get_payment_master_async(cart_doc, payment_code, amount)
+        payment = self._build_cart_payment(cart_doc, pay_doc, amount, detail)
+
+        balance = cart_doc.balance_amount
+        change_amount = 0.0
+        if payment.deposit_amount > balance:
+            if not pay_doc.can_deposit_over:
+                message = (
+                    f"Deposit amount is more than balance: deposit_amount->{payment.deposit_amount}, "
+                    f"balance->{balance}, payment_code->{payment_code}"
+                )
+                raise DepositOverException(message, logger)
+            payment.amount = balance
+            if pay_doc.can_change:
+                change_amount = payment.deposit_amount - balance
+
+        self.check_payment_limit(cart_doc, pay_doc, payment.amount)
+
+        if change_amount > 0:
+            cart_doc.sales.change_amount = change_amount
+        self.update_cart_balance(cart_doc, payment.amount)
+        cart_doc.payments.append(payment)
+        return cart_doc
+
+    def check_payment_limit(
+        self, cart_doc: CartDocument, pay_doc: PaymentMasterDocument, payment_amount: float
+    ) -> None:
+        """
+        Refuse a payment that takes its method past the master's limit_amount.
+
+        The method's lines in the cart count together, or a limit could be passed
+        by splitting the payment. Negative lines are not counted, so that they
+        cannot make room under the limit.
+
+        Args:
+            cart_doc: Cart the payment is about to be added to
+            pay_doc: Payment master of the method
+            payment_amount: Amount the new payment covers
+
+        Raises:
+            PaymentLimitExceededException: If the method would cover more than its limit
+        """
+        limit = pay_doc.limit_amount
+        if limit is None or limit <= 0:
+            return
+        covered = sum(
+            max(p.amount or 0.0, 0.0) for p in cart_doc.payments if p.payment_code == pay_doc.payment_code
+        )
+        if covered + max(payment_amount, 0.0) > limit:
+            message = (
+                f"Payment exceeds the limit of its method: payment_code->{pay_doc.payment_code}, "
+                f"covered->{covered}, payment->{payment_amount}, limit->{limit}"
+            )
+            raise PaymentLimitExceededException(message, logger)
+
     async def create_cart_payment_async(
         self, cart_doc: CartDocument, payment_code: str, amount: float, detail: str
     ) -> CartDocument.Payment:
@@ -113,7 +208,8 @@ class AbstractPayment(ABC):
         Create a payment entry for the cart.
 
         This helper method creates a payment object with the specified details
-        after validating that there's a sufficient balance to pay.
+        after validating that there's a sufficient balance to pay. It applies
+        none of the master's settings; settle_payment_async() does.
 
         Args:
             cart_doc: Cart document to create payment for
@@ -129,12 +225,23 @@ class AbstractPayment(ABC):
             NotFoundException: If the payment method is not found
             RepositoryException: If there's an error retrieving payment information
         """
+        pay_doc = await self._get_payment_master_async(cart_doc, payment_code, amount)
+        return self._build_cart_payment(cart_doc, pay_doc, amount, detail)
+
+    async def _get_payment_master_async(
+        self, cart_doc: CartDocument, payment_code: str, amount: float
+    ) -> PaymentMasterDocument:
+        """Check that there is a balance to pay, then read the method's payment master."""
         if cart_doc.balance_amount < 1:
             message = f"Balance is less than 1: balance->{cart_doc.balance_amount}, amount->{amount}"
             raise BalanceZeroException(message, logger)
+        return await self.__get_payment_document_async(payment_code)
 
-        pay_doc = await self.__get_payment_document_async(payment_code)
-
+    @staticmethod
+    def _build_cart_payment(
+        cart_doc: CartDocument, pay_doc: PaymentMasterDocument, amount: float, detail: str
+    ) -> CartDocument.Payment:
+        """A payment line for the whole amount handed over; the caller settles its amount."""
         payment = CartDocument.Payment()
         payment.payment_no = len(cart_doc.payments) + 1
         payment.payment_code = pay_doc.payment_code
@@ -142,10 +249,7 @@ class AbstractPayment(ABC):
         payment.deposit_amount = amount
         payment.amount = amount
         payment.detail = detail
-        # Notice: balance is not updated here. And you should update payment.amount at each payment plugin.
-
         logger.debug(f"payment: {payment}")
-
         return payment
 
     async def __get_payment_document_async(self, payment_code: str) -> PaymentMasterDocument:

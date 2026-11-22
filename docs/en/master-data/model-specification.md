@@ -154,13 +154,25 @@ Document managing available payment methods and constraints.
 | tenant_id | string | ✓ | Tenant identifier |
 | payment_code | string | ✓ | Payment method code |
 | description | string | ✓ | Description |
-| limit_amount | float | - | Maximum amount |
+| limit_amount | float | - | Maximum amount (default: 0.0, no limit) |
 | can_refund | boolean | - | Refund allowed flag (default: true) |
 | can_deposit_over | boolean | - | Deposit over allowed flag (default: false) |
 | can_change | boolean | - | Change allowed flag (default: false) |
 
 **Indexes:**
 - Unique: (tenant_id, payment_code)
+
+**How cart applies these settings:**
+
+| Setting | On a payment | On a return |
+|---------|--------------|-------------|
+| `can_deposit_over` false | A deposit above the balance is refused (403004) | - |
+| `can_deposit_over` true, `can_change` true | The payment covers the balance and the excess is given as change | - |
+| `can_deposit_over` true, `can_change` false | The payment covers the balance; the excess stays on the line as deposit and no change is given | - |
+| `limit_amount` > 0 | What the method covers in one cart, its lines together, may not exceed it (403017) | What the method refunds may not exceed it (403015) |
+| `can_refund` false | - | The method cannot be used to refund (403014) |
+
+A `limit_amount` of 0 or less means no limit. A void is not checked: it reverses the original payments as they were. The usual settings are `can_deposit_over` and `can_change` true for cash, and false for cashless methods.
 
 ### 6. SettingsMasterDocument (Settings Master)
 

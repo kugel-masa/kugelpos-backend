@@ -531,6 +531,8 @@ Writing nothing means such a request is refused by "no cart found" alone.
 - Cashless payment: Card and electronic money processing
 - Custom payment: Extensible payment methods
 
+The built-in plugins (cash, cashless, others) settle a payment by the payment master: a deposit above the balance (`can_deposit_over`), change (`can_change`) and the limit (`limit_amount`). A custom plugin gets the same by calling `settle_payment_async()` from its `pay()`. A return checks `can_refund` and `limit_amount` of each method it refunds by; a void does not, since it reverses the original payments as they were. See the payment master in the master-data model specification.
+
 ### Promotion Plugins
 - JSON-based configuration
 - Multiple promotions can be combined

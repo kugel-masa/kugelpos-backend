@@ -34,6 +34,9 @@ EXCEPTION_TEST_CASES = [
     ("UnexpectedErrorException", CartErrorCode.UNEXPECTED_ERROR, status.HTTP_500_INTERNAL_SERVER_ERROR),
     ("AlreadyVoidedException", CartErrorCode.ALREADY_VOIDED, status.HTTP_400_BAD_REQUEST),
     ("AlreadyRefundedException", CartErrorCode.ALREADY_REFUNDED, status.HTTP_400_BAD_REQUEST),
+    ("PaymentLimitExceededException", CartErrorCode.PAYMENT_LIMIT_EXCEEDED, status.HTTP_400_BAD_REQUEST),
+    ("RefundNotAllowedException", CartErrorCode.REFUND_NOT_ALLOWED, status.HTTP_400_BAD_REQUEST),
+    ("RefundLimitExceededException", CartErrorCode.REFUND_LIMIT_EXCEEDED, status.HTTP_400_BAD_REQUEST),
 ]
 
 

@@ -26,6 +26,7 @@ from app.exceptions import (
     BalanceZeroException,
     BalanceMinusException,
     DepositOverException,
+    PaymentLimitExceededException,
     BalanceGreaterThanZeroException,
     TerminalStatusException,
     SignInOutException,
@@ -954,7 +955,12 @@ class CartService(ICartService):
                 cart_doc = await pay_strategy.pay(
                     cart_doc, add_payment["payment_code"], add_payment["amount"], add_payment["detail"]
                 )
-            except (BalanceZeroException, BalanceMinusException, DepositOverException) as e:
+            except (
+                BalanceZeroException,
+                BalanceMinusException,
+                DepositOverException,
+                PaymentLimitExceededException,
+            ) as e:
                 # Re-raise business logic exceptions as-is
                 raise e
             except NotFoundException:
