@@ -163,7 +163,7 @@ async def get_report_for_store(
             )
         if business_date:
             logger.warning("Both single date and date range specified, using date range")
-    elif not business_date and not (business_date_from and business_date_to):
+    elif not business_date:
         # Neither single date nor date range specified
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -334,7 +334,7 @@ async def get_report_for_terminal(
             )
         if business_date:
             logger.warning("Both single date and date range specified, using date range")
-    elif not business_date and not (business_date_from and business_date_to):
+    elif not business_date:
         # Neither single date nor date range specified
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

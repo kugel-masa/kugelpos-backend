@@ -19,6 +19,7 @@ from kugel_common.exceptions import ServiceException
 from app.services.report_service import ReportService
 from kugel_common.exceptions import CannotCreateException
 from app.exceptions import (
+    ReportDateException,
     ReportNotFoundException,
     ReportGenerationException,
     TerminalNotClosedException,
@@ -541,3 +542,29 @@ class TestCommitTerminalReport:
         await svc._commit_terminal_report_async("T001", "S001", 1, "20240101", 1)
 
         repos["daily"].create_daily_info_document.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# A date range given by one end (#314)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("report_type", ["sales", "payment", "item", "category", "promotion"])
+@pytest.mark.parametrize(
+    "bounds", [{"business_date_from": "20240101"}, {"business_date_to": "20240131"}]
+)
+@pytest.mark.parametrize("scope", ["store", "terminal"])
+class TestHalfDateRange:
+    @pytest.mark.asyncio
+    async def test_a_half_range_is_refused_before_any_maker(self, scope, bounds, report_type):
+        maker = make_mock_maker()
+        svc, repos = make_service(report_makers={report_type: maker})
+        call = svc.get_report_for_store_async if scope == "store" else svc.get_report_for_terminal_async
+        target = {"store_code": "S001"} if scope == "store" else {"store_code": "S001", "terminal_no": 1}
+
+        with pytest.raises(ReportDateException) as exc_info:
+            await call(**target, report_scope="daily", report_type=report_type, business_date="20240115", **bounds)
+
+        assert exc_info.value.status_code == 400
+        maker.generate_report.assert_not_called()
+        repos["terminal"].assert_not_called()

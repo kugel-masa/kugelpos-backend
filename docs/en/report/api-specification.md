@@ -167,7 +167,7 @@ scopes (flash, daily) for the specified store.
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
 
-Give either `business_date`, or both `business_date_from` and `business_date_to`. A range given by one end is refused with 400 (`412006`), even next to `business_date`.
+Give `business_date`, or a range by both `business_date_from` and `business_date_to`; when a range and `business_date` are both given, the range is used. A range given by one end is refused with 400 (`412006`), even next to `business_date`.
 
 **Response:**
 
@@ -228,7 +228,7 @@ scopes (flush, daily) for the specified terminal.
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
 
-Give either `business_date`, or both `business_date_from` and `business_date_to`. A range given by one end is refused with 400 (`412006`), even next to `business_date`.
+Give `business_date`, or a range by both `business_date_from` and `business_date_to`; when a range and `business_date` are both given, the range is used. A range given by one end is refused with 400 (`412006`), even next to `business_date`.
 
 **Response:**
 
