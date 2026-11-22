@@ -168,7 +168,7 @@ description: "Task list for 311-payment-variants"
 - [X] T049 [P] `docs/en/master-data/api-specification.md`・`docs/ja/master-data/api-specification.md` にサブコードの 4 端点と支払マスタの応答の `variants` を、`docs/en/master-data/model-specification.md`・`docs/ja/master-data/model-specification.md` に `PaymentVariant`、配備の順序（research R-14）、サブコードの変更をすぐに cart へ効かせる方法（cart の `DELETE /api/v1/cache/master-data?namespace=payment_master`）を追記する
 - [X] T050 [P] `docs/en/cart/api-specification.md`・`docs/ja/cart/api-specification.md` に支払の要求の `variantCode`、サブコードの決定の規則、取消・返品の規則、支払行の応答の 2 項目を、`docs/en/cart/model-specification.md`・`docs/ja/cart/model-specification.md` に支払行の 2 項目を追記する
 - [X] T051 [P] `docs/en/report/api-specification.md`・`docs/ja/report/api-specification.md`・`model-specification.md`（en・ja）に、売上レポート・支払レポートの `variants` と件数の数え方の違いを追記する。`docs/en/general/error_code_spec.md`・`docs/ja/general/error_code_spec.md` に 403018〜403022 を追記する
-- [ ] T052 リリースノートの下書きを PR の説明に書く: (1) 返品の返金手段が売上時の支払種別と現金に限られる（既存の動作の変更・403021）、(2) 返品の売上時の金額の上限（403022）、(3) サブコードの登録は commons・cart・report の配備後に行うこと（research R-14）、(4) 支払レポートが支払マスタを全ページ読むようになったこと
+- [X] T052 リリースノートの下書きを PR の説明に書く: (1) 返品の返金手段が売上時の支払種別と現金に限られる（既存の動作の変更・403021）、(2) 返品の売上時の金額の上限（403022）、(3) サブコードの登録は commons・cart・report の配備後に行うこと（research R-14）、(4) 支払レポートが支払マスタを全ページ読むようになったこと
 - [X] T053 `./scripts/run_unit_tests.sh`・`./scripts/run_integration_tests.sh`・`./scripts/run_e2e_tests.sh` を通す（cart の e2e は既定の `CART_REQUEST_SNAPSHOT_MODE=DUAL`）。通らないものは結果を記録して原因を直す。あわせて、e2e で記帳した取引が journal に保存された取引ログで `variant_code`・`builtin_description` を保っていることを確かめる（spec「影響するサービス」の journal の確認）
 - [X] T054 quickstart.md の手順を起動中の環境で一通り実行し、記述と動作が合わなければ quickstart.md を直す
 - [ ] T055 Issue #311 の本文を、取消・返品の規則（売上時の支払種別・現金・上限）と配備の順序に合わせて更新する（利用者の確認を取ってから）
