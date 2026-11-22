@@ -408,7 +408,7 @@ Payment processing request.
 How `variantCode` is read (issue #311):
 
 - **Payment:** a named variant must be an active variant of the method (403018 unknown, 403019 stopped). With none named, a method with one active variant records it, one with several refuses the payment (403020), one with none records no variant. Every payment's variant is decided before any is settled, so one refused variant records none of the request.
-- **Void:** each payment must name a tender of the sale (method and variant; leaving the variant out means none) for what the sale took by it.
+- **Void:** summed by method and variant (leaving the variant out means none), the payments must be exactly the sale's tenders, each for what the sale took by it; a tender may be split over lines. Amounts of voids and returns must be above zero.
 - **Return:** each payment refunds by a tender of the sale, up to what the sale took by it (403022), or by cash (`01`); any other method is refused (403021). A variant of the sale is taken even if stopped since.
 
 ### Transaction Representation Schemas

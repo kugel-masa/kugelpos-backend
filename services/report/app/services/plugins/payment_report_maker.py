@@ -272,7 +272,9 @@ class PaymentReportMaker(IReportPlugin):
                     
         except Exception as e:
             logger.error(f"Error fetching payment master data: {e}")
-            # Return default mapping if API call fails
+            # Return default mapping if API call fails; variant names read before the
+            # failure are dropped too, so names do not come from two sources (issue #311)
+            variant_map = {}
             payment_map = {
                 "01": "Cash",
                 "11": "Cashless",
@@ -314,19 +316,11 @@ class PaymentReportMaker(IReportPlugin):
             MongoDB pipeline yielding one document per (payment_code, variant_code,
             transaction_type)
         """
-        match_pipeline = self._create_pipeline_for_payment_report(
-            store_code=store_code,
-            terminal_no=terminal_no,
-            business_date=business_date,
-            open_counter=open_counter,
-            limit=0,
-            page=1,
-            sort=[],
-            business_date_from=business_date_from,
-            business_date_to=business_date_to,
-        )[0]
+        match_dict = self._match_transactions(
+            store_code, terminal_no, business_date, open_counter, business_date_from, business_date_to
+        )
         return [
-            match_pipeline,
+            {"$match": match_dict},
             {"$unwind": "$payments"},
             {"$sort": {"generate_date_time": -1}},
             {
@@ -404,6 +398,35 @@ class PaymentReportMaker(IReportPlugin):
             breakdown[payment_code] = sort_variant_breakdown(variants)
         return breakdown
 
+    def _match_transactions(
+        self,
+        store_code: str,
+        terminal_no: int,
+        business_date: str,
+        open_counter: int,
+        business_date_from: str = None,
+        business_date_to: str = None,
+    ) -> dict[str, Any]:
+        """The transactions a payment report covers, shared by its pipelines."""
+        match_dict = {
+            "tenant_id": self.tran_repository.tenant_id,
+            "store_code": store_code,
+            "sales.is_cancelled": False,  # Exclude cancelled transactions
+        }
+
+        # Handle date range or single date
+        if business_date_from and business_date_to:
+            match_dict["business_date"] = {"$gte": business_date_from, "$lte": business_date_to}
+        else:
+            match_dict["business_date"] = business_date
+
+        # Add optional filters
+        if terminal_no is not None:
+            match_dict["terminal_no"] = terminal_no
+        if open_counter is not None:
+            match_dict["open_counter"] = open_counter
+        return match_dict
+
     def _create_pipeline_for_payment_report(
         self,
         store_code: str,
@@ -433,29 +456,9 @@ class PaymentReportMaker(IReportPlugin):
         Returns:
             MongoDB pipeline
         """
-        # Create match stage conditions
-        match_dict = {
-            "tenant_id": self.tran_repository.tenant_id,
-            "store_code": store_code,
-            "sales.is_cancelled": False,  # Exclude cancelled transactions
-        }
-        
-        # Handle date range or single date
-        if business_date_from and business_date_to:
-            # Use date range
-            match_dict["business_date"] = {
-                "$gte": business_date_from,
-                "$lte": business_date_to
-            }
-        else:
-            # Use single date
-            match_dict["business_date"] = business_date
-
-        # Add optional filters
-        if terminal_no is not None:
-            match_dict["terminal_no"] = terminal_no
-        if open_counter is not None:
-            match_dict["open_counter"] = open_counter
+        match_dict = self._match_transactions(
+            store_code, terminal_no, business_date, open_counter, business_date_from, business_date_to
+        )
 
         # Create pipeline
         pipeline = [

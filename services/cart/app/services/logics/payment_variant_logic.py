@@ -11,9 +11,9 @@ three places a payment line is made:
   of that payment method. With none given, a method with no active variant
   records none, one with exactly one records it, and one with several refuses
   the payment, as the system cannot choose.
-- **A void** (``match_void_payments``): a void reverses the sale, so each payment
-  must name a ``(payment code, variant)`` the sale took, and its amount must equal
-  what the sale took by it. Leaving the variant out means "no variant".
+- **A void** (``match_void_payments``): a void reverses the sale, so summed by
+  ``(payment code, variant)`` its payments must be exactly the sale's tenders, each
+  for what the sale took by it. Leaving the variant out means "no variant".
 - **A return** (``match_return_payments``): a return refunds by a tender of the
   sale (up to what the sale took by it) or by cash. A variant of the sale is
   taken even if it has been stopped since.
@@ -132,8 +132,28 @@ def _sale_tenders(original_lines: Iterable[Any]) -> dict[tuple, dict]:
     return tenders
 
 
+def _require_positive(payments: list[dict]) -> None:
+    """A void's or a return's every payment moves money back: its amount must be above zero."""
+    for payment in payments:
+        amount = payment.get("amount")
+        if amount is None or amount <= 0:
+            raise BadRequestBodyException(
+                f"Refund amount must be greater than 0: payment_code->{payment.get('payment_code')}, "
+                f"variant_code->{payment.get('variant_code')}, amount->{amount}"
+            )
+
+
+def _describe(tenders: dict[tuple, dict]) -> str:
+    """The sale's tenders, for an error message the client can act on."""
+    return ", ".join(f"{code}/{variant or '-'}={tender['amount']}" for (code, variant), tender in tenders.items())
+
+
 def match_void_payments(original_lines: Iterable[Any], requested: Iterable[dict]) -> list[RefundLineDecision]:
     """Match a void's payments with the sale's lines.
+
+    A void mirrors the sale: summed by ``(payment code, variant)``, the request must
+    name exactly the sale's tenders, each for what the sale took by it. A tender may
+    be split over several request lines.
 
     Args:
         original_lines: Payment lines of the sale being voided
@@ -143,28 +163,44 @@ def match_void_payments(original_lines: Iterable[Any], requested: Iterable[dict]
         One decision per requested payment, in request order, named as the sale named it
 
     Raises:
-        BadRequestBodyException: A payment names a tender the sale did not take, or its
-            amount differs from what the sale took by that tender
+        BadRequestBodyException: An amount is not above zero, a payment names a tender the
+            sale did not take, a tender of the sale is left out, or a tender's total
+            differs from what the sale took by it
     """
+    requested = list(requested)
+    _require_positive(requested)
     tenders = _sale_tenders(original_lines)
-    decisions = []
+
+    totals: dict[tuple, float] = {}
     for payment in requested:
-        payment_code = payment.get("payment_code")
-        variant_code = payment.get("variant_code")
-        tender = tenders.get(_key(payment_code, variant_code))
-        if tender is None:
+        key = _key(payment.get("payment_code"), payment.get("variant_code"))
+        if key not in tenders:
             raise BadRequestBodyException(
-                f"Payment not found in original transaction: payment_code->{payment_code}, variant_code->{variant_code}"
+                f"Payment not found in original transaction: payment_code->{key[0]}, variant_code->{key[1]}; "
+                f"the sale took {_describe(tenders)}"
             )
-        amount = payment.get("amount")
-        if amount != tender["amount"]:
+        totals[key] = totals.get(key, 0.0) + payment.get("amount")
+
+    for key, tender in tenders.items():
+        if totals.get(key, 0.0) != tender["amount"]:
             raise BadRequestBodyException(
                 "Payment amount must be equal for void transaction: "
-                f"payment_code->{payment_code}, variant_code->{variant_code}, "
-                f"payment_amount->{amount}, payment_amount_original->{tender['amount']}"
+                f"payment_code->{key[0]}, variant_code->{key[1]}, "
+                f"payment_amount->{totals.get(key, 0.0)}, payment_amount_original->{tender['amount']}; "
+                f"the sale took {_describe(tenders)}"
             )
+
+    decisions = []
+    for payment in requested:
+        tender = tenders[_key(payment.get("payment_code"), payment.get("variant_code"))]
         decisions.append(
-            RefundLineDecision(payment_code, variant_code, tender["name"], tender["builtin_description"], True)
+            RefundLineDecision(
+                payment.get("payment_code"),
+                payment.get("variant_code"),
+                tender["name"],
+                tender["builtin_description"],
+                True,
+            )
         )
     return decisions
 
@@ -189,10 +225,13 @@ def match_return_payments(
         One decision per requested payment, in request order
 
     Raises:
+        BadRequestBodyException: An amount is not above zero
         ReturnTenderNotAllowedException: A payment is neither a tender of the sale nor cash
         ReturnAmountExceedsOriginalException: A tender of the sale (cash excepted) would refund
             more than the sale took by it
     """
+    requested = list(requested)
+    _require_positive(requested)
     tenders = _sale_tenders(original_lines)
     decisions = []
     refunded: dict[tuple, float] = {}
@@ -213,7 +252,7 @@ def match_return_payments(
             continue
         raise ReturnTenderNotAllowedException(
             "Return tender is neither a tender of the sale nor cash: "
-            f"payment_code->{payment_code}, variant_code->{variant_code}"
+            f"payment_code->{payment_code}, variant_code->{variant_code}; the sale took {_describe(tenders)}"
         )
 
     for key, amount in refunded.items():

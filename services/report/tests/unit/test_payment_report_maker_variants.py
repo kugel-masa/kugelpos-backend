@@ -112,3 +112,41 @@ async def test_every_page_of_the_payment_master_is_read():
     assert payment_map["X1"] == "Late method"
     assert variant_map == {("X1", "V1"): "Late variant"}
     assert [c.kwargs["params"]["page"] for c in client.get.await_args_list] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_failure_on_a_later_page_drops_the_variant_names_read_before_it():
+    first = _page(
+        [{"paymentCode": "11", "description": "Cashless", "variants": [{"variantCode": "VISA", "name": "VISA"}]}], 1, 2
+    )
+
+    async def get(url, params, headers):
+        if params["page"] == 1:
+            return first
+        raise RuntimeError("master-data went away")
+
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=get)
+
+    @asynccontextmanager
+    async def fake_client(name, **kwargs):
+        yield client
+
+    with patch("app.services.plugins.payment_report_maker.get_service_client", fake_client), patch(
+        "app.services.plugins.payment_report_maker.create_service_token", return_value="token"
+    ):
+        payment_map, variant_map = await _maker()._fetch_payment_master("T1", "S1")
+
+    assert payment_map == {"01": "Cash", "11": "Cashless", "12": "Others"}
+    assert variant_map == {}
+
+
+def test_both_pipelines_cover_the_same_transactions():
+    maker = _maker()
+    maker.tran_repository.tenant_id = "T1"
+    args = dict(store_code="S1", terminal_no=2, business_date="20260101", open_counter=3)
+
+    report = maker._create_pipeline_for_payment_report(**args, limit=0, page=1, sort=[])
+    variants = maker._create_pipeline_for_payment_variants(**args)
+
+    assert report[0] == variants[0] == {"$match": maker._match_transactions(**args)}

@@ -184,3 +184,49 @@ class TestReturn:
         decisions = match_return_payments(SALE, [_pay("11", 1000, "VISA")])
 
         assert (decisions[0].variant_code, decisions[0].name) == ("VISA", "VISA")
+
+
+class TestVoidMirrorsTheSale:
+    """A void names exactly the sale's tenders, summed by (method, variant) (PR #313 review)."""
+
+    def test_one_tender_named_twice_in_place_of_another_is_refused(self):
+        # Each line alone equals what the sale took by VISA, and the total equals the sale's
+        with pytest.raises(BadRequestBodyException):
+            match_void_payments(SALE, [_pay("11", 1000, "VISA"), _pay("11", 1000, "VISA")])
+
+    def test_a_tender_of_the_sale_left_out_is_refused(self):
+        with pytest.raises(BadRequestBodyException, match="PAYPAY"):
+            match_void_payments(SALE, [_pay("11", 1000, "VISA")])
+
+    def test_a_tender_split_over_lines_is_taken(self):
+        sale = [_line("11", 400.0, "VISA", "VISA"), _line("11", 600.0, "VISA", "VISA")]
+
+        decisions = match_void_payments(sale, [_pay("11", 400, "VISA"), _pay("11", 600, "VISA")])
+
+        assert [d.variant_code for d in decisions] == ["VISA", "VISA"]
+
+    @pytest.mark.parametrize("amount", [0, -100])
+    def test_an_amount_not_above_zero_is_refused(self, amount):
+        with pytest.raises(BadRequestBodyException):
+            match_void_payments(SALE, [_pay("11", amount, "VISA"), _pay("11", 3000 - amount, "PAYPAY")])
+
+    def test_the_refusal_names_the_sales_tenders(self):
+        with pytest.raises(BadRequestBodyException, match="11/VISA=1000.0, 11/PAYPAY=2000.0"):
+            match_void_payments(SALE, [_pay("11", 3000)])
+
+
+class TestReturnAmountsAndCodes:
+    @pytest.mark.parametrize("amount", [0, -100])
+    def test_an_amount_not_above_zero_is_refused(self, amount):
+        # A negative refund to a tender would otherwise slip under what the sale took by it
+        with pytest.raises(BadRequestBodyException):
+            match_return_payments(SALE, [_pay("11", amount, "VISA"), _pay("01", 1000 - amount)])
+
+    def test_an_empty_variant_code_is_a_code_that_names_no_tender(self):
+        with pytest.raises(ReturnTenderNotAllowedException):
+            match_return_payments(SALE, [_pay("11", 1000, "")])
+
+
+def test_an_empty_variant_code_on_a_sale_is_a_code_that_matches_no_variant():
+    with pytest.raises(PaymentVariantNotFoundException):
+        resolve_sale_variant(_method(("VISA", True)), "")
