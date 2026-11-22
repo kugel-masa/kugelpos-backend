@@ -556,9 +556,10 @@ class TestCommitTerminalReport:
 @pytest.mark.parametrize("scope", ["store", "terminal"])
 class TestHalfDateRange:
     @pytest.mark.asyncio
-    async def test_a_half_range_is_refused_before_any_maker(self, scope, bounds, report_type):
+    async def test_a_half_range_is_refused_before_the_terminal_check_and_any_maker(self, scope, bounds, report_type):
         maker = make_mock_maker()
         svc, repos = make_service(report_makers={report_type: maker})
+        svc._check_if_terminal_closed = AsyncMock()
         call = svc.get_report_for_store_async if scope == "store" else svc.get_report_for_terminal_async
         target = {"store_code": "S001"} if scope == "store" else {"store_code": "S001", "terminal_no": 1}
 
@@ -567,4 +568,4 @@ class TestHalfDateRange:
 
         assert exc_info.value.status_code == 400
         maker.generate_report.assert_not_called()
-        repos["terminal"].assert_not_called()
+        svc._check_if_terminal_closed.assert_not_awaited()
