@@ -19,6 +19,9 @@ from app.api.v1.schemas import (
     PaymentUpdateRequest,
     PaymentResponse,
     PaymentDeleteResponse,
+    PaymentVariantCreateRequest,
+    PaymentVariantUpdateRequest,
+    PaymentVariantResponse,
 )
 from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.dependencies.get_master_services import get_payment_master_service_async
@@ -356,3 +359,235 @@ async def delete_payment(
         operation=f"{inspect.currentframe().f_code.co_name}",
     )
     return response
+
+
+# Payment variants (sub-codes) of a payment method (issue #311). A variant is
+# never deleted, so there is no DELETE: it is stopped with isActive=false.
+
+
+@router.post(
+    "/tenants/{tenant_id}/payments/{payment_code}/variants",
+    response_model=ApiResponse[PaymentVariantResponse],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
+        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def create_payment_variant(
+    variant: PaymentVariantCreateRequest,
+    payment_code: str = Path(...),
+    tenant_id: str = Path(...),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
+):
+    """
+    Add a variant (sub-code) to a payment method.
+
+    A variant classifies the payments a method takes, such as a card brand under
+    cashless. Its code is free format and unique within the payment method. The
+    behaviour (limit, refund, deposit over, change) stays with the payment method.
+
+    Args:
+        variant: The variant to add
+        payment_code: Code of the payment method
+        tenant_id: The tenant identifier from the path
+        tenant_id_in_token: The tenant ID from security credentials
+
+    Returns:
+        ApiResponse[PaymentVariantResponse]: The added variant
+
+    Raises:
+        DocumentNotFoundException: If the payment method does not exist
+        DocumentAlreadyExistsException: If the payment method already has a variant with this code
+    """
+    logger.info(
+        f"Create payment variant request received for payment_code: {payment_code}, "
+        f"variant_code: {variant.variant_code}, tenant_id: {tenant_id}"
+    )
+    verify_tenant_id(tenant_id, tenant_id_in_token, logger)
+    service = await get_payment_master_service_async(tenant_id)
+    try:
+        new_variant = await service.add_variant_async(
+            payment_code, variant.variant_code, variant.name, variant.is_active
+        )
+        return_variant = SchemasTransformerV1().transform_payment_variant(new_variant)
+    except Exception as e:
+        logger.error(f"Error creating payment variant: {e}")
+        raise e
+
+    return ApiResponse(
+        success=True,
+        code=status.HTTP_201_CREATED,
+        message=f"Payment variant created. payment_code: {payment_code}, variant_code: {return_variant.variant_code}",
+        data=return_variant.model_dump(),
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
+
+
+@router.get(
+    "/tenants/{tenant_id}/payments/{payment_code}/variants",
+    response_model=ApiResponse[list[PaymentVariantResponse]],
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
+        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def get_payment_variants(
+    payment_code: str = Path(...),
+    tenant_id: str = Path(...),
+    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+):
+    """
+    List a payment method's variants, stopped ones included, in variant code order.
+
+    Args:
+        payment_code: Code of the payment method
+        tenant_id: The tenant identifier from the path
+        tenant_id_in_token: The tenant ID from security credentials
+
+    Returns:
+        ApiResponse[list[PaymentVariantResponse]]: The variants
+
+    Raises:
+        DocumentNotFoundException: If the payment method does not exist
+    """
+    logger.info(f"Get payment variants request received for payment_code: {payment_code}, tenant_id: {tenant_id}")
+    verify_tenant_id(tenant_id, tenant_id_in_token, logger)
+    service = await get_payment_master_service_async(tenant_id)
+    try:
+        variants = await service.get_variants_async(payment_code)
+        transformer = SchemasTransformerV1()
+        return_variants = [transformer.transform_payment_variant(v) for v in variants]
+    except Exception as e:
+        logger.error(f"Error getting payment variants: {e}")
+        raise e
+
+    return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Payment variants found. payment_code: {payment_code}, count: {len(return_variants)}",
+        data=[v.model_dump() for v in return_variants],
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
+
+
+@router.get(
+    "/tenants/{tenant_id}/payments/{payment_code}/variants/{variant_code}",
+    response_model=ApiResponse[PaymentVariantResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
+        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def get_payment_variant(
+    payment_code: str = Path(...),
+    variant_code: str = Path(...),
+    tenant_id: str = Path(...),
+    tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
+):
+    """
+    Get one variant of a payment method.
+
+    Args:
+        payment_code: Code of the payment method
+        variant_code: Code of the variant
+        tenant_id: The tenant identifier from the path
+        tenant_id_in_token: The tenant ID from security credentials
+
+    Returns:
+        ApiResponse[PaymentVariantResponse]: The variant
+
+    Raises:
+        DocumentNotFoundException: If the payment method or the variant does not exist
+    """
+    logger.info(
+        f"Get payment variant request received for payment_code: {payment_code}, "
+        f"variant_code: {variant_code}, tenant_id: {tenant_id}"
+    )
+    verify_tenant_id(tenant_id, tenant_id_in_token, logger)
+    service = await get_payment_master_service_async(tenant_id)
+    try:
+        variant = await service.get_variant_async(payment_code, variant_code)
+        return_variant = SchemasTransformerV1().transform_payment_variant(variant)
+    except Exception as e:
+        logger.error(f"Error getting payment variant: {e}")
+        raise e
+
+    return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Payment variant found. payment_code: {payment_code}, variant_code: {variant_code}",
+        data=return_variant.model_dump(),
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
+
+
+@router.put(
+    "/tenants/{tenant_id}/payments/{payment_code}/variants/{variant_code}",
+    response_model=ApiResponse[PaymentVariantResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_404_NOT_FOUND: StatusCodes.get(status.HTTP_404_NOT_FOUND),
+        status.HTTP_422_UNPROCESSABLE_ENTITY: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_ENTITY),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def update_payment_variant(
+    variant: PaymentVariantUpdateRequest,
+    payment_code: str = Path(...),
+    variant_code: str = Path(...),
+    tenant_id: str = Path(...),
+    tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
+):
+    """
+    Change a variant's name and active flag.
+
+    The code cannot be changed. A variant that is no longer used is stopped with
+    isActive=false rather than deleted, so past transactions keep naming it.
+
+    Args:
+        variant: The new name and active flag
+        payment_code: Code of the payment method
+        variant_code: Code of the variant
+        tenant_id: The tenant identifier from the path
+        tenant_id_in_token: The tenant ID from security credentials
+
+    Returns:
+        ApiResponse[PaymentVariantResponse]: The changed variant
+
+    Raises:
+        DocumentNotFoundException: If the payment method or the variant does not exist
+    """
+    logger.info(
+        f"Update payment variant request received for payment_code: {payment_code}, "
+        f"variant_code: {variant_code}, tenant_id: {tenant_id}"
+    )
+    verify_tenant_id(tenant_id, tenant_id_in_token, logger)
+    service = await get_payment_master_service_async(tenant_id)
+    try:
+        updated = await service.update_variant_async(payment_code, variant_code, variant.name, variant.is_active)
+        return_variant = SchemasTransformerV1().transform_payment_variant(updated)
+    except Exception as e:
+        logger.error(f"Error updating payment variant: {e}")
+        raise e
+
+    return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Payment variant updated. payment_code: {payment_code}, variant_code: {variant_code}",
+        data=return_variant.model_dump(),
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )

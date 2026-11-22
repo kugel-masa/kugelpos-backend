@@ -28,6 +28,9 @@ from app.api.common.schemas import (
     BasePaymentCreateRequest,
     BasePaymentUpdateRequest,
     BasePaymentDeleteResponse,
+    BasePaymentVariantResponse,
+    BasePaymentVariantCreateRequest,
+    BasePaymentVariantUpdateRequest,
     BaseSettingsMasterValue,
     BaseSettingsMasterCreateRequest,
     BaseSettingsMasterUpdateRequest,
@@ -253,6 +256,36 @@ class PaymentDeleteResponse(BasePaymentDeleteResponse):
 
     Used to return the result of a payment method deletion operation.
     Contains the code of the deleted payment method.
+    """
+
+    pass
+
+
+class PaymentVariantResponse(BasePaymentVariantResponse):
+    """
+    Payment Variant Response Schema
+
+    A variant (sub-code) of a payment method (issue #311).
+    """
+
+    pass
+
+
+class PaymentVariantCreateRequest(BasePaymentVariantCreateRequest):
+    """
+    Payment Variant Creation Request Schema
+
+    Adds a variant to a payment method (issue #311).
+    """
+
+    pass
+
+
+class PaymentVariantUpdateRequest(BasePaymentVariantUpdateRequest):
+    """
+    Payment Variant Update Request Schema
+
+    Changes a variant's name and active flag (issue #311).
     """
 
     pass
