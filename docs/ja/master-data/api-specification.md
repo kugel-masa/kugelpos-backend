@@ -1986,6 +1986,7 @@ Delete Item Master Asyncを削除します。対象をシステムから削除�
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2008,6 +2009,15 @@ Delete Item Master Asyncを削除します。対象をシステムから削除�
       "canDepositOver": true,
       "canChange": true,
       "isActive": true,
+      "variants": [
+        {
+          "variantCode": "string",
+          "name": "string",
+          "isActive": true,
+          "entryDatetime": "string",
+          "lastUpdateDatetime": "string"
+        }
+      ],
       "entryDatetime": "string",
       "lastUpdateDatetime": "string"
     }
@@ -2080,6 +2090,7 @@ Delete Item Master Asyncを削除します。対象をシステムから削除�
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2101,6 +2112,15 @@ Delete Item Master Asyncを削除します。対象をシステムから削除�
     "canDepositOver": true,
     "canChange": true,
     "isActive": true,
+    "variants": [
+      {
+        "variantCode": "string",
+        "name": "string",
+        "isActive": true,
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
     "entryDatetime": "string",
     "lastUpdateDatetime": "string"
   },
@@ -2148,6 +2168,7 @@ Delete Item Master Asyncを削除します。対象をシステムから削除�
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2169,6 +2190,15 @@ Delete Item Master Asyncを削除します。対象をシステムから削除�
     "canDepositOver": true,
     "canChange": true,
     "isActive": true,
+    "variants": [
+      {
+        "variantCode": "string",
+        "name": "string",
+        "isActive": true,
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
     "entryDatetime": "string",
     "lastUpdateDatetime": "string"
   },
@@ -2239,6 +2269,7 @@ Update Paymentを更新します。
 | `canDepositOver` | boolean | Yes | - |
 | `canChange` | boolean | Yes | - |
 | `isActive` | boolean | Yes | - |
+| `variants` | array[BasePaymentVariantResponse] | No | - |
 | `entryDatetime` | string | Yes | - |
 | `lastUpdateDatetime` | string | No | - |
 
@@ -2260,6 +2291,15 @@ Update Paymentを更新します。
     "canDepositOver": true,
     "canChange": true,
     "isActive": true,
+    "variants": [
+      {
+        "variantCode": "string",
+        "name": "string",
+        "isActive": true,
+        "entryDatetime": "string",
+        "lastUpdateDatetime": "string"
+      }
+    ],
     "entryDatetime": "string",
     "lastUpdateDatetime": "string"
   },
@@ -2326,7 +2366,288 @@ Delete Paymentを削除します。対象をシステムから削除します。
 }
 ```
 
-### 34. Get Promotions
+### 34. 支払方法のサブコード一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants`
+
+List a payment method's variants, stopped ones included, in variant code order.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[PaymentVariantResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "variantCode": "string",
+      "name": "string",
+      "isActive": true,
+      "entryDatetime": "string",
+      "lastUpdateDatetime": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 35. 支払方法のサブコード作成
+
+**POST** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants`
+
+Add a variant (sub-code) to a payment method.
+
+A variant classifies the payments a method takes, such as a card brand under
+cashless. Its code is free format and unique within the payment method. The
+behaviour (limit, refund, deposit over, change) stays with the payment method.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id of an API-key caller; such c |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | No | - |
+
+**リクエスト例:**
+```json
+{
+  "variantCode": "string",
+  "name": "string",
+  "isActive": true
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentVariantResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "variantCode": "string",
+    "name": "string",
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 36. 支払方法のサブコード取得
+
+**GET** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants/{variant_code}`
+
+Get one variant of a payment method.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `variant_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id should be provided by query  |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentVariantResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "variantCode": "string",
+    "name": "string",
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 37. 支払方法のサブコード更新
+
+**PUT** `/api/v1/tenants/{tenant_id}/payments/{payment_code}/variants/{variant_code}`
+
+Change a variant's name and active flag.
+
+The code cannot be changed. A variant that is no longer used is stopped with
+isActive=false rather than deleted, so past transactions keep naming it.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `payment_code` | string | Yes | - |
+| `variant_code` | string | Yes | - |
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_id` | string | No | - | terminal_id of an API-key caller; such c |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "name": "string",
+  "isActive": true
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `PaymentVariantResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `variantCode` | string | Yes | - |
+| `name` | string | Yes | - |
+| `isActive` | boolean | Yes | - |
+| `entryDatetime` | string | No | - |
+| `lastUpdateDatetime` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "variantCode": "string",
+    "name": "string",
+    "isActive": true,
+    "entryDatetime": "string",
+    "lastUpdateDatetime": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 38. Get Promotions
 
 **GET** `/api/v1/tenants/{tenant_id}/promotions`
 
@@ -2414,7 +2735,7 @@ the one in the security credentials.
 }
 ```
 
-### 35. Create Promotion
+### 39. Create Promotion
 
 **POST** `/api/v1/tenants/{tenant_id}/promotions`
 
@@ -2528,7 +2849,7 @@ the one in the security credentials.
 }
 ```
 
-### 36. Get Active Promotions
+### 40. Get Active Promotions
 
 **GET** `/api/v1/tenants/{tenant_id}/promotions/active`
 
@@ -2620,7 +2941,7 @@ Authentication is required via token or API key.
 }
 ```
 
-### 37. Get Promotion
+### 41. Get Promotion
 
 **GET** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
 
@@ -2701,7 +3022,7 @@ the one in the security credentials.
 }
 ```
 
-### 38. Update Promotion
+### 42. Update Promotion
 
 **PUT** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
 
@@ -2812,7 +3133,7 @@ the one in the security credentials.
 }
 ```
 
-### 39. Delete Promotion
+### 43. Delete Promotion
 
 **DELETE** `/api/v1/tenants/{tenant_id}/promotions/{promotion_code}`
 
@@ -2870,7 +3191,7 @@ the one in the security credentials.
 }
 ```
 
-### 40. 設定マスター一覧取得
+### 44. 設定マスター一覧取得
 
 **GET** `/api/v1/tenants/{tenant_id}/settings`
 
@@ -2940,7 +3261,7 @@ the one in the security credentials.
 }
 ```
 
-### 41. 設定マスター作成
+### 45. 設定マスター作成
 
 **POST** `/api/v1/tenants/{tenant_id}/settings`
 
@@ -3028,7 +3349,7 @@ the one in the security credentials.
 }
 ```
 
-### 42. 設定マスター取得
+### 46. 設定マスター取得
 
 **GET** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -3094,7 +3415,7 @@ the one in the security credentials.
 }
 ```
 
-### 43. 設定マスター更新
+### 47. 設定マスター更新
 
 **PUT** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -3181,7 +3502,7 @@ Update Settings Master Asyncを更新します。
 }
 ```
 
-### 44. 設定マスター削除
+### 48. 設定マスター削除
 
 **DELETE** `/api/v1/tenants/{tenant_id}/settings/{name}`
 
@@ -3233,7 +3554,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 }
 ```
 
-### 45. 設定値取得
+### 49. 設定値取得
 
 **GET** `/api/v1/tenants/{tenant_id}/settings/{name}/value`
 
@@ -3287,7 +3608,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 }
 ```
 
-### 46. 税率一覧取得
+### 50. 税率一覧取得
 
 **GET** `/api/v1/tenants/{tenant_id}/taxes`
 
@@ -3357,7 +3678,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 }
 ```
 
-### 47. 税率取得
+### 51. 税率取得
 
 **GET** `/api/v1/tenants/{tenant_id}/taxes/{tax_code}`
 
@@ -3425,7 +3746,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 
 ### 店舗
 
-### 48. 店舗別商品マスター一覧取得
+### 52. 店舗別商品マスター一覧取得
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
@@ -3488,7 +3809,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 }
 ```
 
-### 49. 商品マスター作成
+### 53. 商品マスター作成
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items`
 
@@ -3561,7 +3882,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 }
 ```
 
-### 50. 店舗別商品マスター取得
+### 54. 店舗別商品マスター取得
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3620,7 +3941,7 @@ Delete Settings Master Asyncを削除します。対象をシステムから削�
 }
 ```
 
-### 51. 店舗別商品マスター更新
+### 55. 店舗別商品マスター更新
 
 **PUT** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3692,7 +4013,7 @@ Update Item Store Master Asyncを更新します。
 }
 ```
 
-### 52. 店舗別商品マスター削除
+### 56. 店舗別商品マスター削除
 
 **DELETE** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}`
 
@@ -3745,7 +4066,7 @@ Delete Item Store Master Asyncを削除します。対象をシステムから�
 }
 ```
 
-### 53. 店舗別商品マスター詳細取得
+### 57. 店舗別商品マスター詳細取得
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/items/{item_code}/details`
 
@@ -3825,7 +4146,7 @@ Delete Item Store Master Asyncを削除します。対象をシステムから�
 
 ### スタッフ
 
-### 54. スタッフマスター一覧取得
+### 58. スタッフマスター一覧取得
 
 **GET** `/api/v1/tenants/{tenant_id}/staff`
 
@@ -3891,7 +4212,7 @@ Delete Item Store Master Asyncを削除します。対象をシステムから�
 }
 ```
 
-### 55. スタッフマスター作成
+### 59. スタッフマスター作成
 
 **POST** `/api/v1/tenants/{tenant_id}/staff`
 
@@ -3973,7 +4294,7 @@ Delete Item Store Master Asyncを削除します。対象をシステムから�
 }
 ```
 
-### 56. スタッフマスター取得
+### 60. スタッフマスター取得
 
 **GET** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
@@ -4035,7 +4356,7 @@ Delete Item Store Master Asyncを削除します。対象をシステムから�
 }
 ```
 
-### 57. スタッフマスター更新
+### 61. スタッフマスター更新
 
 **PUT** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 
@@ -4116,7 +4437,7 @@ Update Staff Master Asyncを更新します。
 }
 ```
 
-### 58. スタッフマスター削除
+### 62. スタッフマスター削除
 
 **DELETE** `/api/v1/tenants/{tenant_id}/staff/{staff_id}`
 

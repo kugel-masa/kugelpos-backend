@@ -22,7 +22,7 @@
       "file": "master-data.json",
       "title": "KugelPOS Master-Data Service",
       "version": "1.0.0",
-      "endpoints": 31
+      "endpoints": 33
     }
 ,
     {

@@ -154,9 +154,23 @@ POS画面のUI階層（カテゴリー/タブ/ボタン）を管理するドキ�
 | can_deposit_over | boolean | - | 預り金超過可能フラグ（デフォルト: false） |
 | can_change | boolean | - | お釣り可能フラグ（デフォルト: false） |
 | is_active | boolean | - | 有効フラグ（デフォルト: true） |
+| variants | PaymentVariant[] | - | 支払方法のサブコード（派生）の一覧（デフォルト: 空） |
 
 **インデックス:**
 - ユニーク: (tenant_id, payment_code)
+
+**PaymentVariant（内包）:** 支払方法の中での支払の分類（キャッシュレスの下のカードブランドなど、issue #311）。サブコードは識別だけを持ち、挙動は支払方法が持つ。
+
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|------|----------|-------------|
+| variant_code | string | ✓ | 自由形式（`^[A-Za-z0-9_-]{1,20}$`、大文字・小文字を区別）。支払方法の中で一意。変更不可 |
+| name | string | ✓ | 名前。サブコードで記帳した支払行の名前になる |
+| is_active | boolean | - | 停止中のサブコードは新しい支払を受けない（デフォルト: true） |
+| created_at / updated_at | datetime | - | 登録・最終更新の日時 |
+
+サブコードは `/tenants/{tenant_id}/payments/{payment_code}/variants` で登録・変更し、削除しない（使わなくなったら停止する）。支払方法の更新はサブコードを保ち、支払方法の削除でサブコードも消える。支払方法の中の一意性は索引ではなく、条件付きの 1 回の更新で守る。
+
+**配備の順序:** サブコードの登録は、commons・cart・report をサブコードを扱う版へ配備した後に行う。古い cart はサブコードを無視し、サブコードなしで記帳する。cart は支払マスタをキャッシュする（既定 600 秒）。変更をすぐに効かせるときは cart の `DELETE /api/v1/cache/master-data?namespace=payment_master`（特権の呼び出し元のみ）を使う。
 
 **cart での適用:**
 
@@ -169,6 +183,8 @@ POS画面のUI階層（カテゴリー/タブ/ボタン）を管理するドキ�
 | `can_refund` が false | - | その支払方法では返金できない（403014） |
 
 `limit_amount` が 0 以下のときは上限なしです。取消は元の支払いをそのまま戻すため、確かめません。通常は、現金で `can_deposit_over` と `can_change` を true にし、キャッシュレスでは false にします。
+
+**cart でのサブコードの扱い（issue #311）:** 支払はサブコードを指定できる。指定したサブコードはその支払方法の有効なサブコードでなければならない（無い 403018・停止中 403019）。指定しないとき、有効なサブコードが 1 件ならそれ、2 件以上なら拒否（403020）、0 件ならサブコードなしで記帳する。取消は売上時の支払種別（支払方法とサブコード）を売上時の金額で指定する。返品は売上時の支払種別（売上時の金額まで、超えると 403022）か現金（`01`）で返金し、それ以外は拒否する（403021）。
 
 ### 6. SettingsMasterDocument（設定マスター）
 
@@ -321,6 +337,18 @@ POS画面のUI階層（カテゴリー/タブ/ボタン）を管理するドキ�
 | canRefund | boolean | 返金可能フラグ |
 | canDepositOver | boolean | 預り金超過可能フラグ |
 | canChange | boolean | お釣り可能フラグ |
+| variants | PaymentVariantResponse[] | サブコードの一覧（コードの昇順、停止中も含む） |
+
+#### PaymentVariantResponse
+サブコードのレスポンス（issue #311）。
+
+| フィールド名（JSON） | 型 | 説明 |
+|-------------------|------|-------------|
+| variantCode | string | サブコード |
+| name | string | 名前 |
+| isActive | boolean | 有効フラグ |
+| entryDatetime | string | 登録日時 |
+| lastUpdateDatetime | string | 最終更新日時（変更されるまで null） |
 
 ### 設定管理スキーマ
 

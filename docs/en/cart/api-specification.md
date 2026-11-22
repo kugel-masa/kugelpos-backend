@@ -1037,7 +1037,8 @@ Processes one or more payment methods against the cart.
   {
     "paymentCode": "string",
     "amount": 0,
-    "detail": "string"
+    "detail": "string",
+    "variantCode": "string"
   }
 ]
 ```
@@ -1586,7 +1587,8 @@ the return itself is booked against the terminal performing it.
   {
     "paymentCode": "string",
     "amount": 0,
-    "detail": "string"
+    "detail": "string",
+    "variantCode": "string"
   }
 ]
 ```
@@ -1688,7 +1690,8 @@ The terminal making this request must match the terminal that created the transa
   {
     "paymentCode": "string",
     "amount": 0,
-    "detail": "string"
+    "detail": "string",
+    "variantCode": "string"
   }
 ]
 ```
