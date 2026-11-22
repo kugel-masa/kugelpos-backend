@@ -190,23 +190,11 @@ class ItemCommonMasterService:
             DocumentNotFoundException: If no item with the given code exists
         """
 
-        if is_logical:
-            exists = (
-                await self.item_common_master_repo.get_item_by_code_async(item_code=item_code, is_logical_deleted=False)
-                is not None
-            )
-        else:
-            # A physical delete also removes a logically deleted item, so look the
-            # code up whatever its is_deleted. The lookup answers a list, empty when
-            # nothing matches - never None (#312).
-            items = await self.item_common_master_repo.get_item_by_filter_async(
-                query_filter={"item_code": item_code}, limit=1, page=1, sort=None
-            )
-            exists = bool(items)
-
-        if not exists:
+        # The repository decides from its one write whether there was an item to
+        # delete, so a delete racing another one is answered 404, not 200 or 500.
+        # A physical delete also removes a logically deleted item (#312).
+        deleted = await self.item_common_master_repo.delete_item_async(item_code, is_logical)
+        if not deleted:
             message = f"item with item_code {item_code} not found"
             raise DocumentNotFoundException(message, logger)
-
-        await self.item_common_master_repo.delete_item_async(item_code, is_logical)
         return None

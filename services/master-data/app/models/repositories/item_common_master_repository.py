@@ -1,5 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
+
+from kugel_common.exceptions import RepositoryException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from kugel_common.utils.misc import get_app_time
@@ -187,32 +189,39 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         else:
             raise Exception(f"Failed to replace item with code {item_code}")
 
-    async def delete_item_async(self, item_code: str, is_logical: bool = False):
+    async def delete_item_async(self, item_code: str, is_logical: bool = False) -> bool:
         """
-        Delete an item from the database.
+        Delete an item from the database, in one write.
 
         This method supports both physical deletion and logical deletion (marking as deleted).
+        Whether the item existed is decided by that write alone, so two concurrent
+        deletes of one item cannot both succeed, and the second is answered as not
+        found rather than as a failure (#312).
 
         Args:
             item_code: Unique identifier for the item to delete
-            is_logical: If True, perform logical deletion instead of physical deletion
+            is_logical: If True, mark the item deleted instead of removing it
 
         Returns:
-            The deleted/updated item document
+            True when an item was deleted; False when there was none to delete (for a
+            logical delete, none that was not already deleted)
 
         Raises:
             RepositoryException: If there is an error during deletion
         """
-        filter = {"tenant_id": self.tenant_id, "item_code": item_code}
-
         if is_logical:
-            success = await self.update_one_async(filter, {"is_deleted": True})
-            if success:
-                return await self.get_item_by_code_async(item_code, is_logical_deleted=True)
-            else:
-                raise Exception(f"Failed to logically delete item with code {item_code}")
-        else:
-            return await self.delete_async(filter)
+            query_filter = {"tenant_id": self.tenant_id, "item_code": item_code, "is_deleted": {"$ne": True}}
+            return await self.update_one_async(query_filter, {"is_deleted": True})
+
+        if self.dbcollection is None:
+            await self.initialize()
+        query_filter = {"tenant_id": self.tenant_id, "item_code": item_code}
+        try:
+            response = await self.dbcollection.delete_one(query_filter, session=self.session)
+        except Exception as e:
+            message = f"Failed to delete item: item_code->{item_code}"
+            raise RepositoryException(message, self.collection_name, logger, e) from e
+        return response.deleted_count == 1
 
     async def get_item_count_by_filter_async(self, query_filter: dict) -> int:
         """

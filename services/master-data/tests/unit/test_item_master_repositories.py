@@ -351,37 +351,44 @@ class TestItemCommonMasterRepository:
 
     # -- delete_item_async: physical ------------------------------------------
 
+    @pytest.mark.parametrize("deleted_count,expected", [(1, True), (0, False)])
     @pytest.mark.asyncio
-    async def test_delete_item_physical(self):
+    async def test_delete_item_physical_is_one_delete(self, deleted_count, expected):
+        # One delete_one decides: an item removed by a concurrent request reads as
+        # nothing deleted, not as a failure (#312)
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        repo.dbcollection = MagicMock()
+        repo.dbcollection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=deleted_count))
+        repo.dbcollection.find_one = AsyncMock()
+
+        assert await repo.delete_item_async("I01", is_logical=False) is expected
+
+        repo.dbcollection.delete_one.assert_awaited_once()
+        assert repo.dbcollection.delete_one.await_args.args[0] == {"tenant_id": "T001", "item_code": "I01"}
+        repo.dbcollection.find_one.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_delete_item_physical_wraps_a_driver_error(self):
+        from kugel_common.exceptions import RepositoryException
+
+        repo = self._make_repo()
+        repo.dbcollection = MagicMock()
+        repo.dbcollection.delete_one = AsyncMock(side_effect=RuntimeError("down"))
+
+        with pytest.raises(RepositoryException):
             await repo.delete_item_async("I01", is_logical=False)
-            expected_filter = {"tenant_id": "T001", "item_code": "I01"}
-            mock_del.assert_awaited_once_with(expected_filter)
 
     # -- delete_item_async: logical -------------------------------------------
 
+    @pytest.mark.parametrize("updated", [True, False])
     @pytest.mark.asyncio
-    async def test_delete_item_logical(self):
-        from app.models.documents.item_common_master_document import ItemCommonMasterDocument
-
+    async def test_delete_item_logical_marks_only_an_item_not_yet_deleted(self, updated):
         repo = self._make_repo()
-        deleted_doc = ItemCommonMasterDocument(tenant_id="T001", item_code="I01", is_deleted=True)
-        with (
-            patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_upd,
-            patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=deleted_doc),
-        ):
-            result = await repo.delete_item_async("I01", is_logical=True)
-            expected_filter = {"tenant_id": "T001", "item_code": "I01"}
-            mock_upd.assert_awaited_once_with(expected_filter, {"is_deleted": True})
-            assert result.is_deleted is True
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=updated) as mock_upd:
+            assert await repo.delete_item_async("I01", is_logical=True) is updated
 
-    @pytest.mark.asyncio
-    async def test_delete_item_logical_raises_on_failure(self):
-        repo = self._make_repo()
-        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to logically delete item"):
-                await repo.delete_item_async("I01", is_logical=True)
+        expected_filter = {"tenant_id": "T001", "item_code": "I01", "is_deleted": {"$ne": True}}
+        mock_upd.assert_awaited_once_with(expected_filter, {"is_deleted": True})
 
     # -- get_item_count_by_filter_async ---------------------------------------
 

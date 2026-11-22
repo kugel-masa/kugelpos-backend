@@ -69,7 +69,13 @@ def _emitted(caplog) -> str:
 
 @pytest.mark.asyncio
 class TestTheGenericCreatePath:
-    """The create path every master shares - so it handles a staff pin too."""
+    """The create path every master shares - so it handles a staff pin too.
+
+    The duplicate and failure cases put the document into a message, so they are
+    what catches a mask that stops working. kugel_common logs nothing on a
+    successful or unacknowledged insert today; those two cases guard against a
+    log line that is added there later without the mask.
+    """
 
     async def test_a_successful_create_does_not_report_the_pin(self, caplog):
         with caplog.at_level(logging.DEBUG):
