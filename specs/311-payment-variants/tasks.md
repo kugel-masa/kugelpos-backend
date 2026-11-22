@@ -171,7 +171,7 @@ description: "Task list for 311-payment-variants"
 - [X] T052 リリースノートの下書きを PR の説明に書く: (1) 返品の返金手段が売上時の支払種別と現金に限られる（既存の動作の変更・403021）、(2) 返品の売上時の金額の上限（403022）、(3) サブコードの登録は commons・cart・report の配備後に行うこと（research R-14）、(4) 支払レポートが支払マスタを全ページ読むようになったこと
 - [X] T053 `./scripts/run_unit_tests.sh`・`./scripts/run_integration_tests.sh`・`./scripts/run_e2e_tests.sh` を通す（cart の e2e は既定の `CART_REQUEST_SNAPSHOT_MODE=DUAL`）。通らないものは結果を記録して原因を直す。あわせて、e2e で記帳した取引が journal に保存された取引ログで `variant_code`・`builtin_description` を保っていることを確かめる（spec「影響するサービス」の journal の確認）
 - [X] T054 quickstart.md の手順を起動中の環境で一通り実行し、記述と動作が合わなければ quickstart.md を直す
-- [ ] T055 Issue #311 の本文を、取消・返品の規則（売上時の支払種別・現金・上限）と配備の順序に合わせて更新する（利用者の確認を取ってから）
+- [X] T055 Issue #311 の本文を、取消・返品の規則（売上時の支払種別・現金・上限）と配備の順序に合わせて更新する（利用者の確認を取ってから）
 
 ---
 
