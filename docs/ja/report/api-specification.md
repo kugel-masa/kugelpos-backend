@@ -144,7 +144,7 @@
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -201,7 +201,7 @@
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -345,14 +345,16 @@
 
 ```json
 {
-  "tenantId": "T001", "storeCode": "5678", "terminalNo": null,
-  "businessDate": "20261123", "reportScope": "flash", "reportType": "payment",
+  "tenantId": "T001", "storeCode": "5678", "storeName": null, "terminalNo": null,
+  "businessDate": "20261123", "businessDateFrom": null, "businessDateTo": null,
+  "openCounter": null, "businessCounter": null, "reportScope": "flash", "reportType": "payment",
   "paymentSummary": [
     {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
      "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
   ],
   "total": {"count": 2, "amount": 3300.0},
-  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00+09:00"
+  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00.123456+09:00",
+  "staff": null
 }
 ```
 

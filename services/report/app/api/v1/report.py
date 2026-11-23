@@ -107,7 +107,7 @@ async def get_report_for_store(
     store_code: str = Path(...),
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
     report_scope: str = Query(..., description="Scope of the report: flash, daily"),
-    report_type: str = Query(..., description="Type of the report: sales, category, item"),
+    report_type: str = Query(..., description="Type of the report: sales, category, item, payment, promotion"),
     business_date: str = Query(None, description="Business date for flash and daily (single date or ignored if date range is specified)"),
     business_date_from: str = Query(None, description="Start date for date range (YYYYMMDD format)"),
     business_date_to: str = Query(None, description="End date for date range (YYYYMMDD format)"),
@@ -132,7 +132,7 @@ async def get_report_for_store(
         store_code: The store code to generate a report for
         terminal_id: The terminal ID when using API key authentication
         report_scope: The time scope of the report (flash or daily)
-        report_type: The type of report to generate (sales, category, item)
+        report_type: The type of report to generate (sales, category, item, payment, promotion)
         business_date: The business date in YYYYMMDD format
         open_counter: Optional counter for the specific terminal session
         business_counter: Optional business counter for the report
@@ -213,8 +213,13 @@ async def get_report_for_store(
             return_report = transformer.transform_payment_report_response(report_doc)
         elif isinstance(report_doc, PromotionReportDocument):
             return_report = transformer.transform_promotion_report_response(report_doc)
+        elif isinstance(report_doc, dict) and report_type == "payment":
+            # A plugin answering a dict still gets the payment response shape (#329)
+            return_report = transformer.transform_payment_report_dict(report_doc)
+        elif isinstance(report_doc, dict) and report_type == "promotion":
+            return_report = transformer.transform_promotion_report_dict(report_doc)
         elif isinstance(report_doc, dict):
-            # Legacy: Payment report returns a dict directly
+            # Legacy: a plugin answering a dict directly
             return_report = report_doc
         else:
             return_report = transformer.transform_sales_report_response(report_doc)
@@ -275,7 +280,7 @@ async def get_report_for_terminal(
     terminal_no: int = Path(...),
     terminal_id: str = Query(None, description="Terminal ID for api_key, None for token"),
     report_scope: str = Query(..., description="Scope of the report: flash, daily"),
-    report_type: str = Query(..., description="Type of the report: sales, category, item"),
+    report_type: str = Query(..., description="Type of the report: sales, category, item, payment, promotion"),
     business_date: str = Query(None, description="Business date for flash and daily (single date or ignored if date range is specified)"),
     business_date_from: str = Query(None, description="Start date for date range (YYYYMMDD format)"),
     business_date_to: str = Query(None, description="End date for date range (YYYYMMDD format)"),
@@ -300,7 +305,7 @@ async def get_report_for_terminal(
         store_code: The store code
         terminal_no: The terminal number to generate a report for
         report_scope: The time scope of the report (flash or daily)
-        report_type: The type of report to generate (sales, category, item)
+        report_type: The type of report to generate (sales, category, item, payment, promotion)
         business_date: The business date in YYYYMMDD format
         open_counter: Optional counter for the specific terminal session
         business_counter: Optional business counter for the report
@@ -388,8 +393,13 @@ async def get_report_for_terminal(
             return_report = transformer.transform_payment_report_response(report_doc)
         elif isinstance(report_doc, PromotionReportDocument):
             return_report = transformer.transform_promotion_report_response(report_doc)
+        elif isinstance(report_doc, dict) and report_type == "payment":
+            # A plugin answering a dict still gets the payment response shape (#329)
+            return_report = transformer.transform_payment_report_dict(report_doc)
+        elif isinstance(report_doc, dict) and report_type == "promotion":
+            return_report = transformer.transform_promotion_report_dict(report_doc)
         elif isinstance(report_doc, dict):
-            # Legacy: Payment report returns a dict directly
+            # Legacy: a plugin answering a dict directly
             return_report = report_doc
         else:
             return_report = transformer.transform_sales_report_response(report_doc)

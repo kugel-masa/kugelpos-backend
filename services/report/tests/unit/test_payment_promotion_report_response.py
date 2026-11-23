@@ -49,3 +49,40 @@ def test_the_promotion_report_response_is_camel_case_with_its_rows():
     }]
     assert (data["totalGrossAmount"], data["totalTransactionCount"], data["reportType"]) == (1000.0, 2, "promotion")
     assert not {"shardKey", "etag", "createdAt", "updatedAt", "shard_key"} & set(data)
+
+
+def test_a_promotion_document_without_a_list_still_answers():
+    doc = PromotionReportDocument(tenant_id="T1", store_code="S1", report_scope="flash", promotions=None)
+
+    data = SchemasTransformerV1().transform_promotion_report_response(doc).model_dump(by_alias=True)
+
+    assert data["promotions"] is None
+
+
+def test_v1_transformers_answer_the_v1_classes():
+    from app.api.v1.schemas import PaymentReportResponse, PromotionReportResponse
+
+    payment = PaymentReportDocument(tenant_id="T1", store_code="S1", report_scope="flash",
+                                    total=PaymentReportDocument.PaymentTotal(count=0, amount=0.0))
+    promotion = PromotionReportDocument(tenant_id="T1", store_code="S1", report_scope="flash")
+
+    assert type(SchemasTransformerV1().transform_payment_report_response(payment)) is PaymentReportResponse
+    assert type(SchemasTransformerV1().transform_promotion_report_response(promotion)) is PromotionReportResponse
+
+
+def test_a_plugin_answering_a_dict_gets_the_same_shape():
+    payment = PaymentReportDocument(
+        shard_key="T1_S1", tenant_id="T1", store_code="S1", report_scope="flash",
+        payment_summary=[PaymentReportDocument.PaymentSummaryItem(
+            payment_code="01", payment_name="Cash", count=1, amount=100.0, ratio=100.0)],
+        total=PaymentReportDocument.PaymentTotal(count=1, amount=100.0),
+    ).model_dump()
+    promotion = PromotionReportDocument(shard_key="T1_S1", tenant_id="T1", report_scope="flash").model_dump()
+
+    transformer = SchemasTransformerV1()
+    paid = transformer.transform_payment_report_dict(payment).model_dump(by_alias=True)
+    promoted = transformer.transform_promotion_report_dict(promotion).model_dump(by_alias=True)
+
+    assert paid["paymentSummary"][0]["paymentName"] == "Cash"
+    assert "shardKey" not in paid and "shard_key" not in paid
+    assert promoted["reportType"] == "promotion" and "shardKey" not in promoted

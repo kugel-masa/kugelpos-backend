@@ -28,7 +28,17 @@ class SchemasTransformerV1(SchemasTransformer):
         return super().transform_item_report_response(report_doc)
 
     def transform_payment_report_response(self, report_doc: PaymentReportDocument) -> PaymentReportResponse:
-        return PaymentReportResponse.model_validate(report_doc.model_dump())
+        return PaymentReportResponse.model_validate(super().transform_payment_report_response(report_doc).model_dump())
 
     def transform_promotion_report_response(self, report_doc: PromotionReportDocument) -> PromotionReportResponse:
-        return PromotionReportResponse.model_validate(report_doc.model_dump())
+        return PromotionReportResponse.model_validate(
+            super().transform_promotion_report_response(report_doc).model_dump()
+        )
+
+    def transform_payment_report_dict(self, report: dict) -> PaymentReportResponse:
+        """A payment report a plugin answered as a dict, in the same shape as a document's (#329)."""
+        return PaymentReportResponse.model_validate(report)
+
+    def transform_promotion_report_dict(self, report: dict) -> PromotionReportResponse:
+        """A promotion report a plugin answered as a dict, in the same shape as a document's (#329)."""
+        return PromotionReportResponse.model_validate(report)

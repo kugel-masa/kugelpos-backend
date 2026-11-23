@@ -319,7 +319,8 @@ class BasePromotionReportResponse(BaseSchemaModel):
     business_counter: Optional[int] = None
     report_scope: Optional[str] = None
     report_type: Optional[str] = "promotion"
-    promotions: list[PromotionReportItem] = Field(default_factory=list)
+    # Optional like the document's field, so a document the maker accepted always answers
+    promotions: Optional[list[PromotionReportItem]] = Field(default_factory=list)
     total_gross_amount: Optional[float] = 0.0
     total_discount_amount: Optional[float] = 0.0
     total_net_amount: Optional[float] = 0.0
