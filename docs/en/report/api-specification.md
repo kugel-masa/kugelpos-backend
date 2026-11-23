@@ -140,7 +140,7 @@ being created. This ensures only authorized users can set up tenant resources.
 Get a report for the entire store.
 
 This endpoint requires either a JWT token or an API key with terminal_id.
-It provides different types of reports (sales, category, item) at different
+It provides different types of reports (sales, category, item, payment, promotion) at different
 scopes (flash, daily) for the specified store.
 
 **Path Parameters:**
@@ -156,7 +156,7 @@ scopes (flash, daily) for the specified store.
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -200,7 +200,7 @@ Give `business_date`, or a range by both `business_date_from` and `business_date
 Get a report for a specific terminal.
 
 This endpoint requires either a JWT token or an API key with terminal_id.
-It provides different types of reports (sales, category, item) at different
+It provides different types of reports (sales, category, item, payment, promotion) at different
 scopes (flush, daily) for the specified terminal.
 
 **Path Parameters:**
@@ -217,7 +217,7 @@ scopes (flush, daily) for the specified terminal.
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -367,6 +367,27 @@ to the 'topic-tranlog' topic in the 'pubsub-tranlog-report' component.
 | Payment method name (payment report) | master-data's current name; else the newest `builtin_description` of the method's payment lines in the period; else `Cash` / `Cashless` / `Others` for `01` / `11` / `12`; else `Payment {code}`. |
 
 A master renamed or deleted after the sale therefore keeps its name in past reports, except a category renamed since, which shows its current name.
+
+### Payment and promotion report responses (issue #329)
+
+Like the sales, category and item reports, the payment and promotion reports answer camelCase and leave out the stored document's internal fields (`shard_key`, `etag`, `created_at`, `updated_at`). Before #329 they answered the stored document as-is, in snake_case.
+
+```json
+{
+  "tenantId": "T001", "storeCode": "5678", "storeName": null, "terminalNo": null,
+  "businessDate": "20261123", "businessDateFrom": null, "businessDateTo": null,
+  "openCounter": null, "businessCounter": null, "reportScope": "flash", "reportType": "payment",
+  "paymentSummary": [
+    {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
+     "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
+  ],
+  "total": {"count": 2, "amount": 3300.0},
+  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00.123456+09:00",
+  "staff": null
+}
+```
+
+The promotion report answers `promotions[]` (`promotionCode`, `promotionType`, `grossAmount`, `discountAmount`, `netAmount`, `quantity`, `transactionCount`) and `totalGrossAmount`, `totalDiscountAmount`, `totalNetAmount`, `totalQuantity`, `totalTransactionCount`.
 
 ## Error Codes
 

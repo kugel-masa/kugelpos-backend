@@ -144,7 +144,7 @@
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -201,7 +201,7 @@
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
+| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -338,6 +338,27 @@
 | 支払方法名（支払レポート） | master-data の今の名前。なければ、期間内でいちばん新しい支払明細の `builtin_description`。それもなければ `01` / `11` / `12` に `Cash` / `Cashless` / `Others`、それ以外は `Payment {code}` |
 
 そのため、売ったあとに名前を変えたり削除したりしたマスタも、過去のレポートで名前が出る。ただし、あとから名前を変えた分類は、今の名前で出る。
+
+### 支払・プロモーションのレポートの応答（#329）
+
+売上・分類別・商品別のレポートと同じく、支払とプロモーションのレポートも camelCase で応答し、保存している文書の内部の項目（`shard_key`・`etag`・`created_at`・`updated_at`）は返さない。#329 より前は、保存している文書をそのまま snake_case で返していた。
+
+```json
+{
+  "tenantId": "T001", "storeCode": "5678", "storeName": null, "terminalNo": null,
+  "businessDate": "20261123", "businessDateFrom": null, "businessDateTo": null,
+  "openCounter": null, "businessCounter": null, "reportScope": "flash", "reportType": "payment",
+  "paymentSummary": [
+    {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
+     "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
+  ],
+  "total": {"count": 2, "amount": 3300.0},
+  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00.123456+09:00",
+  "staff": null
+}
+```
+
+プロモーションのレポートは、`promotions[]`（`promotionCode`・`promotionType`・`grossAmount`・`discountAmount`・`netAmount`・`quantity`・`transactionCount`）と、`totalGrossAmount`・`totalDiscountAmount`・`totalNetAmount`・`totalQuantity`・`totalTransactionCount` を返す。
 
 ## エラーコード
 

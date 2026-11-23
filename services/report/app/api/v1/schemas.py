@@ -73,3 +73,23 @@ class ItemReportResponse(BaseItemReportResponse):
     """
 
     pass
+
+
+class PaymentReportResponse(BasePaymentReportResponse):
+    """
+    Payment report response model for API version 1 (issue #329).
+
+    Currently inherits all functionality from BasePaymentReportResponse.
+    """
+
+    pass
+
+
+class PromotionReportResponse(BasePromotionReportResponse):
+    """
+    Promotion report response model for API version 1 (issue #329).
+
+    Currently inherits all functionality from BasePromotionReportResponse.
+    """
+
+    pass

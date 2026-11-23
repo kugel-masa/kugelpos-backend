@@ -133,3 +133,33 @@ async def test_get_terminal_reports_empty(http_client, admin_header):
         headers=admin_header,
     )
     assert response.status_code == status.HTTP_200_OK, response.text
+
+
+INTERNAL_DOCUMENT_FIELDS = {"shard_key", "shardKey", "etag", "created_at", "createdAt", "updated_at", "updatedAt"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["stores/5678/reports", "stores/5678/terminals/9/reports"], ids=["store", "terminal"])
+@pytest.mark.parametrize(
+    "report_type, list_key, total_keys",
+    [
+        ("payment", "paymentSummary", {"total", "reportScope", "reportType"}),
+        ("promotion", "promotions", {"totalGrossAmount", "totalDiscountAmount", "reportScope", "reportType"}),
+    ],
+)
+async def test_payment_and_promotion_reports_answer_camel_case(
+    http_client, admin_header, path, report_type, list_key, total_keys
+):
+    """Issue #329: like the other reports, camelCase and no stored-document fields."""
+    tenant_id = os.environ.get("TENANT_ID")
+    response = await http_client.get(
+        f"/api/v1/tenants/{tenant_id}/{path}",
+        params={"report_scope": "flash", "report_type": report_type, "business_date": get_app_time().strftime("%Y%m%d")},
+        headers=admin_header,
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.text
+    data = response.json()["data"]
+    assert {list_key, "tenantId", "storeCode", *total_keys} <= set(data)
+    assert not [key for key in data if "_" in key], data.keys()
+    assert not INTERNAL_DOCUMENT_FIELDS & set(data)

@@ -5,6 +5,8 @@ from app.api.common.schemas import *
 from app.models.documents.sales_report_document import SalesReportDocument
 from app.models.documents.category_report_document import CategoryReportDocument
 from app.models.documents.item_report_document import ItemReportDocument
+from app.models.documents.payment_report_document import PaymentReportDocument
+from app.models.documents.promotion_report_document import PromotionReportDocument
 
 logger = getLogger(__name__)
 
@@ -253,3 +255,34 @@ class SchemasTransformer:
             receipt_text=report_doc.receipt_text,
             journal_text=report_doc.journal_text,
         )
+
+    def transform_payment_report_response(self, report_doc: PaymentReportDocument) -> BasePaymentReportResponse:
+        """
+        Transform a payment report document into the payment report response schema.
+
+        The response answers camelCase like the other reports; the document's
+        internal fields (shard_key, etag, created_at, updated_at) are not
+        carried over (issue #329).
+
+        Args:
+            report_doc: The payment report document to transform
+
+        Returns:
+            BasePaymentReportResponse: API response with the payment report data
+        """
+        return BasePaymentReportResponse.model_validate(report_doc.model_dump())
+
+    def transform_promotion_report_response(self, report_doc: PromotionReportDocument) -> BasePromotionReportResponse:
+        """
+        Transform a promotion report document into the promotion report response schema.
+
+        Answers camelCase and leaves out the document's internal fields, as the
+        payment report does (issue #329).
+
+        Args:
+            report_doc: The promotion report document to transform
+
+        Returns:
+            BasePromotionReportResponse: API response with the promotion report data
+        """
+        return BasePromotionReportResponse.model_validate(report_doc.model_dump())
