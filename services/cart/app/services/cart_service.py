@@ -179,8 +179,8 @@ class CartService(ICartService):
             logger.debug(f"payment_strategies: {self.payment_strategies}")
 
         except Exception as e:
-            message = f"Failed to load strategies: {e}"
-            raise StrategyPluginException(message, logger) from e
+            message = "Failed to load strategies"
+            raise StrategyPluginException(message, logger, e) from e
 
     # Get current cart information
     def get_current_cart(self) -> CartDocument:
@@ -282,7 +282,7 @@ class CartService(ICartService):
         try:
             promotion_master = await self.promotion_master_repo.get_active_promotions_by_store_async()
         except Exception as e:
-            message = f"Failed to get promotion master data: {e}"
+            message = "Failed to get promotion master data"
             raise CartCannotCreateException(message, logger, e) from e
 
         # Create new cart

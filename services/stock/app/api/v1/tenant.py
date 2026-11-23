@@ -9,6 +9,7 @@ from kugel_common.status_codes import StatusCodes
 
 from app.database import database_setup
 from app.api.v1.schemas import *
+from kugel_common.utils.log_utils import describe_exception
 
 # Create a router instance for tenant-related endpoints
 router = APIRouter()
@@ -56,7 +57,7 @@ async def create_tenant(
         await database_setup.execute(tenant_id=tenant_id)
 
     except Exception as e:
-        message = f"Error creating tenant: {tenant_id} : {e}"
+        message = f"Error creating tenant: {tenant_id} : {describe_exception(e)}"
         logger.error(message)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
 

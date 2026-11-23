@@ -61,7 +61,9 @@ def test_exception_with_original_exception(class_name, expected_code, expected_s
     exc = exc_class("wrapper message", original_exception=orig)
 
     assert exc.original_exception is orig
-    assert "original cause" in exc.message
+    # The original's text goes to the log only, not to the response (#318)
+    assert exc.message == "wrapper message"
+    assert exc.log_message == "wrapper message: ValueError: original cause"
 
 
 @pytest.mark.parametrize("class_name,expected_code,expected_status", EXCEPTION_TEST_CASES)

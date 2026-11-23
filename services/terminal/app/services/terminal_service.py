@@ -322,7 +322,7 @@ class TerminalService:
             staff = await self.staff_master_repo.get_staff_by_id_async(staff_id)
             terminal.staff = staff
         except NotFoundException as e:
-            message = f"Staff not found: {staff_id}: {e} : logger -> {logger}"
+            message = f"Staff not found: {staff_id}"
             raise SignInOutException(message=message, logger=logger, original_exception=e)
 
         result = await self.terminal_info_repo.replace_terminal_info_async(self.terminal_id, terminal)
@@ -1026,8 +1026,8 @@ class TerminalService:
         try:
             return await self.terminal_log_delivery_status_repo.mark_handed_off(event_id=event_id)
         except Exception as e:
-            message = f"Error updating delivery status: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error updating delivery status"
+            raise InternalErrorException(message, logger, e) from e
 
     async def _update_delivery_status_internal_async(
         self, event_id: str, status: str, service_name: str = None, message: str = None
@@ -1057,8 +1057,8 @@ class TerminalService:
                 )
             return result
         except Exception as e:
-            message = f"Error updating delivery status: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error updating delivery status"
+            raise InternalErrorException(message, logger, e) from e
 
     async def update_delivery_status_async(self, event_id: str, status: str, service_name: str, message: str) -> None:
         """

@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 from kugel_common.exceptions.error_codes import ErrorCode, ErrorMessage
+from kugel_common.utils.log_utils import describe_exception
 
 """
 Application Base Layer Exceptions
@@ -35,9 +36,9 @@ class AppException(Exception):
         Constructor for AppException
         
         Parameters:
-            message: str - System-level message for logging purposes
+            message: str - System-level message, logged and returned as the response's message
             logger: logging.Logger - The logger to use (uses default if None)
-            original_exception: Exception - The original exception that was caught
+            original_exception: Exception - The original exception that was caught; logged only, described by describe_exception
             error_code: str - User-facing error code (included in API response)
             user_message: str - User-facing error message (included in API response)
             status_code: int - HTTP status code (included in API response)
@@ -49,16 +50,20 @@ class AppException(Exception):
         self.user_message = user_message
         self.status_code = status_code
         
+        # The response carries only this exception's own message. The original
+        # exception goes to the log, described without the values a validator
+        # or the driver echoes back (#318).
         log_message = message
         if original_exception:
-            log_message = f"{log_message}: {original_exception}"
-            
+            log_message = f"{log_message}: {describe_exception(original_exception)}"
+
         if logger is None:
             self.default_logger.log(log_level, log_message)
         else:
             logger.log(log_level, log_message)
 
-        self.message = log_message
+        self.message = message
+        self.log_message = log_message
     
     def get_user_error(self):
         """

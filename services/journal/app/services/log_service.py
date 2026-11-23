@@ -16,6 +16,7 @@ from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepos
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.services.journal_service import JournalService
 from app.models.documents.jornal_document import JournalDocument
+from kugel_common.utils.log_utils import describe_exception
 
 logger = getLogger(__name__)
 
@@ -133,7 +134,7 @@ class LogService:
                     continue
                 if await self.__stored_by_another_delivery_async(tran):
                     return tran
-                message = f"Failed to create transaction log & journal: {e}"
+                message = f"Failed to create transaction log & journal: {describe_exception(e)}"
                 logger.error(message)
                 await send_fatal_error_notification(
                     message=message, error=e, service="journal", context=tran.model_dump()
@@ -226,7 +227,7 @@ class LogService:
                 return return_cashlog
             except Exception as e:
                 await self.cash_in_out_log_repository.abort_transaction()
-                message = f"Failed to create cash in/out log & journal: {e}"
+                message = f"Failed to create cash in/out log & journal: {describe_exception(e)}"
                 logger.error(message)
                 await send_fatal_error_notification(
                     message=message, error=e, service="journal", context=cashlog.model_dump()
@@ -278,7 +279,7 @@ class LogService:
                 return return_open_close_log
             except Exception as e:
                 await self.open_close_log_repository.abort_transaction()
-                message = f"Failed to create open/close log & journal: {e}"
+                message = f"Failed to create open/close log & journal: {describe_exception(e)}"
                 logger.error(message)
                 await send_fatal_error_notification(
                     message=message, error=e, service="journal", context=open_close_log.model_dump()

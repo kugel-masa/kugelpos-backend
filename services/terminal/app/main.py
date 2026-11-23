@@ -33,6 +33,7 @@ from app.config.settings import settings
 from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.terminal import router as v1_terminal_router
 from app.api.v1.auth import router as v1_auth_router
+from kugel_common.utils.log_utils import describe_exception
 from app.cron.republish_undelivery_message import (
     start_republish_undelivered_terminallog_job,
     shutdown_republish_undelivered_terminallog_job,
@@ -197,7 +198,7 @@ async def health_check():
         background_jobs_health = ComponentHealth(
             status=HealthStatus.UNHEALTHY,
             details={"error": str(e)},
-            error=f"Failed to check scheduler status: {str(e)}",
+            error=f"Failed to check scheduler status: {describe_exception(e)}",
         )
 
     # Build health check response

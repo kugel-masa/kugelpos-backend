@@ -137,8 +137,8 @@ class TranService:
             )
             logger.debug(f"receipt_data_strategy default: {self.receipt_data_strategy}")
         except Exception as e:
-            message = f"Error loading receipt_data strategies: {e}"
-            raise StrategyPluginException(message, logger) from e
+            message = "Error loading receipt_data strategies"
+            raise StrategyPluginException(message, logger, e) from e
 
     def convert_datetime(self, obj):
         """
@@ -311,8 +311,8 @@ class TranService:
         try:
             print_data = self.receipt_data_strategy.make_receipt_data(tranlog)
         except Exception as e:
-            message = f"Error making receipt data: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error making receipt data"
+            raise InternalErrorException(message, logger, e) from e
         tranlog.receipt_text = print_data.receipt_text
         tranlog.journal_text = print_data.journal_text
 
@@ -380,8 +380,8 @@ class TranService:
                 return self.__apply_tranlog_to_cart(cart, existing)
             # The duplicate was on some other unique index (not the cart_id race) —
             # surface it as a real failure.
-            message = f"Error creating tranlog: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error creating tranlog"
+            raise InternalErrorException(message, logger, e) from e
         except Exception as e:
             # The duplicate does not always surface at the insert (issue #172): with
             # two identical finalizes in flight the loser's insert is buffered and
@@ -402,8 +402,8 @@ class TranService:
                     await self.__report_finalize_repeat_async(tranlog, existing, carried)
                     reported = True
                 return self.__apply_tranlog_to_cart(cart, existing)
-            message = f"Error creating tranlog: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error creating tranlog"
+            raise InternalErrorException(message, logger, e) from e
         finally:
             # clear session
             self.tranlog_repository.set_session(session=None)
@@ -759,8 +759,8 @@ class TranService:
         try:
             print_data = self.receipt_data_strategy.make_receipt_data(tran)
         except Exception as e:
-            message = f"Error making receipt data: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error making receipt data"
+            raise InternalErrorException(message, logger, e) from e
         tran.receipt_text = print_data.receipt_text
         tran.journal_text = print_data.journal_text
 
@@ -794,8 +794,8 @@ class TranService:
             await self.tranlog_repository.commit_transaction()
         except Exception as e:
             await self.tranlog_repository.abort_transaction()
-            message = f"Error creating tranlog: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error creating tranlog"
+            raise InternalErrorException(message, logger, e) from e
         finally:
             # clear session
             self.tranlog_repository.set_session(session=None)
@@ -1092,8 +1092,8 @@ class TranService:
             await self.tranlog_repository.commit_transaction()
         except Exception as e:
             await self.tranlog_repository.abort_transaction()
-            message = f"Error creating tranlog: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error creating tranlog"
+            raise InternalErrorException(message, logger, e) from e
         finally:
             # clear session
             self.tranlog_repository.set_session(session=None)
@@ -1495,8 +1495,8 @@ class TranService:
         try:
             return await self.tranlog_delivery_status_repo.mark_handed_off(event_id=event_id)
         except Exception as e:
-            message = f"Error updating delivery status: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error updating delivery status"
+            raise InternalErrorException(message, logger, e) from e
 
     async def _update_delivery_status_internal_async(
         self, event_id: str, status: str, service_name: str = None, message: str = None
@@ -1526,8 +1526,8 @@ class TranService:
                 )
             return result
         except Exception as e:
-            message = f"Error updating delivery status: {e}"
-            raise InternalErrorException(message, logger) from e
+            message = "Error updating delivery status"
+            raise InternalErrorException(message, logger, e) from e
 
     async def update_delivery_status_async(self, event_id: str, status: str, service_name: str, message: str) -> None:
         """

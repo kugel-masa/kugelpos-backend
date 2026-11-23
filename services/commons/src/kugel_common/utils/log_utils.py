@@ -530,3 +530,43 @@ def sanitize_log_body(
         # The body is unloggable (unserializable member, pathological nesting).
         # Losing it is acceptable; losing the request is not.
         return {"_sanitize_failed": True}
+
+
+def describe_exception(exc: BaseException) -> str:
+    """
+    Describe an exception for a log line without the values it echoes.
+
+    Most exceptions' text is what a log needs to find the fault. Two kinds
+    repeat the data they were handed, and that data can be a credential:
+
+    - A Pydantic ``ValidationError`` echoes each offending value
+      (``input_value=...``). It is described by its masked ``errors()``.
+    - A pymongo ``OperationFailure`` (``DuplicateKeyError``, ``WriteError``,
+      ``BulkWriteError`` among them) echoes the server's error document, which
+      for a duplicate key holds the key and its value (``dup key: {...}``). It
+      is described by its type, code and code name only.
+
+    Anything else is described by its type and text, as before (#318).
+
+    Never raises: this runs on error paths.
+
+    Args:
+        exc: The exception to describe
+
+    Returns:
+        str: ``TypeName: detail``
+    """
+    name = type(exc).__name__
+    try:
+        from pydantic import ValidationError
+
+        if isinstance(exc, ValidationError):
+            return f"{name}: {mask_validation_error_details(exc.errors())}"
+        from pymongo.errors import OperationFailure
+
+        if isinstance(exc, OperationFailure):
+            code_name = (exc.details or {}).get("codeName") if isinstance(exc.details, dict) else None
+            return f"{name}: code->{exc.code}, codeName->{code_name}"
+        return f"{name}: {exc}"
+    except Exception:
+        return f"<undescribable {name}>"

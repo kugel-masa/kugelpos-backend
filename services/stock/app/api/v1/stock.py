@@ -628,7 +628,7 @@ async def _notify_pubsub_status_tranlog_async(tran_dict: dict, status: str, mess
     except Exception as e:
         logger.error(f"Failed to notify cart service: {e}")
         raise ExternalServiceError(
-            message=f"Failed to notify cart service: {str(e)}", logger=logger, original_exception=e
+            message="Failed to notify cart service", logger=logger, original_exception=e
         )
 
 

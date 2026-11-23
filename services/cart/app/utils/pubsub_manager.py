@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 from kugel_common.utils.dapr_client_helper import DaprClientHelper
 from app.config.settings import settings
 from app.exceptions import ExternalServiceException
+from kugel_common.utils.log_utils import describe_exception
 
 logger = getLogger(__name__)
 
@@ -56,7 +57,7 @@ class PubsubManager:
                 return False, error_message
 
         except Exception as e:
-            error_message = f"Failed to publish message: {e}"
+            error_message = f"Failed to publish message: {describe_exception(e)}"
             logger.error(error_message)
             return False, error_message
 
