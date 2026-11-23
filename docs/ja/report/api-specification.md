@@ -339,6 +339,25 @@
 
 そのため、売ったあとに名前を変えたり削除したりしたマスタも、過去のレポートで名前が出る。ただし、あとから名前を変えた分類は、今の名前で出る。
 
+### 支払・プロモーションのレポートの応答（#329）
+
+売上・分類別・商品別のレポートと同じく、支払とプロモーションのレポートも camelCase で応答し、保存している文書の内部の項目（`shard_key`・`etag`・`created_at`・`updated_at`）は返さない。#329 より前は、保存している文書をそのまま snake_case で返していた。
+
+```json
+{
+  "tenantId": "T001", "storeCode": "5678", "terminalNo": null,
+  "businessDate": "20261123", "reportScope": "flash", "reportType": "payment",
+  "paymentSummary": [
+    {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
+     "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
+  ],
+  "total": {"count": 2, "amount": 3300.0},
+  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00+09:00"
+}
+```
+
+プロモーションのレポートは、`promotions[]`（`promotionCode`・`promotionType`・`grossAmount`・`discountAmount`・`netAmount`・`quantity`・`transactionCount`）と、`totalGrossAmount`・`totalDiscountAmount`・`totalNetAmount`・`totalQuantity`・`totalTransactionCount` を返す。
+
 ## エラーコード
 
 エラーレスポンスは以下の形式で返されます：

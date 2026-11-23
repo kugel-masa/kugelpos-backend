@@ -368,6 +368,25 @@ to the 'topic-tranlog' topic in the 'pubsub-tranlog-report' component.
 
 A master renamed or deleted after the sale therefore keeps its name in past reports, except a category renamed since, which shows its current name.
 
+### Payment and promotion report responses (issue #329)
+
+Like the sales, category and item reports, the payment and promotion reports answer camelCase and leave out the stored document's internal fields (`shard_key`, `etag`, `created_at`, `updated_at`). Before #329 they answered the stored document as-is, in snake_case.
+
+```json
+{
+  "tenantId": "T001", "storeCode": "5678", "terminalNo": null,
+  "businessDate": "20261123", "reportScope": "flash", "reportType": "payment",
+  "paymentSummary": [
+    {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
+     "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
+  ],
+  "total": {"count": 2, "amount": 3300.0},
+  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00+09:00"
+}
+```
+
+The promotion report answers `promotions[]` (`promotionCode`, `promotionType`, `grossAmount`, `discountAmount`, `netAmount`, `quantity`, `transactionCount`) and `totalGrossAmount`, `totalDiscountAmount`, `totalNetAmount`, `totalQuantity`, `totalTransactionCount`.
+
 ## Error Codes
 
 Error responses are returned in the following format:

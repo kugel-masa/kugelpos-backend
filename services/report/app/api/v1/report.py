@@ -209,10 +209,10 @@ async def get_report_for_store(
         elif isinstance(report_doc, CategoryReportDocument):
             return_report = transformer.transform_category_report_response(report_doc)
         elif isinstance(report_doc, PaymentReportDocument):
-            # Payment report document - use model_dump to convert to dict
-            return_report = report_doc.model_dump(by_alias=False)
+            # camelCase like the other reports, without the document's internal fields (#329)
+            return_report = transformer.transform_payment_report_response(report_doc)
         elif isinstance(report_doc, PromotionReportDocument):
-            return_report = report_doc.model_dump(by_alias=False)
+            return_report = transformer.transform_promotion_report_response(report_doc)
         elif isinstance(report_doc, dict):
             # Legacy: Payment report returns a dict directly
             return_report = report_doc
@@ -384,10 +384,10 @@ async def get_report_for_terminal(
         elif isinstance(report_doc, CategoryReportDocument):
             return_report = transformer.transform_category_report_response(report_doc)
         elif isinstance(report_doc, PaymentReportDocument):
-            # Payment report document - use model_dump to convert to dict
-            return_report = report_doc.model_dump(by_alias=False)
+            # camelCase like the other reports, without the document's internal fields (#329)
+            return_report = transformer.transform_payment_report_response(report_doc)
         elif isinstance(report_doc, PromotionReportDocument):
-            return_report = report_doc.model_dump(by_alias=False)
+            return_report = transformer.transform_promotion_report_response(report_doc)
         elif isinstance(report_doc, dict):
             # Legacy: Payment report returns a dict directly
             return_report = report_doc

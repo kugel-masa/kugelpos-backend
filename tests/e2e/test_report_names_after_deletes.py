@@ -104,11 +104,7 @@ def _sell(tenant_id: str, headers: dict) -> None:
 
 
 def _payments(report: dict) -> list:
-    # The payment report answers snake_case, unlike the other reports
-    return [
-        (p.get("paymentCode", p.get("payment_code")), p.get("paymentName", p.get("payment_name")))
-        for p in report.get("paymentSummary", report.get("payment_summary")) or []
-    ]
+    return [(p["paymentCode"], p["paymentName"]) for p in report.get("paymentSummary") or []]
 
 
 def _report(tenant_id: str, headers: dict, report_type: str) -> dict:

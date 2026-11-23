@@ -246,3 +246,86 @@ class BaseItemReportResponse(BaseSchemaModel):
     total_transaction_count: int
     receipt_text: Optional[str] = None
     journal_text: Optional[str] = None
+
+
+class PaymentSummaryItem(BaseSchemaModel):
+    """One payment method in the payment report, with its breakdown by variant (issue #311)."""
+    payment_code: str
+    payment_name: str
+    count: int
+    amount: float
+    ratio: float  # Share of the total amount, in percent
+    variants: list[PaymentVariantReportTemplate] = Field(default_factory=list)
+
+
+class PaymentTotal(BaseSchemaModel):
+    """Totals across every payment method in the payment report."""
+    count: int
+    amount: float
+
+
+class BasePaymentReportResponse(BaseSchemaModel):
+    """
+    Base schema for payment report responses (issue #329).
+
+    Answers camelCase like the other reports, and leaves out the stored
+    document's internal fields (shard_key, etag, created_at, updated_at).
+    """
+    tenant_id: str
+    store_code: str
+    store_name: Optional[str] = None
+    terminal_no: Optional[int] = None
+    business_date: Optional[str] = None  # Business date (None for date range)
+    business_date_from: Optional[str] = None  # Start date for date range reports
+    business_date_to: Optional[str] = None  # End date for date range reports
+    open_counter: Optional[int] = None
+    business_counter: Optional[int] = None
+    report_scope: str
+    report_type: str = "payment"
+    payment_summary: list[PaymentSummaryItem] = Field(default_factory=list)
+    total: PaymentTotal
+    receipt_text: Optional[str] = None
+    journal_text: Optional[str] = None
+    generate_date_time: Optional[str] = None
+    staff: Optional[dict] = None
+
+
+class PromotionReportItem(BaseSchemaModel):
+    """One promotion in the promotion report."""
+    promotion_code: Optional[str] = None
+    promotion_type: Optional[str] = None
+    gross_amount: Optional[float] = 0.0
+    discount_amount: Optional[float] = 0.0
+    net_amount: Optional[float] = 0.0
+    quantity: Optional[int] = 0
+    transaction_count: Optional[int] = 0
+
+
+class BasePromotionReportResponse(BaseSchemaModel):
+    """
+    Base schema for promotion report responses (issue #329).
+
+    Answers camelCase like the other reports, and leaves out the stored
+    document's internal fields (shard_key, etag, created_at, updated_at).
+    """
+    tenant_id: Optional[str] = None
+    store_code: Optional[str] = None
+    store_name: Optional[str] = None
+    terminal_no: Optional[int] = None
+    business_date: Optional[str] = None
+    business_date_from: Optional[str] = None
+    business_date_to: Optional[str] = None
+    open_counter: Optional[int] = None
+    business_counter: Optional[int] = None
+    report_scope: Optional[str] = None
+    report_type: Optional[str] = "promotion"
+    promotions: list[PromotionReportItem] = Field(default_factory=list)
+    total_gross_amount: Optional[float] = 0.0
+    total_discount_amount: Optional[float] = 0.0
+    total_net_amount: Optional[float] = 0.0
+    total_quantity: Optional[int] = 0
+    total_transaction_count: Optional[int] = 0
+    receipt_text: Optional[str] = None
+    journal_text: Optional[str] = None
+    generate_date_time: Optional[str] = None
+    staff: Optional[dict] = None

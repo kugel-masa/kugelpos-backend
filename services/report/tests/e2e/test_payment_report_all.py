@@ -526,12 +526,12 @@ async def test_payment_report_via_api(http_client):
     assert res.get("data") is not None
     
     report_data = res.get("data")
-    assert report_data.get("report_type") == "payment"
-    assert "payment_summary" in report_data
+    assert report_data.get("reportType") == "payment"
+    assert "paymentSummary" in report_data
     assert "total" in report_data
     
     print(f"Payment report response: {res}")
-    print(f"Payment report summary: {report_data.get('payment_summary')}")
+    print(f"Payment report summary: {report_data.get('paymentSummary')}")
     print(f"Payment report total: {report_data.get('total')}")
     
     # Test terminal-level payment report
@@ -552,7 +552,7 @@ async def test_payment_report_via_api(http_client):
     assert res.get("success") is True
     
     terminal_report = res.get("data")
-    assert terminal_report.get("terminal_no") == terminal_no
+    assert terminal_report.get("terminalNo") == terminal_no
     print(f"Terminal payment report response: {res}")
     
     # Test flash scope with API key
@@ -580,7 +580,7 @@ async def test_payment_report_via_api(http_client):
         
         assert response.status_code == status.HTTP_200_OK
         res = response.json()
-        assert res.get("data").get("report_scope") == "flash"
+        assert res.get("data").get("reportScope") == "flash"
         print(f"Payment report with API key response: {res}")
 
 
@@ -621,7 +621,7 @@ async def test_payment_report_error_handling(http_client):
         res = response.json()
         report_data = res.get("data")
         # Should return empty payment summary for invalid date
-        assert report_data["payment_summary"] == []
+        assert report_data["paymentSummary"] == []
         assert report_data["total"]["count"] == 0
     else:
         assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY]
@@ -727,7 +727,7 @@ async def test_payment_report_date_validation(http_client):
         # If 200, check that results are empty due to invalid date range
         res = response.json()
         report_data = res.get("data")
-        assert report_data["payment_summary"] == []
+        assert report_data["paymentSummary"] == []
         assert report_data["total"]["count"] == 0
     else:
         # Otherwise should be an error status
@@ -766,12 +766,12 @@ async def test_payment_report_with_date_range(http_client):
 
     # Check that date range fields are present
     report_data = data["data"]
-    assert "business_date_from" in report_data
-    assert "business_date_to" in report_data
+    assert "businessDateFrom" in report_data
+    assert "businessDateTo" in report_data
 
     # Should have payment summary
-    assert "payment_summary" in report_data
-    assert isinstance(report_data["payment_summary"], list)
+    assert "paymentSummary" in report_data
+    assert isinstance(report_data["paymentSummary"], list)
 
 
 # ============================================================================
