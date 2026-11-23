@@ -48,6 +48,7 @@ class SchemasTransformer:
             id=staff_doc.id,
             name=staff_doc.name,
             roles=staff_doc.roles,
+            is_deleted=bool(staff_doc.is_deleted),
             entry_datetime=staff_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if staff_doc.created_at else None,
             last_update_datetime=staff_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if staff_doc.updated_at else None,
         )
@@ -63,7 +64,7 @@ class SchemasTransformer:
             category_code=item_doc.category_code,
             tax_code=item_doc.tax_code,
             is_discount_restricted=item_doc.is_discount_restricted,
-            is_deleted=item_doc.is_deleted,
+            is_deleted=bool(item_doc.is_deleted),
             entry_datetime=item_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if item_doc.created_at else None,
             last_update_datetime=item_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if item_doc.updated_at else None,
         )
@@ -72,6 +73,7 @@ class SchemasTransformer:
         return BaseItemStoreResponse(
             item_code=item_store_doc.item_code,
             store_price=item_store_doc.store_price,
+            is_deleted=bool(item_store_doc.is_deleted),
             entry_datetime=(
                 item_store_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if item_store_doc.created_at else None
             ),
@@ -121,6 +123,7 @@ class SchemasTransformer:
                 self.transform_payment_variant(variant)
                 for variant in sorted(payment_doc.variants or [], key=lambda v: v.variant_code or "")
             ],
+            is_deleted=bool(payment_doc.is_deleted),
             entry_datetime=payment_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if payment_doc.created_at else None,
             last_update_datetime=(
                 payment_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if payment_doc.updated_at else None
@@ -144,6 +147,7 @@ class SchemasTransformer:
                 BaseSettingsMasterValue(store_code=value.store_code, terminal_no=value.terminal_no, value=value.value)
                 for value in settings_doc.values
             ],
+            is_deleted=bool(settings_doc.is_deleted),
             entry_datetime=settings_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if settings_doc.created_at else None,
             last_update_datetime=(
                 settings_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if settings_doc.updated_at else None
@@ -156,6 +160,7 @@ class SchemasTransformer:
             description=category_doc.description,
             description_short=category_doc.description_short,
             tax_code=category_doc.tax_code,
+            is_deleted=bool(category_doc.is_deleted),
             entry_datetime=category_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if category_doc.created_at else None,
             last_update_datetime=(
                 category_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if category_doc.updated_at else None
@@ -196,6 +201,7 @@ class SchemasTransformer:
             item_book_id=item_book_doc.item_book_id,
             title=item_book_doc.title,
             categories=[self.transform_item_book_category(category) for category in item_book_doc.categories],
+            is_deleted=bool(item_book_doc.is_deleted),
             entry_datetime=item_book_doc.created_at.strftime("%Y-%m-%d %H:%M:%S") if item_book_doc.created_at else None,
             last_update_datetime=(
                 item_book_doc.updated_at.strftime("%Y-%m-%d %H:%M:%S") if item_book_doc.updated_at else None
@@ -246,6 +252,7 @@ class SchemasTransformer:
                 else None
             ),
             is_active=promotion_doc.is_active,
+            is_deleted=bool(promotion_doc.is_deleted),
             detail=detail,
             entry_datetime=(
                 promotion_doc.created_at.strftime("%Y-%m-%d %H:%M:%S")

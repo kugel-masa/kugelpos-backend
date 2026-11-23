@@ -41,7 +41,7 @@ class TestCategoryMasterService:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_raises(self, service, repo):
-        repo.get_category_by_code_async.return_value = MagicMock(tenant_id="T001")
+        repo.get_category_by_code_async.return_value = MagicMock(tenant_id="T001", is_deleted=False)
 
         with pytest.raises(DocumentAlreadyExistsException):
             await service.create_category_async("CAT-01", "Cat 1", "C1", "TAX-01")
@@ -96,16 +96,15 @@ class TestCategoryMasterService:
 
     @pytest.mark.asyncio
     async def test_delete_success(self, service, repo):
-        doc = CategoryMasterDocument()
-        repo.get_category_by_code_async.return_value = doc
-        repo.delete_category_async.return_value = None
+        repo.delete_category_async.return_value = True
 
         await service.delete_category_async("CAT-01")
-        repo.delete_category_async.assert_called_once_with("CAT-01")
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        repo.delete_category_async.assert_called_once_with("CAT-01", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, repo):
-        repo.get_category_by_code_async.return_value = None
+        repo.delete_category_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_category_async("NONEXISTENT")
@@ -114,3 +113,50 @@ class TestCategoryMasterService:
 # ---------------------------------------------------------------------------
 # PaymentMasterService
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Restore on create (issue #324)
+# ---------------------------------------------------------------------------
+
+
+class TestCategoryRestoreOnCreate:
+    @pytest.fixture
+    def repo(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, repo):
+        from app.services.category_master_service import CategoryMasterService
+
+        return CategoryMasterService(repo)
+
+    @pytest.mark.asyncio
+    async def test_a_new_code_is_inserted(self, service, repo):
+        repo.get_category_by_code_async.return_value = None
+
+        await service.create_category_async("C1", "Cat", "C", "01")
+
+        repo.get_category_by_code_async.assert_awaited_once_with("C1", include_deleted=True)
+        repo.create_category_async.assert_awaited_once()
+        repo.restore_category_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_deleted_code_is_restored(self, service, repo):
+        repo.get_category_by_code_async.return_value = MagicMock(tenant_id="T001", is_deleted=True)
+        repo.restore_category_async.return_value = True
+
+        doc = await service.create_category_async("C1", "New", "N", "01")
+
+        repo.restore_category_async.assert_awaited_once()
+        assert repo.restore_category_async.await_args.args[0].description == "New"
+        assert doc.description == "New"
+        repo.create_category_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_restore_lost_to_another_answers_already_exists(self, service, repo):
+        repo.get_category_by_code_async.return_value = MagicMock(tenant_id="T001", is_deleted=True)
+        repo.restore_category_async.return_value = False
+
+        with pytest.raises(DocumentAlreadyExistsException):
+            await service.create_category_async("C1", "New", "N", "01")

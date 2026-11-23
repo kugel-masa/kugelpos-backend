@@ -145,14 +145,34 @@ async def test_updating_the_payment_method_keeps_its_variants(tenant_db):
     assert [v.variant_code for v in payment.variants] == ["VISA"]
 
 
-async def test_deleting_the_payment_method_takes_its_variants(tenant_db):
+async def test_deleting_the_payment_method_physically_takes_its_variants(tenant_db):
     repo = await _repo()
     await repo.add_variant_async("11", PaymentVariant(variant_code="VISA", name="VISA"))
 
-    await repo.delete_payment_async("11")
+    await repo.delete_payment_async("11", is_logical=False)
 
     assert await repo.get_payment_by_code("11") is None
     await repo.create_payment_async(
+        PaymentMasterDocument(payment_code="11", description="Cashless", limit_amount=0.0, is_active=True)
+    )
+    assert await _variants("11") == []
+
+
+@pytest.mark.asyncio
+async def test_a_logically_deleted_payment_method_takes_no_variants_and_restores_without_them(tenant_db):
+    """Issue #324: the variants go with the method, and a restore starts from the request."""
+    repo = await _repo()
+    await repo.add_variant_async("11", PaymentVariant(variant_code="VISA", name="VISA"))
+
+    assert await repo.delete_payment_async("11") is True
+
+    assert await repo.get_payment_by_code("11") is None
+    assert await repo.add_variant_async("11", PaymentVariant(variant_code="JCB", name="JCB")) is False
+    assert await repo.update_variant_async("11", "VISA", "Visa", True) is False
+    deleted = await repo.get_payment_by_code("11", include_deleted=True)
+    assert [v.variant_code for v in deleted.variants] == ["VISA"], "a deleted method's document must not change"
+
+    assert await repo.restore_payment_async(
         PaymentMasterDocument(payment_code="11", description="Cashless", limit_amount=0.0, is_active=True)
     )
     assert await _variants("11") == []

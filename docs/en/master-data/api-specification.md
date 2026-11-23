@@ -27,6 +27,23 @@ The following authentication methods are supported:
 - Header: `Authorization: Bearer {token}`
 - Usage: System operations by administrators
 
+## Logical Delete (issue #324)
+
+Category, item (common), item store, item book, payment, promotion, settings and staff delete logically by default. The tax master has no delete.
+
+| Operation | Parameter | Default | Behaviour |
+|---|---|---|---|
+| `DELETE .../{code}` | `is_logical` | `true` | `true` marks a live record deleted (404 if missing or already deleted). `false` removes the record, deleted or not (404 if missing). |
+| `GET .../{code}`, `GET` list | `include_deleted` | `false` | `false` hides deleted records from the record, the list and `metadata.total`. `true` returns them as well. |
+| `GET /items/{item_code}` | `is_logical_deleted` | `false` | Deprecated alias of `include_deleted`. Before #324 it was an exact match: `true` found deleted items only. |
+| `POST` (create) | - | - | Creating a logically deleted code restores it with the request's values only (201). A live code still answers 400 "already exists". Item books are excepted: their id is generated and a deleted id is never reused. |
+| `PUT` (update) | - | - | A deleted record answers 404, including when it is deleted while the update runs. |
+
+- Every response record carries `isDeleted`. A record stored without the field is not deleted.
+- Reads used for sale skip deleted records and take no `include_deleted`: the item store detail (404 if the item common is deleted; a deleted store record means no store override), the active promotions, a setting's value, payment variants, and item book categories, tabs and buttons (404 when the parent is deleted).
+- Removing a category, tab or button inside a live item book stays physical.
+- The category and promotion lists return their Mongo filter in `metadata.filter`, which now shows the deleted-record condition.
+
 ## Common Response Format
 
 ```json

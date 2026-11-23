@@ -98,11 +98,12 @@ class ItemBookMasterService:
         while True:
             seq += 1
             item_book_id = f"{current_date}-{seq:04d}"
-            item_book = await self.item_book_master_repo.get_item_book_async(item_book_id)
+            # A deleted id stays taken: its record keeps the unique key (issue #324)
+            item_book = await self.item_book_master_repo.get_item_book_async(item_book_id, include_deleted=True)
             if item_book is None:
                 return item_book_id
 
-    async def get_item_book_by_id_async(self, item_book_id: str) -> ItemBookMasterDocument:
+    async def get_item_book_by_id_async(self, item_book_id: str, include_deleted: bool = False) -> ItemBookMasterDocument:
         """
         Retrieve an item book by its unique ID.
 
@@ -115,7 +116,7 @@ class ItemBookMasterService:
         Raises:
             DocumentNotFoundException: If no item book with the given ID exists
         """
-        item_book = await self.item_book_master_repo.get_item_book_async(item_book_id)
+        item_book = await self.item_book_master_repo.get_item_book_async(item_book_id, include_deleted)
         if item_book is None:
             message = f"item book with item_book_id {item_book_id} not found"
             raise DocumentNotFoundException(message, logger)
@@ -149,7 +150,7 @@ class ItemBookMasterService:
 
                     # get item common price & description
                     item_common = await self.item_common_master_repo.get_item_by_code_async(
-                        button.item_code, is_logical_deleted=False, use_cache=False
+                        button.item_code, include_deleted=False, use_cache=False
                     )
                     if not item_common:
                         # Not in the item master: no price and no name, rather than
@@ -169,7 +170,9 @@ class ItemBookMasterService:
 
         return item_book
 
-    async def get_item_book_all_async(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list:
+    async def get_item_book_all_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list:
         """
         Retrieve all item books with pagination and sorting.
 
@@ -181,11 +184,13 @@ class ItemBookMasterService:
         Returns:
             List of ItemBookMasterDocument objects
         """
-        item_books = await self.item_book_master_repo.get_item_book_by_filter_async({}, limit, page, sort)
+        item_books = await self.item_book_master_repo.get_item_book_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
         return item_books
 
     async def get_item_book_all_paginated_async(
-        self, limit: int, page: int, sort: list[tuple[str, int]]
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
     ) -> tuple[list[ItemBookMasterDocument], int]:
         """
         Retrieve all item books with pagination metadata.
@@ -198,8 +203,10 @@ class ItemBookMasterService:
         Returns:
             Tuple of (list of ItemBookMasterDocument objects, total count)
         """
-        item_books = await self.item_book_master_repo.get_item_book_by_filter_async({}, limit, page, sort)
-        total_count = await self.item_book_master_repo.get_item_book_count_by_filter_async({})
+        item_books = await self.item_book_master_repo.get_item_book_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
+        total_count = await self.item_book_master_repo.get_item_book_count_by_filter_async({}, include_deleted)
         return item_books, total_count
 
     async def update_item_book_async(self, item_book_id: str, update_data: dict) -> ItemBookMasterDocument:
@@ -220,9 +227,14 @@ class ItemBookMasterService:
         if item_book is None:
             message = f"item book with item_book_id {item_book_id} not found"
             raise DocumentNotFoundException(message, logger)
-        return await self.item_book_master_repo.update_item_book_async(item_book_id, update_data)
+        updated = await self.item_book_master_repo.update_item_book_async(item_book_id, update_data)
+        if updated is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"item book with item_book_id {item_book_id} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_item_book_async(self, item_book_id: str) -> None:
+    async def delete_item_book_async(self, item_book_id: str, is_logical: bool = True) -> None:
         """
         Delete an item book from the database.
 
@@ -232,11 +244,11 @@ class ItemBookMasterService:
         Raises:
             DocumentNotFoundException: If no item book with the given ID exists
         """
-        item_book = await self.item_book_master_repo.get_item_book_async(item_book_id)
-        if item_book is None:
+        # One write decides: a logical delete matches a live item book only, a
+        # physical one any (issue #324)
+        if not await self.item_book_master_repo.delete_item_book_async(item_book_id, is_logical):
             message = f"item book with item_book_id {item_book_id} not found"
             raise DocumentNotFoundException(message, logger)
-        await self.item_book_master_repo.delete_item_book_async(item_book_id)
 
     async def __apply_nested_write_async(self, item_book_id: str, write) -> ItemBookMasterDocument:
         """

@@ -8,6 +8,7 @@ from kugel_common.utils.misc import get_app_time
 from app.config.settings import settings
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.models.documents.item_common_master_document import ItemCommonMasterDocument
+from app.models.repositories.logical_delete import alive, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -73,7 +74,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
             raise Exception("Failed to create item")
 
     async def get_item_by_code_async(
-        self, item_code: str, is_logical_deleted: bool = False, use_cache: bool = False
+        self, item_code: str, include_deleted: bool = False, use_cache: bool = False
     ) -> ItemCommonMasterDocument:
         """
         Retrieve an item by its unique code.
@@ -84,7 +85,9 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
 
         Args:
             item_code: Unique identifier for the item
-            is_logical_deleted: If True, include logically deleted items in the search
+            include_deleted: If True, find a logically deleted item as well (issue #324).
+                Before #324 this was an exact match (`is_logical_deleted`): True found
+                deleted items only.
             use_cache: If True, use cached items when available
 
         Returns:
@@ -99,7 +102,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         # first check item_code exist in the list of item_master_documents
         if use_cache:
             item = next((item for item in self.item_master_documents if item.item_code == item_code), None)
-            if item is not None:
+            if item is not None and (include_deleted or not item.is_deleted):
                 logger.debug(
                     f"ItemMasterRepository.get_item_by_code: item_code->{item_code} in the list of item_master_documents"
                 )
@@ -111,7 +114,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
 
         # if not found in the list or expired, then get from the database
         tenant_id = self.tenant_id
-        filter = {"tenant_id": tenant_id, "item_code": item_code, "is_deleted": is_logical_deleted}
+        filter = alive({"tenant_id": tenant_id, "item_code": item_code}, include_deleted)
         item_doc = await self.get_one_async(filter)
 
         # if use_cache, add the document to the list with the cached_on field set to the current time
@@ -122,7 +125,12 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         return item_doc
 
     async def get_item_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[ItemCommonMasterDocument]:
         """
         Retrieve items matching the specified filter with pagination and sorting.
@@ -141,7 +149,8 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         Raises:
             RepositoryException: If there is an error during retrieval
         """
-        query_filter["tenant_id"] = self.tenant_id
+        # Live items only unless asked: the list used to show logically deleted items (issue #324)
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(f"query_filter->{query_filter} limit->{limit} page->{page} sort->{sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
@@ -159,12 +168,12 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         Raises:
             RepositoryException: If there is an error during update
         """
-        filter = {"tenant_id": self.tenant_id, "item_code": item_code}
+        filter = alive({"tenant_id": self.tenant_id, "item_code": item_code})
         success = await self.update_one_async(filter, update_data)
-        if success:
-            return await self.get_item_by_code_async(item_code)
-        else:
-            raise Exception(f"Failed to update item with code {item_code}")
+        if not success:
+            # Missing, or deleted after the caller looked it up (issue #324)
+            return None
+        return await self.get_item_by_code_async(item_code)
 
     async def replace_item_async(
         self, item_code: str, new_document: ItemCommonMasterDocument
@@ -189,7 +198,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         else:
             raise Exception(f"Failed to replace item with code {item_code}")
 
-    async def delete_item_async(self, item_code: str, is_logical: bool = False) -> bool:
+    async def delete_item_async(self, item_code: str, is_logical: bool = True) -> bool:
         """
         Delete an item from the database, in one write.
 
@@ -210,8 +219,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
             RepositoryException: If there is an error during deletion
         """
         if is_logical:
-            query_filter = {"tenant_id": self.tenant_id, "item_code": item_code, "is_deleted": {"$ne": True}}
-            return await self.update_one_async(query_filter, {"is_deleted": True})
+            return await soft_delete_async(self, {"tenant_id": self.tenant_id, "item_code": item_code})
 
         if self.dbcollection is None:
             await self.initialize()
@@ -223,7 +231,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
             raise RepositoryException(message, self.collection_name, logger, e) from e
         return response.deleted_count == 1
 
-    async def get_item_count_by_filter_async(self, query_filter: dict) -> int:
+    async def get_item_count_by_filter_async(self, query_filter: dict, include_deleted: bool = False) -> int:
         """
         Get the count of items matching the specified filter.
 
@@ -236,10 +244,22 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
         Raises:
             RepositoryException: If there is an error during counting
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         if self.dbcollection is None:
             await self.initialize()
         return await self.dbcollection.count_documents(query_filter)
+
+    async def restore_item_async(self, item_doc: ItemCommonMasterDocument) -> bool:
+        """
+        Restore a logically deleted item with a new document (issue #324).
+
+        Stamped as create stamps it. Returns False when no deleted item matched.
+        """
+        item_doc.tenant_id = self.tenant_id
+        item_doc.shard_key = self.__get_shard_key(item_doc)
+        item_doc.created_at = get_app_time()
+        item_doc.is_deleted = False
+        return await restore_async(self, {"tenant_id": self.tenant_id, "item_code": item_doc.item_code}, item_doc)
 
     def __get_shard_key(self, item_master: ItemCommonMasterDocument) -> str:
         """

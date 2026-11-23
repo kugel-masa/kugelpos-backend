@@ -7,6 +7,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from kugel_common.utils.misc import get_app_time
 from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.config.settings import settings
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -52,22 +53,28 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         else:
             raise Exception("Failed to create payment")
 
-    async def get_payment_by_code(self, payment_code: str) -> PaymentMasterDocument:
+    async def get_payment_by_code(self, payment_code: str, include_deleted: bool = False) -> PaymentMasterDocument:
         """
         Retrieve a payment method by its unique code.
 
         Args:
             payment_code: Unique identifier for the payment method
+            include_deleted: True to find a logically deleted payment method as well
 
         Returns:
             The matching payment method document, or None if not found
         """
         tenant_id = self.tenant_id
         filter = {"tenant_id": tenant_id, "payment_code": payment_code}
-        return await self.get_one_async(filter)
+        return await self.get_one_async(alive(filter, include_deleted))
 
     async def get_payment_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[PaymentMasterDocument]:
         """
         Retrieve payment methods matching the specified filter with pagination and sorting.
@@ -83,7 +90,7 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         Returns:
             List of payment method documents matching the query parameters
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
@@ -96,14 +103,14 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
             update_data: Dictionary containing the fields to update and their new values
 
         Returns:
-            The updated payment method document
+            The updated payment method document, or None when no live payment
+            method matched (missing, or deleted after the caller looked it up)
         """
-        filter = {"tenant_id": self.tenant_id, "payment_code": payment_code}
+        filter = alive({"tenant_id": self.tenant_id, "payment_code": payment_code})
         success = await self.update_one_async(filter, update_data)
-        if success:
-            return await self.get_payment_by_code(payment_code)
-        else:
-            raise Exception(f"Failed to update payment with code {payment_code}")
+        if not success:
+            return None
+        return await self.get_payment_by_code(payment_code)
 
     async def replace_payment_async(
         self, payment_code: str, new_document: PaymentMasterDocument
@@ -125,7 +132,7 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         else:
             raise Exception(f"Failed to replace payment with code {payment_code}")
 
-    async def delete_payment_async(self, payment_code: str) -> None:
+    async def delete_payment_async(self, payment_code: str, is_logical: bool = True) -> bool:
         """
         Delete a payment method from the database.
 
@@ -136,9 +143,25 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
             None
         """
         filter = {"tenant_id": self.tenant_id, "payment_code": payment_code}
-        await self.delete_async(filter)
+        if is_logical:
+            return await soft_delete_async(self, filter)
+        return await hard_delete_async(self, filter)
 
-    async def get_payment_count_by_filter_async(self, query_filter: dict) -> int:
+    async def restore_payment_async(self, payment_doc: PaymentMasterDocument) -> bool:
+        """
+        Restore a logically deleted payment method with a new document (issue #324).
+
+        Stamped as create stamps it. Returns False when no deleted payment method matched.
+        """
+        payment_doc.tenant_id = self.tenant_id
+        payment_doc.shard_key = self.__get_shard_key(payment_doc)
+        payment_doc.created_at = get_app_time()
+        payment_doc.is_deleted = False
+        return await restore_async(
+            self, {"tenant_id": self.tenant_id, "payment_code": payment_doc.payment_code}, payment_doc
+        )
+
+    async def get_payment_count_by_filter_async(self, query_filter: dict, include_deleted: bool = False) -> int:
         """
         Get the count of payment methods matching the specified filter.
 
@@ -148,7 +171,7 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         Returns:
             Count of payment methods matching the filter
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         if self.dbcollection is None:
             await self.initialize()
         return await self.dbcollection.count_documents(query_filter)
@@ -173,11 +196,14 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         now = get_app_time()
         variant.created_at = now
         variant.updated_at = None
-        query_filter = {
-            "tenant_id": self.tenant_id,
-            "payment_code": payment_code,
-            "variants.variant_code": {"$ne": variant.variant_code},
-        }
+        # A deleted payment method takes no variants (issue #324)
+        query_filter = alive(
+            {
+                "tenant_id": self.tenant_id,
+                "payment_code": payment_code,
+                "variants.variant_code": {"$ne": variant.variant_code},
+            }
+        )
         update = {"$push": {"variants": variant.model_dump()}, "$set": {"updated_at": now}}
         try:
             response = await self.dbcollection.update_one(query_filter, update, session=self.session)
@@ -205,11 +231,13 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         if self.dbcollection is None:
             await self.initialize()
         now = get_app_time()
-        query_filter = {
-            "tenant_id": self.tenant_id,
-            "payment_code": payment_code,
-            "variants.variant_code": variant_code,
-        }
+        query_filter = alive(
+            {
+                "tenant_id": self.tenant_id,
+                "payment_code": payment_code,
+                "variants.variant_code": variant_code,
+            }
+        )
         update = {
             "$set": {
                 "variants.$.name": name,

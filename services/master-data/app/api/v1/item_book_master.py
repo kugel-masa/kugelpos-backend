@@ -119,6 +119,7 @@ async def create_item_book(
 async def get_item_book_by_id(
     item_book_id: str = Path(...),
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     store_code: str = Query(None),  # option for store price
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
@@ -146,7 +147,7 @@ async def get_item_book_by_id(
     service = await get_item_book_service_async(tenant_id, store_code)
 
     try:
-        item_book = await service.get_item_book_by_id_async(item_book_id)
+        item_book = await service.get_item_book_by_id_async(item_book_id, include_deleted)
         transformer = SchemasTransformerV1()
         return_item_book = transformer.transform_item_book(item_book)
     except Exception as e:
@@ -234,6 +235,7 @@ async def get_item_book_detail_by_id(
 )
 async def get_all_item_books(
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -264,7 +266,7 @@ async def get_all_item_books(
     service = await get_item_book_service_async(tenant_id)
 
     try:
-        item_books, total_count = await service.get_item_book_all_paginated_async(limit, page, sort)
+        item_books, total_count = await service.get_item_book_all_paginated_async(limit, page, sort, include_deleted)
         transformer = SchemasTransformerV1()
         return_item_books = [transformer.transform_item_book(item_book) for item_book in item_books]
     except Exception as e:
@@ -358,6 +360,7 @@ async def update_item_book(
 async def delete_item_book(
     item_book_id: str = Path(...),
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
@@ -383,7 +386,7 @@ async def delete_item_book(
     service = await get_item_book_service_async(tenant_id)
 
     try:
-        await service.delete_item_book_async(item_book_id)
+        await service.delete_item_book_async(item_book_id, is_logical)
     except Exception as e:
         raise e
 

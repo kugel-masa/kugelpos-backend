@@ -67,9 +67,9 @@ class ItemStoreMasterService:
             message = f"item with item_code {item_code} not found in item_common_master"
             raise DocumentNotFoundException(message, logger)
 
-        # check if item store exists already
-        item_store = await self.item_store_master_repo.get_item_store_by_code(item_code)
-        if item_store is not None:
+        # A deleted store record keeps its code; creating it again restores it (issue #324)
+        item_store = await self.item_store_master_repo.get_item_store_by_code(item_code, include_deleted=True)
+        if item_store is not None and not item_store.is_deleted:
             message = f"item with item_code {item_code} already exists. tenant_id: {item_store.tenant_id}"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -79,9 +79,14 @@ class ItemStoreMasterService:
 
         logger.debug(f"Item: {item_store_doc}")
 
+        if item_store is not None:
+            if not await self.item_store_master_repo.restore_item_store_async(item_store_doc):
+                message = f"item with item_code {item_code} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return item_store_doc
         return await self.item_store_master_repo.create_item_store_async(item_store_doc)
 
-    async def get_item_by_code_async(self, item_code: str) -> ItemStoreMasterDocument:
+    async def get_item_by_code_async(self, item_code: str, include_deleted: bool = False) -> ItemStoreMasterDocument:
         """
         Retrieve a store-specific item record by its unique code.
 
@@ -94,13 +99,15 @@ class ItemStoreMasterService:
         Raises:
             DocumentNotFoundException: If no store-specific item record with the given code exists
         """
-        item = await self.item_store_master_repo.get_item_store_by_code(item_code)
+        item = await self.item_store_master_repo.get_item_store_by_code(item_code, include_deleted)
         if item is None:
             message = f"item store with item_code {item_code} not found"
             raise DocumentNotFoundException(message, logger)
         return item
 
-    async def get_item_all_async(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list:
+    async def get_item_all_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list:
         """
         Retrieve all store-specific item records with pagination and sorting.
 
@@ -112,11 +119,13 @@ class ItemStoreMasterService:
         Returns:
             List of ItemStoreMasterDocument objects
         """
-        items_all_in_store = await self.item_store_master_repo.get_item_store_by_filter_async({}, limit, page, sort)
+        items_all_in_store = await self.item_store_master_repo.get_item_store_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
         return items_all_in_store
 
     async def get_item_all_paginated_async(
-        self, limit: int, page: int, sort: list[tuple[str, int]]
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
     ) -> tuple[list[ItemStoreMasterDocument], int]:
         """
         Retrieve all store-specific item records with pagination metadata.
@@ -129,8 +138,10 @@ class ItemStoreMasterService:
         Returns:
             Tuple of (list of ItemStoreMasterDocument objects, total count)
         """
-        items_all_in_store = await self.item_store_master_repo.get_item_store_by_filter_async({}, limit, page, sort)
-        total_count = await self.item_store_master_repo.get_item_count_by_filter_async({})
+        items_all_in_store = await self.item_store_master_repo.get_item_store_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
+        total_count = await self.item_store_master_repo.get_item_count_by_filter_async({}, include_deleted)
         return items_all_in_store, total_count
 
     async def get_item_store_detail_by_code_async(self, item_code: str) -> ItemStoreDetailDocument:
@@ -155,7 +166,7 @@ class ItemStoreMasterService:
         item_detail_doc = ItemStoreDetailDocument()
 
         item_common = await self.item_common_master_repo.get_item_by_code_async(
-            item_code=item_code, is_logical_deleted=False, use_cache=False
+            item_code=item_code, include_deleted=False, use_cache=False
         )
         if item_common is None:
             message = f"item common with item_code {item_code} not found"
@@ -222,9 +233,14 @@ class ItemStoreMasterService:
         # remove item_code from update_data
         if "item_code" in update_data:
             del update_data["item_code"]
-        return await self.item_store_master_repo.update_item_store_async(item_code, update_data)
+        updated = await self.item_store_master_repo.update_item_store_async(item_code, update_data)
+        if updated is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"item with item_code {item_code} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_item_async(self, item_code: str) -> None:
+    async def delete_item_async(self, item_code: str, is_logical: bool = True) -> None:
         """
         Delete a store-specific item record from the database.
 
@@ -235,10 +251,9 @@ class ItemStoreMasterService:
             DocumentNotFoundException: If no store-specific item record with the given code exists
         """
 
-        item = await self.item_store_master_repo.get_item_store_by_code(item_code)
-        if item is None:
+        # One write decides: a logical delete matches a live record only, a
+        # physical one any (issue #324)
+        if not await self.item_store_master_repo.delete_item_store_async(item_code, is_logical):
             message = f"item with item_code {item_code} not found"
             raise DocumentNotFoundException(message, logger)
-
-        await self.item_store_master_repo.delete_item_store_async(item_code)
         return None

@@ -53,7 +53,8 @@ class TestStaffMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_staff_by_id_async("ST01")
-            expected = {"tenant_id": "T001", "id": "ST01"}
+            # Live staff only by default (issue #324)
+            expected = {"tenant_id": "T001", "id": "ST01", "is_deleted": {"$ne": True}}
             mock_get.assert_awaited_once_with(expected)
 
     # -- get_staff_by_filter_async -------------------------------------------
@@ -82,16 +83,16 @@ class TestStaffMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             result = await repo.update_staff_async("ST01", {"staff_name": "Bob"})
-            expected_filter = {"tenant_id": "T001", "id": "ST01"}
+            expected_filter = {"tenant_id": "T001", "id": "ST01", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"staff_name": "Bob"})
             assert result == updated_doc
 
     @pytest.mark.asyncio
-    async def test_update_staff_raises_on_failure(self):
+    async def test_update_staff_answers_none_when_nothing_live_matched(self):
+        # Missing, or deleted after the caller looked it up: the service answers 404 (issue #324)
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update staff"):
-                await repo.update_staff_async("ST01", {"staff_name": "x"})
+            assert await repo.update_staff_async("ST01", {"staff_name": "x"}) is None
 
     # -- replace_staff_async -------------------------------------------------
 
@@ -119,12 +120,19 @@ class TestStaffMasterRepository:
     # -- delete_staff_async --------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_delete_staff_filter(self):
+    async def test_delete_staff_is_logical_by_default(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
-            await repo.delete_staff_async("ST01")
-            expected = {"tenant_id": "T001", "id": "ST01"}
-            mock_del.assert_awaited_once_with(expected)
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_upd:
+            assert await repo.delete_staff_async("ST01") is True
+            mock_upd.assert_awaited_once_with({"tenant_id": "T001", "id": "ST01", "is_deleted": {"$ne": True}}, {"is_deleted": True})
+
+    @pytest.mark.asyncio
+    async def test_delete_staff_physically_on_request(self):
+        repo = self._make_repo()
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.staff_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+            await repo.delete_staff_async("ST01", is_logical=False)
+            mock_del.assert_awaited_once_with(repo, {"tenant_id": "T001", "id": "ST01"})
 
     # -- get_staff_count_async -----------------------------------------------
 
@@ -138,7 +146,7 @@ class TestStaffMasterRepository:
         count = await repo.get_staff_count_async()
         assert count == 3
         call_filter = mock_collection.count_documents.call_args[0][0]
-        assert call_filter == {"tenant_id": "T001"}
+        assert call_filter == {"tenant_id": "T001", "is_deleted": {"$ne": True}}
 
     @pytest.mark.asyncio
     async def test_get_staff_count_initializes_collection(self):

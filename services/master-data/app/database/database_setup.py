@@ -351,7 +351,10 @@ async def seed_terminal_facing_settings(tenant_id: str):
             if not default_value:
                 logger.warning(f"No shared default for setting {name}; not seeding it")
                 continue
-            if await repository.get_settings_by_name_async(name) is not None:
+            # A logically deleted seed keeps its name (issue #324): re-creating it
+            # would collide with the unique index. It stays deleted until an
+            # operator creates it again, which restores it.
+            if await repository.get_settings_by_name_async(name, include_deleted=True) is not None:
                 continue
             await repository.create_settings_async(
                 SettingsMasterDocument(name=name, default_value=default_value, values=[])

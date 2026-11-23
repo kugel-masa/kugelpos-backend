@@ -147,3 +147,23 @@ async def test_the_credential_travels_as_metadata_over_a_real_channel():
                 assert denied.value.code() == grpc.StatusCode.PERMISSION_DENIED
     finally:
         await server.stop(grace=None)
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_item_is_not_found_over_grpc():
+    """Issue #324: gRPC reads through the same detail lookup, which skips deleted items."""
+    from app.services.item_store_master_service import ItemStoreMasterService
+
+    common_repo = AsyncMock()
+    common_repo.get_item_by_code_async.return_value = None  # the live-only lookup finds nothing
+    master_service = ItemStoreMasterService(item_store_master_repo=AsyncMock(), item_common_master_repo=common_repo)
+    context = _context()
+
+    with (
+        patch(f"{MODULE}.get_grpc_caller", new_callable=AsyncMock, return_value=GrpcCaller("T001", "S001")),
+        patch(f"{MODULE}.get_item_store_master_service_async", new_callable=AsyncMock, return_value=master_service),
+    ):
+        await ItemServiceImpl().GetItemDetail(_request(), context)
+
+    context.set_code.assert_called_once_with(grpc.StatusCode.NOT_FOUND)
+    common_repo.get_item_by_code_async.assert_awaited_once_with(item_code="ITEM001", include_deleted=False, use_cache=False)

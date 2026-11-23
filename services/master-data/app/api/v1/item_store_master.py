@@ -118,6 +118,7 @@ async def get_item_store_master_async(
     item_code: str,
     store_code: str = Path(...),
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -149,7 +150,7 @@ async def get_item_store_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_item_store_master_service_async(tenant_id, store_code)
     try:
-        item_store_doc = await master_service.get_item_by_code_async(item_code)
+        item_store_doc = await master_service.get_item_by_code_async(item_code, include_deleted)
         if item_store_doc is None:
             message = f"Item not found. item_code: {item_code}"
             raise DocumentNotFoundException(message, logger)
@@ -182,6 +183,7 @@ async def get_item_store_master_async(
 async def get_item_store_master_all_async(
     store_code: str = Path(...),
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -216,7 +218,7 @@ async def get_item_store_master_all_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_item_store_master_service_async(tenant_id, store_code)
     try:
-        item_store_docs, total_count = await master_service.get_item_all_paginated_async(limit, page, sort)
+        item_store_docs, total_count = await master_service.get_item_all_paginated_async(limit, page, sort, include_deleted)
         logger.debug(f"Items found. {item_store_docs}")
         transformer = SchemasTransformerV1()
         item_all_in_store = [transformer.transform_item_store(item_store_doc) for item_store_doc in item_store_docs]
@@ -321,6 +323,7 @@ async def delete_item_store_master_async(
     item_code: str,
     store_code: str = Path(...),
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
@@ -353,7 +356,7 @@ async def delete_item_store_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_item_store_master_service_async(tenant_id, store_code)
     try:
-        await master_service.delete_item_async(item_code)
+        await master_service.delete_item_async(item_code, is_logical)
     except Exception as e:
         logger.error(f"Error deleting item store: {e}")
         raise e

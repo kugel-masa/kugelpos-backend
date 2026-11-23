@@ -7,6 +7,8 @@ from app.config.settings import settings
 from logging import getLogger
 
 from kugel_common.utils.log_utils import mask_loggable
+from kugel_common.utils.misc import get_app_time
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -52,20 +54,26 @@ class StaffMasterRepository(AbstractRepository[StaffMasterDocument]):
         else:
             raise Exception("Failed to create staf")
 
-    async def get_staff_by_id_async(self, staff_id: str) -> StaffMasterDocument:
+    async def get_staff_by_id_async(self, staff_id: str, include_deleted: bool = False) -> StaffMasterDocument:
         """
         Retrieve a staff member by their unique ID.
 
         Args:
             staff_id: Unique identifier for the staff member
+            include_deleted: True to find a logically deleted staff member as well
 
         Returns:
             The matching staff member document, or None if not found
         """
-        return await self.get_one_async(self.__make_query_filter(staff_id))
+        return await self.get_one_async(alive(self.__make_query_filter(staff_id), include_deleted))
 
     async def get_staff_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[StaffMasterDocument]:
         """
         Retrieve staff members matching the specified filter with pagination and sorting.
@@ -81,7 +89,7 @@ class StaffMasterRepository(AbstractRepository[StaffMasterDocument]):
         Returns:
             List of staff member documents matching the query parameters
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(f"query_filter: {mask_loggable(query_filter)} limit: {limit} page: {page} sort: {sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
@@ -94,13 +102,13 @@ class StaffMasterRepository(AbstractRepository[StaffMasterDocument]):
             update_data: Dictionary containing the fields to update and their new values
 
         Returns:
-            The updated staff member document
+            The updated staff member document, or None when no live staff member
+            matched (missing, or deleted after the caller looked it up)
         """
-        success = await self.update_one_async(self.__make_query_filter(staff_id), update_data)
-        if success:
-            return await self.get_staff_by_id_async(staff_id)
-        else:
-            raise Exception(f"Failed to update staff with id {staff_id}")
+        success = await self.update_one_async(alive(self.__make_query_filter(staff_id)), update_data)
+        if not success:
+            return None
+        return await self.get_staff_by_id_async(staff_id)
 
     async def replace_staff_async(self, staff_id: str, new_document: StaffMasterDocument) -> StaffMasterDocument:
         """
@@ -119,28 +127,48 @@ class StaffMasterRepository(AbstractRepository[StaffMasterDocument]):
         else:
             raise Exception(f"Failed to replace staff with id {staff_id}")
 
-    async def delete_staff_async(self, staff_id: str):
+    async def delete_staff_async(self, staff_id: str, is_logical: bool = True) -> bool:
         """
-        Delete a staff member record from the database.
+        Delete a staff member (issue #324).
 
         Args:
             staff_id: Unique identifier for the staff member to delete
+            is_logical: True marks a live staff member deleted; False removes the
+                record, logically deleted or not
 
         Returns:
-            None
+            bool: False when nothing matched
         """
-        return await self.delete_async(self.__make_query_filter(staff_id))
+        key = self.__make_query_filter(staff_id)
+        if is_logical:
+            return await soft_delete_async(self, key)
+        return await hard_delete_async(self, key)
 
-    async def get_staff_count_async(self) -> int:
+    async def restore_staff_async(self, document: StaffMasterDocument) -> bool:
         """
-        Get the count of all staff members for the current tenant.
+        Restore a logically deleted staff member with a new document (issue #324).
+
+        Stamped as create stamps it. Returns False when no deleted staff member matched.
+        """
+        document.tenant_id = self.tenant_id
+        document.shard_key = self.__get_shard_key(document)
+        document.created_at = get_app_time()
+        document.is_deleted = False
+        return await restore_async(self, self.__make_query_filter(document.id), document)
+
+    async def get_staff_count_async(self, include_deleted: bool = False) -> int:
+        """
+        Get the count of staff members for the current tenant.
+
+        Args:
+            include_deleted: True to count logically deleted staff members as well
 
         Returns:
             Count of staff members for the tenant
         """
         if self.dbcollection is None:
             await self.initialize()
-        query_filter = {"tenant_id": self.tenant_id}
+        query_filter = alive({"tenant_id": self.tenant_id}, include_deleted)
         return await self.dbcollection.count_documents(query_filter)
 
     def __make_query_filter(self, staff_id: str) -> dict:

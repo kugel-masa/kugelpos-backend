@@ -5,6 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.models.documents.item_store_master_document import ItemStoreMasterDocument
 from app.config.settings import settings
+from kugel_common.utils.misc import get_app_time
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -52,7 +54,7 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
         else:
             raise Exception("Failed to create item store")
 
-    async def get_item_store_by_code(self, item_code: str) -> ItemStoreMasterDocument:
+    async def get_item_store_by_code(self, item_code: str, include_deleted: bool = False) -> ItemStoreMasterDocument:
         """
         Retrieve a store-specific item record by its unique code.
 
@@ -63,10 +65,15 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
             The matching store-specific item document, or None if not found
         """
         filter = {"tenant_id": self.tenant_id, "store_code": self.store_code, "item_code": item_code}
-        return await self.get_one_async(filter)
+        return await self.get_one_async(alive(filter, include_deleted))
 
     async def get_item_store_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[ItemStoreMasterDocument]:
         """
         Retrieve store-specific items matching the specified filter with pagination and sorting.
@@ -82,8 +89,9 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
         Returns:
             List of store-specific item documents matching the query parameters
         """
-        query_filter["tenant_id"] = self.tenant_id
-        query_filter["store_code"] = self.store_code
+        query_filter = alive(
+            {**query_filter, "tenant_id": self.tenant_id, "store_code": self.store_code}, include_deleted
+        )
         logger.debug(f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
@@ -96,14 +104,14 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
             update_data: Dictionary containing the fields to update and their new values
 
         Returns:
-            The updated store-specific item document
+            The updated store-specific item document, or None when no live record
+            matched (missing, or deleted after the caller looked it up)
         """
-        filter = {"tenant_id": self.tenant_id, "store_code": self.store_code, "item_code": item_code}
+        filter = alive({"tenant_id": self.tenant_id, "store_code": self.store_code, "item_code": item_code})
         success = await self.update_one_async(filter, update_data)
-        if success:
-            return await self.get_item_store_by_code(item_code)
-        else:
-            raise Exception(f"Failed to update item store with code {item_code}")
+        if not success:
+            return None
+        return await self.get_item_store_by_code(item_code)
 
     async def replace_item_store_async(
         self, item_code: str, new_document: ItemStoreMasterDocument
@@ -125,7 +133,7 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
         else:
             raise Exception(f"Failed to replace item store with code {item_code}")
 
-    async def delete_item_store_async(self, item_code: str) -> None:
+    async def delete_item_store_async(self, item_code: str, is_logical: bool = True) -> bool:
         """
         Delete a store-specific item from the database.
 
@@ -136,9 +144,26 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
             None
         """
         filter = {"tenant_id": self.tenant_id, "store_code": self.store_code, "item_code": item_code}
-        await self.delete_async(filter)
+        if is_logical:
+            return await soft_delete_async(self, filter)
+        return await hard_delete_async(self, filter)
 
-    async def get_item_count_by_filter_async(self, query_filter: dict) -> int:
+    async def restore_item_store_async(self, item_store_doc: ItemStoreMasterDocument) -> bool:
+        """
+        Restore a logically deleted store-specific item with a new document (issue #324).
+
+        Stamped as create stamps it (tenant, store, shard key, created_at).
+        Returns False when no deleted record matched.
+        """
+        item_store_doc.tenant_id = self.tenant_id
+        item_store_doc.store_code = self.store_code
+        item_store_doc.shard_key = self.__get_shard_key(item_store_doc)
+        item_store_doc.created_at = get_app_time()
+        item_store_doc.is_deleted = False
+        item_code = item_store_doc.item_code
+        return await restore_async(self, {"tenant_id": self.tenant_id, "store_code": self.store_code, "item_code": item_code}, item_store_doc)
+
+    async def get_item_count_by_filter_async(self, query_filter: dict, include_deleted: bool = False) -> int:
         """
         Get the count of store-specific items matching the specified filter.
 
@@ -148,8 +173,9 @@ class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
         Returns:
             Count of items matching the filter
         """
-        query_filter["tenant_id"] = self.tenant_id
-        query_filter["store_code"] = self.store_code
+        query_filter = alive(
+            {**query_filter, "tenant_id": self.tenant_id, "store_code": self.store_code}, include_deleted
+        )
         if self.dbcollection is None:
             await self.initialize()
         return await self.dbcollection.count_documents(query_filter)

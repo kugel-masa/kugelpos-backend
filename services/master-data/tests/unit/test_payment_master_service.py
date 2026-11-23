@@ -39,7 +39,7 @@ class TestPaymentMasterService:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_raises(self, service, repo):
-        repo.get_payment_by_code.return_value = MagicMock(tenant_id="T001")
+        repo.get_payment_by_code.return_value = MagicMock(tenant_id="T001", is_deleted=False)
 
         with pytest.raises(DocumentAlreadyExistsException):
             await service.create_payment_async("PAY-01", "Cash", "Cash payment", 0, 1, [], [])
@@ -96,16 +96,15 @@ class TestPaymentMasterService:
 
     @pytest.mark.asyncio
     async def test_delete_success(self, service, repo):
-        doc = PaymentMasterDocument()
-        repo.get_payment_by_code.return_value = doc
-        repo.delete_payment_async.return_value = None
+        repo.delete_payment_async.return_value = True
 
         await service.delete_payment_async("PAY-01")
-        repo.delete_payment_async.assert_called_once()
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        repo.delete_payment_async.assert_called_once_with("PAY-01", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, repo):
-        repo.get_payment_by_code.return_value = None
+        repo.delete_payment_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_payment_async("NONEXISTENT")

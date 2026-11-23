@@ -6,6 +6,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from app.config.settings import settings
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.utils.misc import get_app_time
+from app.models.repositories.logical_delete import NOT_DELETED, alive, hard_delete_async, restore_async, soft_delete_async
 
 from logging import getLogger
 
@@ -57,7 +58,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
             raise Exception("Failed to create promotion")
 
     async def get_promotion_by_code_async(
-        self, promotion_code: str
+        self, promotion_code: str, include_deleted: bool = False
     ) -> PromotionMasterDocument:
         """
         Retrieve a promotion by its unique code.
@@ -68,10 +69,15 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         Returns:
             The matching promotion document, or None if not found
         """
-        return await self.get_one_async(self.__make_query_filter(promotion_code))
+        return await self.get_one_async(alive(self.__make_query_filter(promotion_code), include_deleted))
 
     async def get_promotions_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[PromotionMasterDocument]:
         """
         Retrieve promotions matching the specified filter with pagination and sorting.
@@ -87,8 +93,8 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         Returns:
             List of promotion documents matching the query parameters
         """
-        query_filter["tenant_id"] = self.tenant_id
-        query_filter["is_deleted"] = False
+        # Live only unless asked; a document without the field is live (issue #324)
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(
             f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}"
         )
@@ -97,7 +103,12 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         )
 
     async def get_promotions_by_filter_paginated_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> PaginatedResult[PromotionMasterDocument]:
         """
         Retrieve promotions matching the specified filter with pagination metadata.
@@ -114,8 +125,8 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         Returns:
             PaginatedResult containing promotion documents and metadata
         """
-        query_filter["tenant_id"] = self.tenant_id
-        query_filter["is_deleted"] = False
+        # Live only unless asked; a document without the field is live (issue #324)
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(
             f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}"
         )
@@ -129,7 +140,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
 
         Active promotions are those that are:
         - is_active = True
-        - is_deleted = False
+        - not logically deleted (a document without is_deleted counts as live)
         - start_datetime <= current_time <= end_datetime
 
         Args:
@@ -144,7 +155,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         query_filter = {
             "tenant_id": self.tenant_id,
             "is_active": True,
-            "is_deleted": False,
+            **NOT_DELETED,
             "start_datetime": {"$lte": current_time},
             "end_datetime": {"$gte": current_time},
         }
@@ -169,7 +180,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         query_filter = {
             "tenant_id": self.tenant_id,
             "is_active": True,
-            "is_deleted": False,
+            **NOT_DELETED,
             "start_datetime": {"$lte": current_time},
             "end_datetime": {"$gte": current_time},
             "promotion_type": "category_discount",
@@ -200,7 +211,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         query_filter = {
             "tenant_id": self.tenant_id,
             "is_active": True,
-            "is_deleted": False,
+            **NOT_DELETED,
             "start_datetime": {"$lte": current_time},
             "end_datetime": {"$gte": current_time},
             "$or": [
@@ -223,15 +234,13 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         Returns:
             The updated promotion document
         """
-        success = await self.update_one_async(
-            self.__make_query_filter(promotion_code), update_data
-        )
-        if success:
-            return await self.get_promotion_by_code_async(promotion_code)
-        else:
-            raise Exception(f"Failed to update promotion with code {promotion_code}")
+        success = await self.update_one_async(alive(self.__make_query_filter(promotion_code)), update_data)
+        if not success:
+            # Missing, or deleted after the caller looked it up (issue #324)
+            return None
+        return await self.get_promotion_by_code_async(promotion_code)
 
-    async def delete_promotion_async(self, promotion_code: str) -> bool:
+    async def delete_promotion_async(self, promotion_code: str, is_logical: bool = True) -> bool:
         """
         Logically delete a promotion from the database.
 
@@ -243,11 +252,22 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         Returns:
             True if deletion was successful
         """
-        update_data = {"is_deleted": True, "updated_at": get_app_time()}
-        success = await self.update_one_async(
-            self.__make_query_filter(promotion_code), update_data
-        )
-        return success
+        key = self.__make_query_filter(promotion_code)
+        if is_logical:
+            return await soft_delete_async(self, key)
+        return await hard_delete_async(self, key)
+
+    async def restore_promotion_async(self, document: PromotionMasterDocument) -> bool:
+        """
+        Restore a logically deleted promotion with a new document (issue #324).
+
+        Stamped as create stamps it. Returns False when no deleted promotion matched.
+        """
+        document.tenant_id = self.tenant_id
+        document.shard_key = self.__get_shard_key(document)
+        document.created_at = get_app_time()
+        document.is_deleted = False
+        return await restore_async(self, self.__make_query_filter(document.promotion_code), document)
 
     def __make_query_filter(self, promotion_code: str) -> dict:
         """
@@ -261,11 +281,9 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         Returns:
             Dictionary containing the query filter parameters
         """
-        return {
-            "tenant_id": self.tenant_id,
-            "promotion_code": promotion_code,
-            "is_deleted": False,
-        }
+        # The key only: reads add the live filter with alive(), while a physical
+        # delete and a restore must find a deleted promotion too (issue #324)
+        return {"tenant_id": self.tenant_id, "promotion_code": promotion_code}
 
     def __get_shard_key(self, document: PromotionMasterDocument) -> str:
         """

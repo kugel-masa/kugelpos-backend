@@ -60,9 +60,9 @@ class PaymentMasterService:
             DocumentAlreadyExistsException: If a payment method with the given code already exists
         """
 
-        # check if payment exists
-        payment = await self.payment_master_repository.get_payment_by_code(payment_code)
-        if payment is not None:
+        # A deleted payment method keeps its code; creating it again restores it (issue #324)
+        payment = await self.payment_master_repository.get_payment_by_code(payment_code, include_deleted=True)
+        if payment is not None and not payment.is_deleted:
             message = f"payment with payment_code {payment_code} already exists. tenant_id: {payment.tenant_id}"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -75,10 +75,16 @@ class PaymentMasterService:
         payment_doc.can_change = can_change
         payment_doc.is_active = is_active
 
+        if payment is not None:
+            # Variants are the request's: none, as for a new payment method
+            if not await self.payment_master_repository.restore_payment_async(payment_doc):
+                message = f"payment with payment_code {payment_code} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return payment_doc
         payment = await self.payment_master_repository.create_payment_async(payment_doc)
         return payment
 
-    async def get_payment_by_code(self, payment_code: str) -> PaymentMasterDocument:
+    async def get_payment_by_code(self, payment_code: str, include_deleted: bool = False) -> PaymentMasterDocument:
         """
         Retrieve a payment method by its unique code.
 
@@ -88,10 +94,12 @@ class PaymentMasterService:
         Returns:
             PaymentMasterDocument with the specified code, or None if not found
         """
-        payment = await self.payment_master_repository.get_payment_by_code(payment_code)
+        payment = await self.payment_master_repository.get_payment_by_code(payment_code, include_deleted)
         return payment
 
-    async def get_all_payments(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list[PaymentMasterDocument]:
+    async def get_all_payments(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list[PaymentMasterDocument]:
         """
         Retrieve all payment methods with pagination and sorting.
 
@@ -103,11 +111,13 @@ class PaymentMasterService:
         Returns:
             List of PaymentMasterDocument objects
         """
-        payments_all_in_tenant = await self.payment_master_repository.get_payment_by_filter_async({}, limit, page, sort)
+        payments_all_in_tenant = await self.payment_master_repository.get_payment_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
         return payments_all_in_tenant
 
     async def get_all_payments_paginated(
-        self, limit: int, page: int, sort: list[tuple[str, int]]
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
     ) -> tuple[list[PaymentMasterDocument], int]:
         """
         Retrieve all payment methods with pagination metadata.
@@ -120,8 +130,10 @@ class PaymentMasterService:
         Returns:
             Tuple of (list of PaymentMasterDocument objects, total count)
         """
-        payments_all_in_tenant = await self.payment_master_repository.get_payment_by_filter_async({}, limit, page, sort)
-        total_count = await self.payment_master_repository.get_payment_count_by_filter_async({})
+        payments_all_in_tenant = await self.payment_master_repository.get_payment_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
+        total_count = await self.payment_master_repository.get_payment_count_by_filter_async({}, include_deleted)
         return payments_all_in_tenant, total_count
 
     async def update_payment_async(self, payment_code: str, update_data: dict) -> PaymentMasterDocument:
@@ -154,9 +166,13 @@ class PaymentMasterService:
         if "payment_code" in update_data:
             del update_data["payment_code"]
         payment = await self.payment_master_repository.update_payment_async(payment_code, update_data)
+        if payment is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"PaymentMasterService.update_payment_async: payment_code->{payment_code} not found"
+            raise DocumentNotFoundException(message, logger)
         return payment
 
-    async def delete_payment_async(self, payment_code: str) -> None:
+    async def delete_payment_async(self, payment_code: str, is_logical: bool = True) -> None:
         """
         Delete a payment method from the database.
 
@@ -166,11 +182,11 @@ class PaymentMasterService:
         Raises:
             DocumentNotFoundException: If no payment method with the given code exists
         """
-        payment = await self.payment_master_repository.get_payment_by_code(payment_code)
-        if payment is None:
+        # One write decides: a logical delete matches a live payment method only,
+        # a physical one any (issue #324)
+        if not await self.payment_master_repository.delete_payment_async(payment_code, is_logical):
             message = f"PaymentMasterService.delete_payment_async: payment_code->{payment_code} not found"
             raise DocumentNotFoundException(message, logger)
-        await self.payment_master_repository.delete_payment_async(payment_code)
         return None
 
     async def add_variant_async(

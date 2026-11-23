@@ -84,10 +84,10 @@ class PromotionMasterService:
                 raise InvalidRequestDataException(message, logger)
 
         # Check if promotion exists
-        existing = await self.promotion_master_repo.get_promotion_by_code_async(
-            promotion_code
-        )
-        if existing is not None:
+        # A deleted promotion keeps its code; creating it again restores it (issue #324).
+        # Before, the lookup missed deleted promotions and the insert hit the unique index.
+        existing = await self.promotion_master_repo.get_promotion_by_code_async(promotion_code, include_deleted=True)
+        if existing is not None and not existing.is_deleted:
             message = f"promotion with code {promotion_code} already exists"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -101,10 +101,15 @@ class PromotionMasterService:
         promotion_doc.is_active = is_active
         promotion_doc.detail = detail
 
+        if existing is not None:
+            if not await self.promotion_master_repo.restore_promotion_async(promotion_doc):
+                message = f"promotion with code {promotion_code} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return promotion_doc
         return await self.promotion_master_repo.create_promotion_async(promotion_doc)
 
     async def get_promotion_by_code_async(
-        self, promotion_code: str
+        self, promotion_code: str, include_deleted: bool = False
     ) -> PromotionMasterDocument:
         """
         Retrieve a promotion by its unique code.
@@ -118,9 +123,7 @@ class PromotionMasterService:
         Raises:
             DocumentNotFoundException: If no promotion with the given code exists
         """
-        promotion = await self.promotion_master_repo.get_promotion_by_code_async(
-            promotion_code
-        )
+        promotion = await self.promotion_master_repo.get_promotion_by_code_async(promotion_code, include_deleted)
         if promotion is None:
             message = f"promotion with code {promotion_code} not found"
             raise DocumentNotFoundException(message, logger)
@@ -133,6 +136,7 @@ class PromotionMasterService:
         sort: list[tuple[str, int]],
         promotion_type: Optional[str] = None,
         is_active: Optional[bool] = None,
+        include_deleted: bool = False,
     ) -> list[PromotionMasterDocument]:
         """
         Retrieve promotions with pagination and sorting.
@@ -154,7 +158,7 @@ class PromotionMasterService:
             query_filter["is_active"] = is_active
 
         return await self.promotion_master_repo.get_promotions_by_filter_async(
-            query_filter, limit, page, sort
+            query_filter, limit, page, sort, include_deleted
         )
 
     async def get_promotions_paginated_async(
@@ -164,6 +168,7 @@ class PromotionMasterService:
         sort: list[tuple[str, int]],
         promotion_type: Optional[str] = None,
         is_active: Optional[bool] = None,
+        include_deleted: bool = False,
     ):
         """
         Retrieve promotions with pagination metadata.
@@ -185,7 +190,7 @@ class PromotionMasterService:
             query_filter["is_active"] = is_active
 
         return await self.promotion_master_repo.get_promotions_by_filter_paginated_async(
-            query_filter, limit, page, sort
+            query_filter, limit, page, sort, include_deleted
         )
 
     async def get_active_promotions_async(
@@ -286,13 +291,16 @@ class PromotionMasterService:
                     message = "discount_rate must be between 0 and 100"
                     raise InvalidRequestDataException(message, logger)
 
-        return await self.promotion_master_repo.update_promotion_async(
-            promotion_code, update_data
-        )
+        updated = await self.promotion_master_repo.update_promotion_async(promotion_code, update_data)
+        if updated is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"promotion with code {promotion_code} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_promotion_async(self, promotion_code: str) -> None:
+    async def delete_promotion_async(self, promotion_code: str, is_logical: bool = True) -> None:
         """
-        Logically delete a promotion from the database.
+        Delete a promotion, logically by default (issue #324).
 
         Args:
             promotion_code: Unique identifier for the promotion to delete
@@ -300,12 +308,8 @@ class PromotionMasterService:
         Raises:
             DocumentNotFoundException: If no promotion with the given code exists
         """
-        # Check if promotion exists
-        promotion = await self.promotion_master_repo.get_promotion_by_code_async(
-            promotion_code
-        )
-        if promotion is None:
+        # One write decides: a logical delete matches a live promotion only, a
+        # physical one any (issue #324)
+        if not await self.promotion_master_repo.delete_promotion_async(promotion_code, is_logical):
             message = f"promotion with code {promotion_code} not found"
             raise DocumentNotFoundException(message, logger)
-
-        await self.promotion_master_repo.delete_promotion_async(promotion_code)

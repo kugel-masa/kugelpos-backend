@@ -110,6 +110,7 @@ async def create_settings_master_async(
 )
 async def get_settings_master_async(
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -142,7 +143,7 @@ async def get_settings_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_settings_master_service_async(tenant_id)
     try:
-        settings_doc_list, total_count = await master_service.get_settings_all_paginated_async(limit, page, sort)
+        settings_doc_list, total_count = await master_service.get_settings_all_paginated_async(limit, page, sort, include_deleted)
         transformer = SchemasTransformerV1()
         return_settings_list = [
             transformer.transform_settings_master(settings_doc) for settings_doc in settings_doc_list
@@ -178,6 +179,7 @@ async def get_settings_master_async(
 async def get_settings_master_by_name_async(
     name: str,
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -206,7 +208,7 @@ async def get_settings_master_by_name_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_settings_master_service_async(tenant_id)
     try:
-        settings_doc = await master_service.get_settings_by_name_async(name)
+        settings_doc = await master_service.get_settings_by_name_async(name, include_deleted)
         if settings_doc is None:
             message = f"Settings not found. settings name: {name}"
             raise DocumentNotFoundException(message, logger)
@@ -375,6 +377,7 @@ async def update_settings_master_async(
 async def delete_settings_master_async(
     name: str,
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
@@ -403,7 +406,7 @@ async def delete_settings_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_settings_master_service_async(tenant_id)
     try:
-        await master_service.delete_settings_async(name)
+        await master_service.delete_settings_async(name, is_logical)
     except Exception as e:
         logger.error(f"Error deleting settings: {e}")
         raise e

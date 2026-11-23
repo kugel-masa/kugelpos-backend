@@ -105,6 +105,7 @@ async def create_promotion(
 )
 async def get_promotions(
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(20),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -127,7 +128,7 @@ async def get_promotions(
 
     try:
         paginated_result = await service.get_promotions_paginated_async(
-            limit, page, sort, promotion_type, is_active
+            limit, page, sort, promotion_type, is_active, include_deleted
         )
         transformer = SchemasTransformerV1()
         return_promotions = [
@@ -171,7 +172,7 @@ async def get_active_promotions(
 
     This endpoint returns promotions that are currently active based on:
     - is_active = True
-    - is_deleted = False
+    - not logically deleted
     - Current time is within start_datetime and end_datetime
 
     Optional filters:
@@ -222,6 +223,7 @@ async def get_active_promotions(
 async def get_promotion(
     promotion_code: str,
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -237,7 +239,7 @@ async def get_promotion(
     service = await get_promotion_master_service_async(tenant_id)
 
     try:
-        promotion = await service.get_promotion_by_code_async(promotion_code)
+        promotion = await service.get_promotion_by_code_async(promotion_code, include_deleted)
         transformer = SchemasTransformerV1()
         return_promotion = transformer.transform_promotion(promotion)
     except Exception as e:
@@ -339,12 +341,13 @@ async def update_promotion(
 async def delete_promotion(
     promotion_code: str,
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
-    Delete a promotion (logical deletion).
+    Delete a promotion: logically by default, physically with is_logical=false (issue #324).
 
-    This endpoint performs a soft delete by setting is_deleted = True.
+    A logical delete sets is_deleted = True; is_logical=false removes the record.
     The promotion will no longer appear in active or general listings.
 
     Authentication is required via token or API key. The tenant ID in the path must match
@@ -355,7 +358,7 @@ async def delete_promotion(
     service = await get_promotion_master_service_async(tenant_id)
 
     try:
-        await service.delete_promotion_async(promotion_code)
+        await service.delete_promotion_async(promotion_code, is_logical)
     except Exception as e:
         logger.error(f"Error deleting promotion: {e} for tenant_id: {tenant_id}")
         raise e

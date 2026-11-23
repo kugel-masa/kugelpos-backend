@@ -18,3 +18,4 @@ class ItemStoreMasterDocument(AbstractDocument):
     store_code: Optional[str] = None  # Identifier for the specific store
     item_code: Optional[str] = None  # Reference to the common item this store-specific record relates to
     store_price: Optional[float] = None  # Store-specific price that overrides the standard price
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live

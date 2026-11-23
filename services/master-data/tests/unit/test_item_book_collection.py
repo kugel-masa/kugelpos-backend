@@ -37,7 +37,9 @@ def _duplicate():
 async def test_create_takes_the_next_id_when_the_first_was_taken_meanwhile():
     taken = set()
     book_repo = AsyncMock()
-    book_repo.get_item_book_async.side_effect = lambda item_book_id: object() if item_book_id in taken else None
+    book_repo.get_item_book_async.side_effect = lambda item_book_id, include_deleted=False: (
+        object() if item_book_id in taken else None
+    )
 
     async def create(doc):
         if not taken:

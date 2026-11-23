@@ -39,7 +39,7 @@ class TestItemCommonMasterService:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_raises(self, service, repo):
-        repo.get_item_by_code_async.return_value = MagicMock(tenant_id="T001")
+        repo.get_item_by_code_async.return_value = MagicMock(tenant_id="T001", is_deleted=False)
 
         with pytest.raises(DocumentAlreadyExistsException):
             await service.create_item_async("ITEM-01", "Item 1", 100.0, 80.0, [], [], "CAT-01", "TAX-01")

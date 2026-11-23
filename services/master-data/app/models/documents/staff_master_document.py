@@ -18,3 +18,4 @@ class StaffMasterDocument(AbstractDocument):
     pin: Optional[str] = None  # Personal identification number for authentication
     status: Optional[str] = None  # Current status of the staff member (e.g., active, inactive)
     roles: Optional[list] = []  # List of roles assigned to this staff member that determine permissions
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live

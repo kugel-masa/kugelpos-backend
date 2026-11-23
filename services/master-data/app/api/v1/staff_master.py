@@ -106,6 +106,7 @@ async def create_staff_master_async(
 async def get_staff_master_async(
     staff_id: str,
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -133,7 +134,7 @@ async def get_staff_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_staff_master_service_async(tenant_id)
     try:
-        staff_doc = await master_service.get_staff_by_id_async(staff_id)
+        staff_doc = await master_service.get_staff_by_id_async(staff_id, include_deleted)
         if staff_doc is None:
             message = f"Staff not found. staff_id: {staff_id}"
             raise DocumentNotFoundException(message, logger)
@@ -165,6 +166,7 @@ async def get_staff_master_async(
 )
 async def get_staff_master_all_async(
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -197,7 +199,7 @@ async def get_staff_master_all_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_staff_master_service_async(tenant_id)
     try:
-        staff_docs, total_count = await master_service.get_staff_all_paginated_async(limit, page, sort)
+        staff_docs, total_count = await master_service.get_staff_all_paginated_async(limit, page, sort, include_deleted)
         transformer = SchemasTransformerV1()
         staff_all = [transformer.transform_staff(staff_doc) for staff_doc in staff_docs]
     except Exception as e:
@@ -299,6 +301,7 @@ async def update_staff_master_async(
 async def delete_staff_master_async(
     staff_id: str,
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
@@ -327,7 +330,7 @@ async def delete_staff_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_staff_master_service_async(tenant_id)
     try:
-        await master_service.delete_staff_async(staff_id)
+        await master_service.delete_staff_async(staff_id, is_logical)
     except Exception as e:
         logger.error(f"Error deleting staff: {e}")
         raise e

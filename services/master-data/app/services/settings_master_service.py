@@ -47,9 +47,9 @@ class SettingsMasterService:
             DocumentAlreadyExistsException: If a setting with the given name already exists
         """
 
-        # check if exists
-        settings = await self.settings_master_repo.get_settings_by_name_async(name)
-        if settings is not None:
+        # A deleted setting keeps its name; creating it again restores it (issue #324)
+        settings = await self.settings_master_repo.get_settings_by_name_async(name, include_deleted=True)
+        if settings is not None and not settings.is_deleted:
             message = f"settings with name {name} already exists. tenant_id: {settings.tenant_id}"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -60,9 +60,14 @@ class SettingsMasterService:
         # Process values to ensure JSON formatting
         processed_values = process_setting_values(values)
         settings_doc.values = [SettingsValue(**value) for value in processed_values]
+        if settings is not None:
+            if not await self.settings_master_repo.restore_settings_async(settings_doc):
+                message = f"settings with name {name} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return settings_doc
         return await self.settings_master_repo.create_settings_async(settings_doc)
 
-    async def get_settings_by_name_async(self, name: str) -> SettingsMasterDocument:
+    async def get_settings_by_name_async(self, name: str, include_deleted: bool = False) -> SettingsMasterDocument:
         """
         Retrieve a settings document by its name.
 
@@ -72,7 +77,7 @@ class SettingsMasterService:
         Returns:
             SettingsMasterDocument with the specified name, or None if not found
         """
-        return await self.settings_master_repo.get_settings_by_name_async(name)
+        return await self.settings_master_repo.get_settings_by_name_async(name, include_deleted)
 
     async def get_settings_value_by_name_async(
         self,
@@ -124,7 +129,9 @@ class SettingsMasterService:
         # if no settings value is found, return the default value
         return setting_doc.default_value
 
-    async def get_settings_all_async(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list:
+    async def get_settings_all_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list:
         """
         Retrieve all system settings with pagination and sorting.
 
@@ -136,10 +143,10 @@ class SettingsMasterService:
         Returns:
             List of SettingsMasterDocument objects
         """
-        return await self.settings_master_repo.get_settings_all_async(limit, page, sort)
+        return await self.settings_master_repo.get_settings_all_async(limit, page, sort, include_deleted)
 
     async def get_settings_all_paginated_async(
-        self, limit: int, page: int, sort: list[tuple[str, int]]
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
     ) -> tuple[list[SettingsMasterDocument], int]:
         """
         Retrieve all system settings with pagination metadata.
@@ -152,8 +159,8 @@ class SettingsMasterService:
         Returns:
             Tuple of (list of SettingsMasterDocument objects, total count)
         """
-        settings_list = await self.settings_master_repo.get_settings_all_async(limit, page, sort)
-        total_count = await self.settings_master_repo.get_settings_count_async()
+        settings_list = await self.settings_master_repo.get_settings_all_async(limit, page, sort, include_deleted)
+        total_count = await self.settings_master_repo.get_settings_count_async(include_deleted)
         return settings_list, total_count
 
     async def update_settings_async(self, name: str, update_data: dict) -> SettingsMasterDocument:
@@ -196,9 +203,14 @@ class SettingsMasterService:
         if "values" in update_data and isinstance(update_data["values"], list):
             update_data["values"] = process_setting_values(update_data["values"])
 
-        return await self.settings_master_repo.update_settings_async(name, update_data)
+        updated = await self.settings_master_repo.update_settings_async(name, update_data)
+        if updated is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"settings with name {name} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_settings_async(self, name: str) -> None:
+    async def delete_settings_async(self, name: str, is_logical: bool = True) -> None:
         """
         Delete a system setting from the database.
 
@@ -208,8 +220,9 @@ class SettingsMasterService:
         Raises:
             DocumentNotFoundException: If no setting with the given name exists
         """
-        settings = await self.settings_master_repo.get_settings_by_name_async(name)
-        if settings is None:
+        # One write decides: a logical delete matches a live setting only, a
+        # physical one any (issue #324)
+        if not await self.settings_master_repo.delete_settings_async(name, is_logical):
             message = f"settings with name {name} not found"
             raise DocumentNotFoundException(message, logger)
-        return await self.settings_master_repo.delete_settings_async(name)
+        return None

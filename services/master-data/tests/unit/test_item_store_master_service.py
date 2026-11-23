@@ -56,7 +56,7 @@ class TestItemStoreMasterService:
     @pytest.mark.asyncio
     async def test_create_duplicate_raises(self, service, store_repo, common_repo):
         common_repo.get_item_by_code_async.return_value = ItemCommonMasterDocument()
-        store_repo.get_item_store_by_code.return_value = MagicMock(tenant_id="T001")
+        store_repo.get_item_store_by_code.return_value = MagicMock(tenant_id="T001", is_deleted=False)
 
         with pytest.raises(DocumentAlreadyExistsException):
             await service.create_item_async("ITEM-01", 120.0)
@@ -111,16 +111,15 @@ class TestItemStoreMasterService:
 
     @pytest.mark.asyncio
     async def test_delete_success(self, service, store_repo, common_repo):
-        doc = ItemStoreMasterDocument()
-        store_repo.get_item_store_by_code.return_value = doc
-        store_repo.delete_item_store_async.return_value = None
+        store_repo.delete_item_store_async.return_value = True
 
         await service.delete_item_async("ITEM-01")
-        store_repo.delete_item_store_async.assert_called_once()
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        store_repo.delete_item_store_async.assert_called_once_with("ITEM-01", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, store_repo, common_repo):
-        store_repo.get_item_store_by_code.return_value = None
+        store_repo.delete_item_store_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_item_async("NONEXISTENT")

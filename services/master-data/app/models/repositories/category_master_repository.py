@@ -4,6 +4,8 @@ from app.models.documents.category_master_document import CategoryMasterDocument
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.config.settings import settings
 from kugel_common.schemas.pagination import PaginatedResult
+from kugel_common.utils.misc import get_app_time
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 from logging import getLogger
 
@@ -50,20 +52,28 @@ class CategoryMasterRepository(AbstractRepository[CategoryMasterDocument]):
         else:
             raise Exception("Failed to create category")
 
-    async def get_category_by_code_async(self, category_code: str) -> CategoryMasterDocument:
+    async def get_category_by_code_async(
+        self, category_code: str, include_deleted: bool = False
+    ) -> CategoryMasterDocument:
         """
         Retrieve a category by its unique code.
 
         Args:
             category_code: Unique identifier for the category
+            include_deleted: True to find a logically deleted category as well
 
         Returns:
             The matching category document, or None if not found
         """
-        return await self.get_one_async(self.__make_query_filter(category_code))
+        return await self.get_one_async(alive(self.__make_query_filter(category_code), include_deleted))
 
     async def get_category_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[CategoryMasterDocument]:
         """
         Retrieve categories matching the specified filter with pagination and sorting.
@@ -79,12 +89,17 @@ class CategoryMasterRepository(AbstractRepository[CategoryMasterDocument]):
         Returns:
             List of category documents matching the query parameters
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
     async def get_category_by_filter_paginated_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> PaginatedResult[CategoryMasterDocument]:
         """
         Retrieve categories matching the specified filter with pagination metadata.
@@ -101,7 +116,7 @@ class CategoryMasterRepository(AbstractRepository[CategoryMasterDocument]):
         Returns:
             PaginatedResult containing category documents and metadata
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}")
         return await self.get_paginated_list_async(query_filter, limit, page, sort)
 
@@ -114,13 +129,13 @@ class CategoryMasterRepository(AbstractRepository[CategoryMasterDocument]):
             update_data: Dictionary containing the fields to update and their new values
 
         Returns:
-            The updated category document
+            The updated category document, or None when no live category matched
+            (missing, or deleted after the caller looked it up)
         """
-        success = await self.update_one_async(self.__make_query_filter(category_code), update_data)
-        if success:
-            return await self.get_category_by_code_async(category_code)
-        else:
-            raise Exception(f"Failed to update category with code {category_code}")
+        success = await self.update_one_async(alive(self.__make_query_filter(category_code)), update_data)
+        if not success:
+            return None
+        return await self.get_category_by_code_async(category_code)
 
     async def replace_category_async(
         self, category_code: str, new_document: CategoryMasterDocument
@@ -141,17 +156,38 @@ class CategoryMasterRepository(AbstractRepository[CategoryMasterDocument]):
         else:
             raise Exception(f"Failed to replace category with code {category_code}")
 
-    async def delete_category_async(self, category_code: str):
+    async def delete_category_async(self, category_code: str, is_logical: bool = True) -> bool:
         """
-        Delete a category from the database.
+        Delete a category (issue #324).
 
         Args:
             category_code: Unique identifier for the category to delete
+            is_logical: True marks a live category deleted; False removes the
+                record, logically deleted or not
 
         Returns:
-            None
+            bool: False when nothing matched
         """
-        return await self.delete_async(self.__make_query_filter(category_code))
+        key = self.__make_query_filter(category_code)
+        if is_logical:
+            return await soft_delete_async(self, key)
+        return await hard_delete_async(self, key)
+
+    async def restore_category_async(self, document: CategoryMasterDocument) -> bool:
+        """
+        Restore a logically deleted category with a new document (issue #324).
+
+        The document is stamped as create stamps it, so the restored record is
+        indistinguishable from a new one.
+
+        Returns:
+            bool: False when no deleted category matched (restored or removed meanwhile)
+        """
+        document.tenant_id = self.tenant_id
+        document.shard_key = self.__get_shard_key(document)
+        document.created_at = get_app_time()
+        document.is_deleted = False
+        return await restore_async(self, self.__make_query_filter(document.category_code), document)
 
     def __make_query_filter(self, category_code: str) -> dict:
         """

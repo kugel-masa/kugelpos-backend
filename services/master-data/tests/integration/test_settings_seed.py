@@ -81,6 +81,33 @@ class TestRerunningSetup:
         for name in TERMINAL_FACING_SETTING_NAMES:
             assert await collection.count_documents({"name": name}) == 1
 
+    async def test_does_not_recreate_a_logically_deleted_setting(self, http_client, admin_header, caplog):
+        """Issue #324: a deleted seed keeps its name, so re-seeding it would collide
+        with the unique index on every setup. It stays deleted until an operator
+        creates it again (which restores it)."""
+        tenant_id = os.environ.get("TENANT_ID")
+        name = "RECEIPT_NO_START_VALUE"
+        response = await http_client.delete(f"/api/v1/tenants/{tenant_id}/settings/{name}", headers=admin_header)
+        assert response.status_code == status.HTTP_200_OK, response.text
+
+        try:
+            with caplog.at_level("WARNING"):
+                await database_setup.execute(tenant_id)
+            # Before the fix the insert hit the unique index; setup swallowed it as a warning
+            assert not [r for r in caplog.records if "Could not seed setting" in r.getMessage()]
+
+            collection = await _collection()
+            docs = await collection.find({"name": name}).to_list(None)
+            assert len(docs) == 1
+            assert docs[0]["is_deleted"] is True
+        finally:
+            restored = await http_client.post(
+                f"/api/v1/tenants/{tenant_id}/settings",
+                json={"name": name, "defaultValue": "1", "values": []},
+                headers=admin_header,
+            )
+            assert restored.status_code == status.HTTP_201_CREATED, restored.text
+
     async def test_does_not_overwrite_a_configured_value(self, http_client, admin_header):
         """Setup re-runs are how migrations reach existing tenants, so a value an
         operator changed has to survive one."""

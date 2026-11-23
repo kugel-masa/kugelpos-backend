@@ -194,6 +194,8 @@ Format: XXYYZZ (`kugel_common/exceptions/error_codes.py`, `docs/en/general/error
 - Payment variants are embedded in the `master_payment` document (`variants[]`, no index change). Transaction payment lines gain `variant_code` / `builtin_description` (311-payment-variants)
 - Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), `HttpClientHelper` (`get_service_client`), PyJWT (the existing service-account token). No new external dependency; the PIN comparison uses the standard library's `secrets` (323-staff-pin-verification)
 - `master_staff` and `info_terminal` keep their shape; the staff PIN is compared only inside master-data, behind an internal service-to-service endpoint (323-staff-pin-verification)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), commons' `AbstractRepository`. No new external dependency (324-master-logical-delete)
+- Every deletable master (category, item common, item store, item book, payment, promotion, settings, staff) gains an optional `is_deleted`; reads filter `{"is_deleted": {"$ne": True}}` so documents without the field stay visible. Unique indexes unchanged (324-master-logical-delete)
 
 ## Recent Changes
 - 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (through the existing `DaprClientHelper` wrapper)

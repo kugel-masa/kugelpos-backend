@@ -97,6 +97,7 @@ class ItemBookMasterDocument(AbstractDocument):
     item_book_id: Optional[str] = None  # Unique identifier for this item book
     title: Optional[str] = None  # Display title for the item book
     categories: list[ItemBookCategory] = Field(default_factory=list)  # List of categories contained in this item book
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live
 
     @field_validator("categories", mode="before")
     @classmethod
