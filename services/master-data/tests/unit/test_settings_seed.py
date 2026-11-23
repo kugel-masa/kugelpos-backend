@@ -23,7 +23,9 @@ from app.database.database_setup import (
 def _repository(existing=None):
     """Stand in for SettingsMasterRepository; records what would be created."""
     repository = MagicMock()
-    repository.get_settings_by_name_async = AsyncMock(side_effect=lambda name: (existing or {}).get(name))
+    repository.get_settings_by_name_async = AsyncMock(
+        side_effect=lambda name, include_deleted=False: (existing or {}).get(name)
+    )
     repository.create_settings_async = AsyncMock()
     repository.created = repository.create_settings_async
     return repository
@@ -152,3 +154,4 @@ class TestFailureIsNotFatal:
         repository.created = repository.create_settings_async
         with _patch_db(repository):
             await seed_terminal_facing_settings("T0001")  # must not raise
+

@@ -92,3 +92,16 @@ async def test_an_update_keeps_the_pin_unless_it_is_cleared(http_client, admin_h
     cleared = await http_client.put(url, json={"name": "Renamed", "pin": "", "roles": ["cashier"]}, headers=admin_header)
     assert cleared.status_code == 200, cleared.text
     assert (await _verify(http_client, staff_id, {})).status_code == 200
+
+
+@pytest.mark.parametrize("pin_fields", [{"pin": PIN}, {}], ids=["with-pin", "without-pin"])
+async def test_a_logically_deleted_staff_member_is_not_found(http_client, admin_header, pin_fields):
+    """Issue #324: a deleted staff member cannot sign in, PIN or not."""
+    staff_id = await _create(http_client, admin_header, **pin_fields)
+    deleted = await http_client.delete(f"/api/v1/tenants/{_tenant()}/staff/{staff_id}", headers=admin_header)
+    assert deleted.status_code == 200, deleted.text
+
+    response = await _verify(http_client, staff_id, {"pin": PIN})
+
+    assert response.status_code == 404, response.text
+    assert response.json()["userError"]["code"] == "405701"

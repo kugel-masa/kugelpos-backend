@@ -53,6 +53,7 @@ class BaseStaffResponse(BaseSchemaModel):
     id: str
     name: str
     roles: Optional[list[str]] = []
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 
@@ -189,6 +190,7 @@ class BaseItemStoreResponse(BaseSchemaModel):
 
     item_code: str
     store_price: float
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 
@@ -328,6 +330,7 @@ class BasePaymentResponse(BaseSchemaModel):
     can_change: bool
     is_active: bool
     variants: list[BasePaymentVariantResponse] = Field(default_factory=list)
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 
@@ -406,6 +409,7 @@ class BaseSettingsMasterResponse(BaseSchemaModel):
     name: str
     default_value: str
     values: list[BaseSettingsMasterValue]
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 
@@ -499,6 +503,7 @@ class BaseCategoryMasterResponse(BaseSchemaModel):
     description: Optional[str] = None
     description_short: Optional[str] = None
     tax_code: Optional[str] = None
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: Optional[str] = None
     last_update_datetime: Optional[str] = None
 
@@ -690,6 +695,7 @@ class BaseItemBookResponse(BaseSchemaModel):
     title: str
     categories: Optional[list[BaseItemBookCategory]] = []
     item_book_id: str
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 
@@ -770,6 +776,7 @@ class BasePromotionResponse(BaseSchemaModel):
     end_datetime: str
     is_active: bool
     detail: Optional[BaseCategoryPromoDetail] = None
+    is_deleted: bool = False  # Logical deletion flag (issue #324)
     entry_datetime: str
     last_update_datetime: Optional[str] = None
 

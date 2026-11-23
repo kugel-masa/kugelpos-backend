@@ -404,16 +404,17 @@ class TestPromotionMasterServiceDelete:
     @pytest.mark.asyncio
     async def test_delete_success(self, service, mock_repo):
         """Existing promotion is deleted."""
-        mock_repo.get_promotion_by_code_async.return_value = make_promotion_doc()
+        mock_repo.delete_promotion_async.return_value = True
 
         await service.delete_promotion_async("PROMO-01")
 
-        mock_repo.delete_promotion_async.assert_called_once_with("PROMO-01")
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        mock_repo.delete_promotion_async.assert_called_once_with("PROMO-01", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, mock_repo):
         """Raises DocumentNotFoundException for unknown promotion code."""
-        mock_repo.get_promotion_by_code_async.return_value = None
+        mock_repo.delete_promotion_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_promotion_async("NONEXISTENT")

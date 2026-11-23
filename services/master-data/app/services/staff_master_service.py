@@ -2,7 +2,6 @@
 import secrets
 from logging import getLogger
 from typing import Optional
-from kugel_common.utils.log_utils import mask_loggable
 from typing import Any
 
 from kugel_common.exceptions import (
@@ -58,9 +57,9 @@ class StaffMasterService:
             DocumentAlreadyExistsException: If a staff member with the given ID already exists
         """
 
-        # check if staff exists
-        staff = await self.staff_master_repo.get_staff_by_id_async(staff_id)
-        if staff is not None:
+        # A deleted staff member keeps the ID; creating it again restores it (issue #324)
+        staff = await self.staff_master_repo.get_staff_by_id_async(staff_id, include_deleted=True)
+        if staff is not None and not staff.is_deleted:
             message = f"staff with id {staff_id} already exists. tenant_id: {staff.tenant_id}"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -69,6 +68,11 @@ class StaffMasterService:
         staff_doc.name = staff_name
         staff_doc.pin = pin
         staff_doc.roles = roles
+        if staff is not None:
+            if not await self.staff_master_repo.restore_staff_async(staff_doc):
+                message = f"staff with id {staff_id} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return staff_doc
         return await self.staff_master_repo.create_staff_async(staff_doc)
 
     async def verify_staff_async(self, staff_id: str, pin: Optional[str]) -> StaffMasterDocument:
@@ -123,7 +127,7 @@ class StaffMasterService:
             )
         return staff
 
-    async def get_staff_by_id_async(self, staff_id: str) -> StaffMasterDocument:
+    async def get_staff_by_id_async(self, staff_id: str, include_deleted: bool = False) -> StaffMasterDocument:
         """
         Retrieve a staff member by their unique ID.
 
@@ -136,13 +140,15 @@ class StaffMasterService:
         Raises:
             DocumentNotFoundException: If no staff member with the given ID exists
         """
-        staff = await self.staff_master_repo.get_staff_by_id_async(staff_id)
+        staff = await self.staff_master_repo.get_staff_by_id_async(staff_id, include_deleted)
         if staff is None:
             message = f"staff with id {staff_id} not found"
             raise DocumentNotFoundException(message, logger)
         return staff
 
-    async def get_staff_all_async(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list:
+    async def get_staff_all_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list:
         """
         Retrieve all staff members with pagination and sorting.
 
@@ -154,10 +160,10 @@ class StaffMasterService:
         Returns:
             List of StaffMasterDocument objects
         """
-        return await self.staff_master_repo.get_staff_by_filter_async({}, limit, page, sort)
+        return await self.staff_master_repo.get_staff_by_filter_async({}, limit, page, sort, include_deleted)
 
     async def get_staff_all_paginated_async(
-        self, limit: int, page: int, sort: list[tuple[str, int]]
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
     ) -> tuple[list[StaffMasterDocument], int]:
         """
         Retrieve all staff members with pagination metadata.
@@ -170,8 +176,8 @@ class StaffMasterService:
         Returns:
             Tuple of (list of StaffMasterDocument objects, total count)
         """
-        staff_list = await self.staff_master_repo.get_staff_by_filter_async({}, limit, page, sort)
-        total_count = await self.staff_master_repo.get_staff_count_async()
+        staff_list = await self.staff_master_repo.get_staff_by_filter_async({}, limit, page, sort, include_deleted)
+        total_count = await self.staff_master_repo.get_staff_count_async(include_deleted)
         return staff_list, total_count
 
     async def update_staff_async(self, staff_id: str, update_data: dict) -> StaffMasterDocument:
@@ -205,9 +211,14 @@ class StaffMasterService:
         # remove staff_id from update_data
         if "id" in update_data:
             del update_data["id"]
-        return await self.staff_master_repo.update_staff_async(staff_id, update_data)
+        updated = await self.staff_master_repo.update_staff_async(staff_id, update_data)
+        if updated is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"staff with id {staff_id} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_staff_async(self, staff_id: str) -> StaffMasterDocument:
+    async def delete_staff_async(self, staff_id: str, is_logical: bool = True) -> None:
         """
         Delete a staff member from the database.
 
@@ -220,10 +231,9 @@ class StaffMasterService:
         Raises:
             DocumentNotFoundException: If no staff member with the given ID exists
         """
-        staff = await self.staff_master_repo.get_staff_by_id_async(staff_id)
-        # The staff record carries its `pin` in plain text (issue #211).
-        logger.debug(f"staff: {mask_loggable(staff)}")
-        if staff is None:
+        # One write decides: a logical delete matches a live staff member only, a
+        # physical one any (issue #324)
+        if not await self.staff_master_repo.delete_staff_async(staff_id, is_logical):
             message = f"staff with id {staff_id} not found"
             raise DocumentNotFoundException(message, logger)
-        return await self.staff_master_repo.delete_staff_async(staff_id)
+        return None

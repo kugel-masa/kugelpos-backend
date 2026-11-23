@@ -140,3 +140,23 @@ async def test_an_unaddressable_staff_id_is_a_plain_authentication_failure(http_
     assert r.status_code == 401, r.text
     assert r.json()["userError"]["code"] == "406004"
     assert _comparable(r.json(), staff_id) == _comparable(unknown.json(), missing)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pin_fields", [{"pin": PIN}, {}], ids=["with-pin", "without-pin"])
+async def test_a_logically_deleted_staff_member_cannot_sign_in(http_client, admin_token, pin_fields):  # noqa: F811
+    """Issue #324: a deleted staff member answers like an unknown one (401 / 406004)."""
+    admin = {"Authorization": f"Bearer {admin_token}"}
+    staff_id = await _staff(admin, **pin_fields)
+    async with _master_data() as m:
+        deleted = await m.delete(f"/tenants/{os.environ['TENANT_ID']}/staff/{staff_id}", headers=admin)
+    assert deleted.status_code == 200, deleted.text
+    terminal_id, _, headers = await _terminal(http_client, admin)
+
+    r = await _sign_in(http_client, terminal_id, headers, {"staffId": staff_id, "pin": PIN})
+    missing = f"NOSUCH{uuid.uuid4().hex[:6].upper()}"
+    unknown = await _sign_in(http_client, terminal_id, headers, {"staffId": missing, "pin": PIN})
+
+    assert r.status_code == 401, r.text
+    assert r.json()["userError"]["code"] == "406004"
+    assert _comparable(r.json(), staff_id) == _comparable(unknown.json(), missing)

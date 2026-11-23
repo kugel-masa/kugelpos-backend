@@ -5,6 +5,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from kugel_common.exceptions import RepositoryException
 from kugel_common.utils.misc import get_app_time
 from app.config.settings import settings
+from app.models.repositories.logical_delete import alive, soft_delete_async
 
 from logging import getLogger
 
@@ -51,7 +52,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         else:
             raise Exception("Failed to create item book")
 
-    async def get_item_book_async(self, item_book_id: str) -> ItemBookMasterDocument:
+    async def get_item_book_async(self, item_book_id: str, include_deleted: bool = False) -> ItemBookMasterDocument:
         """
         Retrieve an item book by its unique ID.
 
@@ -61,10 +62,15 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         Returns:
             The matching item book document, or None if not found
         """
-        return await self.get_one_async(self.__make_query_filter(item_book_id))
+        return await self.get_one_async(alive(self.__make_query_filter(item_book_id), include_deleted))
 
     async def get_item_book_by_filter_async(
-        self, query_filter: dict, limit: int, page: int, sort: list[tuple[str, int]]
+        self,
+        query_filter: dict,
+        limit: int,
+        page: int,
+        sort: list[tuple[str, int]],
+        include_deleted: bool = False,
     ) -> list[ItemBookMasterDocument]:
         """
         Retrieve item books matching the specified filter with pagination and sorting.
@@ -80,7 +86,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         Returns:
             List of item book documents matching the query parameters
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         logger.debug(f"query_filter: {query_filter} limit: {limit} page: {page} sort: {sort}")
         return await self.get_list_async_with_sort_and_paging(query_filter, limit, page, sort)
 
@@ -95,11 +101,11 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         Returns:
             The updated item book document
         """
-        success = await self.update_one_async(self.__make_query_filter(item_book_id), update_data)
-        if success:
-            return await self.get_item_book_async(item_book_id)
-        else:
-            raise Exception(f"Failed to update item book with id {item_book_id}")
+        success = await self.update_one_async(alive(self.__make_query_filter(item_book_id)), update_data)
+        if not success:
+            # Missing, or deleted after the caller looked it up (issue #324)
+            return None
+        return await self.get_item_book_async(item_book_id)
 
     async def replace_item_book_async(
         self, item_book_id: str, new_document: ItemBookMasterDocument
@@ -155,7 +161,8 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         if self.dbcollection is None:
             await self.initialize()
 
-        query_filter = self.__make_query_filter(item_book_id)
+        # A deleted item book takes no nested writes (issue #324)
+        query_filter = alive(self.__make_query_filter(item_book_id))
         if conditions:
             query_filter["$and"] = conditions
 
@@ -195,7 +202,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
             await self.initialize()
         try:
             await self.dbcollection.update_one(
-                {**self.__make_query_filter(item_book_id), **match},
+                {**alive(self.__make_query_filter(item_book_id)), **match},
                 {"$set": {path: []}},
                 array_filters=array_filters,
                 session=self.session,
@@ -374,7 +381,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         """Build a filter clause asserting that no button occupies the given position."""
         return {"buttons": {"$not": {"$elemMatch": {"pos_x": button["pos_x"], "pos_y": button["pos_y"]}}}}
 
-    async def delete_item_book_async(self, item_book_id: str):
+    async def delete_item_book_async(self, item_book_id: str, is_logical: bool = True) -> bool:
         """
         Delete an item book from the database.
 
@@ -384,9 +391,14 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         Returns:
             None
         """
-        return await self.delete_async(self.__make_query_filter(item_book_id))
+        # Logical by default (issue #324). An item book is never restored: its id is
+        # generated, and the generator counts a deleted id as taken.
+        key = self.__make_query_filter(item_book_id)
+        if is_logical:
+            return await soft_delete_async(self, key)
+        return await self.delete_async(key)
 
-    async def get_item_book_count_by_filter_async(self, query_filter: dict) -> int:
+    async def get_item_book_count_by_filter_async(self, query_filter: dict, include_deleted: bool = False) -> int:
         """
         Get the count of item books matching the specified filter.
 
@@ -396,7 +408,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         Returns:
             Count of item books matching the filter
         """
-        query_filter["tenant_id"] = self.tenant_id
+        query_filter = alive({**query_filter, "tenant_id": self.tenant_id}, include_deleted)
         if self.dbcollection is None:
             await self.initialize()
         return await self.dbcollection.count_documents(query_filter)

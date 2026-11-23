@@ -58,6 +58,7 @@ def test_complete_row_is_unchanged():
         "description": "Bakery",
         "description_short": "Bkr",
         "tax_code": "02",
+        "is_deleted": False,  # added by issue #324
         "entry_datetime": "2026-11-01 09:00:00",
         "last_update_datetime": "2026-11-02 10:30:00",
     }

@@ -54,7 +54,8 @@ class TestCategoryMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_category_by_code_async("C01")
-            expected_filter = {"tenant_id": "T001", "category_code": "C01"}
+            # Live categories only by default (issue #324)
+            expected_filter = {"tenant_id": "T001", "category_code": "C01", "is_deleted": {"$ne": True}}
             mock_get.assert_awaited_once_with(expected_filter)
 
     # -- get_category_by_filter_async -----------------------------------------
@@ -100,16 +101,16 @@ class TestCategoryMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             result = await repo.update_category_async("C01", {"description": "Updated"})
-            expected_filter = {"tenant_id": "T001", "category_code": "C01"}
+            expected_filter = {"tenant_id": "T001", "category_code": "C01", "is_deleted": {"$ne": True}}
             mock_update.assert_awaited_once_with(expected_filter, {"description": "Updated"})
             assert result.description == "Updated"
 
     @pytest.mark.asyncio
-    async def test_update_category_raises_on_failure(self):
+    async def test_update_category_answers_none_when_nothing_live_matched(self):
+        # Missing, or deleted after the caller looked it up: the service answers 404 (issue #324)
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update category"):
-                await repo.update_category_async("C01", {"description": "x"})
+            assert await repo.update_category_async("C01", {"description": "x"}) is None
 
     # -- replace_category_async -----------------------------------------------
 
@@ -138,12 +139,20 @@ class TestCategoryMasterRepository:
     # -- delete_category_async ------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_delete_category_filter(self):
+    async def test_delete_category_is_logical_by_default(self):
+        repo = self._make_repo()
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_update:
+            assert await repo.delete_category_async("C01") is True
+            mock_update.assert_awaited_once_with(
+                {"tenant_id": "T001", "category_code": "C01", "is_deleted": {"$ne": True}}, {"is_deleted": True}
+            )
+
+    @pytest.mark.asyncio
+    async def test_delete_category_physically_on_request(self):
         repo = self._make_repo()
         with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
-            await repo.delete_category_async("C01")
-            expected_filter = {"tenant_id": "T001", "category_code": "C01"}
-            mock_del.assert_awaited_once_with(expected_filter)
+            await repo.delete_category_async("C01", is_logical=False)
+            mock_del.assert_awaited_once_with({"tenant_id": "T001", "category_code": "C01"})
 
 
 # ---------------------------------------------------------------------------
@@ -197,16 +206,17 @@ class TestItemCommonMasterRepository:
         expected_doc = ItemCommonMasterDocument(tenant_id="T001", item_code="I01")
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=expected_doc) as mock_get:
             result = await repo.get_item_by_code_async("I01")
-            expected_filter = {"tenant_id": "T001", "item_code": "I01", "is_deleted": False}
+            expected_filter = {"tenant_id": "T001", "item_code": "I01", "is_deleted": {"$ne": True}}  # live only (issue #324)
             mock_get.assert_awaited_once_with(expected_filter)
             assert result is expected_doc
 
     @pytest.mark.asyncio
-    async def test_get_item_by_code_with_logical_deleted(self):
+    async def test_get_item_by_code_including_deleted(self):
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
-            await repo.get_item_by_code_async("I01", is_logical_deleted=True)
-            expected_filter = {"tenant_id": "T001", "item_code": "I01", "is_deleted": True}
+            await repo.get_item_by_code_async("I01", include_deleted=True)
+            # include_deleted finds live and deleted items alike (issue #324)
+            expected_filter = {"tenant_id": "T001", "item_code": "I01"}
             mock_get.assert_awaited_once_with(expected_filter)
 
     # -- get_item_by_code_async: cache hit ------------------------------------
@@ -316,15 +326,15 @@ class TestItemCommonMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             await repo.update_item_async("I01", {"unit_price": 100.0})
-            expected_filter = {"tenant_id": "T001", "item_code": "I01"}
+            expected_filter = {"tenant_id": "T001", "item_code": "I01", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"unit_price": 100.0})
 
     @pytest.mark.asyncio
-    async def test_update_item_raises_on_failure(self):
+    async def test_update_item_answers_none_when_nothing_live_matched(self):
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update item"):
-                await repo.update_item_async("I01", {"unit_price": 100.0})
+            # Missing, or deleted after the lookup: the service answers 404 (issue #324)
+            assert await repo.update_item_async("I01", {"unit_price": 100.0}) is None
 
     # -- replace_item_async ---------------------------------------------------
 
@@ -471,7 +481,7 @@ class TestItemStoreMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_item_store_by_code("I01")
-            expected = {"tenant_id": "T001", "store_code": "S01", "item_code": "I01"}
+            expected = {"tenant_id": "T001", "store_code": "S01", "item_code": "I01", "is_deleted": {"$ne": True}}
             mock_get.assert_awaited_once_with(expected)
 
     # -- get_item_store_by_filter_async ---------------------------------------
@@ -501,15 +511,14 @@ class TestItemStoreMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             await repo.update_item_store_async("I01", {"store_price": 19.99})
-            expected_filter = {"tenant_id": "T001", "store_code": "S01", "item_code": "I01"}
+            expected_filter = {"tenant_id": "T001", "store_code": "S01", "item_code": "I01", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"store_price": 19.99})
 
     @pytest.mark.asyncio
-    async def test_update_item_store_raises_on_failure(self):
+    async def test_update_item_store_answers_none_when_nothing_live_matched(self):
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update item store"):
-                await repo.update_item_store_async("I01", {"store_price": 1.0})
+            assert await repo.update_item_store_async("I01", {"store_price": 1.0}) is None  # issue #324
 
     # -- replace_item_store_async ---------------------------------------------
 
@@ -540,7 +549,8 @@ class TestItemStoreMasterRepository:
     async def test_delete_item_store_filter(self):
         repo = self._make_repo()
         with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
-            await repo.delete_item_store_async("I01")
+            # Physical on request; the default is logical (issue #324)
+            await repo.delete_item_store_async("I01", is_logical=False)
             expected_filter = {"tenant_id": "T001", "store_code": "S01", "item_code": "I01"}
             mock_del.assert_awaited_once_with(expected_filter)
 
@@ -608,7 +618,7 @@ class TestItemBookMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_item_book_async("BK-001")
-            expected = {"tenant_id": "T001", "item_book_id": "BK-001"}
+            expected = {"tenant_id": "T001", "item_book_id": "BK-001", "is_deleted": {"$ne": True}}
             mock_get.assert_awaited_once_with(expected)
 
     # -- get_item_book_by_filter_async ---------------------------------------
@@ -637,16 +647,15 @@ class TestItemBookMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             result = await repo.update_item_book_async("BK-001", {"title": "Updated"})
-            expected_filter = {"tenant_id": "T001", "item_book_id": "BK-001"}
+            expected_filter = {"tenant_id": "T001", "item_book_id": "BK-001", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"title": "Updated"})
             assert result == updated_doc
 
     @pytest.mark.asyncio
-    async def test_update_item_book_raises_on_failure(self):
+    async def test_update_item_book_answers_none_when_nothing_live_matched(self):
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update item book"):
-                await repo.update_item_book_async("BK-001", {"title": "x"})
+            assert await repo.update_item_book_async("BK-001", {"title": "x"}) is None  # issue #324
 
     # -- replace_item_book_async ---------------------------------------------
 
@@ -677,7 +686,8 @@ class TestItemBookMasterRepository:
     async def test_delete_item_book_filter(self):
         repo = self._make_repo()
         with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
-            await repo.delete_item_book_async("BK-001")
+            # Physical on request; the default is logical (issue #324)
+            await repo.delete_item_book_async("BK-001", is_logical=False)
             expected = {"tenant_id": "T001", "item_book_id": "BK-001"}
             mock_del.assert_awaited_once_with(expected)
 

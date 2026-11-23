@@ -44,9 +44,9 @@ class CategoryMasterService:
             DocumentAlreadyExistsException: If a category with the given code already exists
         """
 
-        # check if category exists
-        category = await self.category_master_repo.get_category_by_code_async(category_code)
-        if category is not None:
+        # A deleted category keeps its code; creating it again restores it (issue #324)
+        category = await self.category_master_repo.get_category_by_code_async(category_code, include_deleted=True)
+        if category is not None and not category.is_deleted:
             message = f"category with code {category_code} already exists. tenant_id: {category.tenant_id}"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -55,9 +55,14 @@ class CategoryMasterService:
         category_doc.description = description
         category_doc.description_short = description_short
         category_doc.tax_code = tax_code
+        if category is not None:
+            if not await self.category_master_repo.restore_category_async(category_doc):
+                message = f"category with code {category_code} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return category_doc
         return await self.category_master_repo.create_category_async(category_doc)
 
-    async def get_category_by_code_async(self, category_code: str) -> CategoryMasterDocument:
+    async def get_category_by_code_async(self, category_code: str, include_deleted: bool = False) -> CategoryMasterDocument:
         """
         Retrieve a category by its unique code.
 
@@ -70,13 +75,15 @@ class CategoryMasterService:
         Raises:
             DocumentNotFoundException: If no category with the given code exists
         """
-        category = await self.category_master_repo.get_category_by_code_async(category_code)
+        category = await self.category_master_repo.get_category_by_code_async(category_code, include_deleted)
         if category is None:
             message = f"category with code {category_code} not found"
             raise DocumentNotFoundException(message, logger)
         return category
 
-    async def get_categories_async(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list:
+    async def get_categories_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list:
         """
         Retrieve all categories within the tenant with pagination and sorting.
 
@@ -88,9 +95,11 @@ class CategoryMasterService:
         Returns:
             List of CategoryMasterDocument objects
         """
-        return await self.category_master_repo.get_category_by_filter_async({}, limit, page, sort)
+        return await self.category_master_repo.get_category_by_filter_async({}, limit, page, sort, include_deleted)
 
-    async def get_categories_paginated_async(self, limit: int, page: int, sort: list[tuple[str, int]]):
+    async def get_categories_paginated_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ):
         """
         Retrieve all categories within the tenant with pagination metadata.
 
@@ -102,7 +111,9 @@ class CategoryMasterService:
         Returns:
             PaginatedResult containing CategoryMasterDocument objects and metadata
         """
-        return await self.category_master_repo.get_category_by_filter_paginated_async({}, limit, page, sort)
+        return await self.category_master_repo.get_category_by_filter_paginated_async(
+            {}, limit, page, sort, include_deleted
+        )
 
     async def update_category_async(self, category_code: str, update_data: dict) -> CategoryMasterDocument:
         """
@@ -125,10 +136,14 @@ class CategoryMasterService:
             message = f"category with code {category_code} not found"
             raise DocumentNotFoundException(message, logger)
 
-        # update category
-        return await self.category_master_repo.update_category_async(category_code, update_data)
+        # update category; None means it was deleted after the lookup above
+        updated = await self.category_master_repo.update_category_async(category_code, update_data)
+        if updated is None:
+            message = f"category with code {category_code} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_category_async(self, category_code: str) -> None:
+    async def delete_category_async(self, category_code: str, is_logical: bool = True) -> None:
         """
         Delete a category from the database.
 
@@ -138,11 +153,9 @@ class CategoryMasterService:
         Raises:
             DocumentNotFoundException: If no category with the given code exists
         """
-        # check if category exists
-        category = await self.category_master_repo.get_category_by_code_async(category_code)
-        if category is None:
+        # One write decides: a logical delete matches a live category only, a
+        # physical one any category (issue #324)
+        if not await self.category_master_repo.delete_category_async(category_code, is_logical):
             message = f"category with code {category_code} not found"
             raise DocumentNotFoundException(message, logger)
-
-        # delete category
-        return await self.category_master_repo.delete_category_async(category_code)
+        return None

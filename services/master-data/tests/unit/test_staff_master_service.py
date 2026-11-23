@@ -39,7 +39,7 @@ class TestStaffMasterService:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_raises(self, service, repo):
-        repo.get_staff_by_id_async.return_value = MagicMock(tenant_id="T001")
+        repo.get_staff_by_id_async.return_value = MagicMock(tenant_id="T001", is_deleted=False)
 
         with pytest.raises(DocumentAlreadyExistsException):
             await service.create_staff_async("ST01", "Alice", "1234", [])
@@ -95,16 +95,15 @@ class TestStaffMasterService:
 
     @pytest.mark.asyncio
     async def test_delete_success(self, service, repo):
-        doc = StaffMasterDocument()
-        repo.get_staff_by_id_async.return_value = doc
-        repo.delete_staff_async.return_value = None
+        repo.delete_staff_async.return_value = True
 
         await service.delete_staff_async("ST01")
-        repo.delete_staff_async.assert_called_once()
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        repo.delete_staff_async.assert_called_once_with("ST01", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, repo):
-        repo.get_staff_by_id_async.return_value = None
+        repo.delete_staff_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_staff_async("NONEXISTENT")

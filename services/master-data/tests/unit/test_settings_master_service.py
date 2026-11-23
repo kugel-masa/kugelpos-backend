@@ -39,7 +39,7 @@ class TestSettingsMasterService:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_raises(self, service, repo):
-        repo.get_settings_by_name_async.return_value = MagicMock(tenant_id="T001")
+        repo.get_settings_by_name_async.return_value = MagicMock(tenant_id="T001", is_deleted=False)
 
         with pytest.raises(DocumentAlreadyExistsException):
             await service.create_settings_async("KEY-01", "value", [])
@@ -96,16 +96,15 @@ class TestSettingsMasterService:
 
     @pytest.mark.asyncio
     async def test_delete_success(self, service, repo):
-        doc = SettingsMasterDocument()
-        repo.get_settings_by_name_async.return_value = doc
-        repo.delete_settings_async.return_value = None
+        repo.delete_settings_async.return_value = True
 
         await service.delete_settings_async("KEY-01")
-        repo.delete_settings_async.assert_called_once()
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        repo.delete_settings_async.assert_called_once_with("KEY-01", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, service, repo):
-        repo.get_settings_by_name_async.return_value = None
+        repo.delete_settings_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await service.delete_settings_async("NONEXISTENT")

@@ -46,3 +46,4 @@ class PaymentMasterDocument(AbstractDocument):
     is_active: Optional[bool] = True  # Flag indicating if this payment method is currently active
     # Variants (sub-codes) of this payment method, managed through their own endpoints (issue #311)
     variants: list[PaymentVariant] = Field(default_factory=list)
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live

@@ -17,3 +17,4 @@ class CategoryMasterDocument(AbstractDocument):
     description: Optional[str] = None  # Full description of the category
     description_short: Optional[str] = None  # Abbreviated description for display purposes
     tax_code: Optional[str] = None  # Reference to the tax code applied to items in this category
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live

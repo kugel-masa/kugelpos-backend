@@ -56,7 +56,7 @@ class TestSettingsMasterRepository:
         ) as mock_list:
             await repo.get_settings_all_async(limit=10, page=1, sort=[])
             filter_arg = mock_list.call_args[0][0]
-            assert filter_arg == {"tenant_id": "T001"}
+            assert filter_arg == {"tenant_id": "T001", "is_deleted": {"$ne": True}}  # live only (issue #324)
 
     # -- get_settings_by_name_async -------------------------------------------
 
@@ -65,7 +65,7 @@ class TestSettingsMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_settings_by_name_async("tax_rounding")
-            expected = {"tenant_id": "T001", "name": "tax_rounding"}
+            expected = {"tenant_id": "T001", "name": "tax_rounding", "is_deleted": {"$ne": True}}  # live only (issue #324)
             mock_get.assert_awaited_once_with(expected)
 
     # -- update_settings_async ------------------------------------------------
@@ -81,25 +81,31 @@ class TestSettingsMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             await repo.update_settings_async("tax_rounding", {"default_value": "round_up"})
-            expected_filter = {"tenant_id": "T001", "name": "tax_rounding"}
+            expected_filter = {"tenant_id": "T001", "name": "tax_rounding", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"default_value": "round_up"})
 
     @pytest.mark.asyncio
-    async def test_update_settings_raises_on_failure(self):
+    async def test_update_settings_answers_none_when_nothing_live_matched(self):
+        # Missing, or deleted after the caller looked it up: the service answers 404 (issue #324)
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update settings"):
-                await repo.update_settings_async("tax_rounding", {"default_value": "x"})
+            assert await repo.update_settings_async("tax_rounding", {"default_value": "x"}) is None
 
     # -- delete_settings_async ------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_delete_settings_filter(self):
+    async def test_delete_settings_is_logical_by_default(self):
+        repo = self._make_repo()
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_upd:
+            assert await repo.delete_settings_async("tax_rounding") is True
+            mock_upd.assert_awaited_once_with({"tenant_id": "T001", "name": "tax_rounding", "is_deleted": {"$ne": True}}, {"is_deleted": True})
+
+    @pytest.mark.asyncio
+    async def test_delete_settings_physically_on_request(self):
         repo = self._make_repo()
         with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
-            await repo.delete_settings_async("tax_rounding")
-            expected = {"tenant_id": "T001", "name": "tax_rounding"}
-            mock_del.assert_awaited_once_with(expected)
+            await repo.delete_settings_async("tax_rounding", is_logical=False)
+            mock_del.assert_awaited_once_with({"tenant_id": "T001", "name": "tax_rounding"})
 
     # -- get_settings_count_async ---------------------------------------------
 
@@ -113,7 +119,7 @@ class TestSettingsMasterRepository:
         count = await repo.get_settings_count_async()
         assert count == 7
         call_filter = mock_collection.count_documents.call_args[0][0]
-        assert call_filter == {"tenant_id": "T001"}
+        assert call_filter == {"tenant_id": "T001", "is_deleted": {"$ne": True}}
 
     @pytest.mark.asyncio
     async def test_get_settings_count_initializes_collection(self):
@@ -178,7 +184,8 @@ class TestPaymentMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_payment_by_code("PAY01")
-            expected = {"tenant_id": "T001", "payment_code": "PAY01"}
+            # Live payment methods only by default (issue #324)
+            expected = {"tenant_id": "T001", "payment_code": "PAY01", "is_deleted": {"$ne": True}}
             mock_get.assert_awaited_once_with(expected)
 
     # -- get_payment_by_filter_async -----------------------------------------
@@ -207,16 +214,16 @@ class TestPaymentMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             result = await repo.update_payment_async("PAY01", {"description": "Updated"})
-            expected_filter = {"tenant_id": "T001", "payment_code": "PAY01"}
+            expected_filter = {"tenant_id": "T001", "payment_code": "PAY01", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"description": "Updated"})
             assert result == updated_doc
 
     @pytest.mark.asyncio
-    async def test_update_payment_raises_on_failure(self):
+    async def test_update_payment_answers_none_when_nothing_live_matched(self):
+        # Missing, or deleted after the caller looked it up: the service answers 404 (issue #324)
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update payment"):
-                await repo.update_payment_async("PAY01", {"description": "x"})
+            assert await repo.update_payment_async("PAY01", {"description": "x"}) is None
 
     # -- replace_payment_async -----------------------------------------------
 
@@ -244,12 +251,18 @@ class TestPaymentMasterRepository:
     # -- delete_payment_async ------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_delete_payment_filter(self):
+    async def test_delete_payment_is_logical_by_default(self):
+        repo = self._make_repo()
+        with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=True) as mock_upd:
+            assert await repo.delete_payment_async("PAY01") is True
+            mock_upd.assert_awaited_once_with({"tenant_id": "T001", "payment_code": "PAY01", "is_deleted": {"$ne": True}}, {"is_deleted": True})
+
+    @pytest.mark.asyncio
+    async def test_delete_payment_physically_on_request(self):
         repo = self._make_repo()
         with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
-            await repo.delete_payment_async("PAY01")
-            expected = {"tenant_id": "T001", "payment_code": "PAY01"}
-            mock_del.assert_awaited_once_with(expected)
+            await repo.delete_payment_async("PAY01", is_logical=False)
+            mock_del.assert_awaited_once_with({"tenant_id": "T001", "payment_code": "PAY01"})
 
     # -- get_payment_count_by_filter_async -----------------------------------
 
@@ -337,7 +350,8 @@ class TestPromotionMasterRepository:
         repo = self._make_repo()
         with patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=None) as mock_get:
             await repo.get_promotion_by_code_async("P01")
-            expected = {"tenant_id": "T001", "promotion_code": "P01", "is_deleted": False}
+            # Live only; a document without the field is live (issue #324)
+            expected = {"tenant_id": "T001", "promotion_code": "P01", "is_deleted": {"$ne": True}}
             mock_get.assert_awaited_once_with(expected)
 
     # -- get_promotions_by_filter_async ---------------------------------------
@@ -351,7 +365,7 @@ class TestPromotionMasterRepository:
             await repo.get_promotions_by_filter_async({"name": "Sale"}, limit=10, page=1, sort=[])
             filter_arg = mock_list.call_args[0][0]
             assert filter_arg["tenant_id"] == "T001"
-            assert filter_arg["is_deleted"] is False
+            assert filter_arg["is_deleted"] == {"$ne": True}  # issue #324
             assert filter_arg["name"] == "Sale"
 
     # -- get_promotions_by_filter_paginated_async -----------------------------
@@ -368,7 +382,7 @@ class TestPromotionMasterRepository:
             )
             filter_arg = mock_pag.call_args[0][0]
             assert filter_arg["tenant_id"] == "T001"
-            assert filter_arg["is_deleted"] is False
+            assert filter_arg["is_deleted"] == {"$ne": True}  # issue #324
             assert result is mock_result
 
     # -- get_active_promotions_async ------------------------------------------
@@ -382,7 +396,7 @@ class TestPromotionMasterRepository:
             filter_arg = mock_list.call_args[0][0]
             assert filter_arg["tenant_id"] == "T001"
             assert filter_arg["is_active"] is True
-            assert filter_arg["is_deleted"] is False
+            assert filter_arg["is_deleted"] == {"$ne": True}  # issue #324
             assert filter_arg["start_datetime"] == {"$lte": now}
             assert filter_arg["end_datetime"] == {"$gte": now}
 
@@ -410,7 +424,7 @@ class TestPromotionMasterRepository:
             filter_arg = mock_list.call_args[0][0]
             assert filter_arg["tenant_id"] == "T001"
             assert filter_arg["is_active"] is True
-            assert filter_arg["is_deleted"] is False
+            assert filter_arg["is_deleted"] == {"$ne": True}  # issue #324
             assert filter_arg["start_datetime"] == {"$lte": now}
             assert filter_arg["end_datetime"] == {"$gte": now}
             assert filter_arg["promotion_type"] == "category_discount"
@@ -427,7 +441,7 @@ class TestPromotionMasterRepository:
             filter_arg = mock_list.call_args[0][0]
             assert filter_arg["tenant_id"] == "T001"
             assert filter_arg["is_active"] is True
-            assert filter_arg["is_deleted"] is False
+            assert filter_arg["is_deleted"] == {"$ne": True}  # issue #324
             assert filter_arg["start_datetime"] == {"$lte": now}
             assert filter_arg["end_datetime"] == {"$gte": now}
             # Verify the $or clause for store matching
@@ -466,15 +480,14 @@ class TestPromotionMasterRepository:
             patch.object(repo, "get_one_async", new_callable=AsyncMock, return_value=updated_doc),
         ):
             await repo.update_promotion_async("P01", {"name": "New Sale"})
-            expected_filter = {"tenant_id": "T001", "promotion_code": "P01", "is_deleted": False}
+            expected_filter = {"tenant_id": "T001", "promotion_code": "P01", "is_deleted": {"$ne": True}}
             mock_upd.assert_awaited_once_with(expected_filter, {"name": "New Sale"})
 
     @pytest.mark.asyncio
-    async def test_update_promotion_raises_on_failure(self):
+    async def test_update_promotion_answers_none_when_nothing_live_matched(self):
         repo = self._make_repo()
         with patch.object(repo, "update_one_async", new_callable=AsyncMock, return_value=False):
-            with pytest.raises(Exception, match="Failed to update promotion"):
-                await repo.update_promotion_async("P01", {"name": "x"})
+            assert await repo.update_promotion_async("P01", {"name": "x"}) is None  # issue #324
 
     # -- delete_promotion_async (soft delete) ---------------------------------
 
@@ -486,13 +499,18 @@ class TestPromotionMasterRepository:
             assert result is True
             filter_arg = mock_upd.call_args[0][0]
             update_arg = mock_upd.call_args[0][1]
-            assert filter_arg == {"tenant_id": "T001", "promotion_code": "P01", "is_deleted": False}
-            assert update_arg["is_deleted"] is True
-            assert "updated_at" in update_arg
+            assert filter_arg == {"tenant_id": "T001", "promotion_code": "P01", "is_deleted": {"$ne": True}}
+            assert update_arg == {"is_deleted": True}  # update_one_async stamps updated_at
 
 
 # ---------------------------------------------------------------------------
 # ItemStoreMasterRepository
 # ---------------------------------------------------------------------------
 
-
+    @pytest.mark.asyncio
+    async def test_delete_promotion_physically_on_request(self):
+        # Issue #324: the key only, so a logically deleted promotion is removed too
+        repo = self._make_repo()
+        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+            assert await repo.delete_promotion_async("P01", is_logical=False) is True
+            mock_del.assert_awaited_once_with({"tenant_id": "T001", "promotion_code": "P01"})

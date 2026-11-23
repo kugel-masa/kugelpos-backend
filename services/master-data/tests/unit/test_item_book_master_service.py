@@ -264,15 +264,16 @@ class TestDeleteItemBook:
     @pytest.mark.asyncio
     async def test_delete_success(self):
         svc, book_repo, _, _ = _make_service()
-        book_repo.get_item_book_async.return_value = _make_item_book()
+        book_repo.delete_item_book_async.return_value = True
 
         await svc.delete_item_book_async("BK-001")
-        book_repo.delete_item_book_async.assert_awaited_once_with("BK-001")
+        # Logical by default; the write itself decides whether it existed (issue #324)
+        book_repo.delete_item_book_async.assert_awaited_once_with("BK-001", True)
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self):
         svc, book_repo, _, _ = _make_service()
-        book_repo.get_item_book_async.return_value = None
+        book_repo.delete_item_book_async.return_value = False
 
         with pytest.raises(DocumentNotFoundException):
             await svc.delete_item_book_async("NONEXISTENT")

@@ -119,6 +119,7 @@ async def create_payment(
 )
 async def get_all_payments(
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -151,7 +152,7 @@ async def get_all_payments(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     service = await get_payment_master_service_async(tenant_id)
     try:
-        payments, total_count = await service.get_all_payments_paginated(limit, page, sort)
+        payments, total_count = await service.get_all_payments_paginated(limit, page, sort, include_deleted)
         transformer = SchemasTransformerV1()
         payment_all = [transformer.transform_payment(payment) for payment in payments]
     except Exception as e:
@@ -186,6 +187,7 @@ async def get_all_payments(
 async def get_payment(
     payment_code: str,
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -213,7 +215,7 @@ async def get_payment(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     service = await get_payment_master_service_async(tenant_id)
     try:
-        payment = await service.get_payment_by_code(payment_code)
+        payment = await service.get_payment_by_code(payment_code, include_deleted)
         if payment is None:
             message = f"Payment not found. payment_code: {payment_code}"
             raise DocumentNotFoundException(message, logger)
@@ -315,6 +317,7 @@ async def update_payment(
 async def delete_payment(
     payment_code: str,
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
@@ -346,7 +349,7 @@ async def delete_payment(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     service = await get_payment_master_service_async(tenant_id)
     try:
-        await service.delete_payment_async(payment_code)
+        await service.delete_payment_async(payment_code, is_logical)
     except Exception as e:
         logger.error(f"Error deleting payment: {e}")
         raise e

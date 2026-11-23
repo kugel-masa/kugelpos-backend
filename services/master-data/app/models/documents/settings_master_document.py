@@ -36,3 +36,4 @@ class SettingsMasterDocument(AbstractDocument):
     name: Optional[str] = None  # Unique name identifying this setting
     default_value: Optional[str] = None  # Default value used when no specific override is found
     values: Optional[list[SettingsValue]] = None  # List of scope-specific setting values
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live

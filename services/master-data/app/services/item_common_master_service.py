@@ -70,9 +70,10 @@ class ItemCommonMasterService:
 
         logger.debug(f"Create item request received for item_code: {item_code}")
 
-        # check if item exists
-        item = await self.item_common_master_repo.get_item_by_code_async(item_code)
-        if item is not None:
+        # A deleted item keeps its code; creating it again restores it (issue #324).
+        # Before, the lookup missed deleted items and the insert hit the unique index.
+        item = await self.item_common_master_repo.get_item_by_code_async(item_code, include_deleted=True)
+        if item is not None and not item.is_deleted:
             message = f"item with item_code {item_code} already exists. tenant_id: {item.tenant_id}"
             raise DocumentAlreadyExistsException(message, logger)
 
@@ -88,17 +89,22 @@ class ItemCommonMasterService:
 
         logger.debug(f"Item: {item_doc}")
 
+        if item is not None:
+            if not await self.item_common_master_repo.restore_item_async(item_doc):
+                message = f"item with item_code {item_code} already exists (restored meanwhile)"
+                raise DocumentAlreadyExistsException(message, logger)
+            return item_doc
         return await self.item_common_master_repo.create_item_async(item_doc)
 
     async def get_item_by_code_async(
-        self, item_code: str, is_logical_deleted: bool = False
+        self, item_code: str, include_deleted: bool = False
     ) -> ItemCommonMasterDocument:
         """
         Retrieve an item by its unique code.
 
         Args:
             item_code: Unique identifier for the item
-            is_logical_deleted: If True, include logically deleted items in the search
+            include_deleted: If True, find a logically deleted item as well
 
         Returns:
             ItemCommonMasterDocument with the specified code
@@ -106,13 +112,15 @@ class ItemCommonMasterService:
         Raises:
             DocumentNotFoundException: If no item with the given code exists
         """
-        item = await self.item_common_master_repo.get_item_by_code_async(item_code, is_logical_deleted)
+        item = await self.item_common_master_repo.get_item_by_code_async(item_code, include_deleted)
         if item is None:
             message = f"item with item_code {item_code} not found"
             raise DocumentNotFoundException(message, logger)
         return item
 
-    async def get_item_all_async(self, limit: int, page: int, sort: list[tuple[str, int]]) -> list:
+    async def get_item_all_async(
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
+    ) -> list:
         """
         Retrieve all items with pagination and sorting.
 
@@ -124,11 +132,13 @@ class ItemCommonMasterService:
         Returns:
             List of ItemCommonMasterDocument objects
         """
-        items_all_in_tenant = await self.item_common_master_repo.get_item_by_filter_async({}, limit, page, sort)
+        items_all_in_tenant = await self.item_common_master_repo.get_item_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
         return items_all_in_tenant
 
     async def get_item_all_paginated_async(
-        self, limit: int, page: int, sort: list[tuple[str, int]]
+        self, limit: int, page: int, sort: list[tuple[str, int]], include_deleted: bool = False
     ) -> tuple[list[ItemCommonMasterDocument], int]:
         """
         Retrieve all items with pagination metadata.
@@ -141,8 +151,10 @@ class ItemCommonMasterService:
         Returns:
             Tuple of (list of ItemCommonMasterDocument objects, total count)
         """
-        items_all_in_tenant = await self.item_common_master_repo.get_item_by_filter_async({}, limit, page, sort)
-        total_count = await self.item_common_master_repo.get_item_count_by_filter_async({})
+        items_all_in_tenant = await self.item_common_master_repo.get_item_by_filter_async(
+            {}, limit, page, sort, include_deleted
+        )
+        total_count = await self.item_common_master_repo.get_item_count_by_filter_async({}, include_deleted)
         return items_all_in_tenant, total_count
 
     async def update_item_async(self, item_code: str, update_data: dict) -> ItemCommonMasterDocument:
@@ -176,9 +188,14 @@ class ItemCommonMasterService:
         # remove item_code from update_data
         if "item_code" in update_data:
             del update_data["item_code"]
-        return await self.item_common_master_repo.update_item_async(item_code, update_data)
+        updated = await self.item_common_master_repo.update_item_async(item_code, update_data)
+        if updated is None:
+            # Deleted after the lookup above (issue #324)
+            message = f"item with item_code {item_code} not found"
+            raise DocumentNotFoundException(message, logger)
+        return updated
 
-    async def delete_item_async(self, item_code: str, is_logical: bool = False) -> None:
+    async def delete_item_async(self, item_code: str, is_logical: bool = True) -> None:
         """
         Delete an item from the database.
 

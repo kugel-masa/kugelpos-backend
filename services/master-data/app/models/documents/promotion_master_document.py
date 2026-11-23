@@ -25,7 +25,7 @@ class PromotionMasterDocument(AbstractDocument):
     start_datetime: Optional[datetime] = None
     end_datetime: Optional[datetime] = None
     is_active: bool = True
-    is_deleted: bool = False
+    is_deleted: Optional[bool] = False  # Logical deletion flag (issue #324); missing or None means live
     detail: Optional[dict] = None
 
     @field_validator("end_datetime")

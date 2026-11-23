@@ -117,6 +117,7 @@ async def get_categories(
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
+    include_deleted: bool = Query(False, description="Include logically deleted categories (issue #324)"),
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -146,7 +147,7 @@ async def get_categories(
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
     service = await get_category_master_service_async(tenant_id)
     try:
-        paginated_result = await service.get_categories_paginated_async(limit, page, sort)
+        paginated_result = await service.get_categories_paginated_async(limit, page, sort, include_deleted)
         transformer = SchemasTransformerV1()
         return_categories = [transformer.transform_category_master(category) for category in paginated_result.data]
     except Exception as e:
@@ -179,6 +180,7 @@ async def get_categories(
 async def get_category(
     category_code: str,
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Find a logically deleted category as well (issue #324)"),
     tenant_id_with_security: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
     """
@@ -206,7 +208,7 @@ async def get_category(
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
     service = await get_category_master_service_async(tenant_id)
     try:
-        new_category = await service.get_category_by_code_async(category_code)
+        new_category = await service.get_category_by_code_async(category_code, include_deleted)
         if new_category is None:
             message = f"Category {category_code} not found, tenant_id: {tenant_id}"
             raise DocumentNotFoundException(message, logger)
@@ -311,6 +313,7 @@ async def update_category(
 async def delete_category(
     category_code: str,
     tenant_id: str = Path(...),
+    is_logical: bool = Query(True, description="True (default) deletes logically; false removes the record (issue #324)"),
     tenant_id_with_security: str = Depends(get_tenant_id_refusing_terminal),
 ):
     """
@@ -340,7 +343,7 @@ async def delete_category(
     verify_tenant_id(tenant_id, tenant_id_with_security, logger)
     service = await get_category_master_service_async(tenant_id)
     try:
-        await service.delete_category_async(category_code)
+        await service.delete_category_async(category_code, is_logical)
     except Exception as e:
         logger.error(f"Error deleting category: {e} for tenant_id: {tenant_id}")
         raise e

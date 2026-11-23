@@ -184,4 +184,7 @@ class TestTheDeletePath:
         # end-to-end sentinel scan walks this path for real.
         source = inspect.getsource(staff_master_service)
         assert 'logger.debug(f"staff: {staff}")' not in source, "the staff record is logged raw on delete"
-        assert "mask_loggable(staff)" in source
+        # Since issue #324 the delete no longer reads the record first (one
+        # write decides), so there is no record on that path to log at all.
+        delete_body = inspect.getsource(staff_master_service.StaffMasterService.delete_staff_async)
+        assert "get_staff_by_id_async" not in delete_body

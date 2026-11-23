@@ -120,7 +120,12 @@ async def create_item_master_async(
 )
 async def get_item_master_async(
     item_code: str,
-    is_logical_deleted: bool = Query(default=False),
+    include_deleted: bool = Query(False, description="Find a logically deleted item as well (issue #324)"),
+    is_logical_deleted: bool = Query(
+        default=False,
+        deprecated=True,
+        description="Deprecated alias of include_deleted (issue #324). Before #324 it found deleted items only.",
+    ),
     tenant_id: str = Path(...),
     tenant_id_in_token: str = Depends(get_tenant_id_with_security_by_query_optional),
 ):
@@ -128,15 +133,16 @@ async def get_item_master_async(
     Retrieve a specific item master record by its code.
 
     This endpoint retrieves the details of an item identified by its unique code.
-    By default, it only returns active items, but setting is_logical_deleted to true
-    allows retrieving logically deleted items as well.
+    By default, it only returns live items; include_deleted=true (or the deprecated
+    is_logical_deleted=true) finds a logically deleted item as well.
 
     Authentication is required via token or API key. The tenant ID in the path must match
     the one in the security credentials.
 
     Args:
         item_code: The unique identifier of the item to retrieve
-        is_logical_deleted: Flag to include logically deleted items
+        include_deleted: Find a logically deleted item as well
+        is_logical_deleted: Deprecated alias of include_deleted
         tenant_id: The tenant identifier from the path
         tenant_id_in_token: The tenant ID from security credentials
 
@@ -151,7 +157,7 @@ async def get_item_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_item_master_service_async(tenant_id)
     try:
-        item_doc = await master_service.get_item_by_code_async(item_code, is_logical_deleted)
+        item_doc = await master_service.get_item_by_code_async(item_code, include_deleted or is_logical_deleted)
         if item_doc is None:
             message = f"Item not found. item_code: {item_code}"
             raise DocumentNotFoundException(message, logger)
@@ -182,6 +188,7 @@ async def get_item_master_async(
 )
 async def get_item_master_all_async(
     tenant_id: str = Path(...),
+    include_deleted: bool = Query(False, description="Include logically deleted records (issue #324)"),
     limit: int = Query(100),
     page: int = Query(1),
     sort: list[tuple[str, int]] = Depends(parse_sort),
@@ -213,7 +220,7 @@ async def get_item_master_all_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_item_master_service_async(tenant_id)
     try:
-        item_docs, total_count = await master_service.get_item_all_paginated_async(limit, page, sort)
+        item_docs, total_count = await master_service.get_item_all_paginated_async(limit, page, sort, include_deleted)
         transformer = SchemasTransformerV1()
         item_all = [transformer.transform_item(item_doc) for item_doc in item_docs]
     except Exception as e:
@@ -307,7 +314,7 @@ async def update_item_master_async(
 )
 async def delete_item_master_async(
     item_code: str,
-    is_logical: bool = Query(default=False),
+    is_logical: bool = Query(True, description="True (default since issue #324) deletes logically; false removes the record"),
     tenant_id: str = Path(...),
     tenant_id_in_token: str = Depends(get_tenant_id_refusing_terminal),
 ):
