@@ -281,6 +281,8 @@ def test_terminal_jwt_cannot_administer_terminals_stores_or_the_tenant():
         # Nothing changed: the store and terminal B are still there
         assert c.get(f"{tenant}/stores/6000", headers=admin).json()["data"]["storeName"] == "B"
         assert c.get(f"/api/v1/terminals/{terminal_b}", headers=admin).status_code == 200
+        assert c.get(f"/api/v1/terminals/{tenant_id}-6000-9", headers=admin).status_code == 404
+        assert c.get(f"{tenant}/stores/6001", headers=admin).status_code == 404
         # The back office still administers
         assert c.put(f"{tenant}/stores/6000", json=store, headers=admin).status_code == 200
 

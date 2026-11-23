@@ -58,3 +58,26 @@ def test_an_allowed_token_gets_past_authentication(make_token, monkeypatch):
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_text()
     assert exc.value.code == 1011
+
+
+def test_another_tenant_is_refused_before_the_store_is_looked_at():
+    assert _close_reason(_terminal_token("5002"), tenant_id="T999") == "Tenant ID mismatch"
+
+
+def test_a_terminal_jwt_without_a_store_is_refused():
+    token = jwt.encode(
+        {"sub": "terminal:T001-x-1", "tenant_id": "T001", "terminal_id": "T001-x-1", "token_type": "terminal"},
+        settings.SECRET_KEY, algorithm=settings.ALGORITHM,
+    )
+    assert _close_reason(token) == "Store mismatch"
+
+
+def test_an_expired_terminal_jwt_fails_authentication():
+    from datetime import timedelta
+
+    token = create_terminal_token(
+        TerminalInfoDocument(tenant_id="T001", store_code="5001", terminal_no=1, terminal_id="T001-5001-1",
+                             status="Opened"),
+        expires_delta=timedelta(seconds=-1),
+    )
+    assert _close_reason(token) == "Authentication failed"

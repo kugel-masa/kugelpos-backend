@@ -976,8 +976,15 @@ async def websocket_endpoint(websocket: WebSocket, tenant_id: str, store_code: s
             terminal_claims = verify_terminal_token(token)
         except HTTPException:
             terminal_claims = None
+        payload = terminal_claims if terminal_claims is not None else verify_token(token)
+
+        # Verify tenant_id matches
+        if payload.get("tenant_id") != tenant_id:
+            await websocket.accept()
+            await websocket.close(code=1008, reason="Tenant ID mismatch")
+            return
+
         if terminal_claims is not None:
-            payload = terminal_claims
             try:
                 verify_path_binding(
                     terminal_claims.get("store_code"),
@@ -990,15 +997,6 @@ async def websocket_endpoint(websocket: WebSocket, tenant_id: str, store_code: s
                 await websocket.accept()
                 await websocket.close(code=1008, reason="Store mismatch")
                 return
-        else:
-            payload = verify_token(token)
-        token_tenant_id = payload.get("tenant_id")
-
-        # Verify tenant_id matches
-        if token_tenant_id != tenant_id:
-            await websocket.accept()
-            await websocket.close(code=1008, reason="Tenant ID mismatch")
-            return
 
     except Exception as e:
         logger.error(f"WebSocket authentication failed: {e}")

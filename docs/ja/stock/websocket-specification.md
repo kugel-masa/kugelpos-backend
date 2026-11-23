@@ -33,7 +33,12 @@ async def verify_jwt_from_query(token: str) -> Optional[User]:
 
 **認証エラー:**
 - コード: 1008 (Policy Violation)
-- 理由: "No token provided", "Authentication failed", "Tenant ID mismatch"
+- 理由: "No token provided", "Authentication failed", "Tenant ID mismatch", "Store mismatch"
+
+**受け付けるトークン:**
+- テナントの利用者の JWT は、そのテナントのどの店舗のアラートも受け取れる
+- 端末の JWT は、自分の店舗のアラートだけを受け取れる。パスの `store_code` が自分の店舗でなければ、"Store mismatch" で切る（#331）
+- テナントの照合は、店舗の照合より先に行う
 
 ## メッセージ形式
 
