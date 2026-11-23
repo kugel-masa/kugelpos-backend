@@ -34,13 +34,15 @@ class TestCheckMongoDB:
         assert "timeout" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_unhealthy_on_other_error(self):
+    async def test_unhealthy_on_other_error(self, caplog):
         client = MagicMock()
         client.admin.command = AsyncMock(side_effect=RuntimeError("connection refused"))
-        result = await HealthChecker.check_mongodb(client)
+        with caplog.at_level("WARNING"):
+            result = await HealthChecker.check_mongodb(client)
         assert result.status == HealthStatus.UNHEALTHY
-        assert "MongoDB error" in result.error
-        assert "connection refused" in result.error
+        # The public response names the type; the log keeps the text (#318)
+        assert result.error == "MongoDB error: RuntimeError"
+        assert any("connection refused" in r.getMessage() for r in caplog.records)
 
 
 class TestCheckDaprSidecar:

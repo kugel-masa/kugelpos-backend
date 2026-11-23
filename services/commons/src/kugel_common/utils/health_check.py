@@ -24,7 +24,7 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from kugel_common.schemas.health import ComponentHealth, HealthStatus
-from kugel_common.utils.log_utils import describe_exception
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 
 logger = getLogger(__name__)
 
@@ -68,9 +68,11 @@ class HealthChecker:
                 error="MongoDB ping timeout"
             )
         except Exception as e:
+            # The health response is public: the type only; the log has the rest (#318)
+            logger.warning(f"MongoDB error: {describe_exception(e)}")
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
-                error=f"MongoDB error: {describe_exception(e)}"
+                error=f"MongoDB error: {describe_exception_for_response(e)}"
             )
     
     @staticmethod
@@ -116,9 +118,11 @@ class HealthChecker:
                 error="Dapr sidecar health check timeout"
             )
         except Exception as e:
+            # The health response is public: the type only; the log has the rest (#318)
+            logger.warning(f"Dapr sidecar error: {describe_exception(e)}")
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
-                error=f"Dapr sidecar error: {describe_exception(e)}"
+                error=f"Dapr sidecar error: {describe_exception_for_response(e)}"
             )
     
     @staticmethod
@@ -173,10 +177,12 @@ class HealthChecker:
                 error="Pub/sub health check timeout"
             )
         except Exception as e:
+            # The health response is public: the type only; the log has the rest (#318)
+            logger.warning(f"Pub/sub error: {describe_exception(e)}")
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
                 component=pubsub_name,
-                error=f"Pub/sub error: {describe_exception(e)}"
+                error=f"Pub/sub error: {describe_exception_for_response(e)}"
             )
     
     @staticmethod
@@ -274,10 +280,12 @@ class HealthChecker:
                 error="State store health check timeout"
             )
         except Exception as e:
+            # The health response is public: the type only; the log has the rest (#318)
+            logger.warning(f"State store error: {describe_exception(e)}")
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
                 component=store_name,
-                error=f"State store error: {describe_exception(e)}"
+                error=f"State store error: {describe_exception_for_response(e)}"
             )
     
     @staticmethod

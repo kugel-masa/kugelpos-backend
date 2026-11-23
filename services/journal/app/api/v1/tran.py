@@ -34,7 +34,7 @@ from app.models.documents.open_close_log import OpenCloseLog
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.config.settings import settings
 from asyncio import Lock
-from kugel_common.utils.log_utils import describe_exception
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 from app.exceptions import (
     ExternalServiceException,
 )
@@ -266,14 +266,18 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         # below would never reach Dapr.
         try:
             await _notify_pubsub_status(
-                log_type=log_type, data_dict=message.get("data", {}), status="failed", message=err_message
+                log_type=log_type,
+                data_dict=message.get("data", {}),
+                status="failed",
+                # Sent to the publisher: described for a response, not a log (#318)
+                message=f"Failed to receive {log_type}: {describe_exception_for_response(e)}",
             )
         except Exception as notify_exc:
             logger.warning(f"Failed to notify the publisher of the failure. event_id={event_id}: {notify_exc}")
         return JSONResponse(
             content={
                 "status": "RETRY",
-                "message": describe_exception(e),
+                "message": describe_exception_for_response(e),
                 "operation": f"{inspect.currentframe().f_code.co_name}",
             },
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

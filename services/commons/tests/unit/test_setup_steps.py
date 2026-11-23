@@ -58,8 +58,11 @@ class TestEveryStepIsAttempted:
             await run_setup_steps_async("T0001", steps)
 
         message = str(caught.value)
-        assert "log_tran" in message
-        assert "log_open_close" in message, "only the first failure was reported"
+        # Each failure is named by its step. A RuntimeError's own text is not
+        # the application's, so the reason carries its type only (#318).
+        assert "a: RuntimeError" in message
+        assert "b: RuntimeError" in message, "only the first failure was reported"
+        assert "log_tran" not in message
         assert "2 of 3" in message
 
     async def test_nothing_is_raised_when_every_step_succeeds(self):

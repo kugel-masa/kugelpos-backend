@@ -9,7 +9,7 @@ import asyncio
 import json
 
 from kugel_common.schemas.api_response import ApiResponse
-from kugel_common.utils.log_utils import describe_exception
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.schemas.base_schemas import Metadata
 from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
@@ -726,12 +726,12 @@ async def handle_transaction_log(request: Request):
         logger.error(f"Error processing transaction log: {e}")
         # Notify cart service of failure
         try:
-            asyncio.create_task(_notify_pubsub_status("tranlog", data, "failed", describe_exception(e)))
+            asyncio.create_task(_notify_pubsub_status("tranlog", data, "failed", describe_exception_for_response(e)))
         except:
             logger.error("Failed to send failure notification")
 
         return JSONResponse(
-            content={"status": "RETRY", "message": describe_exception(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            content={"status": "RETRY", "message": describe_exception_for_response(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 

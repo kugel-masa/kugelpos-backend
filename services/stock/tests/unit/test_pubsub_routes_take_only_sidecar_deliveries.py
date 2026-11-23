@@ -67,3 +67,17 @@ async def test_a_failure_is_reported_without_the_values_it_echoes():
     await asyncio.sleep(0)
     notify.assert_awaited_once()
     assert "9876" not in str(notify.await_args)
+
+
+@pytest.mark.asyncio
+async def test_any_other_failure_is_reported_by_its_type():
+    notify = AsyncMock()
+    with patch("kugel_common.database.database.get_db_async", AsyncMock(side_effect=ValueError("pin=9876"))), patch(
+        "app.api.v1.stock._notify_pubsub_status", notify
+    ):
+        response = await _post({DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]})
+
+    assert response.status_code == 500
+    assert response.json()["message"] == "ValueError"
+    await asyncio.sleep(0)
+    assert "9876" not in str(notify.await_args)

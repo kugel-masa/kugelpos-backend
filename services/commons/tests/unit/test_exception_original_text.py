@@ -224,3 +224,49 @@ async def test_a_slack_notification_describes_the_exception():
     assert PIN not in body
     details = next(f for f in json.loads(body)["attachments"][0]["fields"] if f["title"] == "Details")
     assert details["value"] == "DuplicateKeyError: code->11000, codeName->DuplicateKey"
+
+
+# ---------------------------------------------------------------------------
+# Second review round (#318): anything bound for a response or another
+# service names a non-application exception by its type only
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_tenant_setup_steps_report_safe_reasons():
+    from kugel_common.database.database import run_setup_steps_async
+    from kugel_common.database.database_exceptions import DatabaseException
+
+    blocking = "Index tenant_id_1 on staff is not unique. Documents sharing this key: {'tenant_id': 'T1'} x2"
+
+    async def raw_driver_error(_):
+        raise _duplicate_key_error()
+
+    async def other_error(_):
+        raise ValueError(f"bad api_key {PIN}")
+
+    async def index_blocked(_):
+        raise DatabaseException(blocking)
+
+    with pytest.raises(DatabaseException) as exc_info:
+        await run_setup_steps_async("T1", [raw_driver_error, other_error, index_blocked])
+
+    reason = str(exc_info.value)
+    assert PIN not in reason
+    assert "raw_driver_error: DuplicateKeyError: code->11000, codeName->DuplicateKey" in reason
+    assert "other_error: ValueError" in reason
+    assert blocking in reason, "the #185 detail is the application's own and is kept"
+
+
+@pytest.mark.asyncio
+async def test_a_health_check_names_a_failure_by_its_type():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from kugel_common.utils.health_check import HealthChecker
+
+    client = MagicMock()
+    client.admin.command = AsyncMock(side_effect=RuntimeError(f"auth failed for password {PIN}"))
+
+    health = await HealthChecker.check_mongodb(client)
+
+    assert health.error == "MongoDB error: RuntimeError"
