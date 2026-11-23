@@ -7,7 +7,8 @@ import pytest
 
 from app.exceptions import CategoryMasterDataNotFoundException
 from app.models.repositories.category_master_web_repository import CategoryMasterWebRepository
-from app.utils.master_data_pages import has_next_page
+from app.utils.master_data_pages import MAX_MASTER_DATA_PAGES, has_next_page
+from kugel_common.utils.http_client_helper import HttpClientError
 
 
 @pytest.mark.parametrize(
@@ -74,6 +75,20 @@ async def test_a_failure_on_a_later_page_fails_the_whole_read():
     client.get = AsyncMock(
         side_effect=[_page([{"categoryCode": "C1", "description": "x"}] * 100, 150), RuntimeError("gone")]
     )
+    a, b = _patched(client)
+    with a, b, pytest.raises(CategoryMasterDataNotFoundException):
+        await CategoryMasterWebRepository("T1", "http://md").get_categories()
+
+
+def test_reading_stops_at_the_page_cap():
+    assert has_next_page({"has_next": True}, MAX_MASTER_DATA_PAGES - 1, 100) is True
+    assert has_next_page({"has_next": True}, MAX_MASTER_DATA_PAGES, 100) is False
+
+
+@pytest.mark.asyncio
+async def test_a_connection_failure_is_a_category_read_failure():
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=HttpClientError("unreachable"))
     a, b = _patched(client)
     with a, b, pytest.raises(CategoryMasterDataNotFoundException):
         await CategoryMasterWebRepository("T1", "http://md").get_categories()

@@ -168,9 +168,41 @@ async def test_a_method_gone_from_master_data_keeps_the_newest_name_it_was_paid_
 
 
 @pytest.mark.asyncio
-async def test_a_method_named_nowhere_falls_back_as_before(set_env_vars):
+async def test_a_method_named_nowhere_falls_back_to_the_defaults_then_its_code(set_env_vars):
     report = await _report(
         [_tran(1, "2024-03-05T10:00:00", payments=[_pay("41", 300), _pay("01", 100)])], "payment"
     )
 
     assert {p.payment_code: p.payment_name for p in report.payment_summary} == {"41": "Payment 41", "01": "Cash"}
+
+
+@pytest.mark.asyncio
+async def test_newest_is_by_instant_whatever_the_offset(set_env_vars):
+    # 10:00+09:00 is 01:00Z: older than 01:30Z although it sorts later as text.
+    # Carried sales keep the terminal's ISO-8601 string as sent (issue #326 review).
+    older = _tran(1, "2024-03-05T10:00:00.1+09:00", [_line(1, "A1", "Apple")],
+                  payments=[_pay("41", 100, "Gift old")])
+    newer = _tran(2, "2024-03-05T01:30:00Z", [_line(1, "A1", "Green apple")],
+                  payments=[_pay("41", 100, "Gift new")])
+    for inserted in ([older, newer], [newer, older]):
+        assert _item_names(await _report(inserted, "item")) == {"A1": "Green apple"}
+        assert (await _report(inserted, "payment")).payment_summary[0].payment_name == "Gift new"
+
+
+@pytest.mark.asyncio
+async def test_a_tie_on_time_goes_to_the_sale_stored_last(set_env_vars):
+    when = "2024-03-05T10:00:00+09:00"
+    first = _tran(1, when, [_line(1, "A1", "Zebra apple")], payments=[_pay("41", 100, "Zebra gift")])
+    second = _tran(2, when, [_line(1, "A1", "Apple")], payments=[_pay("41", 100, "Gift")])
+
+    assert _item_names(await _report([first, second], "item")) == {"A1": "Apple"}
+    assert (await _report([first, second], "payment")).payment_summary[0].payment_name == "Gift"
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_time_counts_as_the_oldest(set_env_vars):
+    garbled = _tran(1, "2024-03-05T10:00:00", [_line(1, "A1", "Apple")])
+    garbled["generate_date_time"] = "not a time"
+    dated = _tran(2, "2024-03-05T09:00:00+09:00", [_line(1, "A1", "Green apple")])
+
+    assert _item_names(await _report([dated, garbled], "item")) == {"A1": "Green apple"}

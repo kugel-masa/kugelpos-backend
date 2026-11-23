@@ -12,6 +12,7 @@ from app.config.settings import Settings
 from app.models.documents.item_report_document import ItemReportDocument
 from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
+from app.utils.latest_name import latest_name_candidate
 from app.services.plugins.item_report_receipt_data import ItemReportReceiptData
 
 logger = logging.getLogger(__name__)
@@ -251,8 +252,7 @@ class ItemReportMaker(IReportPlugin):
             {
                 "$project": {
                     "transaction_type": 1,
-                    "generate_date_time": {"$ifNull": ["$generate_date_time", ""]},
-                    "description": "$line_items.description",
+                    "name_candidate": latest_name_candidate("$line_items.description"),
                     "item_code": "$line_items.item_code",
                     "category_code": "$line_items.category_code",
                     "quantity": "$line_items.quantity",
@@ -290,11 +290,13 @@ class ItemReportMaker(IReportPlugin):
                         "item_code": "$item_code",
                         "category_code": "$category_code"
                     },
+                    # The name the item was last sold under in the period, from the
+                    # transaction log (issue #326): it stays right when the master
+                    # record is renamed or deleted later
+                    "latest_name": {"$max": "$name_candidate"},
                     "transactions": {
                         "$push": {
                             "transaction_type": "$transaction_type",
-                            "generate_date_time": "$generate_date_time",
-                            "description": "$description",
                             "quantity": "$quantity",
                             "amount": "$amount",
                             "line_item_discounts": "$line_item_discounts",
@@ -382,29 +384,7 @@ class ItemReportMaker(IReportPlugin):
                         }
                     },
                     "transaction_count": {"$size": "$transactions"},
-                    # The name the item was last sold under in the period, from the
-                    # transaction log (issue #326): it stays right when the master
-                    # record is renamed or deleted later. Lines without a name are
-                    # skipped; a tie on time keeps the later line.
-                    "latest_name": {
-                        "$reduce": {
-                            "input": "$transactions",
-                            "initialValue": {"t": None, "d": None},
-                            "in": {
-                                "$cond": [
-                                    {
-                                        "$and": [
-                                            {"$eq": [{"$type": "$$this.description"}, "string"]},
-                                            {"$ne": ["$$this.description", ""]},
-                                            {"$gte": ["$$this.generate_date_time", "$$value.t"]},
-                                        ]
-                                    },
-                                    {"t": "$$this.generate_date_time", "d": "$$this.description"},
-                                    "$$value",
-                                ]
-                            },
-                        }
-                    },
+                    "item_name": "$latest_name.n",
                 }
             },
             # Calculate net amount
@@ -418,7 +398,7 @@ class ItemReportMaker(IReportPlugin):
                     "quantity": 1,
                     "discount_quantity": 1,
                     "transaction_count": 1,
-                    "item_name": "$latest_name.d"
+                    "item_name": 1
                 }
             }
         ]

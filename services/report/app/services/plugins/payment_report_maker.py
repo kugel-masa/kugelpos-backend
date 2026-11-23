@@ -18,6 +18,7 @@ from app.services.report_plugin_interface import IReportPlugin
 from app.services.plugins.payment_report_receipt_data import PaymentReportReceiptData
 from app.config.settings import Settings
 
+from app.utils.latest_name import latest_name_candidate
 from app.utils.master_data_pages import MASTER_DATA_PAGE_SIZE, has_next_page
 
 logger = logging.getLogger(__name__)
@@ -284,19 +285,6 @@ class PaymentReportMaker(IReportPlugin):
     # Names used when neither master-data nor the transaction log names a method
     DEFAULT_PAYMENT_NAMES = {"01": "Cash", "11": "Cashless", "12": "Others"}
 
-    _LATEST_PAYMENT_NAME = {
-        "$cond": [
-            {
-                "$and": [
-                    {"$eq": [{"$type": "$payments.builtin_description"}, "string"]},
-                    {"$ne": ["$payments.builtin_description", ""]},
-                ]
-            },
-            {"t": {"$ifNull": ["$generate_date_time", ""]}, "n": "$payments.builtin_description"},
-            None,
-        ]
-    }
-
     def _has_next_page(self, metadata: Optional[dict], page: int, received: int) -> bool:
         """Whether the payment master list has a page after ``page``."""
         return has_next_page(metadata, page, received, self.PAYMENT_MASTER_PAGE_SIZE)
@@ -484,9 +472,8 @@ class PaymentReportMaker(IReportPlugin):
                     },
                     "amount": {"$sum": "$payments.amount"},
                     # The newest name the method was paid under, from the line's
-                    # builtin_description (issue #326). $max compares {t, n} by
-                    # time first and skips the nulls of lines without a name.
-                    "latest_name": {"$max": self._LATEST_PAYMENT_NAME},
+                    # builtin_description (issue #326)
+                    "latest_name": {"$max": latest_name_candidate("$payments.builtin_description")},
                     # By document _id: the numbering does not identify a transaction
                     # (transaction_no restarts at every open, and two sales with
                     # different cart_ids can share a numbering; issue #230).
