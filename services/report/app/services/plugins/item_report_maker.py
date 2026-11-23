@@ -8,11 +8,11 @@ from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.models.repositories.category_master_web_repository import CategoryMasterWebRepository
-from app.models.repositories.item_master_web_repository import ItemMasterWebRepository
 from app.config.settings import Settings
 from app.models.documents.item_report_document import ItemReportDocument
 from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
+from app.utils.latest_name import latest_name_candidate
 from app.services.plugins.item_report_receipt_data import ItemReportReceiptData
 
 logger = logging.getLogger(__name__)
@@ -46,10 +46,6 @@ class ItemReportMaker(IReportPlugin):
         # Initialize master data repositories
         settings = Settings()
         self.category_repository = CategoryMasterWebRepository(
-            tenant_id=tran_repository.tenant_id,
-            master_data_base_url=settings.BASE_URL_MASTER_DATA
-        )
-        self.item_repository = ItemMasterWebRepository(
             tenant_id=tran_repository.tenant_id,
             master_data_base_url=settings.BASE_URL_MASTER_DATA
         )
@@ -126,21 +122,9 @@ class ItemReportMaker(IReportPlugin):
             logger.error(f"Will use category codes as names (fallback)")
             category_names = {}
         
-        # Fetch item names from master data
-        try:
-            # Extract unique item codes from results
-            item_codes = list(set(result.get("item_code", "") for result in item_results if result.get("item_code")))
-            if item_codes:
-                item_details = await self.item_repository.get_items(item_codes)
-            else:
-                item_details = {}
-        except Exception as e:
-            logger.warning(f"Failed to fetch item names: {e}")
-            item_details = {}
-        
         # Create category with items structure
         logger.debug("Creating category with items structure...")
-        categories_with_items = self._create_categories_with_items(item_results, category_names, item_details)
+        categories_with_items = self._create_categories_with_items(item_results, category_names)
         logger.debug(f"Created {len(categories_with_items)} categories with items")
         
         # Calculate totals
@@ -268,6 +252,7 @@ class ItemReportMaker(IReportPlugin):
             {
                 "$project": {
                     "transaction_type": 1,
+                    "name_candidate": latest_name_candidate("$line_items.description"),
                     "item_code": "$line_items.item_code",
                     "category_code": "$line_items.category_code",
                     "quantity": "$line_items.quantity",
@@ -305,6 +290,10 @@ class ItemReportMaker(IReportPlugin):
                         "item_code": "$item_code",
                         "category_code": "$category_code"
                     },
+                    # The name the item was last sold under in the period, from the
+                    # transaction log (issue #326): it stays right when the master
+                    # record is renamed or deleted later
+                    "latest_name": {"$max": "$name_candidate"},
                     "transactions": {
                         "$push": {
                             "transaction_type": "$transaction_type",
@@ -394,7 +383,8 @@ class ItemReportMaker(IReportPlugin):
                             }
                         }
                     },
-                    "transaction_count": {"$size": "$transactions"}
+                    "transaction_count": {"$size": "$transactions"},
+                    "item_name": "$latest_name.n",
                 }
             },
             # Calculate net amount
@@ -407,7 +397,8 @@ class ItemReportMaker(IReportPlugin):
                     "net_amount": {"$subtract": ["$gross_amount", "$discount_amount"]},
                     "quantity": 1,
                     "discount_quantity": 1,
-                    "transaction_count": 1
+                    "transaction_count": 1,
+                    "item_name": 1
                 }
             }
         ]
@@ -428,7 +419,6 @@ class ItemReportMaker(IReportPlugin):
         self, 
         results: list[dict], 
         category_names: dict[str, str],
-        item_details: dict[str, dict[str, str]]
     ) -> list[ItemReportDocument.CategoryWithItems]:
         """
         Create categories with items structure from aggregation results
@@ -436,7 +426,6 @@ class ItemReportMaker(IReportPlugin):
         Args:
             results: Aggregation pipeline results
             category_names: Mapping of category codes to names
-            item_details: Mapping of item codes to item details (name and category_code)
 
         Returns:
             List of CategoryWithItems objects
@@ -454,9 +443,8 @@ class ItemReportMaker(IReportPlugin):
                 item_code = result.get("item_code", "")
                 category_code = result.get("category_code", "")
                 
-                # Get item name from master data
-                item_info = item_details.get(item_code, {})
-                item_name = item_info.get("name", item_code)
+                # The name it was sold under (issue #326), else its code
+                item_name = result.get("item_name") or item_code
                 
                 # Create item report item
                 item = ItemReportDocument.ItemReportItem(
