@@ -87,7 +87,10 @@ class PaymentReportMaker(IReportPlugin):
             Payment report document with payment summary and totals
         """
 
-        # Validate date range if both dates are provided
+        # A range is given by both ends or not at all; a half range used to be
+        # ignored, answering with the single business_date's report (#314).
+        if bool(business_date_from) != bool(business_date_to):
+            raise ValueError("business_date_from and business_date_to must be provided together")
         if business_date_from and business_date_to:
             if business_date_from > business_date_to:
                 raise ValueError(f"Invalid date range: business_date_from ({business_date_from}) is after business_date_to ({business_date_to})")

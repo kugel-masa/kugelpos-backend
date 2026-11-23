@@ -38,6 +38,19 @@ from app.exceptions import (
 )
 
 
+def _refuse_half_date_range(business_date_from: str | None, business_date_to: str | None) -> None:
+    """A date range is given by both ends or not at all.
+
+    Most report makers read the range only when both ends are there and
+    otherwise report the single business_date, so a half range was ignored
+    rather than refused (#314). Checked here, ahead of every maker.
+    """
+    if bool(business_date_from) != bool(business_date_to):
+        raise ReportDateException(
+            "business_date_from and business_date_to must be provided together.", logger
+        )
+
+
 class ReportService:
     """
     Service for generating various types of business reports.
@@ -124,6 +137,7 @@ class ReportService:
             The generated report data
 
         Raises:
+            ReportDateException: If the date range is given by one end only
             TerminalNotClosedException: If any terminal in the store is not closed (single date mode only)
             ReportGenerationException: If an error occurs during report generation
             ReportNotFoundException: If the requested report type does not exist
@@ -131,6 +145,7 @@ class ReportService:
         logger.debug(
             f"get_report_for_store_async: {store_code}, {report_scope}, {report_type}, {business_date}, {open_counter}, {limit}, {page}, {sort}"
         )
+        _refuse_half_date_range(business_date_from, business_date_to)
 
         # Normalize report_scope: treat "flush" as "flash" for backward compatibility
         if report_scope == "flush":
@@ -260,6 +275,7 @@ class ReportService:
             The generated report data
 
         Raises:
+            ReportDateException: If the date range is given by one end only
             TerminalNotClosedException: If the terminal is not closed
             ReportGenerationException: If an error occurs during report generation
             ReportNotFoundException: If the requested report type does not exist
@@ -267,6 +283,7 @@ class ReportService:
         logger.debug(
             f"get_report_for_terminal_async: {store_code}, {terminal_no}, {report_scope}, {report_type}, {business_date}, {open_counter}, {limit}, {page}, {sort}"
         )
+        _refuse_half_date_range(business_date_from, business_date_to)
 
         # Normalize report_scope: treat "flush" as "flash" for backward compatibility
         if report_scope == "flush":

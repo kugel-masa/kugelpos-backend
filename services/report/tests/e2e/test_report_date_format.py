@@ -17,6 +17,9 @@ from kugel_common.utils.service_auth import create_service_token
         {"report_scope": "daily", "business_date": "2024-01-01"},
         {"report_scope": "daily", "business_date_from": "20240101", "business_date_to": "2024/01/07"},
         {"report_scope": "flash", "business_date": "20241301", "open_counter": 1},
+        # A range given by one end is refused, not ignored (#314)
+        {"report_scope": "daily", "business_date": "20240107", "business_date_from": "20240101"},
+        {"report_scope": "daily", "business_date": "20240107", "business_date_to": "20240131"},
     ],
 )
 async def test_malformed_business_date_is_refused(http_client: AsyncClient, params):

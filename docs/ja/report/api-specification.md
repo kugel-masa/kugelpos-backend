@@ -155,6 +155,8 @@
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
 
+`business_date` か、`business_date_from` と `business_date_to` の両端で範囲を指定します。範囲と `business_date` の両方を指定したときは、範囲を使います。範囲の片方だけの指定は、`business_date` と一緒でも 400（`412006`）で拒否されます。
+
 **レスポンス:**
 
 **レスポンス例:**
@@ -209,6 +211,8 @@
 | `page` | integer | No | 1 | Page number to return |
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
+
+`business_date` か、`business_date_from` と `business_date_to` の両端で範囲を指定します。範囲と `business_date` の両方を指定したときは、範囲を使います。範囲の片方だけの指定は、`business_date` と一緒でも 400（`412006`）で拒否されます。
 
 **レスポンス:**
 

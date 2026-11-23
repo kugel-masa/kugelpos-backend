@@ -150,3 +150,24 @@ def test_both_pipelines_cover_the_same_transactions():
     variants = maker._create_pipeline_for_payment_variants(**args)
 
     assert report[0] == variants[0] == {"$match": maker._match_transactions(**args)}
+
+
+class TestHalfDateRange:
+    """A range given by one end is refused, not ignored (#314)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "bounds", [{"business_date_from": "20261101"}, {"business_date_to": "20261130"}]
+    )
+    async def test_a_half_range_is_refused(self, bounds):
+        maker = _maker()
+        maker._fetch_payment_master = AsyncMock()
+
+        with pytest.raises(ValueError, match="must be provided together"):
+            await maker.generate_report(
+                store_code="5678", terminal_no=None, business_counter=None, business_date="20261122",
+                open_counter=None, report_scope="daily", report_type="payment", limit=100, page=1, sort=[], **bounds,
+            )
+
+        maker._fetch_payment_master.assert_not_called()
+        maker.tran_repository.execute_pipeline.assert_not_called()
