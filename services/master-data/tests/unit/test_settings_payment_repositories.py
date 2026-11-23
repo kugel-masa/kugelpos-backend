@@ -103,9 +103,10 @@ class TestSettingsMasterRepository:
     @pytest.mark.asyncio
     async def test_delete_settings_physically_on_request(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.settings_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             await repo.delete_settings_async("tax_rounding", is_logical=False)
-            mock_del.assert_awaited_once_with({"tenant_id": "T001", "name": "tax_rounding"})
+            mock_del.assert_awaited_once_with(repo, {"tenant_id": "T001", "name": "tax_rounding"})
 
     # -- get_settings_count_async ---------------------------------------------
 
@@ -260,9 +261,10 @@ class TestPaymentMasterRepository:
     @pytest.mark.asyncio
     async def test_delete_payment_physically_on_request(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.payment_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             await repo.delete_payment_async("PAY01", is_logical=False)
-            mock_del.assert_awaited_once_with({"tenant_id": "T001", "payment_code": "PAY01"})
+            mock_del.assert_awaited_once_with(repo, {"tenant_id": "T001", "payment_code": "PAY01"})
 
     # -- get_payment_count_by_filter_async -----------------------------------
 
@@ -511,6 +513,7 @@ class TestPromotionMasterRepository:
     async def test_delete_promotion_physically_on_request(self):
         # Issue #324: the key only, so a logically deleted promotion is removed too
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.promotion_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             assert await repo.delete_promotion_async("P01", is_logical=False) is True
-            mock_del.assert_awaited_once_with({"tenant_id": "T001", "promotion_code": "P01"})
+            mock_del.assert_awaited_once_with(repo, {"tenant_id": "T001", "promotion_code": "P01"})

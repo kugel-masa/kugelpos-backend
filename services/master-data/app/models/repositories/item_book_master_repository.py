@@ -5,7 +5,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from kugel_common.exceptions import RepositoryException
 from kugel_common.utils.misc import get_app_time
 from app.config.settings import settings
-from app.models.repositories.logical_delete import alive, soft_delete_async
+from app.models.repositories.logical_delete import alive, hard_delete_async, soft_delete_async
 
 from logging import getLogger
 
@@ -396,7 +396,7 @@ class ItemBookMasterRepository(AbstractRepository[ItemBookMasterDocument]):
         key = self.__make_query_filter(item_book_id)
         if is_logical:
             return await soft_delete_async(self, key)
-        return await self.delete_async(key)
+        return await hard_delete_async(self, key)
 
     async def get_item_book_count_by_filter_async(self, query_filter: dict, include_deleted: bool = False) -> int:
         """

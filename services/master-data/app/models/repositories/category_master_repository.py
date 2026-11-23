@@ -5,7 +5,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from app.config.settings import settings
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.utils.misc import get_app_time
-from app.models.repositories.logical_delete import alive, restore_async, soft_delete_async
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 from logging import getLogger
 
@@ -171,7 +171,7 @@ class CategoryMasterRepository(AbstractRepository[CategoryMasterDocument]):
         key = self.__make_query_filter(category_code)
         if is_logical:
             return await soft_delete_async(self, key)
-        return await self.delete_async(key)
+        return await hard_delete_async(self, key)
 
     async def restore_category_async(self, document: CategoryMasterDocument) -> bool:
         """

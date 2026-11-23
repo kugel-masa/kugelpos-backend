@@ -129,9 +129,10 @@ class TestStaffMasterRepository:
     @pytest.mark.asyncio
     async def test_delete_staff_physically_on_request(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.staff_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             await repo.delete_staff_async("ST01", is_logical=False)
-            mock_del.assert_awaited_once_with({"tenant_id": "T001", "id": "ST01"})
+            mock_del.assert_awaited_once_with(repo, {"tenant_id": "T001", "id": "ST01"})
 
     # -- get_staff_count_async -----------------------------------------------
 

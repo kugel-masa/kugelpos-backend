@@ -8,7 +8,7 @@ from logging import getLogger
 
 from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.utils.misc import get_app_time
-from app.models.repositories.logical_delete import alive, restore_async, soft_delete_async
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -142,7 +142,7 @@ class StaffMasterRepository(AbstractRepository[StaffMasterDocument]):
         key = self.__make_query_filter(staff_id)
         if is_logical:
             return await soft_delete_async(self, key)
-        return await self.delete_async(key)
+        return await hard_delete_async(self, key)
 
     async def restore_staff_async(self, document: StaffMasterDocument) -> bool:
         """

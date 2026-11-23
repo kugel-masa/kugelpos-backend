@@ -150,9 +150,10 @@ class TestCategoryMasterRepository:
     @pytest.mark.asyncio
     async def test_delete_category_physically_on_request(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.category_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             await repo.delete_category_async("C01", is_logical=False)
-            mock_del.assert_awaited_once_with({"tenant_id": "T001", "category_code": "C01"})
+            mock_del.assert_awaited_once_with(repo, {"tenant_id": "T001", "category_code": "C01"})
 
 
 # ---------------------------------------------------------------------------
@@ -548,11 +549,12 @@ class TestItemStoreMasterRepository:
     @pytest.mark.asyncio
     async def test_delete_item_store_filter(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.item_store_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             # Physical on request; the default is logical (issue #324)
             await repo.delete_item_store_async("I01", is_logical=False)
             expected_filter = {"tenant_id": "T001", "store_code": "S01", "item_code": "I01"}
-            mock_del.assert_awaited_once_with(expected_filter)
+            mock_del.assert_awaited_once_with(repo, expected_filter)
 
     # -- get_item_count_by_filter_async ---------------------------------------
 
@@ -685,11 +687,12 @@ class TestItemBookMasterRepository:
     @pytest.mark.asyncio
     async def test_delete_item_book_filter(self):
         repo = self._make_repo()
-        with patch.object(repo, "delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
+        # One delete_one on the key (issue #324 review)
+        with patch("app.models.repositories.item_book_master_repository.hard_delete_async", new_callable=AsyncMock, return_value=True) as mock_del:
             # Physical on request; the default is logical (issue #324)
             await repo.delete_item_book_async("BK-001", is_logical=False)
             expected = {"tenant_id": "T001", "item_book_id": "BK-001"}
-            mock_del.assert_awaited_once_with(expected)
+            mock_del.assert_awaited_once_with(repo, expected)
 
     # -- get_item_book_count_by_filter_async ---------------------------------
 

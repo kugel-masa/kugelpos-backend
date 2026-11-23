@@ -138,7 +138,8 @@ async def test_a_deleted_payment_method_cannot_pay(http_client, opened_terminal_
             json={"signedSnapshot": snapshot, "payload": [{"paymentCode": others, "amount": 1}]},
             headers=_api_header(),
         )
-        assert response.status_code >= 400, response.text
+        # Refused as a client error (an unknown payment method), never a 500
+        assert 400 <= response.status_code < 500, response.text
     finally:
         # Creating the code again restores it (issue #324)
         async with AsyncClient() as client:

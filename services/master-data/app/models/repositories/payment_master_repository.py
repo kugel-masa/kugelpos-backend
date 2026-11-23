@@ -7,7 +7,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from kugel_common.utils.misc import get_app_time
 from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.config.settings import settings
-from app.models.repositories.logical_delete import alive, restore_async, soft_delete_async
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -145,7 +145,7 @@ class PaymentMasterRepository(AbstractRepository[PaymentMasterDocument]):
         filter = {"tenant_id": self.tenant_id, "payment_code": payment_code}
         if is_logical:
             return await soft_delete_async(self, filter)
-        return await self.delete_async(filter)
+        return await hard_delete_async(self, filter)
 
     async def restore_payment_async(self, payment_doc: PaymentMasterDocument) -> bool:
         """

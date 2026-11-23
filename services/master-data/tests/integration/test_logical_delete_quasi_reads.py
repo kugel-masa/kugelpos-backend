@@ -107,3 +107,13 @@ async def test_the_value_of_a_deleted_setting_is_not_found(http_client, admin_he
     )
 
     assert r.status_code == 404, r.text
+
+
+async def test_a_store_record_cannot_be_created_for_a_deleted_item(http_client, admin_header):
+    code = _code("QN")
+    await _item(http_client, admin_header, code)
+    assert (await http_client.delete(f"{base()}/items/{code}", headers=admin_header)).status_code == 200
+
+    r = await http_client.post(f"{base()}/stores/{STORE}/items", json={"itemCode": code, "storePrice": 80.0}, headers=admin_header)
+
+    assert r.status_code == 404, r.text

@@ -41,6 +41,7 @@ async def test_creating_a_deleted_code_restores_it_with_the_new_values(http_clie
     expected = master.create_body(code, "Brand new")[master.label_field]
     assert data[master.label_field] == expected
     assert data["entryDatetime"] is not None
+    assert data["lastUpdateDatetime"] is None, "a restored record looks like a newly created one"
     assert datetime.strptime(data["entryDatetime"], "%Y-%m-%d %H:%M:%S") >= started.replace(microsecond=0)
     listed = await http_client.get(master.list_path(), params=master.list_params, headers=admin_header)
     assert code in list_codes(listed, master)

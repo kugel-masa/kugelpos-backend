@@ -7,7 +7,7 @@ from app.models.documents.settings_master_document import *
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.config.settings import settings
 from kugel_common.utils.misc import get_app_time
-from app.models.repositories.logical_delete import alive, restore_async, soft_delete_async
+from app.models.repositories.logical_delete import alive, hard_delete_async, restore_async, soft_delete_async
 
 logger = getLogger(__name__)
 
@@ -115,7 +115,7 @@ class SettingsMasterRepository(AbstractRepository[SettingsMasterDocument]):
         query_filter = {"tenant_id": self.tenant_id, "name": name}
         if is_logical:
             return await soft_delete_async(self, query_filter)
-        return await self.delete_async(query_filter)
+        return await hard_delete_async(self, query_filter)
 
     async def restore_settings_async(self, document: SettingsMasterDocument) -> bool:
         """

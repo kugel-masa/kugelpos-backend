@@ -6,7 +6,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 from app.config.settings import settings
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.utils.misc import get_app_time
-from app.models.repositories.logical_delete import NOT_DELETED, alive, restore_async, soft_delete_async
+from app.models.repositories.logical_delete import NOT_DELETED, alive, hard_delete_async, restore_async, soft_delete_async
 
 from logging import getLogger
 
@@ -255,7 +255,7 @@ class PromotionMasterRepository(AbstractRepository[PromotionMasterDocument]):
         key = self.__make_query_filter(promotion_code)
         if is_logical:
             return await soft_delete_async(self, key)
-        return await self.delete_async(key)
+        return await hard_delete_async(self, key)
 
     async def restore_promotion_async(self, document: PromotionMasterDocument) -> bool:
         """
