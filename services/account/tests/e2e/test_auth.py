@@ -101,6 +101,19 @@ async def test_register_user_by_superuser(http_client):
     assert response.json()["data"]["isSuperuser"] is False
     assert response.json()["data"]["tenantId"] == tenant_id
 
+    # Registering the same username again hits the unique index. The 500 used
+    # to return the driver's text in `data`, the duplicated key values with it
+    # (#318); the text now stays in the log.
+    response = await http_client.post(
+        f"/api/v1/accounts/register/user?tenant_id={tenant_id}",
+        json={"username": sub_username, "password": "user-pw"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.text
+    assert response.json()["data"] is None
+    assert "dup key" not in response.text
+    assert sub_username not in response.text
+
 
 @pytest.mark.asyncio
 async def test_token_with_bad_password_returns_401(http_client):

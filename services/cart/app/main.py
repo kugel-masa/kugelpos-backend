@@ -254,7 +254,7 @@ async def health_check():
     except Exception as e:
         background_jobs_health = ComponentHealth(
             status=HealthStatus.UNHEALTHY,
-            details={"error": str(e)},
+            details={"error": describe_exception(e)},
             error=f"Failed to check scheduler status: {describe_exception(e)}",
         )
 

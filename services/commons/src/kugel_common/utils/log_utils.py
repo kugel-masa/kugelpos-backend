@@ -541,10 +541,15 @@ def describe_exception(exc: BaseException) -> str:
 
     - A Pydantic ``ValidationError`` echoes each offending value
       (``input_value=...``). It is described by its masked ``errors()``.
+      FastAPI's ``RequestValidationError`` / ``ResponseValidationError`` and
+      a ``pydantic.v1`` ``ValidationError`` carry the same echo and are
+      described the same way.
     - A pymongo ``OperationFailure`` (``DuplicateKeyError``, ``WriteError``,
       ``BulkWriteError`` among them) echoes the server's error document, which
       for a duplicate key holds the key and its value (``dup key: {...}``). It
       is described by its type, code and code name only.
+    - A ``bson`` error (``InvalidDocument``: "cannot encode object: ...")
+      quotes the value it could not encode. It is described by its type only.
 
     Anything else is described by its type and text, as before (#318).
 
@@ -558,15 +563,66 @@ def describe_exception(exc: BaseException) -> str:
     """
     name = type(exc).__name__
     try:
-        from pydantic import ValidationError
-
-        if isinstance(exc, ValidationError):
-            return f"{name}: {mask_validation_error_details(exc.errors())}"
         from pymongo.errors import OperationFailure
 
+        if isinstance(exc, _validation_error_types()):
+            return f"{name}: {mask_validation_error_details(exc.errors())}"
         if isinstance(exc, OperationFailure):
             code_name = (exc.details or {}).get("codeName") if isinstance(exc.details, dict) else None
             return f"{name}: code->{exc.code}, codeName->{code_name}"
+        from bson.errors import BSONError
+
+        if isinstance(exc, BSONError):
+            return name
         return f"{name}: {exc}"
     except Exception:
         return f"<undescribable {name}>"
+
+
+def describe_exception_for_response(exc: BaseException) -> str:
+    """
+    Describe an exception for a response that is meant to carry the reason.
+
+    Tenant setup answers its 500 with the reason, so an operator can act on it
+    (#185). The reason worth carrying is the application's own: an
+    ``AppException``'s message (either family: ``kugel_common.exceptions`` or
+    ``kugel_common.database``), which this code writes and masks - for a
+    unique index that cannot be built, the documents in its way. A validation
+    or pymongo error is summarised as ``describe_exception`` does. Any other
+    exception's text is not this code's and may quote what it was given, so
+    only its type is returned; the log has the rest.
+
+    Never raises.
+
+    Args:
+        exc: The exception to describe
+
+    Returns:
+        str: ``TypeName: detail``, or ``TypeName`` alone
+    """
+    name = type(exc).__name__
+    try:
+        from kugel_common.database.database_exceptions import AppException as DatabaseAppException
+        from kugel_common.exceptions.base_exceptions import AppException
+        from pymongo.errors import OperationFailure
+
+        if isinstance(exc, AppException):
+            return f"{name}: {exc.message}"
+        if isinstance(exc, DatabaseAppException):
+            # database.py raises its own exception family, which carries the
+            # #185 detail (the documents blocking a unique index) as its text.
+            return f"{name}: {exc}"
+        if isinstance(exc, (*_validation_error_types(), OperationFailure)):
+            return describe_exception(exc)
+        return name
+    except Exception:
+        return name
+
+
+def _validation_error_types() -> tuple:
+    """Validation errors whose ``errors()`` echo each offending value."""
+    from fastapi.exceptions import ValidationException
+    from pydantic import ValidationError
+    from pydantic.v1 import ValidationError as ValidationErrorV1
+
+    return (ValidationError, ValidationErrorV1, ValidationException)

@@ -7,7 +7,7 @@ from kugel_common.security import get_tenant_id_with_token
 from kugel_common.schemas.api_response import ApiResponse
 
 from app.database import database_setup
-from kugel_common.utils.log_utils import describe_exception
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 from app.api.v1.schemas import (
     TenantCreateRequest,
     TenantCreateResponse,
@@ -43,8 +43,8 @@ async def create_tenant(req: TenantCreateRequest, tenant_id: str = Depends(get_t
         # could not be built - and, for a unique index, the documents in the way -
         # already exist one frame down; discarding them left an operator with a
         # bare 500 and nowhere to start (issue #185).
-        message = f"Error creating tenant: {tenant_id}: {describe_exception(e)}"
-        logger.error(message)
+        message = f"Error creating tenant: {tenant_id}: {describe_exception_for_response(e)}"
+        logger.error(f"Error creating tenant: {tenant_id}: {describe_exception(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
 
     return ApiResponse(

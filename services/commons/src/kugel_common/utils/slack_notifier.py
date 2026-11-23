@@ -27,6 +27,7 @@ from typing import Optional, Dict, Any, Union
 from datetime import datetime
 
 from kugel_common.config.settings import settings
+from kugel_common.utils.log_utils import describe_exception
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,9 @@ async def send_slack_notification(
     
     # Add error details if available
     if error_details:
-        error_text = str(error_details)
+        # An exception is described, not quoted: a driver or validator error
+        # echoes the values it was given, and this leaves the system (#318).
+        error_text = describe_exception(error_details) if isinstance(error_details, BaseException) else str(error_details)
         fields.append({
             "title": "Details",
             "value": error_text[:1000] + ("..." if len(error_text) > 1000 else ""),

@@ -5,6 +5,7 @@ It carries no JWT and picks the tenant database from the event body, so before
 this anyone who could reach the app port could move any tenant's stock.
 """
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, patch
 
@@ -44,3 +45,25 @@ async def test_a_delivery_carrying_the_token_reaches_the_handler():
         await _post({DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]})
 
     get_db.assert_awaited_once_with(f"{os.environ['DB_NAME_PREFIX']}_T-ANY")
+
+
+@pytest.mark.asyncio
+async def test_a_failure_is_reported_without_the_values_it_echoes():
+    """The RETRY body and the status sent to cart carry a description (#318)."""
+    from pymongo.errors import DuplicateKeyError
+
+    error = DuplicateKeyError(
+        'dup key: { pin: "9876" }', 11000, {"code": 11000, "codeName": "DuplicateKey", "keyValue": {"pin": "9876"}}
+    )
+    notify = AsyncMock()
+    with patch("kugel_common.database.database.get_db_async", AsyncMock(side_effect=error)), patch(
+        "app.api.v1.stock._notify_pubsub_status", notify
+    ):
+        response = await _post({DAPR_APP_TOKEN_HEADER: os.environ["APP_API_TOKEN"]})
+
+    assert response.status_code == 500
+    assert "9876" not in response.text
+    assert response.json()["message"] == "DuplicateKeyError: code->11000, codeName->DuplicateKey"
+    await asyncio.sleep(0)
+    notify.assert_awaited_once()
+    assert "9876" not in str(notify.await_args)

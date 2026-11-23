@@ -113,3 +113,114 @@ def test_a_wrapped_app_exception_contributes_its_own_message():
 
     assert outer.message == "Sign-in failed"
     assert outer.log_message == "Sign-in failed: ServiceException: Staff not found: staff_id->S1"
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups (#318)
+# ---------------------------------------------------------------------------
+
+
+class TestMoreTypesAreSummarised:
+    def test_fastapi_request_validation_errors_are_masked(self):
+        from fastapi.exceptions import RequestValidationError
+
+        exc = RequestValidationError([{"type": "string_type", "loc": ("body", "pin"), "msg": "bad", "input": int(PIN)}])
+
+        described = describe_exception(exc)
+
+        assert described.startswith("RequestValidationError: ")
+        assert PIN not in described
+
+    def test_pydantic_v1_validation_errors_are_masked(self):
+        from pydantic.v1 import BaseModel as BaseModelV1, ValidationError as ValidationErrorV1
+
+        class StaffV1(BaseModelV1):
+            pin: int
+
+        try:
+            StaffV1(pin=f"x{PIN}")
+        except ValidationErrorV1 as e:
+            described = describe_exception(e)
+        assert described.startswith("ValidationError: ")
+        assert PIN not in described
+
+    def test_a_bson_error_is_described_by_its_type(self):
+        from bson.errors import InvalidDocument
+
+        assert describe_exception(InvalidDocument(f"cannot encode object: {PIN}")) == "InvalidDocument"
+
+
+class TestDescribeExceptionForResponse:
+    def test_an_app_exception_keeps_its_own_message(self):
+        from kugel_common.database.database_exceptions import DatabaseException
+        from kugel_common.utils.log_utils import describe_exception_for_response
+
+        exc = DatabaseException("Index tenant_id_1 on staff is not unique. Documents sharing this key: {'tenant_id': 'T1'} x2")
+
+        assert describe_exception_for_response(exc) == f"DatabaseException: {exc}"
+
+    def test_the_shared_app_exception_keeps_its_own_message(self):
+        from kugel_common.utils.log_utils import describe_exception_for_response
+
+        exc = ServiceException("Tenant setup failed", original_exception=_duplicate_key_error())
+
+        assert describe_exception_for_response(exc) == "ServiceException: Tenant setup failed"
+
+    def test_a_driver_error_is_summarised(self):
+        from kugel_common.utils.log_utils import describe_exception_for_response
+
+        assert describe_exception_for_response(_duplicate_key_error()) == "DuplicateKeyError: code->11000, codeName->DuplicateKey"
+
+    def test_any_other_exception_gives_its_type_only(self):
+        from kugel_common.utils.log_utils import describe_exception_for_response
+
+        assert describe_exception_for_response(ValueError(f"pin={PIN}")) == "ValueError"
+
+
+class TestUnhandledExceptions:
+    def test_the_500_builder_returns_no_exception_text(self):
+        from kugel_common.exceptions.exception_handlers import build_unexpected_error_response
+
+        response = build_unexpected_error_response(_duplicate_key_error())
+
+        assert response.data is None
+        assert PIN not in str(response.model_dump())
+
+    def test_a_raw_driver_error_escaping_an_endpoint_is_not_echoed(self):
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/boom")
+        async def boom():
+            raise _duplicate_key_error()
+
+        response = TestClient(app, raise_server_exceptions=False).get("/boom")
+
+        assert response.status_code == 500
+        assert PIN not in response.text
+        assert response.json()["data"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_slack_notification_describes_the_exception():
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from kugel_common.utils import slack_notifier
+
+    response = MagicMock(status=200)
+    response.__aenter__ = AsyncMock(return_value=response)
+    response.__aexit__ = AsyncMock(return_value=None)
+    session = MagicMock()
+    session.post = MagicMock(return_value=response)
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+
+    with patch.object(slack_notifier, "SLACK_WEBHOOK_URL", "http://hooks/x"):
+        with patch("aiohttp.ClientSession", return_value=session):
+            await slack_notifier.send_fatal_error_notification(message="Failed to create log", error=_duplicate_key_error())
+
+    body = session.post.call_args.kwargs["data"]
+    assert PIN not in body
+    details = next(f for f in json.loads(body)["attachments"][0]["fields"] if f["title"] == "Details")
+    assert details["value"] == "DuplicateKeyError: code->11000, codeName->DuplicateKey"

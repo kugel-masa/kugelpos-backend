@@ -271,7 +271,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         return JSONResponse(
             content={
                 "status": "RETRY",
-                "message": str(e),
+                "message": describe_exception(e),
                 "operation": f"{inspect.currentframe().f_code.co_name}",
             },
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

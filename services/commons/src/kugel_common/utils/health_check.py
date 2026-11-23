@@ -24,6 +24,7 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from kugel_common.schemas.health import ComponentHealth, HealthStatus
+from kugel_common.utils.log_utils import describe_exception
 
 logger = getLogger(__name__)
 
@@ -69,7 +70,7 @@ class HealthChecker:
         except Exception as e:
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
-                error=f"MongoDB error: {str(e)}"
+                error=f"MongoDB error: {describe_exception(e)}"
             )
     
     @staticmethod
@@ -117,7 +118,7 @@ class HealthChecker:
         except Exception as e:
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
-                error=f"Dapr sidecar error: {str(e)}"
+                error=f"Dapr sidecar error: {describe_exception(e)}"
             )
     
     @staticmethod
@@ -175,7 +176,7 @@ class HealthChecker:
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
                 component=pubsub_name,
-                error=f"Pub/sub error: {str(e)}"
+                error=f"Pub/sub error: {describe_exception(e)}"
             )
     
     @staticmethod
@@ -276,7 +277,7 @@ class HealthChecker:
             return ComponentHealth(
                 status=HealthStatus.UNHEALTHY,
                 component=store_name,
-                error=f"State store error: {str(e)}"
+                error=f"State store error: {describe_exception(e)}"
             )
     
     @staticmethod

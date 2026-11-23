@@ -99,7 +99,8 @@ async def test_the_payload_is_the_one_the_handler_produces(caplog):
     assert ours["user_error"] == theirs["user_error"]
     assert ours["code"] == theirs["code"] == 500
     assert ours["message"] == theirs["message"]
-    assert ours["data"] == theirs["data"] == "unexpected"
+    # The exception's text stays in the log (#318)
+    assert ours["data"] is theirs["data"] is None
     # Only the recorded layer differs, which is the point of recording it.
     assert ours["operation"] == "unhandled_error_middleware"
     assert theirs["operation"] == "exception_handler"

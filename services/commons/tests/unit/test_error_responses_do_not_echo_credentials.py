@@ -120,4 +120,5 @@ def test_the_shared_unexpected_error_builder_does_not_echo_the_document():
     response = build_unexpected_error_response(exc, operation="test")
 
     assert PIN not in str(response.model_dump()), "the document came back through the 500 path"
-    assert "master_staff" in str(response.model_dump())
+    # The exception's text is not returned at all; the log has it (#318)
+    assert response.data is None

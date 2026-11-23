@@ -54,7 +54,7 @@ class AppException(Exception):
         # exception goes to the log, described without the values a validator
         # or the driver echoes back (#318).
         log_message = message
-        if original_exception:
+        if original_exception is not None:
             log_message = f"{log_message}: {describe_exception(original_exception)}"
 
         if logger is None:
