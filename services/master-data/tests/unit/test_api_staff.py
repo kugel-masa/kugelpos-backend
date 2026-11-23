@@ -185,3 +185,56 @@ async def test_delete_staff_success():
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# The PIN is optional on create and update (issue #323)
+# ---------------------------------------------------------------------------
+# Whether sign-in needs a PIN is decided by the stored PIN alone. Create used
+# to require one, so "no PIN" could only be sent as "". On update, an omitted
+# PIN keeps the stored one: clearing it must be explicit (null or ""), or an
+# update that only renames a staff member would silently drop their PIN.
+
+
+async def _create(body):
+    mock_service = AsyncMock()
+    mock_service.create_staff_async.return_value = _make_staff_doc()
+    with patch("app.api.v1.staff_master.get_staff_master_service_async", return_value=mock_service):
+        async with AsyncClient(transport=ASGITransport(app=make_app()), base_url="http://test") as client:
+            resp = await client.post(f"/api/v1/tenants/{TENANT_ID}/staff", json=body)
+    return resp, mock_service
+
+
+async def _update(body):
+    mock_service = AsyncMock()
+    mock_service.update_staff_async.return_value = _make_staff_doc()
+    with patch("app.api.v1.staff_master.get_staff_master_service_async", return_value=mock_service):
+        async with AsyncClient(transport=ASGITransport(app=make_app()), base_url="http://test") as client:
+            resp = await client.put(f"/api/v1/tenants/{TENANT_ID}/staff/STAFF001", json=body)
+    return resp, mock_service
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pin_fields, stored", [({}, None), ({"pin": None}, None), ({"pin": ""}, ""), ({"pin": "1234"}, "1234")])
+async def test_create_takes_an_optional_pin(pin_fields, stored):
+    resp, service = await _create({"id": "STAFF001", "name": "John Doe", "roles": ["cashier"], **pin_fields})
+
+    assert resp.status_code == 201, resp.text
+    assert service.create_staff_async.await_args.args[2] == stored
+
+
+@pytest.mark.asyncio
+async def test_update_without_a_pin_keeps_the_stored_one():
+    resp, service = await _update({"name": "Jane Doe", "roles": ["manager"]})
+
+    assert resp.status_code == 200, resp.text
+    assert "pin" not in service.update_staff_async.await_args.args[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pin, stored", [(None, None), ("", ""), ("5678", "5678")])
+async def test_update_with_a_pin_sets_or_clears_it(pin, stored):
+    resp, service = await _update({"name": "Jane Doe", "pin": pin, "roles": ["manager"]})
+
+    assert resp.status_code == 200, resp.text
+    assert service.update_staff_async.await_args.args[1]["pin"] == stored

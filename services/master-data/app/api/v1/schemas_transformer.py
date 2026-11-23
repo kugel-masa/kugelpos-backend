@@ -10,6 +10,7 @@ from app.api.common.schemas import (
     BasePromotionResponse,
 )
 from app.api.common.schemas_transformer import SchemasTransformer
+from app.api.v1.schemas import StaffVerifyResponse
 from app.models.documents.payment_master_document import PaymentMasterDocument, PaymentVariant
 from app.models.documents.promotion_master_document import PromotionMasterDocument
 
@@ -28,6 +29,10 @@ class SchemasTransformerV1(SchemasTransformer):
         except Exception as e:
             logger.error(f"Error transforming staff document: {e}")
             raise e
+
+    def transform_staff_verification(self, staff_doc: StaffMasterDocument) -> StaffVerifyResponse:
+        """Project a verified staff record to what a terminal records: its ID and name (issue #323)."""
+        return StaffVerifyResponse(id=staff_doc.id, name=staff_doc.name)
 
     def transform_payment(self, payment_doc: PaymentMasterDocument) -> BasePaymentResponse:
         logger.debug(f"Transforming payment document: {payment_doc}")

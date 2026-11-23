@@ -81,7 +81,7 @@ async def test_bill_propagates_to_journal_report_stock(wait_for):
     })
 
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/staff", headers, json={
-        "id": "S001", "name": "Consistency Staff", "pin": "1234", "roles": ["staff"],
+        "id": "S001", "name": "Consistency Staff", "roles": ["staff"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/categories", headers, json={
         "categoryCode": "001", "description": "Default", "descriptionShort": "D", "taxCode": "01",

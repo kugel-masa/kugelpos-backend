@@ -5,6 +5,9 @@ Imports / helpers preserved from the original.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from kugel_common.enums import StaffAuthenticationFailure
+from kugel_common.exceptions import StaffAuthenticationException
+
 from app.services.terminal_service import TerminalService
 from app.models.documents.terminal_info_document import TerminalInfoDocument
 from app.enums.terminal_status import TerminalStatus
@@ -272,11 +275,13 @@ class TestTerminalServiceSignInOut:
         signed_in = make_terminal()
         signed_in.staff = MagicMock(staff_id="ST01")
         repos["terminal_info_repo"].get_terminal_info_by_id_async.side_effect = [terminal, signed_in]
-        repos["staff_master_repo"].get_staff_by_id_async.return_value = MagicMock(staff_id="ST01")
+        repos["staff_master_repo"].verify_staff_async.return_value = MagicMock(staff_id="ST01")
 
         result = await svc.sign_in_terminal_async("ST01")
 
         assert result.staff is not None
+        # Sign-in verifies through master-data (issue #323)
+        repos["staff_master_repo"].verify_staff_async.assert_awaited_once_with("ST01", None)
 
     @pytest.mark.asyncio
     async def test_sign_in_terminal_not_found_raises(self):
@@ -301,8 +306,10 @@ class TestTerminalServiceSignInOut:
         svc, repos = make_service()
         terminal = make_terminal(staff=None)
         repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = terminal
-        repos["staff_master_repo"].get_staff_by_id_async.side_effect = NotFoundException(
-            "staff not found", "col", "key"
+        # master-data answers 405701; the terminal folds it into 406004 (issue #323)
+        repos["staff_master_repo"].verify_staff_async.side_effect = StaffAuthenticationException(
+            message="Staff verification refused: staff_id->UNKNOWN, reason->staff_not_found",
+            reason=StaffAuthenticationFailure.STAFF_NOT_FOUND,
         )
 
         with pytest.raises(SignInOutException):

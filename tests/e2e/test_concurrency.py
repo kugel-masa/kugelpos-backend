@@ -59,7 +59,7 @@ def _bootstrap(tenant_id, store_code, terminal_no, item_code):
         "stores": [], "tags": ["concurrency"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/staff", headers, json={
-        "id": "S001", "name": "Concurrency", "pin": "1234", "roles": ["staff"],
+        "id": "S001", "name": "Concurrency", "roles": ["staff"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/categories", headers, json={
         "categoryCode": "001", "description": "D", "descriptionShort": "D", "taxCode": "01",

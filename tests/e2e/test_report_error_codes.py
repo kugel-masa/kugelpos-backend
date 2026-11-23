@@ -64,7 +64,7 @@ async def test_daily_report_for_an_open_terminal_says_so():
         "stores": [], "tags": ["e2e-report-error"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/staff", headers, json={
-        "id": "S001", "name": "Report Error Staff", "pin": "1234", "roles": ["staff"],
+        "id": "S001", "name": "Report Error Staff", "roles": ["staff"],
     })
     _post("URL_TERMINAL", f"/api/v1/tenants/{tenant_id}/stores", headers, json={
         "store_code": store_code, "store_name": "Report Error Store", "tags": [],

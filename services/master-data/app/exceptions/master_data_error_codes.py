@@ -49,6 +49,11 @@ class MasterDataErrorCode:
     DEPARTMENT_NOT_FOUND = "405501"  # 部門が見つからない
     DEPARTMENT_CODE_DUPLICATE = "405502"  # 部門コードが重複している
 
+    # 従業員の照合関連エラー (4057x, issue #323)
+    STAFF_VERIFY_STAFF_NOT_FOUND = "405701"  # 従業員が存在しない
+    STAFF_VERIFY_PIN_REQUIRED = "405702"  # PIN を登録した従業員に PIN が無い・空
+    STAFF_VERIFY_PIN_MISMATCH = "405703"  # PIN が一致しない
+
 
 class MasterDataErrorMessage:
     """
@@ -84,6 +89,10 @@ class MasterDataErrorMessage:
             # 部門マスター関連エラー
             MasterDataErrorCode.DEPARTMENT_NOT_FOUND: "部門が見つかりません",
             MasterDataErrorCode.DEPARTMENT_CODE_DUPLICATE: "部門コードが重複しています",
+            # 従業員の照合関連エラー
+            MasterDataErrorCode.STAFF_VERIFY_STAFF_NOT_FOUND: "従業員が見つかりません",
+            MasterDataErrorCode.STAFF_VERIFY_PIN_REQUIRED: "従業員の PIN が必要です",
+            MasterDataErrorCode.STAFF_VERIFY_PIN_MISMATCH: "PIN が一致しません",
         },
         # 英語のエラーメッセージ
         "en": {
@@ -112,6 +121,10 @@ class MasterDataErrorMessage:
             # 部門マスター関連エラー
             MasterDataErrorCode.DEPARTMENT_NOT_FOUND: "Department not found",
             MasterDataErrorCode.DEPARTMENT_CODE_DUPLICATE: "Department code is duplicate",
+            # Staff verification errors
+            MasterDataErrorCode.STAFF_VERIFY_STAFF_NOT_FOUND: "Staff not found",
+            MasterDataErrorCode.STAFF_VERIFY_PIN_REQUIRED: "Staff PIN is required",
+            MasterDataErrorCode.STAFF_VERIFY_PIN_MISMATCH: "PIN does not match",
         },
     }
 

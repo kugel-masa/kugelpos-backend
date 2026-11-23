@@ -57,3 +57,16 @@ class TransactionType(Enum):
     CashOut:int = 402               # Cash withdrawal from the terminal
     FlashReport:int = 501           # Sales flash report (interim report)
     DailyReport:int = 502           # Sales daily report (closing report)
+
+
+class StaffAuthenticationFailure(str, Enum):
+    """
+    Why master-data refused to verify a staff member (issue #323).
+
+    Each value maps one-to-one to a master-data error code. A caller that signs
+    staff in must not tell these apart in its own response: the reason is for
+    its log only.
+    """
+    STAFF_NOT_FOUND = "staff_not_found"  # 405701: the staff member does not exist
+    PIN_REQUIRED = "pin_required"        # 405702: the staff member has a PIN and none was sent
+    PIN_MISMATCH = "pin_mismatch"        # 405703: the PIN sent does not match

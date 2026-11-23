@@ -168,10 +168,21 @@ def mock_outbound_services():
             url_pattern = rf"{re.escape(base)}/tenants/?"
             respx_mock.post(re.compile(url_pattern)).mock(return_value=success_response)
 
-        # Master-data staff lookup — fired by terminal sign-in
+        # Master-data staff lookup (kept for any caller of get_staff_by_id_async)
         respx_mock.get(
             re.compile(r"http://localhost:8002/api/v1/tenants/[^/]+/staff/[^/?]+")
         ).mock(return_value=staff_response)
+
+        # Master-data staff verification — fired by terminal sign-in (issue #323).
+        # It answers the staff ID and name only, never the PIN.
+        respx_mock.post(
+            re.compile(rf"{re.escape(settings.BASE_URL_MASTER_DATA)}/internal/tenants/[^/]+/staff/[^/?]+/verify")
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"success": True, "code": 200, "message": "ok", "data": {"id": "S001", "name": "Test Staff"}},
+            )
+        )
 
         # Terminal self-call store lookup — fired by terminal_service.open()
         # which uses StoreInfoWebRepository -> get_service_client("terminal")

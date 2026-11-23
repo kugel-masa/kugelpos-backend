@@ -64,7 +64,7 @@ not compare_digest(staff.pin, pin)  → StaffVerifyPinMismatchException    (4057
 
 | 項目（JSON） | 型 | 必須 | 変更 |
 |---|---|---|---|
-| pin | str? | いいえ | **必須から任意へ**。省略・空文字は「PIN なし」（R-10） |
+| pin | str? | いいえ | **必須から任意へ**。登録: 省略・`null`・空文字は「PIN なし」。更新: 省略は今の PIN を変えない、`null`・空文字は PIN を消す（R-10） |
 
 ### terminal 要求 `TerminalSignInRequest`
 

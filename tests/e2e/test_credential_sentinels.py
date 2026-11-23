@@ -154,7 +154,9 @@ def _exercise(tenant_id: str, planted: dict) -> dict:
 
         tj = {"Authorization": f"Bearer {issued['terminal jwt']}"}
         resp = t.post(f"/api/v1/terminals/{terminal_id}/sign-in",
-                      json={"staff_id": "S001"}, headers=tj)
+                      # S001 has a PIN, so sign-in sends it (issue #323): the
+                      # sign-in path is then scanned for the planted PIN too.
+                      json={"staff_id": "S001", "pin": planted["updated staff pin"]}, headers=tj)
         tj = {"Authorization": f"Bearer {resp.headers.get('x-new-token', issued['terminal jwt'])}"}
         resp = t.post(f"/api/v1/terminals/{terminal_id}/open",
                       json={"initial_amount": 0.0}, headers=tj)

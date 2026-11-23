@@ -113,7 +113,7 @@ async def test_setup_data(setup_db: AsyncIOMotorDatabase, http_client: AsyncClie
         staff_data = {
             "id": "S001",
             "name": "Staff 001",
-            "pin": "1234",
+            # No PIN: the e2e suites sign S001 in by ID alone (issue #323)
             "roles": ["cashier"],  # Add required roles field
         }
         async with AsyncClient() as http_staff_client:

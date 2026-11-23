@@ -67,7 +67,9 @@ class BaseStaffCreateRequest(BaseSchemaModel):
 
     id: str
     name: str
-    pin: str
+    # Optional since issue #323: sign-in needs a PIN only when the stored one is
+    # not empty. Omitted, null or "" stores "no PIN".
+    pin: Optional[str] = None
     roles: list[str]
 
 
@@ -80,7 +82,10 @@ class BaseStaffUpdateRequest(BaseSchemaModel):
     """
 
     name: str
-    pin: str
+    # Optional since issue #323. Omitted keeps the stored PIN; null or "" clears
+    # it. Clearing must be explicit, or an update that only renames a staff
+    # member would silently drop their PIN and with it the sign-in check.
+    pin: Optional[str] = None
     roles: list[str]
 
 

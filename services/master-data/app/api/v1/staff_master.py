@@ -263,7 +263,11 @@ async def update_staff_master_async(
     verify_tenant_id(tenant_id, tenant_id_in_token, logger)
     master_service = await get_staff_master_service_async(tenant_id)
     try:
-        staff_doc = await master_service.update_staff_async(staff_id, staff.model_dump())
+        update_data = staff.model_dump()
+        if "pin" not in staff.model_fields_set:
+            # An omitted PIN keeps the stored one (issue #323).
+            update_data.pop("pin", None)
+        staff_doc = await master_service.update_staff_async(staff_id, update_data)
         transformer = SchemasTransformerV1()
         staff = transformer.transform_staff(staff_doc)
     except Exception as e:

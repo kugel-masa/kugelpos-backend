@@ -1707,13 +1707,17 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `staffId` | string | Yes | - |
+| `pin` | string | No | Optional (issue #323). Required, and verified by master-data, when the staff member has a PIN; ignored for one without. |
 
 **Request Example:**
 ```json
 {
-  "staffId": "string"
+  "staffId": "string",
+  "pin": "string"
 }
 ```
+
+A staff member with a PIN signs in only with the right PIN. Any failed verification (staff not found, PIN required, PIN mismatch) answers 401 / `406004` with the same body, so the response does not tell whether a staff member has a PIN. When master-data cannot be reached, sign-in answers 502 / `407201`. A terminal already signed in is not affected when a PIN is set or changed afterwards.
 
 **Response:**
 

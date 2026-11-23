@@ -4533,7 +4533,7 @@ the one in the security credentials.
 |------------|------|------|------|
 | `id` | string | Yes | - |
 | `name` | string | Yes | - |
-| `pin` | string | Yes | - |
+| `pin` | string | No | Optional (issue #323). Omitted, null or empty means no PIN: the staff member signs in with their ID alone. A staff member with a PIN must sign in with it. |
 | `roles` | array[string] | Yes | - |
 
 **Request Example:**
@@ -4690,7 +4690,7 @@ the one in the security credentials.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `name` | string | Yes | - |
-| `pin` | string | Yes | - |
+| `pin` | string | No | Optional (issue #323). Omitted keeps the stored PIN; null or empty clears it (the staff member then signs in with their ID alone). |
 | `roles` | array[string] | Yes | - |
 
 **Request Example:**
@@ -4745,6 +4745,32 @@ the one in the security credentials.
   "operation": "string"
 }
 ```
+
+### Internal: Verify Staff (service-to-service only)
+
+**POST** `/api/v1/internal/tenants/{tenant_id}/staff/{staff_id}/verify`
+
+Verify a staff member for terminal sign-in (issue #323). This is the only place the staff PIN is compared; the PIN never leaves master-data.
+
+Internal only: a service-account JWT is the one credential accepted. A terminal JWT, a user JWT (including a superuser) gets 403, an API key alone gets 401, and a tenant in the path that differs from the token's gets 400.
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `pin` | string | No | Omitted, null or empty means no PIN. Never in the path or the query. |
+
+**Decision:**
+
+| Staff | PIN sent | Result |
+|---|---|---|
+| does not exist | any | 404 / `405701` |
+| has no PIN (null or empty) | any (ignored) | 200 |
+| has a PIN | none or empty | 401 / `405702` |
+| has a PIN | does not match | 401 / `405703` |
+| has a PIN | matches | 200 |
+
+**data Field (200):** `id`, `name`. There is no `pin` field. Failures carry no details. Callers decide by `userError.code`, not the HTTP status.
 
 ### 62. Delete Staff Master Async
 

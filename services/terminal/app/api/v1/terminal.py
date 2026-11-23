@@ -8,6 +8,7 @@ from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.status_codes import StatusCodes
 
 from kugel_common.utils.terminal_auth import create_terminal_token
+from kugel_common.utils.log_utils import mask_loggable
 from app.api.v1.schemas_transformer import SchemasTransformerV1
 from app.api.v1.schemas import *
 from app.dependencies.get_terminal_service import (
@@ -474,11 +475,12 @@ async def terminal_signin(
     Returns:
         ApiResponse containing updated terminal information with staff details
     """
-    logger.debug(f"Signing in terminal for terminal {terminal_id}, terminal_signin: {terminal_signin}")
+    # The request carries the staff PIN (issue #323).
+    logger.debug(f"Signing in terminal for terminal {terminal_id}, terminal_signin: {mask_loggable(terminal_signin)}")
     terminal_service = await get_terminal_service_async(tenant_id, terminal_id)
 
     try:
-        terminal_info = await terminal_service.sign_in_terminal_async(terminal_signin.staff_id)
+        terminal_info = await terminal_service.sign_in_terminal_async(terminal_signin.staff_id, terminal_signin.pin)
         return_json = SchemasTransformerV1().transform_terminal(terminal_info).model_dump()
     except Exception as e:
         raise e

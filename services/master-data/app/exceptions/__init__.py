@@ -57,4 +57,8 @@ from .master_data_exceptions import (
     # 部門マスター関連例外
     DepartmentNotFoundException,
     DepartmentCodeDuplicateException,
+    # 従業員の照合関連例外
+    StaffVerifyStaffNotFoundException,
+    StaffVerifyPinRequiredException,
+    StaffVerifyPinMismatchException,
 )

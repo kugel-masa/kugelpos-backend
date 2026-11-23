@@ -155,13 +155,28 @@ async def _post_with_key(http_client, terminal_id, api_key, action, body):
 
 
 @pytest.mark.asyncio
-async def test_staff_lookup_carries_a_terminal_token_not_the_key(http_client, admin_header, mock_outbound_services):
-    """Sign-in looks the staff up in master-data."""
+async def test_staff_verification_carries_a_service_token_not_the_key(http_client, admin_header, mock_outbound_services):
+    """Sign-in verifies the staff member through master-data's internal
+    endpoint (issue #323), which accepts a service-account token only. The
+    terminal's key still never leaves the service (#136)."""
+    import os
+
+    from kugel_common.security import verify_token
+
     terminal_id, api_key = await _create_terminal(http_client, admin_header)
 
     await _post_with_key(http_client, terminal_id, api_key, "sign-in", {"staff_id": "S001"})
 
-    _assert_carries_terminal_token(mock_outbound_services.calls, "/staff/", terminal_id, api_key)
+    matching = [c for c in mock_outbound_services.calls if "/internal/tenants/" in str(c.request.url)]
+    assert matching, "sign-in did not verify the staff member"
+    headers = matching[-1].request.headers
+    assert "x-api-key" not in headers
+    scheme, _, token = headers["authorization"].partition(" ")
+    assert scheme == "Bearer"
+    claims = verify_token(token)
+    assert claims["is_service_account"] is True
+    assert claims["tenant_id"] == os.environ.get("TENANT_ID")
+    assert api_key not in token
 
 
 @pytest.mark.asyncio

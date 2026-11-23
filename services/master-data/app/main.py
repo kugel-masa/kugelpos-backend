@@ -54,6 +54,7 @@ from kugel_common.config.service_urls import verify_service_urls
 
 # Import routers for different types of master data
 from app.api.v1.staff_master import router as v1_staff_master_router
+from app.api.v1.internal import router as v1_internal_router
 from app.api.v1.item_common_master import router as v1_item_common_master_router
 from app.api.v1.item_store_master import router as v1_item_store_master_router
 from app.api.v1.item_book_master import router as v1_item_book_master_router
@@ -124,6 +125,8 @@ app.include_router(
     v1_category_master_router, prefix="/api/v1", tags=["Category Master"]
 )  # Item category hierarchy management
 
+# Internal, service-to-service only: staff verification for sign-in (issue #323)
+app.include_router(v1_internal_router, prefix="/api/v1", tags=["Internal"])
 app.include_router(v1_tenant_router, prefix="/api/v1", tags=["Tenant"])  # Tenant management operations
 
 app.include_router(v1_tax_master_router, prefix="/api/v1", tags=["Tax Master"])  # Tax configuration (rates, rules)

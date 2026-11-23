@@ -34,7 +34,7 @@ async def test_master_data_tenant_setup(http_client, admin_header):
     # Staff S001 — used by cart/terminal sign-in flows
     response = await http_client.post(
         f"/api/v1/tenants/{tenant_id}/staff",
-        json={"id": "S001", "name": "Staff1", "pin": "1234", "roles": ["staff"]},
+        json={"id": "S001", "name": "Staff1", "roles": ["staff"]},  # no PIN: sign-in by ID (issue #323)
         headers=admin_header,
     )
     _ok(response, status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST)

@@ -214,9 +214,14 @@ class BaseTerminalSignInRequest(BaseSchemmaModel):
     Terminal Sign-In Request Model
 
     Used for API requests for staff sign-in operations on a terminal.
+
+    ``pin`` is optional (issue #323). master-data requires it only for a staff
+    member whose PIN is set; for one without a PIN it is ignored. A request
+    without it is accepted as before.
     """
 
     staff_id: str
+    pin: Optional[str] = None
 
 
 class BaseTerminalOpenRequest(BaseSchemmaModel):

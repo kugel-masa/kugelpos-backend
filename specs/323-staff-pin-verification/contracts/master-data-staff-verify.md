@@ -82,4 +82,9 @@ POST /api/v1/internal/tenants/{tenant_id}/staff/{staff_id}/verify
 
 ## 従業員の登録・更新（変更）
 
-`POST /api/v1/tenants/{tenant_id}/staff`・`PUT /api/v1/tenants/{tenant_id}/staff/{staff_id}` の `pin` を**任意**にする。省略・空文字は「PIN なし」として保存する。PIN を指定した要求はこれまでどおり受け付ける。応答に PIN を返さないことは変わらない。
+`POST /api/v1/tenants/{tenant_id}/staff`・`PUT /api/v1/tenants/{tenant_id}/staff/{staff_id}` の `pin` を**任意**にする。
+
+- 登録（POST）: 省略・`null`・空文字は「PIN なし」として保存する
+- 更新（PUT）: 省略すると今の PIN を変えない。`null`・空文字を送ったときだけ PIN を消す（名前だけを直す更新で PIN が黙って消えないように）
+
+PIN を指定した要求はこれまでどおり受け付ける。応答に PIN を返さないことは変わらない。
