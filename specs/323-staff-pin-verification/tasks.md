@@ -179,7 +179,7 @@ description: "Task list for 323-staff-pin-verification"
 - [X] T038 全サービスのイメージを作り直し、単体・統合・e2e（サービス横断を含む）をすべて通す。既存のサインアウト、サインイン済みの端末、staff の応答に PIN がないことのテストが変更なしで通ること（spec FR-020・FR-021）
 - [ ] T039 quickstart.md の手順 6（DEBUG を有効にして sentinel の PIN がログに無い）と 7（master-data を止めて 502）を手で確かめる
 - [X] T040 [P] `services/master-data/tests/unit/test_pin_comparison_is_single.py` を新設する。`services/*/app` と `services/commons/src` を走査し、`compare_digest` と、`pin` を `==` / `!=` で比べている箇所が、`StaffMasterService.verify_staff_async` の中にしかないことを検査する。検査の式を緩めて通してはならない（spec SC-006・FR-009）
-- [ ] T041 PR の本文の「挙動の変化」に、次の 3 点を書く: PIN ありの従業員は PIN が要る。これまで PIN が必須だったので、ダミーの PIN が入った従業員が多い。PIN なしでサインインさせたい従業員は、PIN を空にする。リリースノートはこの内容をもとに書く
+- [X] T041 PR の本文の「挙動の変化」に、次の 3 点を書く: PIN ありの従業員は PIN が要る。これまで PIN が必須だったので、ダミーの PIN が入った従業員が多い。PIN なしでサインインさせたい従業員は、PIN を空にする。リリースノートはこの内容をもとに書く
 
 ---
 
