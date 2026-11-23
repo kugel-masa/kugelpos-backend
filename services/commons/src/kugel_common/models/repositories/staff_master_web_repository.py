@@ -164,7 +164,19 @@ class StaffMasterWebRepository():
             RepositoryException: master-data could not decide - unreachable, a 5xx,
                 or an answer without one of those codes
         """
-        # The staff ID comes from the client: encode it so it cannot reshape the path.
+        # The staff ID comes from the client and goes into a path. Percent-encoding
+        # is not enough: the server decodes "%2F" back to "/" before routing, and
+        # "." and ".." are dot segments a client collapses. No staff record can
+        # be reached at such an ID through the staff API, so it is answered as
+        # "staff not found" without calling master-data - the same answer as any
+        # other unknown ID, rather than a routing 404 read as a fault.
+        if not staff_id or "/" in staff_id or staff_id in (".", ".."):
+            raise StaffAuthenticationException(
+                message=f"Staff verification refused: staff_id->{staff_id}, reason->"
+                f"{StaffAuthenticationFailure.STAFF_NOT_FOUND.value} (not addressable)",
+                reason=StaffAuthenticationFailure.STAFF_NOT_FOUND,
+                logger=logger,
+            )
         endpoint = f"/internal/tenants/{quote(self.tenant_id, safe='')}/staff/{quote(staff_id, safe='')}/verify"
         headers = {"Authorization": f"Bearer {create_service_token(self.tenant_id, 'terminal')}"}
 

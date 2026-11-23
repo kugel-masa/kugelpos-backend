@@ -123,3 +123,20 @@ async def test_the_verification_endpoint_refuses_terminal_credentials(http_clien
     assert by_key.status_code == 401, by_key.text
     assert by_jwt.status_code == 403, by_jwt.text
     assert by_admin.status_code == 403, by_admin.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("staff_id", ["a/b", "..", "."])
+async def test_an_unaddressable_staff_id_is_a_plain_authentication_failure(http_client, admin_token, staff_id):  # noqa: F811
+    """An ID with a "/" or a dot segment cannot be routed to master-data; it must
+    answer like any unknown staff member (401 / 406004), not as a fault (502)."""
+    admin = {"Authorization": f"Bearer {admin_token}"}
+    terminal_id, _, headers = await _terminal(http_client, admin)
+
+    r = await _sign_in(http_client, terminal_id, headers, {"staffId": staff_id, "pin": PIN})
+    missing = f"NOSUCH{uuid.uuid4().hex[:6].upper()}"
+    unknown = await _sign_in(http_client, terminal_id, headers, {"staffId": missing, "pin": PIN})
+
+    assert r.status_code == 401, r.text
+    assert r.json()["userError"]["code"] == "406004"
+    assert _comparable(r.json(), staff_id) == _comparable(unknown.json(), missing)

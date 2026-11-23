@@ -91,7 +91,21 @@ async def test_an_omitted_pin_is_sent_as_null():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("staff_id", ["a/b", "../admin", "x?y=1", "a b#c"])
+@pytest.mark.parametrize("staff_id", ["a/b", "../admin", ".", "..", ""])
+async def test_an_id_no_route_can_reach_is_not_found_without_calling(staff_id):
+    """The server decodes %2F before routing and clients collapse dot segments,
+    so such an ID would come back as a routing 404 and read as a fault (502)."""
+    post = AsyncMock()
+
+    with pytest.raises(StaffAuthenticationException) as exc_info:
+        await _verify(post, staff_id=staff_id)
+
+    assert exc_info.value.reason is StaffAuthenticationFailure.STAFF_NOT_FOUND
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("staff_id", ["x?y=1", "a b#c", "a.b", "...", "S%2F1"])
 async def test_the_staff_id_cannot_reshape_the_path(staff_id):
     post = AsyncMock(return_value={"success": True, "data": {"id": staff_id, "name": "Ann"}})
 
