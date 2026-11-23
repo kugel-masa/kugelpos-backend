@@ -127,3 +127,23 @@ class StrategyPluginException(ServiceException):
             ErrorMessage.get_message(ErrorCode.SYSTEM_ERROR),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+class StaffAuthenticationException(ServiceException):
+    """
+    Exception raised when master-data refuses to verify a staff member (issue #323).
+
+    Raised only for the three business failures (405701-405703); a dependency
+    failure stays a RepositoryException. ``reason`` says which failure it was.
+    The message names the staff and the reason, never the PIN.
+    """
+    def __init__(self, message, reason, logger=None, original_exception=None):
+        self.reason = reason
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            ErrorCode.AUTHENTICATION_ERROR,
+            ErrorMessage.get_message(ErrorCode.AUTHENTICATION_ERROR),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            log_level=logging.WARNING,
+        )

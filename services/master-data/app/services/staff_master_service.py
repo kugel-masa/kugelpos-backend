@@ -1,5 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+import secrets
 from logging import getLogger
+from typing import Optional
 from kugel_common.utils.log_utils import mask_loggable
 from typing import Any
 
@@ -7,6 +9,11 @@ from kugel_common.exceptions import (
     DocumentNotFoundException,
     DocumentAlreadyExistsException,
     InvalidRequestDataException,
+)
+from app.exceptions import (
+    StaffVerifyPinMismatchException,
+    StaffVerifyPinRequiredException,
+    StaffVerifyStaffNotFoundException,
 )
 from app.models.documents.staff_master_document import StaffMasterDocument
 from app.models.repositories.staff_master_repository import StaffMasterRepository
@@ -32,14 +39,16 @@ class StaffMasterService:
         """
         self.staff_master_repo = staff_master_repo
 
-    async def create_staff_async(self, staff_id: str, staff_name: str, pin: str, roles: list) -> StaffMasterDocument:
+    async def create_staff_async(
+        self, staff_id: str, staff_name: str, pin: Optional[str], roles: list
+    ) -> StaffMasterDocument:
         """
         Create a new staff member record in the database.
 
         Args:
             staff_id: Unique identifier for the staff member
             staff_name: Name of the staff member
-            pin: Personal identification number for authentication
+            pin: Personal identification number for authentication; None or "" for no PIN
             roles: List of roles assigned to this staff member
 
         Returns:
@@ -61,6 +70,58 @@ class StaffMasterService:
         staff_doc.pin = pin
         staff_doc.roles = roles
         return await self.staff_master_repo.create_staff_async(staff_doc)
+
+    async def verify_staff_async(self, staff_id: str, pin: Optional[str]) -> StaffMasterDocument:
+        """
+        Decide whether a staff member may be authenticated (issue #323).
+
+        This is the only place the staff PIN is compared. Hashing the stored PIN,
+        limiting attempts or locking out after failures belong here when they are
+        added; no other service compares PINs.
+
+        The PIN is required only when the staff record has one. Exactly two
+        branches succeed::
+
+            staff is None                   -> StaffVerifyStaffNotFoundException (405701)
+            staff has no PIN (None or "")   -> success; the PIN sent is ignored
+            no PIN sent (None or "")        -> StaffVerifyPinRequiredException   (405702)
+            PIN does not match              -> StaffVerifyPinMismatchException   (405703)
+            otherwise                       -> success
+
+        A stored PIN is compared as is: surrounding whitespace is not stripped.
+
+        Args:
+            staff_id: The staff member's ID
+            pin: The PIN the caller received, or None
+
+        Returns:
+            The staff record. Callers project it; the PIN must not leave this service.
+
+        Raises:
+            StaffVerifyStaffNotFoundException: The staff member does not exist
+            StaffVerifyPinRequiredException: The staff member has a PIN and none was sent
+            StaffVerifyPinMismatchException: The PIN sent does not match
+        """
+        staff = await self.staff_master_repo.get_staff_by_id_async(staff_id)
+        if staff is None:
+            raise StaffVerifyStaffNotFoundException(
+                f"Staff verification failed: staff not found: staff_id->{staff_id}", logger
+            )
+
+        if not staff.pin:
+            return staff
+
+        if not pin:
+            raise StaffVerifyPinRequiredException(
+                f"Staff verification failed: PIN required: staff_id->{staff_id}", logger
+            )
+
+        # Constant-time, on bytes: compare_digest refuses a str that is not ASCII.
+        if not secrets.compare_digest(staff.pin.encode("utf-8"), pin.encode("utf-8")):
+            raise StaffVerifyPinMismatchException(
+                f"Staff verification failed: PIN mismatch: staff_id->{staff_id}", logger
+            )
+        return staff
 
     async def get_staff_by_id_async(self, staff_id: str) -> StaffMasterDocument:
         """

@@ -1629,13 +1629,17 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `staffId` | string | Yes | - |
+| `pin` | string | No | 任意（#323）。PIN ありの従業員では必須で、master-data が照合する。PIN なしの従業員では無視する |
 
 **リクエスト例:**
 ```json
 {
-  "staffId": "string"
+  "staffId": "string",
+  "pin": "string"
 }
 ```
+
+PIN ありの従業員は、正しい PIN でだけサインインできる。照合に失敗したとき（従業員なし・PIN が要る・PIN 不一致）は、どれも 401 / `406004` で同じ本文を返すので、応答からは従業員に PIN があるかは分からない。master-data に届かないときは 502 / `407201`。サインインしたあとで PIN が設定・変更されても、すでにサインインしている端末には遡らない。
 
 **レスポンス:**
 

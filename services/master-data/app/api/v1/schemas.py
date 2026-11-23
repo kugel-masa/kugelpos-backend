@@ -10,7 +10,10 @@ Each class extends Pydantic's BaseModel and is used for FastAPI request/response
 and automatic documentation generation.
 """
 
+from typing import Optional
+
 from app.api.common.schemas import (
+    BaseSchemaModel,
     BaseStaffResponse,
     BaseStaffCreateRequest,
     BaseStaffUpdateRequest,
@@ -95,6 +98,30 @@ class StaffResponse(BaseStaffResponse):
     """
 
     pass
+
+
+class StaffVerifyRequest(BaseSchemaModel):
+    """
+    Staff Verification Request Schema (internal, issue #323)
+
+    The PIN travels in the body only, never in the path or the query. It may be
+    omitted: an omitted, null or empty PIN means "no PIN", which passes for a
+    staff member without one and fails for a staff member with one.
+    """
+
+    pin: Optional[str] = None
+
+
+class StaffVerifyResponse(BaseSchemaModel):
+    """
+    Staff Verification Response Schema (internal, issue #323)
+
+    The staff ID and name, which is what a terminal records on sign-in. There is
+    no `pin` field: the PIN is absent from the type, not excluded from it.
+    """
+
+    id: str
+    name: Optional[str] = None
 
 
 class StaffDeleteResponse(BaseStaffDeleteResponse):

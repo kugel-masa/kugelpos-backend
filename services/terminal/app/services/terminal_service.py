@@ -10,6 +10,8 @@ from kugel_common.utils.misc import get_app_time, get_app_time_str
 from kugel_common.models.repositories.staff_master_web_repository import StaffMasterWebRepository
 from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.utils.slack_notifier import send_warning_notification
+from kugel_common.utils.http_client_helper import ServiceUrlNotConfiguredError
+from kugel_common.exceptions import RepositoryException, StaffAuthenticationException
 
 from app.config.settings import settings
 from app.models.documents.terminal_info_document import TerminalInfoDocument
@@ -292,12 +294,17 @@ class TerminalService:
 
     # Terminal authentication methods
 
-    async def sign_in_terminal_async(self, staff_id: str) -> TerminalInfoDocument:
+    async def sign_in_terminal_async(self, staff_id: str, pin: Optional[str] = None) -> TerminalInfoDocument:
         """
         Sign in a staff member to a terminal
 
+        The staff member is verified by master-data, which requires the PIN only
+        when the staff record has one (issue #323). The PIN is passed on and never
+        stored or logged here.
+
         Args:
             staff_id: ID of the staff member to sign in
+            pin: The PIN the client sent, or None
 
         Returns:
             Updated terminal information with staff details
@@ -305,7 +312,10 @@ class TerminalService:
         Raises:
             TerminalNotFoundException: If the terminal is not found
             TerminalAlreadySignedInException: If the terminal is already signed in
-            SignInOutException: If the staff member is not found
+            SignInOutException: If master-data refused the staff member, whatever
+                the reason (not found, PIN required, PIN mismatch)
+            ExternalServiceException: If master-data could not decide (unreachable,
+                a fault, or no master-data URL configured)
         """
         terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
 
@@ -319,11 +329,34 @@ class TerminalService:
             raise TerminalAlreadySignedInException(message=message, logger=logger)
 
         try:
-            staff = await self.staff_master_repo.get_staff_by_id_async(staff_id)
-            terminal.staff = staff
-        except NotFoundException as e:
-            message = f"Staff not found: {staff_id}"
-            raise SignInOutException(message=message, logger=logger, original_exception=e)
+            staff = await self.staff_master_repo.verify_staff_async(staff_id, pin)
+        except StaffAuthenticationException as e:
+            # The reason is for the log only: the caller gets one answer for all
+            # three, so it cannot tell whether a staff member has a PIN.
+            logger.warning(
+                "Sign-in refused (tenant_id=%s, terminal_id=%s, staff_id=%s, reason=%s)",
+                terminal.tenant_id,
+                self.terminal_id,
+                staff_id,
+                e.reason.value,
+            )
+            raise SignInOutException(
+                message=f"Staff authentication failed: staff_id->{staff_id}", logger=logger
+            ) from e
+        except (RepositoryException, ServiceUrlNotConfiguredError) as e:
+            # master-data could not decide; this is not a wrong PIN.
+            logger.error(
+                "Sign-in could not be decided (tenant_id=%s, terminal_id=%s, staff_id=%s)",
+                terminal.tenant_id,
+                self.terminal_id,
+                staff_id,
+            )
+            raise ExternalServiceException(
+                message=f"Staff verification could not be decided: staff_id->{staff_id}",
+                logger=logger,
+                original_exception=e,
+            ) from e
+        terminal.staff = staff
 
         result = await self.terminal_info_repo.replace_terminal_info_async(self.terminal_id, terminal)
         return await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)

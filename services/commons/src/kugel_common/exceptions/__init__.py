@@ -38,7 +38,8 @@ from .service_exceptions import (
     BadRequestBodyException,
     InvalidRequestDataException,
     EventBadSequenceException,
-    StrategyPluginException
+    StrategyPluginException,
+    StaffAuthenticationException
 )
 
 # Exception handlers
@@ -56,7 +57,7 @@ __all__ = [
     # Service exceptions
     'DocumentNotFoundException', 'DocumentAlreadyExistsException', 
     'BadRequestBodyException', 'InvalidRequestDataException', 'EventBadSequenceException',
-    'StrategyPluginException',
+    'StrategyPluginException', 'StaffAuthenticationException',
     
     # Exception handlers
     'register_exception_handlers'

@@ -66,7 +66,7 @@ def _bootstrap_pos(tenant_id: str, store_code: str, terminal_no: int, item_code:
         "stores": [], "tags": ["void-flow"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/staff", headers, json={
-        "id": "S001", "name": "Void Staff", "pin": "1234", "roles": ["staff"],
+        "id": "S001", "name": "Void Staff", "roles": ["staff"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/categories", headers, json={
         "categoryCode": "001", "description": "Default", "descriptionShort": "D", "taxCode": "01",

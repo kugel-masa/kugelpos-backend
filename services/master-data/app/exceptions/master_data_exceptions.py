@@ -1,4 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
+import logging
+
 from kugel_common.exceptions.base_exceptions import ServiceException, RepositoryException
 from .master_data_error_codes import MasterDataErrorCode, MasterDataErrorMessage
 from fastapi import status
@@ -349,4 +351,63 @@ class DepartmentCodeDuplicateException(ServiceException):
             MasterDataErrorCode.DEPARTMENT_CODE_DUPLICATE,
             MasterDataErrorMessage.get_message(MasterDataErrorCode.DEPARTMENT_CODE_DUPLICATE),
             status_code=status.HTTP_409_CONFLICT,
+        )
+
+
+# 従業員の照合関連例外 (issue #323)
+#
+# A failed verification is an authentication outcome, not a fault, so it is
+# logged at WARNING. The messages name the staff and the reason only: the PIN
+# never goes into a message, a log line or a response.
+class StaffVerifyStaffNotFoundException(ServiceException):
+    """
+    Exception raised when the staff member to verify does not exist.
+    照合する従業員が存在しない場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            MasterDataErrorCode.STAFF_VERIFY_STAFF_NOT_FOUND,
+            MasterDataErrorMessage.get_message(MasterDataErrorCode.STAFF_VERIFY_STAFF_NOT_FOUND),
+            status_code=status.HTTP_404_NOT_FOUND,
+            log_level=logging.WARNING,
+        )
+
+
+class StaffVerifyPinRequiredException(ServiceException):
+    """
+    Exception raised when a staff member with a PIN is verified without one.
+    PIN を登録した従業員を PIN なしで照合した場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            MasterDataErrorCode.STAFF_VERIFY_PIN_REQUIRED,
+            MasterDataErrorMessage.get_message(MasterDataErrorCode.STAFF_VERIFY_PIN_REQUIRED),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            log_level=logging.WARNING,
+        )
+
+
+class StaffVerifyPinMismatchException(ServiceException):
+    """
+    Exception raised when the PIN given does not match the staff member's PIN.
+    PIN が一致しない場合に発生する例外
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            MasterDataErrorCode.STAFF_VERIFY_PIN_MISMATCH,
+            MasterDataErrorMessage.get_message(MasterDataErrorCode.STAFF_VERIFY_PIN_MISMATCH),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            log_level=logging.WARNING,
         )

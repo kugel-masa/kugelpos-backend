@@ -61,7 +61,7 @@ async def test_unregistered_payment_code_is_not_found():
         "stores": [], "tags": ["e2e-unregistered-payment"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/staff", headers, json={
-        "id": "S001", "name": "Payment Staff", "pin": "1234", "roles": ["staff"],
+        "id": "S001", "name": "Payment Staff", "roles": ["staff"],
     })
     _post("URL_MASTER_DATA", f"/api/v1/tenants/{tenant_id}/categories", headers, json={
         "categoryCode": "001", "description": "Default Category",
