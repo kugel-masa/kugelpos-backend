@@ -27,6 +27,13 @@ The following authentication methods are supported:
 - Header: `Authorization: Bearer {token}`
 - Usage: System operations by administrators
 
+Tenant, store and terminal administration takes a user (or service) JWT only:
+- create, update and delete the tenant;
+- add, update and delete stores;
+- create and delete terminals.
+
+A terminal JWT, obtained from `POST /api/v1/auth/token`, is refused there with **403** (issue #331).
+
 ## Common Response Format
 
 ```json

@@ -775,16 +775,35 @@ async def get_tenant_id_with_token(
     is_terminal_service: Optional[bool] = False
 ):
     """
-    FastAPI dependency that retrieves tenant ID using only OAuth token authentication.
-    
+    FastAPI dependency for endpoints that take a user or service JWT only.
+
+    Used by back-office operations: tenant setup in every service, and
+    terminal's tenant, store and terminal administration. A terminal JWT is
+    refused with 403 (issue #331). It used to be accepted first, unbound to any
+    store, so one register could create terminals, with their API keys, in any
+    store of its tenant, or rename and delete stores and the tenant.
+
     Args:
         token: OAuth token from header
-        is_terminal_service: Whether the caller is the terminal service itself
-        
+        is_terminal_service: Kept for the callers' signature; no terminal
+            credential is accepted here
+
     Returns:
         Tenant ID string
+
+    Raises:
+        HTTPException: 401 without a valid token, 403 for a terminal JWT
     """
-    return await __get_tenant_id(token=token, is_terminal_service=is_terminal_service)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access : No token provided")
+    try:
+        terminal_claims = verify_terminal_token(token)
+    except HTTPException:
+        terminal_claims = None
+    if terminal_claims is not None:
+        _refuse_terminal_credential("terminal_jwt", terminal_claims.get("terminal_id"))
+    user_dict = await get_current_user(token)
+    return user_dict.get("tenant_id")
 
 async def get_terminal_info_with_api_key(
     terminal_id: str = Query(...),

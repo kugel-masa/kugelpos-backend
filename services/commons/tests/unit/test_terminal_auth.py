@@ -16,6 +16,7 @@ from kugel_common.security import (
     get_tenant_id_with_security,
     get_tenant_id_with_security_by_query,
     get_tenant_id_refusing_terminal,
+    get_tenant_id_with_token,
     get_tenant_id_with_security_by_query_optional,
     terminal_claims_to_terminal_info,
     verify_path_binding,
@@ -438,4 +439,43 @@ class TestRefusingTerminal:
     async def test_no_credential_is_unauthorized(self):
         with pytest.raises(HTTPException) as exc:
             await get_tenant_id_refusing_terminal(None, None, None)
+        assert exc.value.status_code == 401
+
+
+class TestTokenOnly:
+    """Back-office endpoints take user and service JWTs, never a terminal JWT (issue #331)."""
+
+    @pytest.mark.asyncio
+    async def test_user_jwt_is_accepted(self):
+        token = jwt.encode({"sub": "admin", "tenant_id": "T001"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        assert await get_tenant_id_with_token(token) == "T001"
+
+    @pytest.mark.asyncio
+    async def test_service_jwt_is_accepted(self):
+        token = jwt.encode(
+            {"sub": "service:terminal", "tenant_id": "T001", "is_service_account": True, "service": "terminal"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM,
+        )
+        assert await get_tenant_id_with_token(token, is_terminal_service=True) == "T001"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("is_terminal_service", [False, True])
+    async def test_terminal_jwt_is_forbidden(self, is_terminal_service, caplog):
+        token = create_terminal_token(_make_terminal_info())
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token(token, is_terminal_service=is_terminal_service)
+        assert exc.value.status_code == 403
+        assert "T001-001-01" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_token_is_unauthorized(self):
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token(None)
+        assert exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_a_bad_token_is_unauthorized(self):
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token("not-a-jwt")
         assert exc.value.status_code == 401
