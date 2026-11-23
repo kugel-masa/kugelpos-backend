@@ -31,6 +31,7 @@ from functools import wraps
 from pymongo.errors import CollectionInvalid, ConnectionFailure, ServerSelectionTimeoutError
 from kugel_common.database.database_exceptions import DatabaseException
 from kugel_common.config.settings import settings
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 
 # Get logger instance
 logger = getLogger(__name__)
@@ -376,8 +377,11 @@ async def run_setup_steps_async(tenant_id: str, steps: list) -> None:
         except (ConnectionFailure, ServerSelectionTimeoutError):
             raise
         except Exception as e:
-            failures.append(str(e))
-            logger.error(f"Tenant setup step {getattr(step, '__name__', step)} failed: {e}")
+            # The joined failures become the tenant 500's reason, so each is
+            # described for a response; the log has the full description (#318).
+            step_name = getattr(step, "__name__", step)
+            failures.append(f"{step_name}: {describe_exception_for_response(e)}")
+            logger.error(f"Tenant setup step {step_name} failed: {describe_exception(e)}")
 
     if failures:
         raise DatabaseException(
@@ -806,7 +810,7 @@ async def create_collection_with_indexes_async(
                             if settled is None:
                                 raise DatabaseException(
                                     f"Index {want} on {collection_name} exists without the declared expiry and "
-                                    f"could not be rebuilt with it, so nothing expires: {e}",
+                                    f"could not be rebuilt with it, so nothing expires: {describe_exception_for_response(e)}",
                                     logger,
                                 ) from e
 
@@ -871,8 +875,8 @@ async def create_collection_with_indexes_async(
         # whole operation (including re-acquiring the db handle).
         raise
     except Exception as e:
-        message = f"Failed to create collection with indexes: {collection_name} in {db_name}. Error: {str(e)}"
-        logger.error(f"Collection with indexes creation error: {type(e).__name__}: {str(e)}")
+        message = f"Failed to create collection with indexes: {collection_name} in {db_name}. Error: {describe_exception_for_response(e)}"
+        logger.error(f"Collection with indexes creation error: {describe_exception(e)}")
         raise DatabaseException(message, logger, e) from e
 
 
@@ -916,8 +920,8 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
     except (ConnectionFailure, ServerSelectionTimeoutError):
         raise
     except Exception as e:
-        message = f"Failed to create collection: {collection_name}. Error: {str(e)}"
-        logger.error(f"Collection creation error details: {type(e).__name__}: {str(e)}")
+        message = f"Failed to create collection: {collection_name}. Error: {describe_exception_for_response(e)}"
+        logger.error(f"Collection creation error details: {describe_exception(e)}")
         raise DatabaseException(message, logger, e) from e
     return True
 

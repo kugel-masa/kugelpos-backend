@@ -79,3 +79,42 @@ async def test_create_tenant_setup_failure(client):
         resp = await client.post("/api/v1/tenants", json=payload)
 
     assert resp.status_code == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error, expected",
+    [
+        # The #185 detail is commons' own text and is kept for the operator
+        (
+            "database",
+            "DatabaseException: Index tenant_id_1 is not unique. Documents sharing this key: {'tenant_id': 'T1'} x2",
+        ),
+        # A driver error is summarised, anything else is named by its type (#318)
+        ("driver", "DuplicateKeyError: code->11000, codeName->DuplicateKey"),
+        ("other", "ValueError"),
+    ],
+)
+async def test_a_setup_failure_carries_only_a_safe_reason(client, error, expected):
+    from kugel_common.database.database_exceptions import DatabaseException
+    from pymongo.errors import DuplicateKeyError
+
+    errors = {
+        "database": DatabaseException(
+            "Index tenant_id_1 is not unique. Documents sharing this key: {'tenant_id': 'T1'} x2"
+        ),
+        "driver": DuplicateKeyError(
+            'dup key: { pin: "9876" }', 11000, {"code": 11000, "codeName": "DuplicateKey", "keyValue": {"pin": "9876"}}
+        ),
+        "other": ValueError("pin=9876"),
+    }
+    with patch("app.api.v1.tenant.database_setup") as mock_setup:
+        mock_setup.execute = AsyncMock(side_effect=errors[error])
+
+        resp = await client.post("/api/v1/tenants", json={"tenantId": TENANT})
+
+    assert resp.status_code == 500
+    assert "9876" not in resp.text
+    body = resp.json()
+    # The test app has no shared handlers, so the HTTPException comes back as FastAPI's "detail"
+    assert body.get("message", body.get("detail")) == f"Error creating tenant: {TENANT} : {expected}"

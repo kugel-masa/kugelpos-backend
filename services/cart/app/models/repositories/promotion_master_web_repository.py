@@ -20,6 +20,7 @@ from kugel_common.utils.http_client_helper import get_pooled_client
 
 from app.config.settings_cart import cart_settings
 from app.models.documents.promotion_master_document import PromotionMasterDocument
+from kugel_common.utils.log_utils import describe_exception
 from app.models.repositories.abstract_master_data_repository import (
     AbstractMasterDataRepository,
 )
@@ -100,7 +101,7 @@ class PromotionMasterWebRepository(AbstractMasterDataRepository[PromotionMasterD
                 # Resilient against partial corruption in upstream data; an
                 # individual bad row should not abort the entire response.
                 logger.warning(
-                    f"Failed to parse promotion data: {promo_data}, error: {e}"
+                    f"Failed to parse promotion data: {promo_data}, error: {describe_exception(e)}"
                 )
                 continue
         return promotions

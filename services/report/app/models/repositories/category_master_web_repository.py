@@ -84,14 +84,14 @@ class CategoryMasterWebRepository:
         except HttpClientError as e:
             logger.error(f"HTTP client error while getting categories: {e}")
             raise CategoryMasterDataNotFoundException(
-                f"Failed to connect to master-data service: {str(e)}",
+                "Failed to connect to master-data service",
                 logger,
                 e
             ) from e
         except Exception as e:
             logger.error(f"Unexpected error while getting categories: {e}")
             raise CategoryMasterDataNotFoundException(
-                f"Unexpected error retrieving category data: {str(e)}",
+                "Unexpected error retrieving category data",
                 logger,
                 e
             ) from e

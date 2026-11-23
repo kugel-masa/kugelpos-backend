@@ -26,7 +26,7 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 import asyncio
 from kugel_common.models.documents.abstract_document import AbstractDocument
 from kugel_common.utils.misc import get_app_time
-from kugel_common.utils.log_utils import mask_loggable
+from kugel_common.utils.log_utils import describe_exception, mask_loggable
 from kugel_common.exceptions import RepositoryException, CannotDeleteException, DuplicateKeyException
 from kugel_common.schemas.pagination import PaginatedResult, Metadata
 
@@ -155,14 +155,14 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 await self.session.abort_transaction()
         except Exception as e:
             logger.warning(
-                f"Transaction abort skipped for collection {self.collection_name}: {e}"
+                f"Transaction abort skipped for collection {self.collection_name}: {describe_exception(e)}"
             )
         finally:
             try:
                 await self.session.end_session()
             except Exception as e:
                 logger.warning(
-                    f"Session close failed for collection {self.collection_name}: {e}"
+                    f"Session close failed for collection {self.collection_name}: {describe_exception(e)}"
                 )
             self.session = None
 
@@ -206,7 +206,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 return False
             return True
         except DuplicateKeyError as e:
-            message = f"Duplicate key error: {e}, document: {mask_loggable(document)}"
+            message = f"Duplicate key error: {describe_exception(e)}, document: {mask_loggable(document)}"
             key = e.details.get("key", None)
             raise DuplicateKeyException(message, self.collection_name, key, logger) from e
         except Exception as e:
@@ -478,7 +478,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             except OperationFailure as e:
                 if getattr(e, 'code', None) == 112:
                     attempt += 1
-                    logger.warning(f"WriteConflict (code 112) on update_one_async (attempt {attempt}/{max_retries}): {e}")
+                    logger.warning(f"WriteConflict (code 112) on update_one_async (attempt {attempt}/{max_retries}): {describe_exception(e)}")
                     if attempt < max_retries:
                         await asyncio.sleep(retry_interval * attempt)
                         continue

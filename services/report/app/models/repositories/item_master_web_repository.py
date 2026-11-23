@@ -83,14 +83,14 @@ class ItemMasterWebRepository:
         except HttpClientError as e:
             logger.error(f"HTTP client error while getting items: {e}")
             raise ItemMasterDataNotFoundException(
-                f"Failed to connect to master-data service: {str(e)}",
+                "Failed to connect to master-data service",
                 logger,
                 e
             ) from e
         except Exception as e:
             logger.error(f"Unexpected error while getting items: {e}")
             raise ItemMasterDataNotFoundException(
-                f"Unexpected error retrieving item data: {str(e)}",
+                "Unexpected error retrieving item data",
                 logger,
                 e
             ) from e

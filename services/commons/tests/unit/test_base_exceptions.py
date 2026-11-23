@@ -34,9 +34,10 @@ class TestAppException:
         assert exc.user_message == "ユーザー向けメッセージ"
         assert exc.status_code == 404
         assert exc.original_exception is original
-        # message field appends original exception text
-        assert "wrapped" in exc.message
-        assert "inner" in exc.message
+        # The response carries only the exception's own message; the original
+        # goes to the log (#318)
+        assert exc.message == "wrapped"
+        assert exc.log_message == "wrapped: ValueError: inner"
 
     def test_logs_via_provided_logger(self, caplog):
         custom_logger = logging.getLogger("test.custom")

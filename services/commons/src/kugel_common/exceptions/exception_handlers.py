@@ -54,7 +54,9 @@ def build_unexpected_error_response(exc: Exception, operation: str = "exception_
         user_error=UserError(
             code=ErrorCode.UNEXPECTED_ERROR, message=ErrorMessage.get_message(ErrorCode.UNEXPECTED_ERROR)
         ),
-        data=str(exc),
+        # The exception's text stays in the log: an unhandled driver error
+        # quotes the values it was given (a duplicate key, say) (#318).
+        data=None,
         operation=operation,
     )
 

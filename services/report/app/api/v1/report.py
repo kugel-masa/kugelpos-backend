@@ -21,6 +21,7 @@ from app.models.documents.item_report_document import ItemReportDocument
 from app.models.documents.payment_report_document import PaymentReportDocument
 from app.models.documents.promotion_report_document import PromotionReportDocument
 from app.exceptions.report_exceptions import ReportDateException
+from kugel_common.utils.log_utils import describe_exception
 
 # Create a router instance for report-related endpoints
 router = APIRouter()
@@ -225,9 +226,8 @@ async def get_report_for_store(
         # so every report error reached the caller as a 422.
         raise
     except Exception as e:
-        message = (
-            f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, Error: {e}"
-        )
+        message = f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}"
+        logger.error(f"{message}: {describe_exception(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
 
     response = ApiResponse(
@@ -401,7 +401,8 @@ async def get_report_for_terminal(
         # so every report error reached the caller as a 422.
         raise
     except Exception as e:
-        message = f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}, Error: {e}"
+        message = f"Failed to fetch {report_type} report for tenant_id: {tenant_id}, store_code: {store_code}, terminal_no: {terminal_no}"
+        logger.error(f"{message}: {describe_exception(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
 
     response = ApiResponse(

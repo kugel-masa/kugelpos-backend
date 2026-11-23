@@ -11,6 +11,7 @@ from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.config.settings import settings
+from kugel_common.utils.log_utils import describe_exception
 
 logger = getLogger(__name__)
 
@@ -56,7 +57,7 @@ class LogService:
             tran = await self.tran_repository.create_tranlog_async(tran)
             return tran
         except Exception as e:
-            message = f"Failed to create transaction log: {e}"
+            message = f"Failed to create transaction log: {describe_exception(e)}"
             logger.error(message)
             # Notify about the error
             await send_fatal_error_notification(message=message, error=e, service="report", context=tran.model_dump())
@@ -76,7 +77,7 @@ class LogService:
             log = await self.cash_in_out_log_repository.create_cash_in_out_log(cashlog)
             return log
         except Exception as e:
-            message = f"Failed to create cash in/out log: {e}"
+            message = f"Failed to create cash in/out log: {describe_exception(e)}"
             logger.error(message)
             # Notify about the error
             await send_fatal_error_notification(
@@ -98,7 +99,7 @@ class LogService:
             log = await self.open_close_log_repository.create_open_close_log(open_close_log)
             return log
         except Exception as e:
-            message = f"Failed to create open/close log: {e}"
+            message = f"Failed to create open/close log: {describe_exception(e)}"
             logger.error(message)
             # Notify about the error
             await send_fatal_error_notification(

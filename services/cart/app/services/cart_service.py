@@ -8,6 +8,7 @@ logger = getLogger(__name__)
 
 from app.config.settings import settings
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
+from kugel_common.utils.log_utils import describe_exception
 from kugel_common.models.repositories.store_info_web_repository import StoreInfoWebRepository
 from kugel_common.utils.slack_notifier import send_warning_notification, send_fatal_error_notification
 from kugel_common.enums import TaxType
@@ -179,8 +180,8 @@ class CartService(ICartService):
             logger.debug(f"payment_strategies: {self.payment_strategies}")
 
         except Exception as e:
-            message = f"Failed to load strategies: {e}"
-            raise StrategyPluginException(message, logger) from e
+            message = "Failed to load strategies"
+            raise StrategyPluginException(message, logger, e) from e
 
     # Get current cart information
     def get_current_cart(self) -> CartDocument:
@@ -282,7 +283,7 @@ class CartService(ICartService):
         try:
             promotion_master = await self.promotion_master_repo.get_active_promotions_by_store_async()
         except Exception as e:
-            message = f"Failed to get promotion master data: {e}"
+            message = "Failed to get promotion master data"
             raise CartCannotCreateException(message, logger, e) from e
 
         # Create new cart
@@ -1541,7 +1542,7 @@ class CartService(ICartService):
                 if self.terminal_info
                 else {"cart_id": cart_id}
             )
-            context["error"] = str(e)
+            context["error"] = describe_exception(e)
             await send_warning_notification(message=message, service="cart", context=context)
             return None  # Return None if failed to remove cached cart
 

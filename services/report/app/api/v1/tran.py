@@ -32,6 +32,7 @@ from app.models.repositories.open_close_log_repository import OpenCloseLogReposi
 from app.config.settings import settings
 from app.exceptions import ExternalServiceException
 from app.utils.state_store_manager import state_store_manager
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 
 # Create a router instance for transaction-related endpoints
 router = APIRouter()
@@ -239,7 +240,7 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
         # as success — the data already exists, no further action needed.
         # Returning RETRY here would cause Dapr to redeliver indefinitely.
         logger.warning(
-            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). event_id: {event_id}, error: {e}"
+            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). event_id: {event_id}, error: {describe_exception(e)}"
         )
         # Best-effort: persist the state so subsequent retries short-circuit
         # at the state-store check.
@@ -257,20 +258,24 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
             status_code=status.HTTP_200_OK,
         )
     except Exception as e:
-        err_message = f"Error processing {log_type}. message: {mask_sensitive_data(message)}, Error: {e}"
+        err_message = f"Error processing {log_type}. message: {mask_sensitive_data(message)}, Error: {describe_exception(e)}"
         logger.error(err_message)
         # Best-effort, like the other notifications: if it raised, the answer
         # below would never reach Dapr.
         try:
             await _notify_pubsub_status(
-                log_type=log_type, data_dict=message.get("data", {}), status="failed", message=err_message
+                log_type=log_type,
+                data_dict=message.get("data", {}),
+                status="failed",
+                # Sent to the publisher: described for a response, not a log (#318)
+                message=f"Error processing {log_type}: {describe_exception_for_response(e)}",
             )
         except Exception as notify_exc:
             logger.warning(f"Failed to notify the publisher of the failure. event_id={event_id}: {notify_exc}")
         return JSONResponse(
             content={
                 "status": "RETRY",
-                "message": str(e),
+                "message": describe_exception_for_response(e),
                 "operation": f"{inspect.currentframe().f_code.co_name}",
             },
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -354,7 +359,7 @@ async def _notify_pubsub_status(log_type: str, data_dict: dict, status: str, mes
             logger.warning(f"Unknown log type: {log_type}. Cannot notify Pub/Sub service.")
     except Exception as e:
         message = (
-            f"Failed to notify Pub/Sub service. log_type: {log_type}, status: {status}, message: {message}, Error: {e}"
+            f"Failed to notify Pub/Sub service. log_type: {log_type}, status: {status}, message: {message}"
         )
         raise ExternalServiceException(message=message, logger=logger, original_exception=e) from e
 

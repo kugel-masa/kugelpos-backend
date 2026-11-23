@@ -4,6 +4,7 @@ from typing import Tuple, Optional
 
 from kugel_common.utils.dapr_client_helper import DaprClientHelper
 from app.config.settings import settings
+from kugel_common.utils.log_utils import describe_exception
 
 # Get a logger instance for this module
 logger = getLogger(__name__)
@@ -55,7 +56,7 @@ class StateStoreManager:
                 return False, error_message
 
         except Exception as e:
-            error_message = f"Exception occurred while saving state: {e}"
+            error_message = f"Exception occurred while saving state: {describe_exception(e)}"
             logger.error(error_message)
             return False, error_message
 
@@ -81,7 +82,7 @@ class StateStoreManager:
                 return state_data, None
 
         except Exception as e:
-            error_message = f"Exception occurred while retrieving state: {e}"
+            error_message = f"Exception occurred while retrieving state: {describe_exception(e)}"
             logger.error(error_message)
             return None, error_message
 

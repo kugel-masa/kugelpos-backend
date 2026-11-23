@@ -312,3 +312,25 @@ class TestErrorBodies:
         assert resp.status_code == 400
         assert resp.json()["user_error"]["code"] == "412006"
         getattr(mock_service, method).assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url, method",
+    [
+        (STORE_REPORT_URL, "get_report_for_store_async"),
+        (TERMINAL_REPORT_URL, "get_report_for_terminal_async"),
+    ],
+)
+async def test_an_unexpected_failure_keeps_its_text_out_of_the_response(url, method, caplog):
+    """The 500 names the report, not the failure's text; the log has it (#318)."""
+    mock_service = AsyncMock()
+    getattr(mock_service, method).side_effect = RuntimeError("driver said pin=9876")
+
+    with caplog.at_level("ERROR"):
+        resp = await _get(url, mock_service, business_date="20260101")
+
+    assert resp.status_code == 500
+    assert "9876" not in resp.text
+    assert "Failed to fetch sales report" in resp.json()["message"]
+    assert any("RuntimeError: driver said pin=9876" in r.getMessage() for r in caplog.records)

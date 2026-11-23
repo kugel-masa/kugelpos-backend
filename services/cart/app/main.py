@@ -37,6 +37,7 @@ from app.api.v1.cart import router as v1_cart_router
 from app.api.v1.tran import router as v1_tran_router
 from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.cache import router as v1_cache_router
+from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
 from app.cron.republish_undelivery_message import (
     start_republish_undelivered_tranlog_job,
     shutdown_republish_undelivered_tranlog_job,
@@ -251,10 +252,12 @@ async def health_check():
             error=None if scheduler_running and scheduler_jobs > 0 else "Scheduler not running or no jobs scheduled",
         )
     except Exception as e:
+        # The health response is public: the type only; the log has the rest (#318)
+        logger.warning(f"Failed to check scheduler status: {describe_exception(e)}")
         background_jobs_health = ComponentHealth(
             status=HealthStatus.UNHEALTHY,
-            details={"error": str(e)},
-            error=f"Failed to check scheduler status: {str(e)}",
+            details={"error": describe_exception_for_response(e)},
+            error=f"Failed to check scheduler status: {describe_exception_for_response(e)}",
         )
 
     # Build health check response
