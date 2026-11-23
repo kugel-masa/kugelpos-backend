@@ -61,6 +61,11 @@ def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         logger.debug(f"Payload: {payload}")
+        # A terminal JWT carries sub and tenant_id too, but it is not a user's or a
+        # service's credential: code that accepts terminals checks for one first
+        # (verify_terminal_token), and anything reaching here must not (issue #331)
+        if payload.get("token_type") == "terminal":
+            raise credentials_exception
         username: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         is_superuser: bool = payload.get("is_superuser", False)
@@ -165,6 +170,14 @@ async def get_service_account_info(token: str = Depends(oauth2_scheme)):
     Raises:
         HTTPException: If the token is not from a service account
     """
+    # A valid terminal JWT is a credential of the wrong kind: 403, as for a user
+    # JWT, rather than the 401 verify_token gives it (issue #331)
+    try:
+        verify_terminal_token(token)
+    except HTTPException:
+        pass
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Service account required")
     user_info = verify_token(token)
     if not user_info.get("is_service_account"):
         raise HTTPException(
@@ -742,14 +755,7 @@ async def get_tenant_id_refusing_terminal(
         HTTPException: 401 without a valid credential, 403 for a terminal credential
     """
     if token:
-        try:
-            terminal_claims = verify_terminal_token(token)
-        except HTTPException:
-            terminal_claims = None
-        if terminal_claims is not None:
-            _refuse_terminal_credential("terminal_jwt", terminal_claims.get("terminal_id"))
-        user_dict = await get_current_user(token)
-        return user_dict.get("tenant_id")
+        return await _tenant_id_of_non_terminal_token(token)
 
     if terminal_id and api_key:
         await get_terminal_info(terminal_id, api_key)
@@ -757,6 +763,18 @@ async def get_tenant_id_refusing_terminal(
 
     message = "Unauthorized access : No token provided"
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
+
+async def _tenant_id_of_non_terminal_token(token: str) -> str:
+    """The tenant of a user or service JWT; a valid terminal JWT is refused with 403 and an audit line."""
+    try:
+        terminal_claims = verify_terminal_token(token)
+    except HTTPException:
+        terminal_claims = None
+    if terminal_claims is not None:
+        _refuse_terminal_credential("terminal_jwt", terminal_claims.get("terminal_id"))
+    user_dict = await get_current_user(token)
+    return user_dict.get("tenant_id")
 
 
 def _refuse_terminal_credential(credential: str, terminal_id: Optional[str]) -> None:
@@ -775,16 +793,27 @@ async def get_tenant_id_with_token(
     is_terminal_service: Optional[bool] = False
 ):
     """
-    FastAPI dependency that retrieves tenant ID using only OAuth token authentication.
-    
+    FastAPI dependency for endpoints that take a user or service JWT only.
+
+    Used by back-office operations: tenant setup in every service, and
+    terminal's tenant, store and terminal administration. A terminal JWT is
+    refused with 403 (issue #331). It used to be accepted first, unbound to any
+    store, so one register could create terminals, with their API keys, in any
+    store of its tenant, or rename and delete stores and the tenant.
+
     Args:
         token: OAuth token from header
-        is_terminal_service: Whether the caller is the terminal service itself
-        
+        is_terminal_service: Unused; kept so the existing callers need no change
+
     Returns:
         Tenant ID string
+
+    Raises:
+        HTTPException: 401 without a valid token, 403 for a terminal JWT
     """
-    return await __get_tenant_id(token=token, is_terminal_service=is_terminal_service)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access : No token provided")
+    return await _tenant_id_of_non_terminal_token(token)
 
 async def get_terminal_info_with_api_key(
     terminal_id: str = Query(...),

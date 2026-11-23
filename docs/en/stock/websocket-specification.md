@@ -33,7 +33,12 @@ async def verify_jwt_from_query(token: str) -> Optional[User]:
 
 **Authentication Errors:**
 - Code: 1008 (Policy Violation)
-- Reasons: "No token provided", "Authentication failed", "Tenant ID mismatch"
+- Reasons: "No token provided", "Authentication failed", "Tenant ID mismatch", "Store mismatch"
+
+**Accepted tokens:**
+- A user JWT for the tenant follows any store of the tenant.
+- A terminal JWT follows its own store only. The `store_code` in the path must be the terminal's own store; otherwise the connection is closed with "Store mismatch" (issue #331).
+- The tenant is checked before the store.
 
 ## Message Formats
 

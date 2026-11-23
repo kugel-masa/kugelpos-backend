@@ -16,6 +16,7 @@ from kugel_common.security import (
     get_tenant_id_with_security,
     get_tenant_id_with_security_by_query,
     get_tenant_id_refusing_terminal,
+    get_tenant_id_with_token,
     get_tenant_id_with_security_by_query_optional,
     terminal_claims_to_terminal_info,
     verify_path_binding,
@@ -439,3 +440,87 @@ class TestRefusingTerminal:
         with pytest.raises(HTTPException) as exc:
             await get_tenant_id_refusing_terminal(None, None, None)
         assert exc.value.status_code == 401
+
+
+class TestTokenOnly:
+    """Back-office endpoints take user and service JWTs, never a terminal JWT (issue #331)."""
+
+    @pytest.mark.asyncio
+    async def test_user_jwt_is_accepted(self):
+        token = jwt.encode({"sub": "admin", "tenant_id": "T001"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        assert await get_tenant_id_with_token(token) == "T001"
+
+    @pytest.mark.asyncio
+    async def test_service_jwt_is_accepted(self):
+        token = jwt.encode(
+            {"sub": "service:terminal", "tenant_id": "T001", "is_service_account": True, "service": "terminal"},
+            settings.SECRET_KEY,
+            algorithm=settings.ALGORITHM,
+        )
+        assert await get_tenant_id_with_token(token, is_terminal_service=True) == "T001"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("is_terminal_service", [False, True])
+    async def test_terminal_jwt_is_forbidden(self, is_terminal_service, caplog):
+        token = create_terminal_token(_make_terminal_info())
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token(token, is_terminal_service=is_terminal_service)
+        assert exc.value.status_code == 403
+        assert "T001-001-01" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_token_is_unauthorized(self):
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token(None)
+        assert exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_a_bad_token_is_unauthorized(self):
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token("not-a-jwt")
+        assert exc.value.status_code == 401
+
+
+    @pytest.mark.asyncio
+    async def test_an_expired_terminal_jwt_is_unauthorized_not_forbidden(self):
+        token = create_terminal_token(_make_terminal_info(), expires_delta=timedelta(seconds=-1))
+        with pytest.raises(HTTPException) as exc:
+            await get_tenant_id_with_token(token)
+        assert exc.value.status_code == 401
+
+
+class TestVerifyTokenRefusesTerminalTokens:
+    """verify_token is the user/service verifier: a terminal JWT is not one (issue #331)."""
+
+    def test_a_terminal_jwt_is_not_a_user(self):
+        from kugel_common.security import verify_token
+
+        with pytest.raises(HTTPException) as exc:
+            verify_token(create_terminal_token(_make_terminal_info()))
+        assert exc.value.status_code == 401
+
+    def test_a_user_jwt_still_verifies(self):
+        from kugel_common.security import verify_token
+
+        token = jwt.encode({"sub": "admin", "tenant_id": "T001"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        assert verify_token(token)["tenant_id"] == "T001"
+
+
+class TestServiceAccountOnly:
+    """A terminal JWT on a service-only endpoint is the wrong kind of credential: 403 (issue #331)."""
+
+    @pytest.mark.asyncio
+    async def test_a_terminal_jwt_is_forbidden(self):
+        from kugel_common.security import get_service_account_info
+
+        with pytest.raises(HTTPException) as exc:
+            await get_service_account_info(create_terminal_token(_make_terminal_info()))
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_a_service_jwt_is_accepted(self):
+        from kugel_common.security import get_service_account_info
+
+        token = jwt.encode({"sub": "service:report", "tenant_id": "T001", "is_service_account": True},
+                           settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        assert (await get_service_account_info(token))["tenant_id"] == "T001"

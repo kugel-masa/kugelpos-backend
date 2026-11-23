@@ -948,7 +948,8 @@ async def websocket_endpoint(websocket: WebSocket, tenant_id: str, store_code: s
         from app.services.stock_service import StockService
         from kugel_common.database import database as db_helper
         from app.config.settings import settings
-        from kugel_common.security import verify_token
+        from fastapi import HTTPException
+        from kugel_common.security import verify_path_binding, verify_terminal_token, verify_token
     except Exception as e:
         logger.error(f"Import error in WebSocket: {e}", exc_info=True)
         raise
@@ -968,15 +969,34 @@ async def websocket_endpoint(websocket: WebSocket, tenant_id: str, store_code: s
         return
 
     try:
-        # Verify the token
-        payload = verify_token(token)
-        token_tenant_id = payload.get("tenant_id")
+        # A terminal JWT is held to its own store, as on the HTTP endpoints
+        # (#253); it used to pass verify_token, which checks the tenant only, so
+        # a register could follow another store's alerts (issue #331)
+        try:
+            terminal_claims = verify_terminal_token(token)
+        except HTTPException:
+            terminal_claims = None
+        payload = terminal_claims if terminal_claims is not None else verify_token(token)
 
         # Verify tenant_id matches
-        if token_tenant_id != tenant_id:
+        if payload.get("tenant_id") != tenant_id:
             await websocket.accept()
             await websocket.close(code=1008, reason="Tenant ID mismatch")
             return
+
+        if terminal_claims is not None:
+            try:
+                verify_path_binding(
+                    terminal_claims.get("store_code"),
+                    terminal_claims.get("terminal_no"),
+                    {"store_code": store_code},
+                    "GET",
+                    "terminal_jwt",
+                )
+            except HTTPException:
+                await websocket.accept()
+                await websocket.close(code=1008, reason="Store mismatch")
+                return
 
     except Exception as e:
         logger.error(f"WebSocket authentication failed: {e}")

@@ -251,6 +251,48 @@ def test_terminal_credential_cannot_write_masters():
         assert c.put(f"{staff}/S900", json=body, headers=admin).status_code == 200
 
 
+def test_terminal_jwt_cannot_administer_terminals_stores_or_the_tenant():
+    """Issue #331: back-office administration takes a user JWT, never a terminal JWT."""
+    tenant_id = _new_tenant_id()
+    admin_token = _live_admin_token(tenant_id)
+    _setup_tenant(tenant_id, admin_token)
+    terminal_a, terminal_b, jwt_a, _ = _terminal_jwts(tenant_id, admin_token, "5678")
+    admin = {"Authorization": f"Bearer {admin_token}"}
+    register = {"Authorization": f"Bearer {jwt_a}"}
+    tenant = f"/api/v1/tenants/{tenant_id}"
+    store = {"store_name": "Renamed", "status": "Active", "business_date": "20260101", "tags": []}
+
+    with _client("URL_TERMINAL") as c:
+        assert c.post(f"{tenant}/stores", json={"store_code": "6000", "store_name": "B"},
+                      headers=admin).status_code == 201
+        refused = [
+            c.post("/api/v1/terminals", json={"store_code": "6000", "terminal_no": 9, "description": "rogue"},
+                   headers=register),
+            c.delete(f"/api/v1/terminals/{terminal_b}", headers=register),
+            c.post(f"{tenant}/stores", json={"store_code": "6001", "store_name": "C"}, headers=register),
+            c.put(f"{tenant}/stores/6000", json=store, headers=register),
+            c.delete(f"{tenant}/stores/6000", headers=register),
+            c.put(tenant, json={"tenant_name": "Renamed", "tags": []}, headers=register),
+            c.post("/api/v1/tenants", json={"tenant_id": tenant_id, "tenant_name": "x", "stores": [], "tags": []},
+                   headers=register),
+            c.delete(tenant, headers=register),
+        ]
+        assert [r.status_code for r in refused] == [403] * len(refused), [r.text for r in refused]
+        # Nothing changed: the store and terminal B are still there
+        assert c.get(f"{tenant}/stores/6000", headers=admin).json()["data"]["storeName"] == "B"
+        assert c.get(f"/api/v1/terminals/{terminal_b}", headers=admin).status_code == 200
+        assert c.get(f"/api/v1/terminals/{tenant_id}-6000-9", headers=admin).status_code == 404
+        assert c.get(f"{tenant}/stores/6001", headers=admin).status_code == 404
+        # The back office still administers
+        assert c.put(f"{tenant}/stores/6000", json=store, headers=admin).status_code == 200
+
+    # Tenant setup on the other services refuses the register as well
+    for url_env in ("URL_CART", "URL_JOURNAL", "URL_REPORT", "URL_STOCK", "URL_MASTER_DATA"):
+        with _client(url_env) as c:
+            resp = c.post("/api/v1/tenants", json={"tenant_id": tenant_id}, headers=register)
+        assert resp.status_code == 403, f"{url_env}: {resp.status_code} {resp.text}"
+
+
 def test_cart_is_used_only_within_its_tenant_and_store():
     """The cart cache is keyed by cart_id alone; a cart_id is not a credential."""
     tenant_id, other_tenant = _new_tenant_id(), _new_tenant_id()
