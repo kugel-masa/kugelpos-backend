@@ -18,6 +18,8 @@ from app.services.report_plugin_interface import IReportPlugin
 from app.services.plugins.payment_report_receipt_data import PaymentReportReceiptData
 from app.config.settings import Settings
 
+from app.utils.master_data_pages import MASTER_DATA_PAGE_SIZE, has_next_page
+
 logger = logging.getLogger(__name__)
 
 
@@ -265,39 +267,39 @@ class PaymentReportMaker(IReportPlugin):
                     page += 1
 
                 if not payment_map:
-                    # If no data or API error, use default mapping for testing
                     logger.warning(f"Failed to fetch payment master data: {data.get('message', 'No data available')}")
-                    payment_map = {
-                        "01": "Cash",
-                        "11": "Cashless", 
-                        "12": "Others",
-                    }
-                    
+
         except Exception as e:
             logger.error(f"Error fetching payment master data: {e}")
-            # Return default mapping if API call fails; variant names read before the
-            # failure are dropped too, so names do not come from two sources (issue #311)
+            # Names read before the failure are dropped, so names do not come from
+            # two sources (issue #311); the report falls back to the transaction
+            # log's names, then DEFAULT_PAYMENT_NAMES (issue #326)
             variant_map = {}
-            payment_map = {
-                "01": "Cash",
-                "11": "Cashless",
-                "12": "Others",
-            }
+            payment_map = {}
         
         return payment_map, variant_map
 
-    PAYMENT_MASTER_PAGE_SIZE = 100
+    PAYMENT_MASTER_PAGE_SIZE = MASTER_DATA_PAGE_SIZE
+
+    # Names used when neither master-data nor the transaction log names a method
+    DEFAULT_PAYMENT_NAMES = {"01": "Cash", "11": "Cashless", "12": "Others"}
+
+    _LATEST_PAYMENT_NAME = {
+        "$cond": [
+            {
+                "$and": [
+                    {"$eq": [{"$type": "$payments.builtin_description"}, "string"]},
+                    {"$ne": ["$payments.builtin_description", ""]},
+                ]
+            },
+            {"t": {"$ifNull": ["$generate_date_time", ""]}, "n": "$payments.builtin_description"},
+            None,
+        ]
+    }
 
     def _has_next_page(self, metadata: Optional[dict], page: int, received: int) -> bool:
         """Whether the payment master list has a page after ``page``."""
-        if metadata:
-            has_next = metadata.get("has_next", metadata.get("hasNext"))
-            if has_next is not None:
-                return bool(has_next)
-            total_pages = metadata.get("total_pages", metadata.get("totalPages"))
-            if total_pages is not None:
-                return page < total_pages
-        return received >= self.PAYMENT_MASTER_PAGE_SIZE
+        return has_next_page(metadata, page, received, self.PAYMENT_MASTER_PAGE_SIZE)
 
     def _create_pipeline_for_payment_variants(
         self,
@@ -481,6 +483,10 @@ class PaymentReportMaker(IReportPlugin):
                         "transaction_type": "$transaction_type"
                     },
                     "amount": {"$sum": "$payments.amount"},
+                    # The newest name the method was paid under, from the line's
+                    # builtin_description (issue #326). $max compares {t, n} by
+                    # time first and skips the nulls of lines without a name.
+                    "latest_name": {"$max": self._LATEST_PAYMENT_NAME},
                     # By document _id: the numbering does not identify a transaction
                     # (transaction_no restarts at every open, and two sales with
                     # different cart_ids can share a numbering; issue #230).
@@ -507,6 +513,7 @@ class PaymentReportMaker(IReportPlugin):
             {
                 "$group": {
                     "_id": "$_id.payment_code",
+                    "latest_name": {"$max": "$latest_name"},
                     "transactions": {
                         "$push": {
                             "transaction_type": "$_id.transaction_type",
@@ -550,8 +557,14 @@ class PaymentReportMaker(IReportPlugin):
                 total_amount += trans["amount"] * factor
                 total_count += trans["count"] * factor
             
-            # Get payment name from master data
-            payment_name = payment_master_map.get(payment_code, f"Payment {payment_code}")
+            # The current master name first; then the newest name it was paid
+            # under, so a deleted or renamed method keeps its name (issue #326)
+            payment_name = (
+                payment_master_map.get(payment_code)
+                or (result.get("latest_name") or {}).get("n")
+                or self.DEFAULT_PAYMENT_NAMES.get(payment_code)
+                or f"Payment {payment_code}"
+            )
             
             payment_summary.append({
                 "payment_code": payment_code,

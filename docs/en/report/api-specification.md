@@ -358,6 +358,16 @@ to the 'topic-tranlog' topic in the 'pubsub-tranlog-report' component.
 
 **Response:**
 
+### Names in reports (issue #326)
+
+| Report field | Source |
+|---|---|
+| Category name (category and item reports) | master-data, every page, logically deleted categories included. Unknown codes show as the code. |
+| Item name (item report) | The transaction log: the newest line item `description` in the period, so the name the item was sold under. master-data is not asked. Without a name, the code. |
+| Payment method name (payment report) | master-data's current name; else the newest `builtin_description` of the method's payment lines in the period; else `Cash` / `Cashless` / `Others` for `01` / `11` / `12`; else `Payment {code}`. |
+
+A master renamed or deleted after the sale therefore keeps its name in past reports, except a category renamed since, which shows its current name.
+
 ## Error Codes
 
 Error responses are returned in the following format:

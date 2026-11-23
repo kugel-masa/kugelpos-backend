@@ -7,6 +7,7 @@ from kugel_common.utils.service_auth import create_service_token
 from kugel_common.utils.log_utils import mask_sensitive_data
 from kugel_common.exceptions import ServiceException
 from app.exceptions import CategoryMasterDataNotFoundException
+from app.utils.master_data_pages import MASTER_DATA_PAGE_SIZE, has_next_page
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,11 @@ class CategoryMasterWebRepository:
 
     async def get_categories(self) -> Dict[str, str]:
         """
-        Retrieve all categories for the tenant as a mapping of category code to description.
+        Retrieve every category of the tenant as a mapping of category code to description.
+
+        Every page of the list is read, so a category past the first page is
+        named too, and logically deleted categories are included (issue #324),
+        so a past report keeps the name of a category deleted since (issue #326).
 
         Returns:
             Dict[str, str]: Mapping of category_code to description
@@ -41,9 +46,6 @@ class CategoryMasterWebRepository:
             CategoryMasterDataNotFoundException: If category data cannot be retrieved
         """
         try:
-            logger.info(f"Getting categories from master-data service for tenant {self.tenant_id}")
-            logger.info(f"Master data base URL: {self.master_data_base_url}")
-            
             async with get_service_client("master-data") as client:
                 service_token = create_service_token(self.tenant_id, "report")
                 headers = {
@@ -52,35 +54,37 @@ class CategoryMasterWebRepository:
                 }
                 # The Authorization value is the service token itself (issue #211).
                 logger.debug(f"Request headers: {mask_sensitive_data(headers)}")
-                
+
                 url = f"{self.master_data_base_url}/tenants/{self.tenant_id}/categories"
-                logger.info(f"Requesting categories from URL: {url}")
-                # HttpClientHelper.get() returns the JSON data directly, not a response object
-                data = await client.get(url, headers=headers)
-                
-                logger.info(f"Received response from master-data service: success={data.get('success')}, data count={len(data.get('data', []))}")
-                logger.debug(f"Full response data: {data}")
-                
-                # Check if the response was successful
-                if data.get("success") and data.get("data"):
-                    # Extract category code to description mapping
-                    category_map = {}
-                    for category in data["data"]:
-                        logger.debug(f"Processing category: {category}")
-                        category_code = category.get("categoryCode")
-                        description = category.get("description")
-                        logger.debug(f"Category mapping: {category_code} -> {description}")
-                        category_map[category_code] = description if description else category_code
-                    
-                    logger.info(f"Final category mapping: {category_map}")
-                    return category_map
-                else:
-                    logger.error(f"Failed to get categories: {data}")
-                    raise CategoryMasterDataNotFoundException(
-                        f"Failed to retrieve category master data: {data.get('message', 'Unknown error')}",
-                        logger
+                category_map: Dict[str, str] = {}
+                page = 1
+                while True:
+                    # HttpClientHelper.get() returns the JSON data directly, not a response object
+                    data = await client.get(
+                        url,
+                        params={"limit": MASTER_DATA_PAGE_SIZE, "page": page, "include_deleted": "true"},
+                        headers=headers,
                     )
-                    
+                    if not data.get("success"):
+                        logger.error(f"Failed to get categories: {data.get('message')}")
+                        raise CategoryMasterDataNotFoundException(
+                            f"Failed to retrieve category master data: {data.get('message', 'Unknown error')}",
+                            logger
+                        )
+                    categories = data.get("data") or []
+                    for category in categories:
+                        category_code = category.get("categoryCode")
+                        if category_code:
+                            category_map[category_code] = category.get("description") or category_code
+                    if not has_next_page(data.get("metadata"), page, len(categories)):
+                        break
+                    page += 1
+
+                logger.info(f"Fetched {len(category_map)} categories in {page} page(s)")
+                return category_map
+
+        except CategoryMasterDataNotFoundException:
+            raise
         except HttpClientError as e:
             logger.error(f"HTTP client error while getting categories: {e}")
             raise CategoryMasterDataNotFoundException(

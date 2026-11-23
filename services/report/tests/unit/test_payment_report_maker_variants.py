@@ -137,7 +137,8 @@ async def test_a_failure_on_a_later_page_drops_the_variant_names_read_before_it(
     ):
         payment_map, variant_map = await _maker()._fetch_payment_master("T1", "S1")
 
-    assert payment_map == {"01": "Cash", "11": "Cashless", "12": "Others"}
+    # Defaults are applied per payment line after the transaction log (issue #326)
+    assert payment_map == {}
     assert variant_map == {}
 
 
