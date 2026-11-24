@@ -23,6 +23,7 @@ MongoDB actually holds afterwards.
 """
 
 import os
+import uuid
 
 import pytest
 import pytest_asyncio
@@ -40,18 +41,31 @@ def _db_names():
 
 
 @pytest_asyncio.fixture
-async def clean_log_request():
-    """Drop the collection in both targets, so each test starts from nothing."""
+async def clean_log_request(monkeypatch):
+    """Point these tests at databases of their own, empty at the start (issue #335).
+
+    The tenant and commons databases are named from DB_NAME_PREFIX. Under the
+    service's own prefix they are the ones the running account service writes:
+    at startup it ensures every tenant's indexes, each registration runs tenant
+    setup, and every request writes log_request. It recreates the 30-day TTL
+    while a test is asserting there is none. A prefix of this file's own keeps
+    the result the same whether the stack is up or not.
+    """
     from kugel_common.database import database as db_helper
+    from app.config.settings import settings
 
     db_helper.MONGODB_URI = os.environ.get("MONGODB_URI")
-    for name in _db_names():
-        db = await db_helper.get_db_async(name)
-        await db[COLLECTION].drop()
+    monkeypatch.setattr(settings, "DB_NAME_PREFIX", f"retention_test_{uuid.uuid4().hex[:8]}")
+    # The names are taken once: a test may undo the monkeypatch before teardown,
+    # and recomputing them then would name the service's own databases
+    names = _db_names()
+    assert all(name.startswith("retention_test_") for name in names), names
+    client = await db_helper.get_client_async()
+    for name in names:
+        await client.drop_database(name)
     yield
-    for name in _db_names():
-        db = await db_helper.get_db_async(name)
-        await db[COLLECTION].drop()
+    for name in names:
+        await client.drop_database(name)
 
 
 async def _indexes(db_name):
