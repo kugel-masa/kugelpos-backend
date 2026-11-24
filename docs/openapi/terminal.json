@@ -1544,7 +1544,7 @@
       },
       "delete": {
         "summary": "Delete Terminal",
-        "description": "Delete a terminal\n\nThis endpoint deletes a terminal from the system.\nRequires OAuth2 token authentication.\n\nArgs:\n    terminal_id: ID of the terminal to delete\n    tenant_id: Tenant ID extracted from authentication token\n\nReturns:\n    ApiResponse confirming terminal deletion",
+        "description": "Delete a terminal\n\nThis endpoint deletes a terminal from the system.\nRequires OAuth2 token authentication.\n\nAn open terminal cannot be deleted (400, 406003): its session would never\nbe settled and would hold back the daily reports. Close it first; a user\ntoken can close it when the device itself cannot.\n\nArgs:\n    terminal_id: ID of the terminal to delete\n    tenant_id: Tenant ID extracted from authentication token\n\nReturns:\n    ApiResponse confirming terminal deletion",
         "operationId": "delete_terminal_api_v1_terminals__terminal_id__delete",
         "security": [
           {

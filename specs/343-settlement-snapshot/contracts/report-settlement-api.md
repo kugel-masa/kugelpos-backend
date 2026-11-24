@@ -117,24 +117,6 @@
 
 ---
 
-## 4a. 管理者の精算（R-21）
-
-`POST /api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
-
-**認証**: 利用者またはサービスのトークン（テナントの一致を確かめる）。端末のトークン・API キーは断る。
-
-**要求**:
-
-```json
-{"businessCounter": 77, "reason": "terminal deleted while open", "physicalAmount": null}
-```
-
-**応答** 200: §1 の応答の形に `settledKind: "admin"`、`adminReason`、`settledBy: "admin:<利用者>"`。`state` は `final`。すでに確定していれば保存されている値（`created: false`）。その営業のログが1件も無ければ 404 `413007`。`reason` が無ければ 422。
-
-端末が二度と閉設しない営業のためのもの。まだ販売している端末の営業に使うと、そのあとの販売が日報から抜ける。
-
----
-
 ## 5. 閉設ログを受け取ったとき（pub/sub、既存の口）
 
 report は、`settlement_id` を持つ閉設ログを受け取ったら、同じ営業の「仮」の精算実績を「確定」にする（R-6）。閉設ログに `settlement_id` が無ければ何もしない（古い terminal）。
@@ -144,5 +126,5 @@ report は、`settlement_id` を持つ閉設ログを受け取ったら、同じ
 | コード | 意味 | HTTP |
 |---|---|---|
 | `412101` | 精算していない | 403 |
-| `413007` | 精算実績が見つからない（管理者の精算で、その営業のログが無い） | 404 |
+| `413007` | 精算実績が見つからない | 404 |
 | `413008` | 精算の確定の集計に失敗した・大きすぎて保存できない | 500 |

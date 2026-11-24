@@ -33,8 +33,6 @@
 | `cash_log_count` | int | 届いた入出金ログの件数 |
 | `missing_cash_log_count` | int | 入出金の未着の件数（名乗りが無ければ 0） |
 | `expected_cash` | object | 理論在高の内訳: `cash_sales`、`cash_in {amount, count}`、`cash_out {amount, count}`、`total` |
-| `settled_kind` | str | `close`（端末の閉設）か `admin`（管理者の精算、R-21） |
-| `admin_reason` | str \| None | 管理者の精算の理由 |
 | `created_at`・`updated_at` | datetime | 初めて保存した時刻・最後に書いた時刻 |
 | `physical_amount` | float \| None | 数えた現金 |
 | `difference` | float \| None | `physical_amount − expected_cash.total`。数えていなければ `None` |

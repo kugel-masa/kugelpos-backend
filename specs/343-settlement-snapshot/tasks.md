@@ -137,7 +137,9 @@ description: "Task list for 343-settlement-snapshot"
 - [X] T049 [US2] `missingRanges` に `terminalNo`・`businessDate`（report_service.py、schemas.py）と、店舗の日報のテスト
 - [X] T050 同時の精算: terminal の書き込みの衝突を 406003 に（terminal_service.py）、report のトランザクションのやり直し（settlement_record_repository.py）、テスト
 - [X] T051 閉設ログの照合で確定できなければ例外（settlement_service.py）とテスト
-- [X] T052 管理者の精算の口（settlement.py、settlement_service.py `settle_by_admin_async`、settlement_record_document.py）とテスト（test_settlement_admin_api.py）
+- [X] T052 開設中の端末の削除を断る（services/terminal/app/services/terminal_service.py `delete_terminal_async`）とテスト。管理者の精算の口はいったん足したが外した（R-21）
+- [X] T054 期間の日報の確定集計を 20 件ずつ畳み込む（settlement_record_repository.py `iter_daily_reports_async`、report_merge.py `MERGERS`、report_service.py）と、畳み込みと一度の合算が一致するテスト（R-22）
+- [X] T055 テストの追加: 番号を運ぶ経路の e2e、report を止めたときの e2e、閉設ログの配信のやり直し（pub/sub の受け口から）
 - [X] T053 索引に `open_counter`、精算実績の日時、通知の文言、再試行の説明、API の文書の生成、仕様の文書の更新
 
 ---
