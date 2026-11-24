@@ -31,6 +31,7 @@ Kugelpos POSシステムの日本語ドキュメント一覧です。各カテ�
 - [**デザインパターン**](general/design_patterns.md) - システムで使用されている設計パターン
 - [**エラーコード仕様**](general/error_code_spec.md) - エラーコード体系と一覧
 - [**HTTP通信仕様**](general/http_communication.md) - サービス間のHTTP通信規約
+- [**PyMongo 非同期 API への移行**](general/pymongo-async-migration.md) - Motor から PyMongo の非同期 API への移植の手順書
 
 ## 共通機能
 

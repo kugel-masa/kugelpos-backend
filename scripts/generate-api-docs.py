@@ -574,7 +574,7 @@ def generate_service_docs(service_name: str, spec: dict, lang: str, translations
     lines.append("")
     lines.append(f"- **{s['port']}**: {info.get('port', 'N/A')}")
     lines.append(f"- **{s['framework']}**: FastAPI")
-    lines.append(f"- **{s['database']}**: MongoDB (Motor async driver)")
+    lines.append(f"- **{s['database']}**: MongoDB (PyMongo async API)")
     lines.append("")
 
     # Base URL

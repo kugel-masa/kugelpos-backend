@@ -8,7 +8,7 @@ Generates sales reports and daily summaries. Uses plugin architecture for extens
 
 - **Port**: 8004
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

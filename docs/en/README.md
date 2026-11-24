@@ -31,6 +31,7 @@ Documentation about the overall system architecture and design.
 - [**Design Patterns**](general/design_patterns.md) - Design patterns used in the system
 - [**Error Code Specification**](general/error_code_spec.md) - Error code system and list
 - [**HTTP Communication**](general/http_communication.md) - Inter-service HTTP communication conventions
+- [**PyMongo Async Migration**](general/pymongo-async-migration.md) - Porting guide from Motor to the PyMongo async API
 
 ## Common Functions
 

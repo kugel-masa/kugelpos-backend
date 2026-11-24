@@ -8,7 +8,7 @@
 
 - **ポート**: 8005
 - **フレームワーク**: FastAPI
-- **データベース**: MongoDB (Motor async driver)
+- **データベース**: MongoDB (PyMongo async API)
 
 ## ベースURL
 

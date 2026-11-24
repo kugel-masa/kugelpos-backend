@@ -8,7 +8,7 @@ Manages shopping cart and transaction processing. Provides cart state management
 
 - **Port**: 8003
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

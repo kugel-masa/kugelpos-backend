@@ -8,7 +8,7 @@ Provides tenant management, store management, and terminal management functions.
 
 - **Port**: 8001
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

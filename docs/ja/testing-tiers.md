@@ -17,7 +17,7 @@
 「ロジックを単独で検証する」テスト。**何も起動していなくても通る**こと。
 
 **書くもの**:
-- repository: `motor` をモックして CRUD ロジック / クエリ生成を検証
+- repository: MongoDB のコレクションをモックして CRUD ロジック / クエリ生成を検証
 - service / business logic: repository 層をモックして state machine、計算、判定ロジックを検証
 - API layer: `TestClient` + service 層モックでリクエスト/レスポンスの shape、バリデーション、エラーハンドリングを検証
 - circuit breaker のしきい値、各種ユーティリティ関数
