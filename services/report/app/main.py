@@ -23,6 +23,7 @@ from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.schemas.health import HealthCheckResponse, HealthStatus, ComponentHealth
 from kugel_common.utils.health_check import HealthChecker
 from kugel_common.exceptions import register_exception_handlers
+from app.exceptions.settlement_exception_handlers import register_settlement_exception_handlers
 from kugel_common.middleware.log_requests import log_requests
 from kugel_common.middleware.http_compression import add_gzip_response_middleware
 from kugel_common.middleware.request_body_limit import add_request_body_limit_middleware
@@ -32,6 +33,8 @@ from kugel_common.config.service_urls import verify_service_urls
 from app.api.v1.report import router as v1_report_router
 from app.api.v1.tran import router as v1_tran_router
 from app.api.v1.tenant import router as v1_tenant_router
+from app.api.v1.settlement_internal import router as v1_settlement_internal_router
+from app.api.v1.settlement import router as v1_settlement_router
 from app.config.settings import settings
 
 # Create a FastAPI instance with API documentation URLs enabled
@@ -71,6 +74,8 @@ if IS_DEBUG:
 app.include_router(v1_report_router, prefix="/api/v1")
 app.include_router(v1_tran_router, prefix="/api/v1")
 app.include_router(v1_tenant_router, prefix="/api/v1")
+app.include_router(v1_settlement_internal_router, prefix="/api/v1")
+app.include_router(v1_settlement_router, prefix="/api/v1")
 
 # Add middleware to log all HTTP requests with service name "report"
 app.middleware("http")(log_requests("report"))
@@ -135,6 +140,8 @@ app.add_middleware(
 
 # Register global exception handlers for consistent error responses
 register_exception_handlers(app)
+# After the shared ones: the more specific exception type wins (#343)
+register_settlement_exception_handlers(app)
 
 
 # Define Dapr pub/sub subscription endpoints  # This tells Dapr which topics to subscribe to and which routes to invoke when messages arrive

@@ -31,5 +31,11 @@ class OpenCloseLog(AbstractDocument):
     cart_transaction_last_no: Optional[int] = None  # Last transaction number in the session
     cash_in_out_count: Optional[int] = None  # Count of cash operations during the session
     cash_in_out_last_datetime: Optional[str] = None  # Timestamp of the last cash operation
+    # The settlement report confirmed at close (#343); report finalizes the record by this id
+    settlement_id: Optional[str] = None
+    expected_cash: Optional[float] = None  # The settlement's expected cash
+    difference: Optional[float] = None  # Counted minus expected; None when not counted
+    missing_count: Optional[int] = None  # Transactions that had not reached report
+    missing_cash_log_count: Optional[int] = None  # Cash logs that had not reached report
     receipt_text: Optional[str] = None  # Formatted text for receipt printing
     journal_text: Optional[str] = None  # Formatted text for journal
