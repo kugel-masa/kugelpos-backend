@@ -126,6 +126,14 @@ async def get_report_for_store(
     It provides different types of reports (sales, category, item) at different
     scopes (flash, daily) for the specified store.
 
+    Daily scope (#343): the report is the settled sessions' frozen reports,
+    merged when the scope has more than one session. A session in scope that
+    has a log but no final settlement refuses the report with 403 / 412101,
+    and data.unsettledSessions names it. A daily report returns the whole
+    frozen report (limit and page are not applied), carries missingCount and
+    missingRanges, and a date-range daily report carries the cash section.
+    Flash is computed live, as before.
+
     Args:
         tenant_id: The tenant identifier
         tenant_id_with_security: The tenant ID extracted from security credentials
@@ -298,6 +306,12 @@ async def get_report_for_terminal(
     This endpoint requires either a JWT token or an API key with terminal_id.
     It provides different types of reports (sales, category, item) at different
     scopes (flush, daily) for the specified terminal.
+
+    Daily scope (#343): the terminal's settled sessions' frozen reports; one
+    session's is returned as frozen, several are merged. A session with a log
+    but no final settlement refuses the report with 403 / 412101, and
+    data.unsettledSessions names it. limit and page are not applied to a daily
+    report, which carries missingCount and missingRanges. Flash is live.
 
     Args:
         tenant_id: The tenant identifier

@@ -115,7 +115,6 @@ async def test_multi_store_multi_terminal_uniqueness(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 
@@ -259,7 +258,6 @@ async def test_return_transactions_aggregation(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 
@@ -389,7 +387,6 @@ async def test_multiple_tax_rates_no_cartesian_product(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 
@@ -554,7 +551,6 @@ async def test_multiple_payment_methods_mixed(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 
@@ -872,7 +868,6 @@ async def test_multi_store_mixed_transactions(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )
 

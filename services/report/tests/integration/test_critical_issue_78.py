@@ -120,7 +120,6 @@ async def test_store_wide_multi_terminal_with_cartesian_product_risk(set_env_var
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 
@@ -290,7 +289,6 @@ async def test_extreme_split_payments_with_multiple_taxes(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 
@@ -524,7 +522,6 @@ async def test_payment_equals_sales_plus_tax_always(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 

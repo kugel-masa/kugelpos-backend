@@ -145,6 +145,8 @@ class SchemasTransformer:
             # Include formatted receipt and journal text for printing/display
             receipt_text=report_doc.receipt_text,
             journal_text=report_doc.journal_text,
+            missing_count=report_doc.missing_count,
+            missing_ranges=report_doc.missing_ranges,
         )
 
     def transform_category_report_response(self, report_doc: CategoryReportDocument) -> BaseCategoryReportResponse:
@@ -193,6 +195,8 @@ class SchemasTransformer:
             # Include formatted text
             receipt_text=report_doc.receipt_text,
             journal_text=report_doc.journal_text,
+            missing_count=report_doc.missing_count,
+            missing_ranges=report_doc.missing_ranges,
         )
 
     def transform_item_report_response(self, report_doc: ItemReportDocument) -> BaseItemReportResponse:
@@ -254,6 +258,8 @@ class SchemasTransformer:
             # Include formatted text
             receipt_text=report_doc.receipt_text,
             journal_text=report_doc.journal_text,
+            missing_count=report_doc.missing_count,
+            missing_ranges=report_doc.missing_ranges,
         )
 
     def transform_payment_report_response(self, report_doc: PaymentReportDocument) -> BasePaymentReportResponse:

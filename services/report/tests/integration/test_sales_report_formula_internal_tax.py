@@ -194,7 +194,6 @@ async def test_internal_tax_with_discount_and_return(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo
     )
 

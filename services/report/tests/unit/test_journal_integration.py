@@ -30,7 +30,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 
@@ -107,7 +106,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 
@@ -183,7 +181,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 
@@ -234,7 +231,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 
@@ -288,7 +284,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 
@@ -338,7 +333,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 
@@ -390,7 +384,6 @@ class TestJournalIntegration:
             tran_repository=mock_tran_repo,
             cash_in_out_log_repository=mock_cash_repo,
             open_close_log_repository=mock_open_close_repo,
-            daily_info_repository=mock_daily_info_repo,
             terminal_info_repository=mock_terminal_repo,
         )
 

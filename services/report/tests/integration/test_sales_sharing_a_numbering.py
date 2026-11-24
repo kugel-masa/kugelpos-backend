@@ -97,7 +97,6 @@ async def _report(db, report_type: str):
         tran_repository=TranlogRepository(db, tenant_id),
         cash_in_out_log_repository=CashInOutLogRepository(db, tenant_id),
         open_close_log_repository=OpenCloseLogRepository(db, tenant_id),
-        daily_info_repository=DailyInfoDocumentRepository(db, tenant_id),
         terminal_info_repository=TerminalInfoWebRepository(db, tenant_id),
     )
     return await service.get_report_for_terminal_async(
