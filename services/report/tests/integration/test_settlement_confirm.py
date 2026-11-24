@@ -273,3 +273,73 @@ async def test_names_unavailable_still_settles(db):
                 record, created = await asyncio.wait_for(svc.confirm_async(_request(seq=1)), timeout=10)
 
     assert created is True
+
+
+@pytest.mark.asyncio
+async def test_a_sale_stamped_early_but_committed_late_is_in_nothing(db, service):
+    """created_at is stamped before the insert commits; a clock is no fence (R-12).
+
+    A sale stamped a second ago lands while the reports are being frozen. The
+    figures come from the documents read at the start, so it is in none of them
+    - not counted as arrived, not in the cash, not in any frozen report.
+    """
+    from datetime import timedelta
+
+    from kugel_common.utils.misc import get_app_time
+
+    await _seed(db, sales=(1,))
+    original = service._names_async
+
+    async def land_midway(store_code):
+        late = _sale(2).model_dump()
+        late["created_at"] = get_app_time() - timedelta(seconds=1)
+        await db["log_tran"].insert_one(late)
+        return await original(store_code)
+
+    with patch.object(service, "_names_async", side_effect=land_midway):
+        record, _ = await service.confirm_async(_request(seq=2))
+
+    repo = SettlementRecordRepository(db, TENANT)
+    sales = (await repo.get_daily_reports_async([record.settlement_id], "sales"))[record.settlement_id]
+    item = (await repo.get_daily_reports_async([record.settlement_id], "item"))[record.settlement_id]
+    assert record.included_count == 1
+    assert [r.model_dump() for r in record.missing_ranges] == [{"first": 2, "last": 2}]
+    assert record.expected_cash.cash_sales == 1100
+    assert sales["sales_gross"]["count"] == 1
+    assert item["total_quantity"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_mismatched_close_log_that_cannot_finalize_fails_the_delivery(db, service):
+    """S5: replaced again before it could be made final - the delivery must fail
+    so the close log comes again, never leave the record provisional and consumed."""
+    await _seed(db, sales=(1,))
+    await service.confirm_async(_request(seq=1))
+    close = OpenCloseLog(
+        tenant_id=TENANT, store_code=STORE, terminal_no=TERMINAL, business_date=DATE, open_counter=1,
+        business_counter=BC, operation="close", generate_date_time=f"{DATE}T21:00:05", settlement_id="the-terminals-id",
+    )
+
+    with patch.object(service.settlement_repository, "finalize_async", return_value=False):
+        with pytest.raises(RuntimeError):
+            await service.finalize_from_close_log_async(close)
+
+    # Delivered again, it goes through
+    await service.finalize_from_close_log_async(close)
+    stored = await SettlementRecordRepository(db, TENANT).get_async(STORE, TERMINAL, BC)
+    assert stored.state == STATE_FINAL and stored.settlement_id == "the-terminals-id"
+
+
+@pytest.mark.asyncio
+async def test_two_confirms_at_once_both_answer_and_leave_one_record(db, service):
+    """S4 (report side): colliding transactions are retried, not answered 500."""
+    await _seed(db, sales=(1, 2))
+
+    results = await asyncio.gather(*(service.confirm_async(_request(seq=2)) for _ in range(4)))
+
+    stored = await SettlementRecordRepository(db, TENANT).get_async(STORE, TERMINAL, BC)
+    assert stored.settlement_id in {r.settlement_id for r, _ in results}
+    assert await db["settlement_record"].count_documents({}) == 1
+    assert await db["settlement_daily_report"].count_documents({"settlement_id": stored.settlement_id}) == 5
+    assert await db["settlement_daily_report"].count_documents({}) == 5
+    assert stored.created_at is not None and stored.updated_at is not None

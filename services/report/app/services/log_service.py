@@ -107,7 +107,7 @@ class LogService:
                 await service.finalize_from_close_log_async(open_close_log)
             return log
         except Exception as e:
-            message = f"Failed to create open/close log: {describe_exception(e)}"
+            message = f"Failed to store the open/close log or finalize its settlement: {describe_exception(e)}"
             logger.error(message)
             # Notify about the error
             await send_fatal_error_notification(

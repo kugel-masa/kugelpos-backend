@@ -114,6 +114,8 @@ class CashBalanceReportTemplate(BaseSchemaModel):
 class MissingRangeTemplate(BaseSchemaModel):
     """Transaction numbers of one session that had not reached report when it was settled (#343)."""
 
+    terminal_no: Optional[int] = None
+    business_date: Optional[str] = None
     business_counter: Optional[int] = None
     first: int
     last: int

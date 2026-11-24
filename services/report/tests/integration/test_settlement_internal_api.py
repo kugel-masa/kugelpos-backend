@@ -80,3 +80,18 @@ async def test_other_credentials_are_refused(http_client, admin_header, credenti
 async def test_a_bad_request_is_422(http_client):
     response = await http_client.post(_url(), json={**BODY, "businessDate": "2026-11-24"}, headers=_service())
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("service_name", ["cart", "stock", "journal", "report"])
+async def test_only_terminal_may_settle(http_client, service_name):
+    """Least privilege: a service account of the tenant, but not terminal's, is refused."""
+    other = {"Authorization": f"Bearer {create_service_token(_tenant(), service_name)}"}
+
+    response = await http_client.post(_url(), json=BODY, headers=other)
+    preview = await http_client.get(_url(path="settlement-preview") + PREVIEW, headers=other)
+
+    assert response.status_code == 403, response.text
+    assert preview.status_code == 403, preview.text
+    db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{_tenant()}")
+    assert await db[settings.DB_COLLECTION_NAME_SETTLEMENT_RECORD].count_documents({"store_code": STORE}) == 0

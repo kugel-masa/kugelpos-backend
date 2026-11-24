@@ -58,7 +58,15 @@ def _db_name(tenant_id: Optional[str]) -> str:
 
 # Which sessions a daily report covers: every (terminal, business_counter) with
 # a log in a store and a business-date range, read on each daily report (#343).
-SESSION_SCAN_KEYS = {"tenant_id": 1, "store_code": 1, "business_date": 1, "terminal_no": 1, "business_counter": 1}
+SESSION_SCAN_KEYS = {
+    "tenant_id": 1,
+    "store_code": 1,
+    "business_date": 1,
+    "terminal_no": 1,
+    "business_counter": 1,
+    # Read by the scan's $group, so the index covers it
+    "open_counter": 1,
+}
 SESSION_SCAN_INDEX = {"keys": SESSION_SCAN_KEYS, "unique": False}
 
 

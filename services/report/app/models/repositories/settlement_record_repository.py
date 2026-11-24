@@ -8,10 +8,15 @@ written again. The record and its daily reports are written in one transaction,
 so a record never exists without its reports or with another settlement's.
 """
 
+import asyncio
+import random
 from logging import getLogger
 from typing import Optional
 
 from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.errors import PyMongoError
+
+from kugel_common.utils.misc import get_app_time
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.schemas.base_schemas import Metadata
@@ -28,6 +33,9 @@ from app.models.documents.settlement_record_document import (
 logger = getLogger(__name__)
 
 # A document of one report type must stay well under MongoDB's 16 MB (R-17).
+# Colliding confirms of one session (two closes at once) retry their transaction
+SAVE_ATTEMPTS = 8
+
 MAX_DAILY_REPORT_BYTES = 15 * 1024 * 1024
 
 
@@ -70,10 +78,27 @@ class SettlementRecordRepository(AbstractRepository[SettlementRecordDocument]):
         """
         if self.dbcollection is None:
             await self.initialize()
-        key = self._key(record.store_code, record.terminal_no, record.business_counter)
         record.state = STATE_PROVISIONAL
+        # Two confirms of one session can collide in their transactions; the
+        # loser is told to retry (TransientTransactionError) and does so here
+        for attempt in range(1, SAVE_ATTEMPTS + 1):
+            try:
+                return await self._save_provisional_once(record, daily_reports)
+            except PyMongoError as e:
+                if attempt == SAVE_ATTEMPTS or not e.has_error_label("TransientTransactionError"):
+                    raise
+                logger.info(f"Settlement save collided with another; retrying ({attempt})")
+                await asyncio.sleep(random.uniform(0.005, 0.02) * attempt)
+        raise AssertionError("unreachable")
+
+    async def _save_provisional_once(
+        self, record: SettlementRecordDocument, daily_reports: dict[str, dict]
+    ) -> SettlementRecordDocument:
+        key = self._key(record.store_code, record.terminal_no, record.business_counter)
         values = record.model_dump()
         values.pop("_id", None)
+        now = get_app_time()
+        values["updated_at"] = now
 
         async with self.db.client.start_session() as session:
             async with await session.start_transaction():
@@ -84,7 +109,7 @@ class SettlementRecordRepository(AbstractRepository[SettlementRecordDocument]):
                     await self.reports.delete_many(
                         {"tenant_id": self.tenant_id, "settlement_id": existing["settlement_id"]}, session=session
                     )
-                    values["created_at"] = existing.get("created_at")
+                values["created_at"] = existing.get("created_at") if existing is not None else now
                 await self.dbcollection.replace_one(key, values, upsert=True, session=session)
                 if daily_reports:
                     await self.reports.insert_many(
@@ -121,7 +146,7 @@ class SettlementRecordRepository(AbstractRepository[SettlementRecordDocument]):
                 "settlement_id": settlement_id,
                 "state": STATE_PROVISIONAL,
             },
-            {"$set": {"state": STATE_FINAL, "finalized_at": finalized_at}},
+            {"$set": {"state": STATE_FINAL, "finalized_at": finalized_at, "updated_at": get_app_time()}},
         )
         return result.modified_count == 1
 

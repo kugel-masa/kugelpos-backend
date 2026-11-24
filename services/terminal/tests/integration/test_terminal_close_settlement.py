@@ -108,9 +108,12 @@ async def test_of_two_closes_at_once_one_closes_the_terminal(http_client, admin_
         _post(http_client, terminal_id, api_key, "close", {"physicalAmount": 2.0}),
     )
 
-    codes = sorted([first.status_code, second.status_code])
-    assert codes[0] == status.HTTP_200_OK
-    assert codes[1] in (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST)
+    winner, loser = sorted([first, second], key=lambda r: r.status_code)
+    assert winner.status_code == status.HTTP_200_OK, winner.text
+    # The loser is refused as already closed, whether it found the terminal
+    # closed or its transaction collided with the winner's (WriteConflict)
+    assert loser.status_code == status.HTTP_400_BAD_REQUEST, loser.text
+    assert loser.json()["userError"]["code"] == "406003"
     assert await _close_logs(terminal_id) == 1
     assert await _status(http_client, admin_header, terminal_id) == "Closed"
 

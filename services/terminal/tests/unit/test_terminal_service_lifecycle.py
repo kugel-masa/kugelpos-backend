@@ -559,6 +559,38 @@ class TestTerminalServiceCloseTerminal:
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.OpenCloseReceiptData")
+    async def test_a_write_conflict_with_another_close_is_already_closed(self, mock_oc_receipt_cls):
+        """Two closes whose transactions overlap: MongoDB fails the second with
+        WriteConflict (112). That close lost the race; it is 406003, not 406008."""
+        from pymongo.errors import OperationFailure
+
+        svc, repos = make_service()
+        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = _make_opened_terminal()
+        store = MagicMock()
+        store.store_name = "Test Store"
+        repos["store_info_repo"].get_store_info_async.return_value = store
+        inst = MagicMock()
+        inst.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
+        mock_oc_receipt_cls.return_value = inst
+        cash_paginated = MagicMock()
+        cash_paginated.metadata.total = 0
+        cash_paginated.data = []
+        repos["cash_in_out_log_repo"].get_cash_in_out_logs.return_value = cash_paginated
+        repos["settlement_repo"].confirm_async.return_value = SETTLEMENT
+        _setup_transaction_mock(repos["open_close_log_repo"])
+        repos["terminal_info_repo"].close_terminal_info_async.side_effect = OperationFailure(
+            "Write conflict during plan execution", code=112
+        )
+        svc.pubsub_manager = AsyncMock()
+
+        with pytest.raises(TerminalStatusException):
+            await svc.close_terminal_async(physical_amount=9500)
+
+        repos["open_close_log_repo"].create_open_close_log.assert_not_called()
+        svc.pubsub_manager.publish_message_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.OpenCloseReceiptData")
     async def test_close_records_the_settlement_report_confirmed(self, mock_oc_receipt_cls):
         """The close log carries report's settlement; cart is not asked (#343)."""
         svc, repos = _close_ready(mock_oc_receipt_cls, cash_logs=3)

@@ -181,7 +181,7 @@ class TestGetReportForStore:
         assert maker.merge.call_args.args[0] == [{"a": 1}, {"b": 2}]
         assert maker.merge.call_args.kwargs["terminal_no"] is None
         assert merged.missing_count == 1
-        assert merged.missing_ranges == [{"business_counter": 7, "first": 9, "last": 9}]
+        assert merged.missing_ranges == [{"terminal_no": 2, "business_date": records[1].business_date, "business_counter": 7, "first": 9, "last": 9}]
         maker.generate_report.assert_not_called()
 
     @pytest.mark.asyncio

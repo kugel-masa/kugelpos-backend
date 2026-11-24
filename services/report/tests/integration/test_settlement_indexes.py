@@ -13,7 +13,7 @@ from app.config.settings import settings
 from app.database import database_setup
 
 TENANT = "T343INDEX"
-SESSION_SCAN = [("tenant_id", 1), ("store_code", 1), ("business_date", 1), ("terminal_no", 1), ("business_counter", 1)]
+SESSION_SCAN = [("tenant_id", 1), ("store_code", 1), ("business_date", 1), ("terminal_no", 1), ("business_counter", 1), ("open_counter", 1)]
 
 
 @pytest_asyncio.fixture

@@ -11,7 +11,7 @@ import inspect
 from logging import getLogger
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from kugel_common.schemas.api_response import ApiResponse
 from kugel_common.security import get_service_account_info, verify_tenant_id
@@ -29,6 +29,18 @@ from app.services.settlement_service import SettlementRequest
 router = APIRouter(prefix="/internal")
 
 logger = getLogger(__name__)
+
+# The only caller: terminal settles at close and previews before it.
+SETTLING_SERVICE = "terminal"
+
+
+def _require_terminal(auth_info: dict, tenant_id: str) -> None:
+    """A service account of the path's tenant, and of terminal (least privilege)."""
+    verify_tenant_id(tenant_id, auth_info.get("tenant_id"), logger)
+    if auth_info.get("service") != SETTLING_SERVICE:
+        logger.warning(f"Settlement endpoint refused for service {auth_info.get('service')!r}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only terminal may settle a session")
+
 
 _RESPONSES = {
     status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
@@ -59,7 +71,7 @@ async def confirm_settlement(
     as stored. Missing or duplicate transactions never refuse the settlement;
     they are recorded.
     """
-    verify_tenant_id(tenant_id, auth_info.get("tenant_id"), logger)
+    _require_terminal(auth_info, tenant_id)
     service = await get_settlement_service_async(tenant_id)
     record, created = await service.confirm_async(
         SettlementRequest(store_code=store_code, terminal_no=terminal_no, **request.model_dump())
@@ -93,7 +105,7 @@ async def preview_settlement(
     auth_info: dict = Depends(get_service_account_info),
 ):
     """What confirming would record now, without storing anything."""
-    verify_tenant_id(tenant_id, auth_info.get("tenant_id"), logger)
+    _require_terminal(auth_info, tenant_id)
     service = await get_settlement_service_async(tenant_id)
     figures, settled = await service.preview_async(
         SettlementRequest(

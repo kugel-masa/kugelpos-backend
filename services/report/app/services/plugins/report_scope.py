@@ -47,3 +47,8 @@ def scope_filter(filter: dict, extra_match: Optional[dict]) -> dict:
 def scope_of(kwargs: dict[str, Any]) -> tuple[Optional[dict], bool]:
     """Read the scope a caller passed through generate_report's keyword arguments."""
     return kwargs.get("extra_match"), bool(kwargs.get("unbounded", False))
+
+
+def cash_scope_of(kwargs: dict[str, Any]) -> Optional[dict]:
+    """The conditions for cash logs; a settlement names them apart from the transactions."""
+    return kwargs.get("cash_extra_match", kwargs.get("extra_match"))

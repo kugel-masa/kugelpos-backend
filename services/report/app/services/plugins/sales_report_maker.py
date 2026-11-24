@@ -18,7 +18,7 @@ from app.services.report_plugin_interface import IReportPlugin
 from app.services.plugins.sales_report_receipt_data import SalesReportReceiptData
 from app.services.expected_cash import cash_difference, cash_sales_of, expected_cash, summarize_cash_logs
 from app.utils.payment_variant_breakdown import add_payment_with_variant, sort_variant_breakdown
-from app.services.plugins.report_scope import scope_filter, scope_of, scope_pipeline
+from app.services.plugins.report_scope import cash_scope_of, scope_filter, scope_of, scope_pipeline
 from app.services.report_merge import merge_sales, merged_document
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ class SalesReportMaker(IReportPlugin):
                 filter["terminal_no"] = terminal_no
             if open_counter is not None:
                 filter["open_counter"] = open_counter
-            filter = scope_filter(filter, extra_match)
+            filter = scope_filter(filter, cash_scope_of(kwargs))
 
             # Retrieve cash in/out logs (all of them for a settlement, #343)
             cash_results = await self.cash_in_out_log_repository.get_cash_in_out_logs(

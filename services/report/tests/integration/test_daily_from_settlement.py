@@ -109,7 +109,7 @@ async def test_a_terminal_daily_is_the_frozen_report_and_ignores_late_sales(db):
     assert before.sales_gross.amount == 1100
     assert after.sales_gross.amount == 1100
     assert after.missing_count == 1
-    assert after.missing_ranges == [{"business_counter": 5, "first": 2, "last": 2}]
+    assert after.missing_ranges == [{"terminal_no": 1, "business_date": DATE, "business_counter": 5, "first": 2, "last": 2}]
     flash = await _service(db).get_report_for_terminal_async(
         store_code=STORE, terminal_no=1, report_scope="flash", report_type="sales", business_date=DATE, limit=100, page=1
     )
@@ -130,8 +130,32 @@ async def test_a_store_daily_merges_every_terminal(db):
     assert sales.sales_gross.amount == 4400
     assert sales.terminal_no is None
     assert payment.total.amount == 4400
-    for report_type in ("category", "item", "promotion"):
-        assert await _store_daily(db, report_type=report_type, business_date=DATE) is not None
+    category = await _store_daily(db, report_type="category", business_date=DATE)
+    item = await _store_daily(db, report_type="item", business_date=DATE)
+    promotion = await _store_daily(db, report_type="promotion", business_date=DATE)
+    # Both terminals sold one I1 of category C1: the store's rows add them up
+    assert [(c.category_code, c.quantity, c.gross_amount) for c in category.categories] == [("C1", 2, 4000)]
+    assert [(i.item_code, i.quantity) for c in item.categories for i in c.items] == [("I1", 2)]
+    assert item.total_quantity == 2
+    assert promotion.terminal_no is None and promotion.business_date == DATE
+
+
+@pytest.mark.asyncio
+async def test_a_store_daily_says_which_terminal_is_missing_what(db):
+    """S3: business counters are per terminal, so each missing range names its terminal."""
+    tran = TranlogRepository(db, TENANT)
+    for terminal_no in (1, 2):
+        await _open(db, terminal_no, 11)
+        await tran.create_tranlog_async(_sale(terminal_no, 11, 1))
+        await _settle(db, terminal_no, 11, seq=2)
+
+    report = await _store_daily(db, business_date=DATE)
+
+    assert report.missing_count == 2
+    assert report.missing_ranges == [
+        {"terminal_no": 1, "business_date": DATE, "business_counter": 11, "first": 2, "last": 2},
+        {"terminal_no": 2, "business_date": DATE, "business_counter": 11, "first": 2, "last": 2},
+    ]
 
 
 @pytest.mark.asyncio

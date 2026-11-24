@@ -57,6 +57,6 @@ class PromotionReportDocument(AbstractDocument):
     journal_text: Optional[str] = None
     # Daily reports only: what had not arrived when the sessions were settled (#343)
     missing_count: Optional[int] = None
-    missing_ranges: Optional[list[dict]] = None  # [{business_counter, first, last}]
+    missing_ranges: Optional[list[dict]] = None  # [{terminal_no, business_date, business_counter, first, last}]
     generate_date_time: Optional[str] = None
     staff: Optional[dict] = None

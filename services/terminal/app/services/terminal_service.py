@@ -110,6 +110,20 @@ def _terminal_info_for_log(terminal: TerminalInfoDocument) -> TerminalInfoDocume
     return redacted
 
 
+def _is_write_conflict(e: BaseException) -> bool:
+    """True if e (or what it wraps) is MongoDB's write conflict between two transactions."""
+    seen = set()
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        if getattr(e, "code", None) == 112:  # WriteConflict
+            return True
+        has_label = getattr(e, "has_error_label", None)
+        if callable(has_label) and has_label("TransientTransactionError"):
+            return True
+        e = getattr(e, "original_exception", None) or e.__cause__ or e.__context__
+    return False
+
+
 class _ClosedElsewhere(Exception):
     """Another close of the same terminal wrote first (#343)."""
 
@@ -906,6 +920,11 @@ class TerminalService:
             except Exception as e:
                 if closed_elsewhere:
                     pass  # aborted above; refused below
+                elif _is_write_conflict(e):
+                    # The other close's transaction wrote the terminal first: it
+                    # closes the terminal, this one is refused as already closed
+                    closed_elsewhere = True
+                    await self.open_close_log_repo.abort_transaction()
                 else:
                     # abort transaction
                     await self.open_close_log_repo.abort_transaction()

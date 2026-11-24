@@ -19,8 +19,9 @@ from app.exceptions import SettlementUnavailableException, TerminalCloseExceptio
 
 logger = getLogger(__name__)
 
-# report freezes five daily reports while it answers; keep one retry only, so a
-# slow report cannot hold the close for minutes (R-7).
+# report freezes five daily reports while it answers. One attempt, no retry
+# (HttpClientHelper's max_retries counts attempts), so a slow report holds the
+# close for at most the timeout; the clerk closes again (R-7).
 SETTLEMENT_TIMEOUT_SECONDS = 30
 SETTLEMENT_MAX_RETRIES = 1
 _MALFORMED = (400, 422)

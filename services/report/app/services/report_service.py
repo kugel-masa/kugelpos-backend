@@ -446,7 +446,9 @@ class ReportService:
         unsettled = [
             {"terminalNo": t, "businessCounter": bc, "businessDate": info["business_date"], "openCounter": info["open_counter"]}
             for (t, bc), info in sorted(sessions.items(), key=lambda kv: (kv[0][0] or 0, kv[0][1] or 0))
-            if (t, bc) not in settled
+            # A log without a business_counter (from before every writer set it)
+            # has no session to settle; it cannot hold a daily report hostage
+            if (t, bc) not in settled and bc is not None
         ]
         if unsettled:
             raise SessionNotSettledException(
@@ -492,7 +494,13 @@ class ReportService:
             )
         document.missing_count = sum(r.missing_count for r in records)
         document.missing_ranges = [
-            {"business_counter": r.business_counter, "first": m.first, "last": m.last}
+            {
+                "terminal_no": r.terminal_no,
+                "business_date": r.business_date,
+                "business_counter": r.business_counter,
+                "first": m.first,
+                "last": m.last,
+            }
             for r in records
             for m in r.missing_ranges
         ]

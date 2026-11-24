@@ -19,10 +19,11 @@ import bson
 
 from kugel_common.utils.misc import get_app_time, get_app_time_str
 
-from app.exceptions.report_exceptions import SettlementAggregationException
+from app.exceptions.report_exceptions import SettlementAggregationException, SettlementNotFoundException
 from app.models.documents.settlement_record_document import (
     DECLARED_BY_POS,
     DECLARED_NONE,
+    SETTLED_BY_ADMIN,
     STATE_FINAL,
     SettlementRecordDocument,
 )
@@ -120,6 +121,79 @@ class SettlementService:
         )
         return stored, created
 
+    async def settle_by_admin_async(
+        self,
+        store_code: str,
+        terminal_no: int,
+        business_counter: int,
+        reason: str,
+        settled_by: str,
+        physical_amount: Optional[float] = None,
+    ) -> tuple[SettlementRecordDocument, bool]:
+        """
+        Back office settles a session whose terminal will never close it (#343, S2).
+
+        From the logs that have arrived, made final at once. A session that is
+        already final is returned as stored. Meant for a terminal deleted while
+        open, an offline session, a close log that never arrived: settling a
+        session whose terminal is still selling freezes it without the later sales.
+
+        Raises:
+            SettlementNotFoundException: No log of the session has reached report
+        """
+        existing = await self.settlement_repository.get_async(store_code, terminal_no, business_counter)
+        if existing is not None and existing.state == STATE_FINAL:
+            return existing, False
+
+        info = await self._session_info_async(store_code, terminal_no, business_counter)
+        if info is None:
+            raise SettlementNotFoundException(
+                f"No log of the session has reached report: store={store_code} terminal={terminal_no} "
+                f"business_counter={business_counter}",
+                logger,
+            )
+        request = SettlementRequest(
+            store_code=store_code,
+            terminal_no=terminal_no,
+            business_counter=business_counter,
+            business_date=info["business_date"],
+            open_counter=info["open_counter"] or 1,
+            settled_at=get_app_time_str(),
+            physical_amount=physical_amount,
+            settled_by=settled_by,
+        )
+        settlement_id = str(uuid.uuid4())
+        snapshot = await self._snapshot_async(request, settlement_id=settlement_id, with_reports=True)
+        snapshot.record.settled_kind = SETTLED_BY_ADMIN
+        snapshot.record.admin_reason = reason
+        stored = await self.settlement_repository.save_provisional_async(snapshot.record, snapshot.daily_reports)
+        if stored.settlement_id != settlement_id:
+            return stored, False  # made final by its close log meanwhile
+        await self.settlement_repository.finalize_async(
+            store_code, terminal_no, business_counter, settlement_id, get_app_time_str()
+        )
+        logger.warning(
+            f"Session settled by back office: store={store_code} terminal={terminal_no} "
+            f"business_counter={business_counter} by={settled_by} reason={reason!r}"
+        )
+        return await self.settlement_repository.get_async(store_code, terminal_no, business_counter), True
+
+    async def _session_info_async(self, store_code: str, terminal_no: int, business_counter: int) -> Optional[dict]:
+        """The business date and open counter of a session, from any of its logs."""
+        query = {
+            "tenant_id": self.tenant_id,
+            "store_code": store_code,
+            "terminal_no": terminal_no,
+            "business_counter": business_counter,
+        }
+        for repo in (self.open_close_log_repository, self.tran_repository, self.cash_in_out_log_repository):
+            if repo.dbcollection is None:
+                await repo.initialize()
+            doc = await repo.dbcollection.find_one(query, {"business_date": 1, "open_counter": 1})
+            if doc is not None:
+                return {"business_date": doc.get("business_date"), "open_counter": doc.get("open_counter")}
+        return None
+
     async def preview_async(self, request: SettlementRequest) -> tuple[SettlementRecordDocument, bool]:
         """
         What confirming would record, without storing anything (FR-021).
@@ -182,16 +256,25 @@ class SettlementService:
         )
         snapshot = await self._snapshot_async(request, settlement_id=settlement_id, with_reports=True)
         await self.settlement_repository.save_provisional_async(snapshot.record, snapshot.daily_reports)
-        await self.settlement_repository.finalize_async(
+        if not await self.settlement_repository.finalize_async(
             store_code, terminal_no, business_counter, settlement_id, get_app_time_str()
-        )
+        ):
+            # Replaced again before it could be made final: fail the delivery so
+            # the close log is delivered again, rather than leave it provisional
+            raise RuntimeError(
+                f"Settlement {settlement_id} could not be made final; the close log will be redelivered"
+            )
 
     # ------------------------------------------------------------------ figures
 
     async def _snapshot_async(
         self, request: SettlementRequest, settlement_id: str, with_reports: bool
     ) -> SessionSnapshot:
-        # Everything below reads only what had reached report by now (R-12).
+        # The session's logs are read once, here; every figure below - the counts,
+        # the expected cash and all five frozen reports - is made from exactly
+        # these documents, whatever arrives meanwhile (R-12). No clock is
+        # involved, so neither a commit landing late nor a replica's clock skew
+        # can make two figures disagree.
         cutoff = get_app_time()
         session = {
             "tenant_id": self.tenant_id,
@@ -199,14 +282,13 @@ class SettlementService:
             "terminal_no": request.terminal_no,
             "business_counter": request.business_counter,
         }
-        arrived = {"created_at": {"$not": {"$gt": cutoff}}}
 
-        rows = await self._tran_rows_async({**session, **arrived})
-        cash_amounts = await self._cash_amounts_async({**session, **arrived})
+        tran_ids, rows = await self._tran_rows_async(session)
+        cash_ids, cash_amounts = await self._cash_amounts_async(session)
         counted = count_session(rows, request.seq)
         cash_summary = summarize_cash_logs(cash_amounts)
 
-        scope = {"business_counter": request.business_counter, **arrived}
+        scope = {"extra_match": {"_id": {"$in": tran_ids}}, "cash_extra_match": {"_id": {"$in": cash_ids}}}
         names = await self._names_async(request.store_code)
         sales = await self._report_async("sales", request, scope, names)
         expected = expected_cash(cash_sales_of(p.model_dump() for p in sales.payments), cash_summary)
@@ -252,21 +334,26 @@ class SettlementService:
         )
         return SessionSnapshot(record=record, daily_reports=daily_reports)
 
-    async def _tran_rows_async(self, query: dict) -> list[TranRow]:
+    async def _tran_rows_async(self, query: dict) -> tuple[list, list[TranRow]]:
+        """The session's transaction logs: their ids, and what counting needs."""
         repo = self.tran_repository
         if repo.dbcollection is None:
             await repo.initialize()
         cursor = repo.dbcollection.find(query, {"cart_id": 1, "transaction_no": 1, "receipt_counter": 1})
-        return [
+        docs = [d async for d in cursor]
+        rows = [
             TranRow(cart_id=d.get("cart_id"), transaction_no=d.get("transaction_no"), receipt_counter=d.get("receipt_counter"))
-            async for d in cursor
+            for d in docs
         ]
+        return [d["_id"] for d in docs], rows
 
-    async def _cash_amounts_async(self, query: dict) -> list[float]:
+    async def _cash_amounts_async(self, query: dict) -> tuple[list, list[float]]:
+        """The session's cash logs: their ids and amounts."""
         repo = self.cash_in_out_log_repository
         if repo.dbcollection is None:
             await repo.initialize()
-        return [d.get("amount") or 0 async for d in repo.dbcollection.find(query, {"amount": 1})]
+        docs = [d async for d in repo.dbcollection.find(query, {"amount": 1})]
+        return [d["_id"] for d in docs], [d.get("amount") or 0 for d in docs]
 
     async def _names_async(self, store_code: str) -> dict[str, Any]:
         """Category and payment names, fetched once for the five reports."""
@@ -297,8 +384,8 @@ class SettlementService:
                 limit=100,
                 page=1,
                 sort=None,
-                extra_match=scope,
                 unbounded=True,
+                **scope,
                 **names,
             )
         except Exception as e:
