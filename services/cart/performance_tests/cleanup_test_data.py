@@ -19,7 +19,7 @@ This script cleans up test data created by setup_test_data.py
 
 import asyncio
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from dotenv import load_dotenv
 
 
@@ -44,9 +44,8 @@ class PerformanceTestDataCleanup:
         print(f"Tenant ID: {self.tenant_id}")
         print("=" * 80)
 
+        client = AsyncMongoClient(self.mongodb_uri)
         try:
-            client = AsyncIOMotorClient(self.mongodb_uri)
-
             # List of databases to drop
             databases_to_drop = [
                 f"db_account_{self.tenant_id}",
@@ -74,8 +73,6 @@ class PerformanceTestDataCleanup:
                 else:
                     print(f"  - Database not found: {db_name}")
 
-            client.close()
-
             print("\n" + "=" * 80)
             print("✓ All test data cleaned up successfully!")
             print("=" * 80)
@@ -83,6 +80,8 @@ class PerformanceTestDataCleanup:
         except Exception as e:
             print(f"\n✗ Error during cleanup: {str(e)}")
             raise
+        finally:
+            await client.close()
 
 
 async def main():

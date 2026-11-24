@@ -9,7 +9,7 @@ within tenants.
 """
 
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import (
@@ -48,7 +48,7 @@ class TenantInfoRepository(AbstractRepository[TenantInfoDocument]):
     and deleting tenant records as well as managing store information within tenants.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, tenant_id: str) -> None:
+    def __init__(self, db: AsyncDatabase, tenant_id: str) -> None:
         """
         Initialize the tenant information repository
 

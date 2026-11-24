@@ -31,7 +31,7 @@ from httpx import AsyncClient, ASGITransport
 async def _clean_account_db(set_env_vars):
     """Drop the account test database once before any integration test runs.
 
-    motor's AsyncIOMotorClient is bound to the event loop that created it,
+    PyMongo's AsyncMongoClient is bound to the event loop that created it,
     and pytest-asyncio uses different loops for session- vs function-scoped
     fixtures. We close the session-loop client right after dropping so each
     test gets its own client in its own loop (see _reset_db_client_per_test).

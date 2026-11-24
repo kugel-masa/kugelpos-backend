@@ -5,7 +5,7 @@ Repository for the cart restore audit trail (issue #148)
 
 from typing import Optional
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from kugel_common.utils.misc import get_app_time_str
@@ -24,7 +24,7 @@ class CartRestoreLogRepository(AbstractRepository[CartRestoreLogDocument]):
     whether a failed audit write fails the operation.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, terminal_info: TerminalInfoDocument):
+    def __init__(self, db: AsyncDatabase, terminal_info: TerminalInfoDocument):
         """
         Args:
             db: MongoDB database connection instance (tenant database)

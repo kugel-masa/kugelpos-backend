@@ -2,7 +2,7 @@
 import pytest
 import pytest_asyncio
 import os
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 
 @pytest_asyncio.fixture()
@@ -158,6 +158,6 @@ async def setup_db(set_env_vars):
 
 
 @pytest.mark.asyncio
-async def test_setup_data(setup_db: AsyncIOMotorDatabase):
+async def test_setup_data(setup_db: AsyncDatabase):
     assert setup_db is not None
     print(f"Database: {setup_db.name}")

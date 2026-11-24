@@ -10,7 +10,7 @@ import os
 from httpx import AsyncClient
 from datetime import datetime, timedelta
 from kugel_common.utils.misc import get_app_time
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 # db_helper imported locally in functions to avoid connection reuse
 from kugel_common.models.documents.base_tranlog import BaseTransaction

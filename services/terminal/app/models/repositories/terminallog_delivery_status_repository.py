@@ -6,7 +6,7 @@ This module provides repository classes for managing terminal log delivery statu
 It handles storing, retrieving, and updating the delivery status of terminal logs.
 """
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
@@ -28,7 +28,7 @@ class TerminallogDeliveryStatusRepository(AbstractRepository[TerminallogDelivery
     for MongoDB operations related to terminal log delivery tracking.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, terminal_info: TerminalInfoDocument):
+    def __init__(self, db: AsyncDatabase, terminal_info: TerminalInfoDocument):
         """
         Initialize the repository
 

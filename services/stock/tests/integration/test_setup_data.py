@@ -5,11 +5,11 @@ Setup test data after cleaning
 import pytest
 import os
 from httpx import AsyncClient
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 
 @pytest.mark.asyncio
-async def test_setup_data(setup_db: AsyncIOMotorDatabase, http_client: AsyncClient):
+async def test_setup_data(setup_db: AsyncDatabase, http_client: AsyncClient):
     """Setup database and initial stock data for testing"""
     assert setup_db is not None
     print(f"Database: {setup_db.name}")

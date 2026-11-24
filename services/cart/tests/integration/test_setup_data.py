@@ -11,7 +11,7 @@ from kugel_common.utils.misc import get_app_time
 
 import pytest
 import pytest_asyncio
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from kugel_common.database import database as db_helper
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
@@ -36,7 +36,7 @@ async def setup_db(set_env_vars):
 
 
 @pytest.mark.asyncio
-async def test_setup_data(setup_db: AsyncIOMotorDatabase):
+async def test_setup_data(setup_db: AsyncDatabase):
 
     assert setup_db is not None
     print("database name: ", setup_db.name)

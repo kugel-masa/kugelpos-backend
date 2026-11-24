@@ -17,7 +17,7 @@ from httpx import AsyncClient, Timeout
 async def _setup_stock_db(set_env_vars):
     """Drop the test database once at session start, then close the
     session-loop MongoDB client so each test creates its own in its
-    own event loop (motor clients are loop-bound — see
+    own event loop (the clients are loop-bound — see
     _reset_db_client_per_test below).
     """
     from kugel_common.database import database as db_helper

@@ -54,7 +54,7 @@ def _upsert_collection(inserted: bool):
 
 
 def _make_mock_db():
-    """Create a MagicMock that looks like AsyncIOMotorDatabase."""
+    """Create a MagicMock that looks like AsyncDatabase."""
     return MagicMock()
 
 

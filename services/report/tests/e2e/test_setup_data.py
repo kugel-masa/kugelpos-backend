@@ -1,7 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 import pytest, os, asyncio
 import pytest_asyncio
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from httpx import AsyncClient
 from tests.log_maker import make_tran_log
 
@@ -45,7 +45,7 @@ async def setup_db(set_env_vars):
 
 
 @pytest.mark.asyncio
-async def test_setup_data(setup_db: AsyncIOMotorDatabase, http_client: AsyncClient):
+async def test_setup_data(setup_db: AsyncDatabase, http_client: AsyncClient):
     assert setup_db is not None
     print(f"Database: {setup_db.name}")
 

@@ -20,7 +20,7 @@ from jwt.exceptions import PyJWTError as JWTError
 from passlib.context import CryptContext
 from logging import getLogger
 from datetime import datetime, timedelta, timezone
-from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo.asynchronous.collection import AsyncCollection
 import random, string
 
 from kugel_common.database import database as db_helper
@@ -134,7 +134,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     return encoded_jwt
 
 
-async def get_user_collection(tenant_id: str) -> AsyncIOMotorCollection:
+async def get_user_collection(tenant_id: str) -> AsyncCollection:
     """
     Get the MongoDB collection for user accounts for a specific tenant
 
@@ -142,7 +142,7 @@ async def get_user_collection(tenant_id: str) -> AsyncIOMotorCollection:
         tenant_id: The tenant identifier
 
     Returns:
-        AsyncIOMotorCollection: MongoDB collection for user accounts
+        AsyncCollection: MongoDB collection for user accounts
     """
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
     return db.get_collection(settings.DB_COLLECTION_USER_ACCOUNTS)

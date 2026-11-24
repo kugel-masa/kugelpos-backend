@@ -60,7 +60,7 @@ def _make_terminal_info(**overrides) -> TerminalInfoDocument:
 
 
 def _make_mock_db():
-    """Return a MagicMock that behaves like AsyncIOMotorDatabase."""
+    """Return a MagicMock that behaves like AsyncDatabase."""
     db = MagicMock()
     db.get_collection = MagicMock(return_value=MagicMock())
     db.client = MagicMock()

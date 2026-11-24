@@ -3,7 +3,7 @@ from typing import Type
 from logging import getLogger
 from kugel_common.utils.log_utils import mask_loggable
 from kugel_common.utils.misc import get_app_time
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import CannotCreateException, DuplicateKeyException
@@ -23,7 +23,7 @@ class OpenCloseLogRepository(AbstractRepository[OpenCloseLog]):
     including creating and retrieving records of terminal business sessions.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, tenant_id: str) -> None:
+    def __init__(self, db: AsyncDatabase, tenant_id: str) -> None:
         """
         Initialize the open/close log repository
 

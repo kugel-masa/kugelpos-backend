@@ -1,14 +1,14 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.models.documents.stock_snapshot_document import StockSnapshotDocument
 from app.config.settings import settings
 
 
 class StockSnapshotRepository(AbstractRepository[StockSnapshotDocument]):
-    def __init__(self, database: AsyncIOMotorDatabase):
+    def __init__(self, database: AsyncDatabase):
         super().__init__(settings.DB_COLLECTION_NAME_STOCK_SNAPSHOT, StockSnapshotDocument, database)
 
     async def find_by_store_async(
@@ -110,7 +110,9 @@ class StockSnapshotRepository(AbstractRepository[StockSnapshotDocument]):
             await self.initialize()
 
         # Get existing indexes
-        indexes = await self.dbcollection.list_indexes().to_list(None)
+        # list_indexes() is a coroutine that returns the cursor
+        cursor = await self.dbcollection.list_indexes()
+        indexes = await cursor.to_list(None)
 
         # Check if TTL index already exists
         ttl_index_exists = False

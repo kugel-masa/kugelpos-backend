@@ -223,7 +223,7 @@ async def test_another_process_getting_there_first_is_not_a_failure(clean_log_re
     index; the loser's `drop_index` finds nothing left to drop. What matters is
     the state afterwards, so it is re-read rather than inferred from who raised.
 
-    The other process is simulated by a collection proxy: motor hands back a new
+    The other process is simulated by a collection proxy: the driver hands back a new
     object for every `db[name]`, so an attribute set on one of them is not the
     one the code under test uses.
     """

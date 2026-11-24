@@ -5,7 +5,7 @@ import asyncio
 import uuid
 import aiohttp
 import time
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config.settings import settings
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
@@ -157,7 +157,7 @@ class CartRepository(AbstractRepository[CartDocument]):
     base class: AbstractRepository
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, terminal_info: TerminalInfoDocument = None):
+    def __init__(self, db: AsyncDatabase, terminal_info: TerminalInfoDocument = None):
         """
         This is the constructor of the CartRepository class
         args:

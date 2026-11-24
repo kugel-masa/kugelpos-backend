@@ -3,7 +3,7 @@ import re
 from typing import Optional, Type
 from datetime import datetime
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import CannotCreateException, DocumentNotFoundException
@@ -46,12 +46,12 @@ class JournalRepository(AbstractRepository[JournalDocument]):
     open/close events.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, tenant_id: str):
+    def __init__(self, db: AsyncDatabase, tenant_id: str):
         """
         Initialize the journal repository.
 
         Args:
-            db: AsyncIOMotorDatabase instance for database operations
+            db: AsyncDatabase instance for database operations
             tenant_id: Identifier for the tenant
         """
         super().__init__(settings.DB_COLLECTION_NAME_JOURNAL, JournalDocument, db)
