@@ -295,6 +295,33 @@ class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
             raise UpdateNotWorkException(message, self.collection_name, terminal_id, logger)
         return result
 
+    async def close_terminal_info_async(self, terminal_id: str, terminal_info: TerminalInfoDocument) -> bool:
+        """
+        Write back a terminal being closed, only if it is still open (#343).
+
+        Two closes of one terminal can both pass the status check and both get a
+        settlement from report; only the first to write may close it. The other
+        finds the terminal no longer open and is refused as already closed.
+
+        Args:
+            terminal_id: The terminal ID to write
+            terminal_info: Terminal information document as modified by the close
+
+        Returns:
+            True if this call closed the terminal; False if it was no longer open
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        terminal_info.updated_at = get_app_time()
+        values = terminal_info.model_dump(exclude=set(CREDENTIAL_FIELDS))
+        values.pop("_id", None)
+        result = await self.dbcollection.update_one(
+            {"terminal_id": terminal_id, "status": TerminalStatus.Opened.value},
+            {"$set": values},
+            session=self.session,
+        )
+        return result.matched_count == 1
+
     async def delete_terminal_info_async(self, terminal_id: str) -> bool:
         """
         Delete a terminal information document

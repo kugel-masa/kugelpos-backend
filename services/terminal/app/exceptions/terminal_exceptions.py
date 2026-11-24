@@ -78,6 +78,24 @@ class TerminalOpenException(ServiceException):
         )
 
 
+class SettlementUnavailableException(ServiceException):
+    """
+    Report could not confirm the settlement at close (#343).
+
+    Nothing was written: the terminal stays open, and closing again is safe.
+    """
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            TerminalErrorCode.SETTLEMENT_UNAVAILABLE,
+            TerminalErrorMessage.get_message(TerminalErrorCode.SETTLEMENT_UNAVAILABLE),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
 class TerminalCloseException(ServiceException):
     """
     Exception raised when failing to close a terminal.

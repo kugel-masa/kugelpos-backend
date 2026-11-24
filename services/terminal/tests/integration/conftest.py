@@ -184,6 +184,15 @@ def mock_outbound_services():
             )
         )
 
+        # Report's settlement confirm and preview — fired by close and close-preview
+        # (#343). Answers a provisional settlement with what the request carried.
+        respx_mock.post(
+            re.compile(rf"{re.escape(settings.BASE_URL_REPORT)}/internal/tenants/[^/]+/stores/[^/]+/terminals/\d+/settlements")
+        ).mock(side_effect=_settlement_answer)
+        respx_mock.get(
+            re.compile(rf"{re.escape(settings.BASE_URL_REPORT)}/internal/tenants/[^/]+/stores/[^/]+/terminals/\d+/settlement-preview")
+        ).mock(side_effect=_settlement_answer)
+
         # Terminal self-call store lookup — fired by terminal_service.open()
         # which uses StoreInfoWebRepository -> get_service_client("terminal")
         # to look up the store name. The in-process app on http://test/ can't
@@ -246,3 +255,29 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if str(item.fspath).startswith(this_dir):
             item.add_marker(pytest.mark.integration)
+
+
+def _settlement_answer(request):
+    """A report settlement echoing the close request (#343)."""
+    import json
+    import uuid
+
+    body = json.loads(request.content) if request.content else dict(request.url.params)
+    physical = body.get("physicalAmount", body.get("physical_amount"))
+    physical = float(physical) if physical is not None else None
+    cash_count = body.get("cashLogCount", body.get("cash_log_count"))
+    data = {
+        "settlementId": str(uuid.uuid4()),
+        "state": "provisional",
+        "created": True,
+        "settled": False,
+        "physicalAmount": physical,
+        "expectedCash": {"cashSales": 0.0, "cashIn": {"amount": 0.0, "count": 0}, "cashOut": {"amount": 0.0, "count": 0}, "total": 0.0},
+        "difference": None if physical is None else physical,
+        "includedCount": 0,
+        "missingCount": 0,
+        "missingRanges": [],
+        "cashLogCount": int(cash_count) if cash_count is not None else 0,
+        "missingCashLogCount": 0,
+    }
+    return httpx.Response(200, json={"success": True, "code": 200, "message": "ok", "data": data})

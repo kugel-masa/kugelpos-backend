@@ -36,7 +36,6 @@ from app.services.terminal_service import TerminalService
 from app.models.repositories.terminal_info_repository import TerminalInfoRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
-from app.models.repositories.tran_log_web_repository import TranlogWebRepository
 from app.models.repositories.terminallog_delivery_status_repository import TerminallogDeliveryStatusRepository
 from app.exceptions import NotFoundException
 
@@ -102,7 +101,6 @@ async def get_terminal_service_async(
     )
     cash_in_out_log_repo = CashInOutLogRepository(db=db, tenant_id=tenant_id)
     open_close_log_repo = OpenCloseLogRepository(db=db, tenant_id=tenant_id)
-    tran_log_repo = TranlogWebRepository(tenant_id=tenant_id, terminal_info=terminal_info)
     terminal_log_delivery_status_repo = TerminallogDeliveryStatusRepository(
         db=db_common, terminal_info=terminal_info
     )  # use common db
@@ -114,7 +112,6 @@ async def get_terminal_service_async(
         cash_in_out_log_repo=cash_in_out_log_repo,
         open_close_log_repo=open_close_log_repo,
         terminal_id=terminal_id,
-        tran_log_repo=tran_log_repo,
         terminal_log_delivery_status_repo=terminal_log_delivery_status_repo,
     )
 

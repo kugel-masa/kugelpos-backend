@@ -127,4 +127,9 @@ class SchemasTransformer:
             terminal_info=self.transform_terminal(open_close_log.terminal_info),
             receipt_text=open_close_log.receipt_text,
             journal_text=open_close_log.journal_text,
+            expected_cash_total=open_close_log.expected_cash,
+            difference=open_close_log.difference,
+            missing_count=open_close_log.missing_count,
+            missing_cash_log_count=open_close_log.missing_cash_log_count,
+            settlement_id=open_close_log.settlement_id,
         )

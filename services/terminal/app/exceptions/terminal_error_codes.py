@@ -36,6 +36,7 @@ class TerminalErrorCode:
     TERMINAL_NOT_SIGNED_IN = "406013"  # Terminal is not signed in
     TERMINAL_ALREADY_SIGNED_IN = "406014"  # Terminal is already signed in
     TERMINAL_SIGNED_OUT = "406015"  # Terminal is signed out
+    SETTLEMENT_UNAVAILABLE = "406016"  # Report could not confirm the settlement; the terminal stays open (#343)
 
     # Cash handling related (4061xx)
     CASH_IN_OUT_ERROR = "406101"  # Cash in/out general error
@@ -102,6 +103,7 @@ class TerminalErrorMessage:
             TerminalErrorCode.TERMINAL_NOT_SIGNED_IN: "端末にサインインしていません",
             TerminalErrorCode.TERMINAL_ALREADY_SIGNED_IN: "すでにサインインしています",
             TerminalErrorCode.TERMINAL_SIGNED_OUT: "サインアウトされています",
+            TerminalErrorCode.SETTLEMENT_UNAVAILABLE: "精算を確定できませんでした。しばらくしてからもう一度精算してください",
             # Cash handling related
             TerminalErrorCode.CASH_IN_OUT_ERROR: "入出金処理に失敗しました",
             TerminalErrorCode.CASH_AMOUNT_INVALID: "入力金額が不正です",
@@ -150,6 +152,7 @@ class TerminalErrorMessage:
             TerminalErrorCode.TERMINAL_NOT_SIGNED_IN: "Terminal is not signed in",
             TerminalErrorCode.TERMINAL_ALREADY_SIGNED_IN: "Already signed in",
             TerminalErrorCode.TERMINAL_SIGNED_OUT: "Terminal is signed out",
+            TerminalErrorCode.SETTLEMENT_UNAVAILABLE: "The settlement could not be confirmed; try closing again later",
             # Cash handling related
             TerminalErrorCode.CASH_IN_OUT_ERROR: "Cash in/out operation failed",
             TerminalErrorCode.CASH_AMOUNT_INVALID: "Invalid amount entered",

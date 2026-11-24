@@ -56,7 +56,7 @@ def make_service(terminal_id="TID-001", **repo_overrides):
         "store_info_repo": AsyncMock(),
         "cash_in_out_log_repo": AsyncMock(),
         "open_close_log_repo": AsyncMock(),
-        "tran_log_repo": AsyncMock(),
+        "settlement_repo": AsyncMock(),
         "terminal_log_delivery_status_repo": AsyncMock(),
     }
     defaults.update(repo_overrides)
@@ -486,11 +486,7 @@ class TestTerminalServiceCloseTerminal:
         cash_paginated.data = []
         repos["cash_in_out_log_repo"].get_cash_in_out_logs.return_value = cash_paginated
 
-        # tran_log_repo paginated result
-        tran_paginated = MagicMock()
-        tran_paginated.metadata.total = 0
-        tran_paginated.data = []
-        repos["tran_log_repo"].get_tran_log_list_async.return_value = tran_paginated
+        repos["settlement_repo"].confirm_async.return_value = SETTLEMENT
 
         _setup_transaction_mock(repos["open_close_log_repo"])
 
@@ -549,10 +545,7 @@ class TestTerminalServiceCloseTerminal:
         cash_paginated.data = []
         repos["cash_in_out_log_repo"].get_cash_in_out_logs.return_value = cash_paginated
 
-        tran_paginated = MagicMock()
-        tran_paginated.metadata.total = 0
-        tran_paginated.data = []
-        repos["tran_log_repo"].get_tran_log_list_async.return_value = tran_paginated
+        repos["settlement_repo"].confirm_async.return_value = SETTLEMENT
 
         _setup_transaction_mock(repos["open_close_log_repo"])
         repos["open_close_log_repo"].create_open_close_log.side_effect = RuntimeError("DB error")
@@ -566,46 +559,103 @@ class TestTerminalServiceCloseTerminal:
 
     @pytest.mark.asyncio
     @patch("app.services.terminal_service.OpenCloseReceiptData")
-    async def test_close_terminal_with_transactions(self, mock_oc_receipt_cls):
-        """Close with existing transactions and cash logs."""
-        svc, repos = make_service()
-        terminal = _make_opened_terminal()
-        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = terminal
+    async def test_close_records_the_settlement_report_confirmed(self, mock_oc_receipt_cls):
+        """The close log carries report's settlement; cart is not asked (#343)."""
+        svc, repos = _close_ready(mock_oc_receipt_cls, cash_logs=3)
 
-        store = MagicMock()
-        store.store_name = "Test Store"
-        repos["store_info_repo"].get_store_info_async.return_value = store
+        result = await svc.close_terminal_async(physical_amount=9500, seq=5)
 
-        inst = MagicMock()
-        inst.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
-        mock_oc_receipt_cls.return_value = inst
-
-        # cash logs exist
-        cash_log_entry = MagicMock()
-        cash_log_entry.generate_date_time = "2026-03-20T10:00:00"
-        cash_paginated = MagicMock()
-        cash_paginated.metadata.total = 3
-        cash_paginated.data = [cash_log_entry]
-        repos["cash_in_out_log_repo"].get_cash_in_out_logs.return_value = cash_paginated
-
-        # tran logs exist
-        tran_entry = MagicMock()
-        tran_entry.transaction_no = 5
-        tran_paginated = MagicMock()
-        tran_paginated.metadata.total = 5
-        tran_paginated.data = [tran_entry]
-        repos["tran_log_repo"].get_tran_log_list_async.return_value = tran_paginated
-
-        _setup_transaction_mock(repos["open_close_log_repo"])
-
-        svc.pubsub_manager = AsyncMock()
-        svc.pubsub_manager.publish_message_async.return_value = (True, None)
-
-        result = await svc.close_terminal_async(physical_amount=9500)
-
+        sent = repos["settlement_repo"].confirm_async.call_args.args[0]
+        assert sent["seq"] == 5
+        assert sent["cashLogCount"] == 3
+        assert sent["physicalAmount"] == 9500
+        assert sent["businessCounter"] == repos["terminal"].business_counter
         assert result.cart_transaction_count == 5
         assert result.cart_transaction_last_no == 5
         assert result.cash_in_out_count == 3
+        assert result.settlement_id == "sid-1"
+        assert result.expected_cash == 10000
+        assert result.difference == -500
+        assert result.missing_count == 1
+        assert result.missing_cash_log_count == 0
+        assert repos["terminal"].physical_amount == 9500
+        # Cash logs are counted by the session's business_counter
+        cash_filter = repos["cash_in_out_log_repo"].get_cash_in_out_logs.call_args.kwargs["filter"]
+        assert cash_filter["business_counter"] == repos["terminal"].business_counter
+        assert "open_counter" not in cash_filter
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.OpenCloseReceiptData")
+    async def test_close_without_seq_still_works(self, mock_oc_receipt_cls):
+        """An existing client that does not send seq (FR-013)."""
+        svc, repos = _close_ready(mock_oc_receipt_cls)
+
+        result = await svc.close_terminal_async(physical_amount=None)
+
+        assert repos["settlement_repo"].confirm_async.call_args.args[0]["seq"] is None
+        assert result.cart_transaction_count is None
+        assert result.cart_transaction_last_no is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.OpenCloseReceiptData")
+    async def test_report_unavailable_writes_nothing(self, mock_oc_receipt_cls):
+        from app.exceptions import SettlementUnavailableException
+
+        svc, repos = _close_ready(mock_oc_receipt_cls)
+        repos["settlement_repo"].confirm_async.side_effect = SettlementUnavailableException("down")
+
+        with pytest.raises(SettlementUnavailableException):
+            await svc.close_terminal_async(physical_amount=9500)
+
+        repos["terminal_info_repo"].close_terminal_info_async.assert_not_called()
+        repos["open_close_log_repo"].create_open_close_log.assert_not_called()
+        repos["open_close_log_repo"].start_transaction.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("app.services.terminal_service.OpenCloseReceiptData")
+    async def test_a_close_that_lost_the_race_is_refused_as_already_closed(self, mock_oc_receipt_cls):
+        svc, repos = _close_ready(mock_oc_receipt_cls)
+        repos["terminal_info_repo"].close_terminal_info_async.return_value = False
+
+        with pytest.raises(TerminalStatusException):
+            await svc.close_terminal_async(physical_amount=9500)
+
+        repos["open_close_log_repo"].create_open_close_log.assert_not_called()
+        repos["open_close_log_repo"].abort_transaction.assert_called_once()
+        svc.pubsub_manager.publish_message_async.assert_not_called()
+
+
+SETTLEMENT = {
+    "settlementId": "sid-1",
+    "physicalAmount": 9500,
+    "expectedCash": {"total": 10000},
+    "difference": -500,
+    "missingCount": 1,
+    "missingCashLogCount": 0,
+}
+
+
+def _close_ready(mock_oc_receipt_cls, cash_logs: int = 0):
+    svc, repos = make_service()
+    terminal = _make_opened_terminal()
+    repos["terminal"] = terminal
+    repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = terminal
+    repos["terminal_info_repo"].close_terminal_info_async.return_value = True
+    store = MagicMock()
+    store.store_name = "Test Store"
+    repos["store_info_repo"].get_store_info_async.return_value = store
+    inst = MagicMock()
+    inst.make_receipt_data.return_value = MagicMock(receipt_text="R", journal_text="J")
+    mock_oc_receipt_cls.return_value = inst
+    cash_paginated = MagicMock()
+    cash_paginated.metadata.total = cash_logs
+    cash_paginated.data = [MagicMock(generate_date_time="2026-03-20T10:00:00")] if cash_logs else []
+    repos["cash_in_out_log_repo"].get_cash_in_out_logs.return_value = cash_paginated
+    repos["settlement_repo"].confirm_async.return_value = dict(SETTLEMENT)
+    _setup_transaction_mock(repos["open_close_log_repo"])
+    svc.pubsub_manager = AsyncMock()
+    svc.pubsub_manager.publish_message_async.return_value = (True, None)
+    return svc, repos
 
 
 # ---------------------------------------------------------------------------

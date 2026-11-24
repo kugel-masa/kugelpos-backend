@@ -192,8 +192,13 @@ async def test_store_lookup_carries_a_terminal_token_not_the_key(http_client, ad
 
 
 @pytest.mark.asyncio
-async def test_transaction_list_carries_a_terminal_token_not_the_key(http_client, admin_header, mock_outbound_services):
-    """Close reads the terminal's transactions from cart."""
+async def test_settlement_carries_a_service_token_not_the_key(http_client, admin_header, mock_outbound_services):
+    """Close asks report to confirm the settlement through its internal endpoint
+    (#343), with a service-account token. It no longer reads cart's transactions."""
+    import os
+
+    from kugel_common.security import verify_token
+
     terminal_id, api_key = await _create_terminal(http_client, admin_header)
 
     await _post_with_key(http_client, terminal_id, api_key, "sign-in", {"staff_id": "S001"})
@@ -201,7 +206,15 @@ async def test_transaction_list_carries_a_terminal_token_not_the_key(http_client
     mock_outbound_services.calls.reset()
     await _post_with_key(http_client, terminal_id, api_key, "close", {"physical_amount": 10000.0})
 
-    _assert_carries_terminal_token(mock_outbound_services.calls, "/transactions", terminal_id, api_key)
+    calls = [str(c.request.url) for c in mock_outbound_services.calls]
+    assert not any("/transactions" in url for url in calls), calls
+    matching = [c for c in mock_outbound_services.calls if "/settlements" in str(c.request.url)]
+    assert matching, "close did not ask report to settle"
+    headers = matching[-1].request.headers
+    assert "x-api-key" not in headers
+    claims = verify_token(headers["authorization"].partition(" ")[2])
+    assert claims["is_service_account"] is True
+    assert claims["tenant_id"] == os.environ.get("TENANT_ID")
 
 
 @pytest.mark.asyncio

@@ -39,6 +39,7 @@ from .terminal_exceptions import (
     TerminalStatusException,
     TerminalOpenException,
     TerminalCloseException,
+    SettlementUnavailableException,
     TerminalAlreadyOpenedException,
     TerminalAlreadyClosedException,
     TerminalBusyException,

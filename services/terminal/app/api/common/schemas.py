@@ -1,6 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from typing import Optional, TypeVar
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from kugel_common.utils.misc import to_lower_camel
 
@@ -242,6 +242,10 @@ class BaseTerminalCloseRequest(BaseSchemmaModel):
     """
 
     physical_amount: Optional[float] = None
+    # The last transaction number this terminal issued in the session, on the
+    # series a carried cart numbers from 1 (#343). Optional: a client that does
+    # not send it still closes; report then counts only the gaps it can see.
+    seq: Optional[int] = Field(default=None, ge=0)
 
 
 class BaseTerminalDeleteResponse(BaseSchemmaModel):
@@ -317,3 +321,9 @@ class BaseTerminalCloseResponse(BaseTerminalOpenResponse):
     """
 
     physical_amount: Optional[float] = None
+    # The settlement report confirmed (#343)
+    expected_cash_total: Optional[float] = None
+    difference: Optional[float] = None  # Counted minus expected; null when not counted
+    missing_count: Optional[int] = None  # Transactions that had not reached report
+    missing_cash_log_count: Optional[int] = None  # Cash logs that had not reached report
+    settlement_id: Optional[str] = None

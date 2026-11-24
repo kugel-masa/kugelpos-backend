@@ -160,6 +160,20 @@ class OpenCloseReceiptData(AbstractReceiptData[OpenCloseLog]):
         amount_str = self.comma(pysical_amount) + "円"
         page.lines.append(self.line_split("ドロア内現金", amount_str))
 
+        # The settlement report confirmed (#343)
+        # あるべき現金         99,999,999円
+        # 過不足                  -99,999円   (only when counted)
+        # 未着の取引                  N件   (only when N > 0)
+        # 未着の入出金                N件   (only when N > 0)
+        if open_close_log.expected_cash is not None:
+            page.lines.append(self.line_split("あるべき現金", self.comma(open_close_log.expected_cash) + "円"))
+        if open_close_log.difference is not None:
+            page.lines.append(self.line_split("過不足", self.comma(open_close_log.difference) + "円"))
+        if open_close_log.missing_count:
+            page.lines.append(self.line_split("未着の取引", f"{open_close_log.missing_count}件"))
+        if open_close_log.missing_cash_log_count:
+            page.lines.append(self.line_split("未着の入出金", f"{open_close_log.missing_cash_log_count}件"))
+
     def make_receipt_footer(self, open_close_log: OpenCloseLog, page: Page):
         """
         Generate the footer section of the open/close receipt
