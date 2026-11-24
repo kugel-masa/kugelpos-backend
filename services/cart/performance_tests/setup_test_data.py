@@ -272,7 +272,8 @@ class MultiTerminalPerformanceTestDataSetup:
                 response = await client.post(
                     f"{self.base_url_terminal}/terminals/{terminal_id}/sign-in",
                     headers=headers,
-                    json={"staff_id": "staff001"}
+                    # The staff carries a PIN, so sign-in has to present it (#323)
+                    json={"staff_id": "staff001", "pin": "1234"}
                 )
 
                 if response.status_code not in [201, 200]:
