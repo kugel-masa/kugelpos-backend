@@ -34,8 +34,6 @@ it was charged 200 yen.
 Computed in Decimal and floored at the end: taking the ratio in floating point
 first can lose a yen (65,995 with tax, 61,106 without, all cash:
 ``65995 * (61106 / 65995)`` is 61105.99999999999).
-
-Ported from the stpos fork (2d74ee7e8).
 """
 
 from collections.abc import Iterable

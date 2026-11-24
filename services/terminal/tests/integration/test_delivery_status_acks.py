@@ -11,8 +11,8 @@ journal and report each acknowledge a terminal log. Each ACK updates its service
 reads the record back, and writes the overall status it derives. Should one ACK
 stall between its read and its write while the other completes, the older
 decision lands last and the overall status is left behind with every service
-acknowledged. The republish job heals such a record before any warning, as the
-stpos fork does, instead of reporting a delivered log as not acknowledged.
+acknowledged. The republish job heals such a record before any warning,
+instead of reporting a delivered log as not acknowledged.
 """
 
 import asyncio

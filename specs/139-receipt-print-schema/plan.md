@@ -2,7 +2,7 @@
 
 **Branch**: `139-receipt-print-schema` | **Date**: 2026-06-07 | **Spec**: [spec.md](./spec.md)
 **Related Issue**: [#139](https://github.com/kugel-masa/kugelpos-backend/issues/139)
-**派生元**: stpos-backend `316-device-print-schema`
+**派生元**: 流用元の仕様 `device-print-schema`
 
 ## Summary
 

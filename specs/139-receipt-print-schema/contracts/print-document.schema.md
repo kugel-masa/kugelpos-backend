@@ -2,7 +2,7 @@
 
 - **ステータス**: ドラフト（#139）
 - **対象**: backend（kugel_common 経由で cart/terminal/report）が生成し、消費者（frontend/device）が描画/転送する印字データ
-- **関連**: [spec.md](../spec.md)（#139）、流用元 stpos-backend #316 contracts
+- **関連**: [spec.md](../spec.md)（#139）、流用元の仕様の contracts
 - **出力形式**: camelCase JSON（消費者向け契約）。pydantic は `model_dump(by_alias=True, exclude_none=True)` で出力
 
 > **前提**:

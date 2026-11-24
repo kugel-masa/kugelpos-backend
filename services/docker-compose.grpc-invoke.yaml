@@ -2,8 +2,8 @@
 #
 # Off by default: in-store deployments call master-data directly, so a daprd
 # outage cannot stop a sale (issue #158). This overlay exists for deployments
-# that route service calls through Dapr, such as the stpos fork's cloud side
-# (its #951), and for comparing the two routes on the same base:
+# that route service calls through Dapr, and for comparing the two routes on
+# the same base:
 #
 #   direct:      docker compose -f docker-compose.yaml up -d
 #   via Dapr:    docker compose -f docker-compose.yaml -f docker-compose.grpc-invoke.yaml up -d

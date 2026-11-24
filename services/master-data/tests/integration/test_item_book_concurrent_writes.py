@@ -5,7 +5,7 @@ Adding, updating and deleting a category, tab or button used to read the whole
 book, change it in memory and replace it. Whatever another request wrote between
 the read and the replace was lost, and the losing request still answered 201 /
 200. Six buttons posted in parallel to one tab all returned 201 and left one to
-three behind (stpos fork, 69bd0bcaf).
+three behind.
 
 Calling the endpoints one after another passes on the old code too, so every test
 here runs its writes concurrently with asyncio.gather. Each request gets its own

@@ -488,7 +488,7 @@ because `tests/conftest.py` loads it without `configure_logging`. Rotated
 segments are named `app.1.log`, not `app.log.1`, so they still match `*.log`.
 
 The file handlers are `concurrent_log_handler.ConcurrentRotatingFileHandler`
-(the `concurrent-log-handler` package, as in the stpos fork), because the
+(the `concurrent-log-handler` package), because the
 `UVICORN_WORKERS` processes each hold a handler on the same files. With the
 standard `RotatingFileHandler` every worker rotates on its own, so segments are
 cut before they are full and a rotation can drop a segment outright. The
