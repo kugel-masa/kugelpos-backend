@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.  # report_service.py
-from typing import Any
+from typing import Any, Optional
 from collections import defaultdict
 from logging import getLogger
 
@@ -18,6 +18,7 @@ from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepos
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
 from app.models.repositories.settlement_record_repository import SettlementRecordRepository
 from app.exceptions.report_exceptions import SessionNotSettledException
+from app.services.report_merge import MERGERS
 from app.services.report_plugin_manager import ReportPluginManager
 from app.exceptions import (
     ReportNotFoundException,
@@ -471,18 +472,26 @@ class ReportService:
             )
 
         records = sorted(records, key=lambda r: r.settled_at or "")
-        frozen = await self.settlement_repository.get_daily_reports_async([r.settlement_id for r in records], report_type)
-        absent = [r.settlement_id for r in records if r.settlement_id not in frozen]
-        if absent:
-            raise ServiceException(f"Frozen {report_type} reports missing for settlements {absent}", logger)
-        reports = [frozen[r.settlement_id] for r in records]
+        # Folded a batch at a time (oldest first, so the newest names win): a
+        # month of a large store's item reports never sits in memory at once
+        merge = MERGERS[report_type]
+        folded: Optional[dict] = None
+        count = 0
+        try:
+            async for batch in self.settlement_repository.iter_daily_reports_async(
+                [r.settlement_id for r in records], report_type
+            ):
+                count += len(batch)
+                folded = batch[0] if folded is None and len(batch) == 1 else merge(([folded] if folded else []) + batch)
+        except LookupError as e:
+            raise ServiceException(str(e), logger) from e
 
         is_range = bool(business_date_from and business_date_to)
-        if len(reports) == 1 and terminal_no is not None and not is_range:
-            document = maker.from_saved(reports[0])
+        if count == 1 and terminal_no is not None and not is_range:
+            document = maker.from_saved(folded)
         else:
             document = maker.merge(
-                reports,
+                [folded],
                 terminal_no=terminal_no,
                 business_date=None if is_range else business_date,
                 business_date_from=business_date_from,

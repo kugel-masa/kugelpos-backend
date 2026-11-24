@@ -206,3 +206,61 @@ async def test_plugins_build_and_print_merged_documents():
     assert doc.terminal_no is None
     assert doc.receipt_text and doc.receipt_text != "old"
     assert saved.receipt_text == "old"
+
+
+def _session_reports(n):
+    """n sessions' reports of every type, with rows that overlap and differ."""
+    def item_category(code, k):
+        items = [_row(f"I{j}", 100 * j + k, j, 1, item_code=f"I{j}", item_name=f"Item {j} v{k}") for j in range(1, 3 + k % 3)]
+        return {
+            "category_code": code, "category_name": f"{code} v{k}", "items": items,
+            "category_total_gross_amount": sum(i["gross_amount"] for i in items), "category_total_discount_amount": 0,
+            "category_total_net_amount": sum(i["net_amount"] for i in items),
+            "category_total_quantity": sum(i["quantity"] for i in items), "category_total_discount_quantity": 0,
+            "category_total_transaction_count": len(items),
+        }
+
+    reports = {t: [] for t in ("sales", "category", "item", "payment", "promotion")}
+    for k in range(n):
+        counted = None if k == 3 else 1000 + k
+        reports["sales"].append(_sales(
+            1 + k % 2, 1000 + 10 * k,
+            [{"payment_code": c, "payment_name": f"{c} v{k}", "amount": 100 + k, "count": 1,
+              "variants": [{"variant_code": f"V{k % 2}", "amount": 100 + k, "count": 1}]} for c in ("01", "1" + str(k % 3))],
+            _cash(1000 + k, counted, cin=(k, 1), cout=(-k, 1)),
+            [{"tax_name": "10%", "tax_type": None, "tax_amount": k, "target_amount": 10 * k, "target_quantity": 1}],
+            business_counter=k,
+        ))
+        rows = [_row(c, 10 * k + 1, 1, 1, category_code=c, category_name=f"{c} v{k}") for c in ("C1", f"C{2 + k % 3}")]
+        reports["category"].append({**HEADER, "report_type": "category", "categories": rows, **_totals(rows)})
+        cats = [item_category("C1", k), item_category(f"C{2 + k % 2}", k)]
+        all_items = [i for c in cats for i in c["items"]]
+        reports["item"].append({**HEADER, "report_type": "item", "categories": cats, **_totals(all_items)})
+        pay = [{"payment_code": c, "payment_name": c, "amount": 100 * (k + 1), "count": 1, "ratio": 50.0,
+                "variants": [{"variant_code": "V", "amount": 100 * (k + 1), "count": 1}]} for c in ("01", f"1{k % 2}")]
+        reports["payment"].append({**HEADER, "report_type": "payment", "payment_summary": pay,
+                                   "total": {"amount": 200 * (k + 1), "count": 2}})
+        promos = [{"promotion_code": f"P{j}", "promotion_type": "category", "gross_amount": 1000, "discount_amount": 10 * j + k,
+                   "net_amount": 1000 - 10 * j - k, "quantity": 1, "transaction_count": 1} for j in range(1, 2 + k % 3)]
+        reports["promotion"].append({**HEADER, "report_type": "promotion", "promotions": promos,
+                                     "total_gross_amount": 1000 * len(promos), "total_discount_amount": sum(p["discount_amount"] for p in promos),
+                                     "total_net_amount": 0, "total_quantity": len(promos), "total_transaction_count": len(promos)})
+    return reports
+
+
+@pytest.mark.parametrize("report_type", ["sales", "category", "item", "payment", "promotion"])
+@pytest.mark.parametrize("batch_size", [1, 2, 3])
+def test_folding_in_batches_is_merging_all_at_once(report_type, batch_size):
+    """The daily path folds the frozen reports a batch at a time (memory); the
+    result must be exactly the merge of all of them."""
+    from app.services.report_merge import MERGERS
+
+    reports = _session_reports(7)[report_type]
+    merge = MERGERS[report_type]
+
+    folded = None
+    for start in range(0, len(reports), batch_size):
+        batch = reports[start : start + batch_size]
+        folded = merge(([folded] if folded else []) + batch)
+
+    assert folded == merge(reports)

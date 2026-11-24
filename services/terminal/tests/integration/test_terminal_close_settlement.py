@@ -170,3 +170,23 @@ async def test_close_preview_with_report_down_is_503(http_client, admin_header, 
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json()["userError"]["code"] == "406016"
+
+
+@pytest.mark.asyncio
+async def test_an_open_terminal_cannot_be_deleted_until_closed(http_client, admin_header, mock_outbound_services):
+    """Its session would never be settled and would hold back every daily report
+    covering it. Closed first - here with a user token, as for a broken device."""
+    terminal_id, _ = await _open_terminal(http_client, admin_header)
+
+    refused = await http_client.delete(f"/api/v1/terminals/{terminal_id}", headers=admin_header)
+
+    assert refused.status_code == status.HTTP_400_BAD_REQUEST, refused.text
+    assert refused.json()["userError"]["code"] == "406003"
+    assert await _status(http_client, admin_header, terminal_id) == "Opened"
+
+    closed = await http_client.post(
+        f"/api/v1/terminals/{terminal_id}/close", json={"physicalAmount": 1.0}, headers=admin_header
+    )
+    assert closed.status_code == status.HTTP_200_OK, closed.text
+    deleted = await http_client.delete(f"/api/v1/terminals/{terminal_id}", headers=admin_header)
+    assert deleted.status_code == status.HTTP_200_OK, deleted.text

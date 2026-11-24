@@ -16,11 +16,6 @@ from kugel_common.models.documents.base_document_model import BaseDocumentModel
 STATE_PROVISIONAL = "provisional"
 STATE_FINAL = "final"
 
-# Who settled the session: its terminal at close, or back office for a session
-# whose terminal will never close it (deleted while open, offline...)
-SETTLED_AT_CLOSE = "close"
-SETTLED_BY_ADMIN = "admin"
-
 DECLARED_BY_POS = "pos"
 DECLARED_NONE = "none"
 
@@ -57,10 +52,7 @@ class SettlementRecordDocument(AbstractDocument):
     state: str = STATE_PROVISIONAL
     settlement_id: str
 
-    settled_kind: str = SETTLED_AT_CLOSE
     settled_by: Optional[str] = None
-    # Why back office settled it (settled_kind == "admin")
-    admin_reason: Optional[str] = None
     settled_at: str
     recorded_at: str
     finalized_at: Optional[str] = None

@@ -25,6 +25,19 @@ from app.exceptions import (
 from app.exceptions.report_exceptions import SessionNotSettledException
 
 
+
+def _batches(*batches):
+    """A stand-in for SettlementRecordRepository.iter_daily_reports_async."""
+
+    def iterate(settlement_ids, report_type):
+        async def gen():
+            for batch in batches:
+                yield batch
+
+        return gen()
+
+    return iterate
+
 def make_service(report_makers=None):
     """全リポジトリをモックした ReportService を作成。
     ReportPluginManager.load_plugins をパッチして外部ファイル読み込みを回避。
@@ -170,15 +183,17 @@ class TestGetReportForStore:
             {"_id": {"terminal_no": 2, "business_counter": 7}, "business_date": "20240101", "open_counter": 1},
         ]
         repos["settlement"].find_final_async.return_value = records
-        repos["settlement"].get_daily_reports_async.return_value = {"s1": {"a": 1}, "s2": {"b": 2}}
+        repos["settlement"].iter_daily_reports_async = _batches([{"a": 1}], [{"b": 2}])
 
-        result = await svc.get_report_for_store_async(
-            store_code="S001", report_scope="daily", report_type="sales",
-            business_date_from="20240101", business_date_to="20240131",
-        )
+        with patch("app.services.report_service.MERGERS", {"sales": lambda reports: {"folded": reports}}):
+            result = await svc.get_report_for_store_async(
+                store_code="S001", report_scope="daily", report_type="sales",
+                business_date_from="20240101", business_date_to="20240131",
+            )
 
         assert result is merged
-        assert maker.merge.call_args.args[0] == [{"a": 1}, {"b": 2}]
+        # Folded a batch at a time, oldest settlement first
+        assert maker.merge.call_args.args[0] == [{"folded": [{"a": 1}, {"b": 2}]}]
         assert maker.merge.call_args.kwargs["terminal_no"] is None
         assert merged.missing_count == 1
         assert merged.missing_ranges == [{"terminal_no": 2, "business_date": records[1].business_date, "business_counter": 7, "first": 9, "last": 9}]
@@ -292,7 +307,7 @@ class TestGetReportForTerminal:
         repos["settlement"].find_final_async.return_value = [
             MagicMock(terminal_no=1, business_counter=5, settlement_id="s1", settled_at="t", missing_count=0, missing_ranges=[])
         ]
-        repos["settlement"].get_daily_reports_async.return_value = {"s1": {"x": 1}}
+        repos["settlement"].iter_daily_reports_async = _batches([{"x": 1}])
 
         result = await svc.get_report_for_terminal_async(
             store_code="S001", terminal_no=1, report_scope="daily", report_type="sales",

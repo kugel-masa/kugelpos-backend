@@ -213,9 +213,21 @@ class TerminalService:
         """
         Delete a terminal from the system
 
+        An open terminal is refused (#343): its session would never be closed,
+        so it would never be settled, and every daily report covering it would
+        be refused. Close it first - with the terminal's API key or, for a
+        broken device, a user token.
+
         Returns:
             bool: True if deletion was successful
+
+        Raises:
+            TerminalStatusException: The terminal is open
         """
+        terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
+        if terminal is not None and terminal.status == TerminalStatus.Opened.value:
+            message = f"Cannot delete an open terminal; close it first: {self.terminal_id}"
+            raise TerminalStatusException(message=message, logger=logger)
         result = await self.terminal_info_repo.delete_terminal_info_async(self.terminal_id)
         return result
 

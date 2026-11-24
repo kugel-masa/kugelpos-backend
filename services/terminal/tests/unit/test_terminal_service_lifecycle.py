@@ -182,6 +182,26 @@ class TestTerminalServiceDelete:
 
         assert result is True
 
+    @pytest.mark.asyncio
+    async def test_an_open_terminal_is_not_deleted(self):
+        """#343: its session could never be settled and would hold back the daily reports."""
+        svc, repos = make_service()
+        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = _make_opened_terminal()
+
+        with pytest.raises(TerminalStatusException):
+            await svc.delete_terminal_async()
+
+        repos["terminal_info_repo"].delete_terminal_info_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_value", [TerminalStatus.Idle.value, TerminalStatus.Closed.value])
+    async def test_a_terminal_not_open_is_deleted(self, status_value):
+        svc, repos = make_service()
+        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = make_terminal(status=status_value)
+        repos["terminal_info_repo"].delete_terminal_info_async.return_value = True
+
+        assert await svc.delete_terminal_async() is True
+
 
 # ---------------------------------------------------------------------------
 # TerminalService.update_terminal_description_async

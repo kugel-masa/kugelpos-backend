@@ -19,11 +19,10 @@ import bson
 
 from kugel_common.utils.misc import get_app_time, get_app_time_str
 
-from app.exceptions.report_exceptions import SettlementAggregationException, SettlementNotFoundException
+from app.exceptions.report_exceptions import SettlementAggregationException
 from app.models.documents.settlement_record_document import (
     DECLARED_BY_POS,
     DECLARED_NONE,
-    SETTLED_BY_ADMIN,
     STATE_FINAL,
     SettlementRecordDocument,
 )
@@ -120,79 +119,6 @@ class SettlementService:
             f"missing_cash_logs={stored.missing_cash_log_count}"
         )
         return stored, created
-
-    async def settle_by_admin_async(
-        self,
-        store_code: str,
-        terminal_no: int,
-        business_counter: int,
-        reason: str,
-        settled_by: str,
-        physical_amount: Optional[float] = None,
-    ) -> tuple[SettlementRecordDocument, bool]:
-        """
-        Back office settles a session whose terminal will never close it (#343, S2).
-
-        From the logs that have arrived, made final at once. A session that is
-        already final is returned as stored. Meant for a terminal deleted while
-        open, an offline session, a close log that never arrived: settling a
-        session whose terminal is still selling freezes it without the later sales.
-
-        Raises:
-            SettlementNotFoundException: No log of the session has reached report
-        """
-        existing = await self.settlement_repository.get_async(store_code, terminal_no, business_counter)
-        if existing is not None and existing.state == STATE_FINAL:
-            return existing, False
-
-        info = await self._session_info_async(store_code, terminal_no, business_counter)
-        if info is None:
-            raise SettlementNotFoundException(
-                f"No log of the session has reached report: store={store_code} terminal={terminal_no} "
-                f"business_counter={business_counter}",
-                logger,
-            )
-        request = SettlementRequest(
-            store_code=store_code,
-            terminal_no=terminal_no,
-            business_counter=business_counter,
-            business_date=info["business_date"],
-            open_counter=info["open_counter"] or 1,
-            settled_at=get_app_time_str(),
-            physical_amount=physical_amount,
-            settled_by=settled_by,
-        )
-        settlement_id = str(uuid.uuid4())
-        snapshot = await self._snapshot_async(request, settlement_id=settlement_id, with_reports=True)
-        snapshot.record.settled_kind = SETTLED_BY_ADMIN
-        snapshot.record.admin_reason = reason
-        stored = await self.settlement_repository.save_provisional_async(snapshot.record, snapshot.daily_reports)
-        if stored.settlement_id != settlement_id:
-            return stored, False  # made final by its close log meanwhile
-        await self.settlement_repository.finalize_async(
-            store_code, terminal_no, business_counter, settlement_id, get_app_time_str()
-        )
-        logger.warning(
-            f"Session settled by back office: store={store_code} terminal={terminal_no} "
-            f"business_counter={business_counter} by={settled_by} reason={reason!r}"
-        )
-        return await self.settlement_repository.get_async(store_code, terminal_no, business_counter), True
-
-    async def _session_info_async(self, store_code: str, terminal_no: int, business_counter: int) -> Optional[dict]:
-        """The business date and open counter of a session, from any of its logs."""
-        query = {
-            "tenant_id": self.tenant_id,
-            "store_code": store_code,
-            "terminal_no": terminal_no,
-            "business_counter": business_counter,
-        }
-        for repo in (self.open_close_log_repository, self.tran_repository, self.cash_in_out_log_repository):
-            if repo.dbcollection is None:
-                await repo.initialize()
-            doc = await repo.dbcollection.find_one(query, {"business_date": 1, "open_counter": 1})
-            if doc is not None:
-                return {"business_date": doc.get("business_date"), "open_counter": doc.get("open_counter")}
-        return None
 
     async def preview_async(self, request: SettlementRequest) -> tuple[SettlementRecordDocument, bool]:
         """

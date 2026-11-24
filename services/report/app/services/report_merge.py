@@ -8,6 +8,11 @@ scope. Each function takes the reports as stored (``model_dump()`` dicts, oldest
 settlement first) and returns the merged dict; the plugins wrap it into their
 document and print it again.
 
+A merged report has the shape of the reports it was made from, so merging can
+be folded: merge(a, b, c) == merge(merge(a, b), c). The daily path reads the
+frozen reports a batch at a time and folds them, so a month of a large store
+never has to be in memory at once (MERGERS).
+
 Sessions never overlap, so counts add up: a transaction belongs to one session.
 Rows are gathered by their code. A name is taken from the newest report that
 has the row, the way the live reports take the newest sale's name.
@@ -232,6 +237,16 @@ def merge_promotion(reports: list[dict]) -> dict:
     )
     merged.update(_totals_of(reports, PROMOTION_TOTAL_FIELDS))
     return merged
+
+
+# report_type -> the dict merge of that type, for folding batches
+MERGERS: dict[str, Callable[[list[dict]], dict]] = {
+    "sales": merge_sales,
+    "category": merge_category,
+    "item": merge_item,
+    "payment": merge_payment,
+    "promotion": merge_promotion,
+}
 
 
 def merged_document(document_class, merged: dict, header: dict, receipt_maker=None):

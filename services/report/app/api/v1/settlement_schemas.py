@@ -49,9 +49,7 @@ class SettlementFigures(BaseSchemmaModel):
     business_counter: int
     business_date: str
     open_counter: int
-    settled_kind: str = "close"
     settled_by: Optional[str] = None
-    admin_reason: Optional[str] = None
     settled_at: str
     declared_count: Optional[int] = None
     declared_source: str

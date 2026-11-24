@@ -11,7 +11,7 @@ so a record never exists without its reports or with another settlement's.
 import asyncio
 import random
 from logging import getLogger
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import PyMongoError
@@ -209,6 +209,23 @@ class SettlementRecordRepository(AbstractRepository[SettlementRecordDocument]):
         )
         data = [SettlementRecordDocument(**doc) async for doc in cursor]
         return PaginatedResult(metadata=Metadata(total=total, page=page, limit=limit, sort=None, filter=None), data=data)
+
+    async def iter_daily_reports_async(
+        self, settlement_ids: list[str], report_type: str, batch_size: int = 20
+    ) -> AsyncIterator[list[dict]]:
+        """
+        The frozen reports of that type, in the order of settlement_ids, a batch at a time.
+
+        Raises:
+            LookupError: A settlement has no frozen report of that type
+        """
+        for start in range(0, len(settlement_ids), batch_size):
+            ids = settlement_ids[start : start + batch_size]
+            found = await self.get_daily_reports_async(ids, report_type)
+            absent = [i for i in ids if i not in found]
+            if absent:
+                raise LookupError(f"Frozen {report_type} reports missing for settlements {absent}")
+            yield [found[i] for i in ids]
 
     async def get_daily_reports_async(self, settlement_ids: list[str], report_type: str) -> dict[str, dict]:
         """settlement_id -> the frozen report of that type."""

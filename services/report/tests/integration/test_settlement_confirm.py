@@ -343,3 +343,4 @@ async def test_two_confirms_at_once_both_answer_and_leave_one_record(db, service
     assert await db["settlement_daily_report"].count_documents({"settlement_id": stored.settlement_id}) == 5
     assert await db["settlement_daily_report"].count_documents({}) == 5
     assert stored.created_at is not None and stored.updated_at is not None
+
