@@ -624,7 +624,7 @@ async def test_payment_report_error_handling(http_client):
         assert report_data["paymentSummary"] == []
         assert report_data["total"]["count"] == 0
     else:
-        assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY]
+        assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_CONTENT]
     
     # Test missing required parameters
     response = await http_client.get(
@@ -637,7 +637,7 @@ async def test_payment_report_error_handling(http_client):
     )
     
     # Should return error for missing parameters
-    assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY]
+    assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_CONTENT]
     
     # Test unauthorized access (no token)
     response = await http_client.get(
@@ -691,7 +691,7 @@ async def test_payment_report_date_validation(http_client):
         headers=header,
     )
     
-    assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY]
+    assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_CONTENT]
     
     # Test 2: Missing business_date_to when business_date_from is provided
     response = await http_client.get(
@@ -706,7 +706,7 @@ async def test_payment_report_date_validation(http_client):
         headers=header,
     )
     
-    assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY]
+    assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_CONTENT]
     
     # Test 3: Invalid date range (from > to)
     response = await http_client.get(
@@ -731,7 +731,7 @@ async def test_payment_report_date_validation(http_client):
         assert report_data["total"]["count"] == 0
     else:
         # Otherwise should be an error status
-        assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_422_UNPROCESSABLE_ENTITY, status.HTTP_500_INTERNAL_SERVER_ERROR]
+        assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_422_UNPROCESSABLE_CONTENT, status.HTTP_500_INTERNAL_SERVER_ERROR]
 
 
 # ============================================================================

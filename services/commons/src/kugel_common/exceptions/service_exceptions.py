@@ -90,7 +90,7 @@ class InvalidRequestDataException(ServiceException):
             original_exception, 
             ErrorCode.VALIDATION_ERROR,
             ErrorMessage.get_message(ErrorCode.VALIDATION_ERROR),
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
         )
 
 # Event and state-related exceptions

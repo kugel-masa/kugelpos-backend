@@ -235,7 +235,7 @@ async def test_a_carried_finalize_without_numbering_is_refused(http_client, snap
         headers=_api_headers(),
     )
 
-    assert r.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, r.text
+    assert r.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT, r.text
     assert "401518" in r.text, r.text
     assert await _tranlog_count(cart_id) == 0
 

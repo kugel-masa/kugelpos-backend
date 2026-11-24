@@ -107,7 +107,7 @@ async def test_a_deleted_item_cannot_be_sold(http_client, opened_terminal_id, ad
 
     cart_id, snapshot = await _new_cart(http_client, opened_terminal_id)
     response = await _add(http_client, opened_terminal_id, cart_id, snapshot, code)
-    assert response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY), response.text
+    assert response.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_CONTENT), response.text
 
 
 @pytest.mark.asyncio

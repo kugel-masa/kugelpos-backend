@@ -308,7 +308,7 @@ async def test_promotion_validation(http_client, admin_header):
     res = response.json()
     print(f"Invalid date promotion response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     #
     # Test 2: Invalid discount rate (over 100)
@@ -355,7 +355,7 @@ async def test_promotion_validation(http_client, admin_header):
     res = response.json()
     print(f"Missing detail promotion response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     #
     # Test 4: Empty target_category_codes
@@ -381,4 +381,4 @@ async def test_promotion_validation(http_client, admin_header):
     res = response.json()
     print(f"Empty categories promotion response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_CONTENT

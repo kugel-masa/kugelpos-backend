@@ -427,7 +427,7 @@ async def test_jwt_unregistered_item_error(http_client):
         json=[{"itemCode": "NONEXISTENT", "quantity": 1}],
         headers=header,
     )
-    assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]
+    assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_CONTENT]
 
     await http_client.post(f"/api/v1/carts/{cart_id}/cancel", headers=header)
     print("JWT unregistered item error: PASS")

@@ -124,7 +124,7 @@ class MasterDataValidationException(ServiceException):
             original_exception,
             MasterDataErrorCode.MASTER_DATA_VALIDATION_ERROR,
             MasterDataErrorMessage.get_message(MasterDataErrorCode.MASTER_DATA_VALIDATION_ERROR),
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 

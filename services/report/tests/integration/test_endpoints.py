@@ -94,7 +94,7 @@ async def test_post_transactions_invalid_body(http_client, admin_header):
     )
     assert response.status_code in (
         status.HTTP_400_BAD_REQUEST,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
     ), response.text
 
 

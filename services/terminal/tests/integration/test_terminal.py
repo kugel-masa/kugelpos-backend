@@ -215,7 +215,7 @@ async def test_terminal_operations(http_client, admin_header, mock_outbound_serv
 
     # Test create Terminal with token Bad Request
     response = await http_client.post("/api/v1/terminals", json={}, headers=header)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     # Test create Terminal with existing terminal
     response = await http_client.post(
@@ -295,7 +295,7 @@ async def test_terminal_operations(http_client, admin_header, mock_outbound_serv
 
     # Test Terminal Update Function Mode with API key Bad Request
     response = await http_client.patch(f"/api/v1/terminals/{terminalId}/function_mode", json={}, headers=headers)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     res = response.json()
 
     # Test Terminal Update Function Mode with API key Bad Request
