@@ -244,18 +244,18 @@ The app and its sidecar need the same value. A subscriber refuses to start witho
 
 ### Where the Keys Live
 
-Every state store keeps its keys in Redis DB 0. Dapr prefixes each key with the app id of the service that wrote it: `<app-id>||<key>`. The prefix keeps services apart, not stores: the stores one service uses share its prefix, so their keys must not overlap. Cart's cartstore and masterstore both write under `cart||`, and stay apart only because every masterstore key starts with `mdcache:` and a cart id never does. Each value is a Redis hash with `data` and `version` fields, so read it with `HGET <key> data`, not `GET`.
+Every state store keeps its keys in Redis DB 0. Dapr prefixes each key with the app id of the service that wrote it: `<app-id>||<key>`. The prefix keeps services apart, not stores: the stores one service uses share its prefix, so their keys must not overlap. Cart's cartstore and masterstore both write under `cart||`, and stay apart only because every masterstore key starts with `mdcache:` and a cart key is `<tenant_id>:<cart UUID>`, a shape no masterstore key has (#332). Each value is a Redis hash with `data` and `version` fields, so read it with `HGET <key> data`, not `GET`.
 
 | Store | Key | TTL | Used by Services |
 |-------|-----|-----|------------------|
 | statestore | `<app-id>\|\|<event id>` (idempotency) | 48 hours (per key) | Report, Journal, Stock |
-| cartstore | `cart\|\|<cart_id>` | 10 hours | Cart |
+| cartstore | `cart\|\|<tenant_id>:<cart_id>` (#332) | 10 hours | Cart |
 | masterstore | `cart\|\|mdcache:…` | 300 seconds (default) | Cart |
 | terminalstore | - | - | Unused |
 
 ```bash
 docker compose exec redis redis-cli -n 0 --scan --pattern 'cart||*'
-docker compose exec redis redis-cli -n 0 HGET 'cart||<cart_id>' data
+docker compose exec redis redis-cli -n 0 HGET 'cart||<tenant_id>:<cart_id>' data
 ```
 
 Dapr's `state.redis` reads the DB number only from `redisDB`. The components used to set `databaseIndex` (1, 2 and 3), which Dapr never read, so the stores have always been in DB 0. Moving a store to its own DB is a migration, not a configuration change: the moment a sidecar switches, it stops finding the keys already in DB 0, carts in flight among them, and during a rolling update the replicas on the old and the new DB see different carts. It would not protect carts from eviction either, since `maxmemory` and eviction apply to the whole Redis instance.

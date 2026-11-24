@@ -197,7 +197,7 @@ def _repo():
     return CartRepository(_make_mock_db(), _make_terminal_info())
 
 
-def _cart(cart_id="cart-1", **kw):
+def _cart(cart_id="0b7f1a3e-0000-4000-8000-000000000001", **kw):
     return CartDocument(cart_id=cart_id, tenant_id="T001", store_code="S001", business_date="20240601", **kw)
 
 
@@ -298,7 +298,7 @@ class TestWhereANewCartIsCreated:
         cart = _cart()
         await repo.cache_cart_async(cart, isNew=True)
         assert cart.cache_store == "redis"
-        assert "T001:cart-1" in dapr.data and "cart-1" not in mongo.docs
+        assert "T001:0b7f1a3e-0000-4000-8000-000000000001" in dapr.data and "0b7f1a3e-0000-4000-8000-000000000001" not in mongo.docs
 
     @pytest.mark.asyncio
     async def test_in_mongodb_while_the_breaker_is_open(self, stores):
@@ -307,7 +307,7 @@ class TestWhereANewCartIsCreated:
         cart = _cart()
         await repo.cache_cart_async(cart, isNew=True)
         assert cart.cache_store == "mongodb"
-        assert "cart-1" in mongo.docs and dapr.calls == []
+        assert "0b7f1a3e-0000-4000-8000-000000000001" in mongo.docs and dapr.calls == []
 
     @pytest.mark.asyncio
     async def test_in_mongodb_when_redis_fails_on_the_first_write(self, stores):
@@ -376,8 +376,8 @@ class TestACartNeverMoves:
         with pytest.raises(CartStoreUnavailableException):
             await repo.cache_cart_async(cart)
 
-        assert "cart-1" not in mongo.docs, "a cart in mid-transaction was copied to MongoDB"
-        assert dapr.data["T001:cart-1"]["line_items"] == [], "the previous version must be what Redis keeps"
+        assert "0b7f1a3e-0000-4000-8000-000000000001" not in mongo.docs, "a cart in mid-transaction was copied to MongoDB"
+        assert dapr.data["T001:0b7f1a3e-0000-4000-8000-000000000001"]["line_items"] == [], "the previous version must be what Redis keeps"
 
     @pytest.mark.asyncio
     async def test_a_redis_cart_is_refused_while_the_breaker_is_open(self, stores):
@@ -391,7 +391,7 @@ class TestACartNeverMoves:
 
         with pytest.raises(CartStoreUnavailableException):
             await repo.cache_cart_async(cart)
-        assert dapr.calls == [] and "cart-1" not in mongo.docs
+        assert dapr.calls == [] and "0b7f1a3e-0000-4000-8000-000000000001" not in mongo.docs
 
     @pytest.mark.asyncio
     async def test_a_mongodb_cart_stays_in_mongodb_after_redis_recovers(self, stores):
@@ -416,7 +416,7 @@ class TestReading:
         await repo.cache_cart_async(_cart(), isNew=True)
         repo.get_one_async = AsyncMock(side_effect=AssertionError("MongoDB must not be read"))
 
-        cart = await repo.get_cached_cart_async("cart-1")
+        cart = await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
         assert cart.cache_store == "redis"
         assert cart.staff.id == "staff01"
@@ -447,7 +447,7 @@ class TestReading:
         await repo.cache_cart_async(_cart(), isNew=True)
         dapr.down = True
         with pytest.raises(CartStoreUnavailableException):
-            await repo.get_cached_cart_async("cart-1")
+            await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
     @pytest.mark.asyncio
     async def test_while_the_breaker_is_open_redis_is_not_asked(self, stores):
@@ -464,8 +464,8 @@ class TestReading:
     @pytest.mark.asyncio
     async def test_a_legacy_copy_without_cache_store_read_from_mongodb_becomes_a_mongodb_cart(self, stores):
         repo, _dapr, mongo = stores
-        mongo.docs["old"] = _cart("old")
-        cart = await repo.get_cached_cart_async("old")
+        mongo.docs["0b7f1a3e-0000-4000-8000-0000000000ad"] = _cart("0b7f1a3e-0000-4000-8000-0000000000ad")
+        cart = await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-0000000000ad")
         assert cart.cache_store == "mongodb"
 
 
@@ -478,7 +478,7 @@ class TestStaffOnRead:
         repo, _dapr, _mongo = stores
         await repo.cache_cart_async(_cart(staff=CartDocument.Staff(id="creator", name="Creator")), isNew=True)
 
-        cart = await repo.get_cached_cart_async("cart-1")
+        cart = await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
         assert cart.staff.id == "staff01"
 
@@ -488,7 +488,7 @@ class TestStaffOnRead:
         await repo.cache_cart_async(_cart(staff=CartDocument.Staff(id="creator", name="Creator")), isNew=True)
         repo.terminal_info.staff = None
 
-        cart = await repo.get_cached_cart_async("cart-1")
+        cart = await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
         assert cart.staff.id == "creator"
 
@@ -561,8 +561,8 @@ class TestDeleteFailure:
         await repo.cache_cart_async(_cart(), isNew=True)
         repo.delete_async = AsyncMock(side_effect=RuntimeError("mongo down"))
 
-        await repo.delete_cart_async("cart-1", "redis")
-        assert "T001:cart-1" not in dapr.data
+        await repo.delete_cart_async("0b7f1a3e-0000-4000-8000-000000000001", "redis")
+        assert "T001:0b7f1a3e-0000-4000-8000-000000000001" not in dapr.data
 
     @pytest.mark.asyncio
     async def test_a_redis_outage_does_not_stop_removing_a_mongodb_cart(self, stores):
@@ -582,8 +582,8 @@ class TestDeleteFailure:
         repo.delete_async = AsyncMock(side_effect=RuntimeError("mongo down"))
 
         with pytest.raises(RuntimeError):
-            await repo.delete_cart_async("cart-1")
-        assert "T001:cart-1" in dapr.data
+            await repo.delete_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
+        assert "T001:0b7f1a3e-0000-4000-8000-000000000001" in dapr.data
 
     @pytest.mark.asyncio
     async def test_a_mongodb_delete_failure_is_not_reported_as_success(self, stores):
@@ -613,8 +613,8 @@ class TestRetryAndBreaker:
             return real_get(url)
 
         dapr.get = flaky
-        cart = await repo.get_cached_cart_async("cart-1")
-        assert cart.cart_id == "cart-1"
+        cart = await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
+        assert cart.cart_id == "0b7f1a3e-0000-4000-8000-000000000001"
 
     @pytest.mark.asyncio
     async def test_a_5xx_is_retried_and_a_4xx_is_not(self, stores):
@@ -688,8 +688,8 @@ class TestRedisPayload:
         ]
         await repo.cache_cart_async(cart, isNew=True)
 
-        json.dumps(dapr.data["T001:cart-1"])
-        rebuilt = CartDocument(**dapr.data["T001:cart-1"])
+        json.dumps(dapr.data["T001:0b7f1a3e-0000-4000-8000-000000000001"])
+        rebuilt = CartDocument(**dapr.data["T001:0b7f1a3e-0000-4000-8000-000000000001"])
         assert rebuilt.created_at == cart.created_at
         assert rebuilt.masters.promotions[0].start_datetime == datetime(2024, 6, 1)
         assert rebuilt.cache_store == "redis"
@@ -702,7 +702,7 @@ class TestTenantKey:
     async def test_a_cart_is_stored_under_its_tenant(self, stores):
         repo, dapr, _ = stores
         await repo.cache_cart_async(_cart(), isNew=True)
-        assert list(dapr.data) == ["T001:cart-1"]
+        assert list(dapr.data) == ["T001:0b7f1a3e-0000-4000-8000-000000000001"]
 
     @pytest.mark.asyncio
     async def test_another_tenant_cannot_address_the_cart(self, stores):
@@ -712,50 +712,101 @@ class TestTenantKey:
         _Mongo(other)
 
         with pytest.raises(NotFoundException):
-            await other.get_cached_cart_async("cart-1")
+            await other.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
     @pytest.mark.asyncio
     async def test_a_cart_saved_before_the_tenant_key_is_still_read(self, stores):
         repo, dapr, _ = stores
-        dapr.data["cart-1"] = _cart(cache_store="redis").model_dump(mode="json")
+        dapr.data["0b7f1a3e-0000-4000-8000-000000000001"] = _cart(cache_store="redis").model_dump(mode="json")
 
-        cart = await repo.get_cached_cart_async("cart-1")
+        cart = await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
-        assert cart.cart_id == "cart-1"
+        assert cart.cart_id == "0b7f1a3e-0000-4000-8000-000000000001"
         await repo.cache_cart_async(cart)
-        assert "T001:cart-1" in dapr.data, "it moves to the tenant key on its next save"
+        assert "T001:0b7f1a3e-0000-4000-8000-000000000001" in dapr.data, "it moves to the tenant key on its next save"
 
     @pytest.mark.asyncio
     async def test_a_legacy_cart_of_another_tenant_is_not_found(self, stores):
         repo, dapr, _ = stores
         legacy = _cart(cache_store="redis")
         legacy.tenant_id = "T002"
-        dapr.data["cart-1"] = legacy.model_dump(mode="json")
+        dapr.data["0b7f1a3e-0000-4000-8000-000000000001"] = legacy.model_dump(mode="json")
 
         with pytest.raises(NotFoundException):
-            await repo.get_cached_cart_async("cart-1")
+            await repo.get_cached_cart_async("0b7f1a3e-0000-4000-8000-000000000001")
 
     @pytest.mark.asyncio
     async def test_a_finished_cart_leaves_neither_key(self, stores):
         repo, dapr, _ = stores
-        dapr.data["cart-1"] = _cart(cache_store="redis").model_dump(mode="json")
-        dapr.data["T001:cart-1"] = _cart(cache_store="redis").model_dump(mode="json")
+        dapr.data["0b7f1a3e-0000-4000-8000-000000000001"] = _cart(cache_store="redis").model_dump(mode="json")
+        dapr.data["T001:0b7f1a3e-0000-4000-8000-000000000001"] = _cart(cache_store="redis").model_dump(mode="json")
 
-        await repo.delete_cart_async("cart-1", "redis")
+        await repo.delete_cart_async("0b7f1a3e-0000-4000-8000-000000000001", "redis")
 
         assert dapr.data == {}
 
     @pytest.mark.asyncio
-    async def test_a_cart_id_cannot_leave_its_path_segment(self, stores):
+    @pytest.mark.parametrize(
+        "cart_id",
+        ["../T002:0b7f1a3e-0000-4000-8000-000000000001", "T001:0b7f1a3e-0000-4000-8000-000000000001",
+         "a||b", "mdcache:T001:_:item_master", ""],
+    )
+    async def test_a_cart_id_that_is_not_a_uuid_asks_no_store(self, stores, cart_id):
+        from app.models.repositories.cart_repository import _breaker
+
         repo, dapr, _ = stores
-        seen = []
+        failures = _breaker._failures
+
+        with pytest.raises(NotFoundException):
+            await repo.get_cached_cart_async(cart_id)
+
+        assert dapr.calls == []
+        assert _breaker._failures == failures
+
+    @pytest.mark.asyncio
+    async def test_moving_a_cart_removes_its_bare_key(self, stores):
+        repo, dapr, _ = stores
+        dapr.data[CART_ID] = _cart(CART_ID, cache_store="redis").model_dump(mode="json")
+
+        cart = await repo.get_cached_cart_async(CART_ID)
+        await repo.cache_cart_async(cart)
+
+        assert list(dapr.data) == [f"T001:{CART_ID}"], "an old replica must find no copy to diverge from"
+
+    @pytest.mark.asyncio
+    async def test_a_failed_second_delete_leaves_the_cart_not_a_stale_copy(self, stores):
+        repo, dapr, _ = stores
+        dapr.data[CART_ID] = {"stale": True}
+        dapr.data[f"T001:{CART_ID}"] = _cart(CART_ID, cache_store="redis").model_dump(mode="json")
+        original = dapr.delete
+
+        def delete(url):
+            if "T001" in unquote(url):
+                dapr._fail()
+            return original(url)
+
+        dapr.delete = delete
+        with pytest.raises(CartStoreUnavailableException):
+            await repo.delete_cart_async(CART_ID, "redis")
+
+        assert CART_ID not in dapr.data, "the bare key goes first"
+        assert f"T001:{CART_ID}" in dapr.data
+
+    @pytest.mark.asyncio
+    async def test_the_fallback_failing_after_a_miss_is_unavailable(self, stores):
+        repo, dapr, _ = stores
         original = dapr.get
 
         def get(url):
-            seen.append(url)
+            if "T001" not in unquote(url):
+                dapr._fail()
             return original(url)
 
         dapr.get = get
-        with pytest.raises(NotFoundException):
-            await repo.get_cached_cart_async("../T002:cart-1")
-        assert all(url.rsplit("/", 1)[0].endswith("/state/cartstore") for url in seen), seen
+        with pytest.raises(CartStoreUnavailableException):
+            await repo.get_cached_cart_async(CART_ID)
+
+
+from app.exceptions import CartStoreUnavailableException  # noqa: E402
+
+CART_ID = "0b7f1a3e-0000-4000-8000-000000000001"

@@ -120,6 +120,14 @@ def _unexpected_status(op: str, status: int, text: str) -> Exception:
     return _RedisRefused(f"{op}: HTTP {status} {text[:200]}")
 
 
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
+
+
 async def _with_retry(op):
     """Run a Dapr state call, retrying transport errors, timeouts and 5xx briefly."""
     last = None
@@ -157,6 +165,10 @@ class CartRepository(AbstractRepository[CartDocument]):
         """
         super().__init__(settings.DB_COLLECTION_NAME_CACHE_CART, CartDocument, db)
         self.terminal_info = terminal_info
+        # Carts this request read from their pre-#332 bare key: saving one removes
+        # that key, so a replica still on the old version finds no copy to diverge
+        # from (it answers "not found" instead)
+        self._read_from_bare_key: set[str] = set()
 
     base_url_cartstore = f"{settings.BASE_URL_DAPR}/state/cartstore"
 
@@ -297,6 +309,13 @@ class CartRepository(AbstractRepository[CartDocument]):
             CartStoreUnavailableException if it is not in MongoDB and Redis could not
                 be asked - it may well be there
         """
+        # Every cart_id is a UUID. Anything else is not a cart: answered without
+        # asking a store, so it can neither name another key of the cart store
+        # (another tenant's, a master-data cache entry) nor, as a key Dapr refuses,
+        # count towards opening the breaker
+        if not _is_uuid(cart_id):
+            raise NotFoundException("cart not found", self.collection_name, cart_id, logger)
+
         redis_unanswered = True
         if _breaker.allow_redis():
             try:
@@ -390,18 +409,25 @@ class CartRepository(AbstractRepository[CartDocument]):
                 raise _unexpected_status("save", response.status, await response.text())
 
         await _with_retry(post)
+        if cart.cart_id in self._read_from_bare_key:
+            # Moved: the bare copy goes now, not at the cart's end, so an old
+            # replica cannot keep working on it (issue #332 review)
+            await self.__redis_delete_by_key_async(quote(cart.cart_id, safe=""))
+            self._read_from_bare_key.discard(cart.cart_id)
 
     async def __redis_get_async(self, cart_id: str) -> CartDocument | None:
         cart = await self.__redis_get_by_key_async(self.__cartstore_key(cart_id))
         if cart is not None:
             return cart
         # A cart saved before #332 sits under its bare cart_id. Read it there, for
-        # this tenant only; it moves to the tenant key on its next save. Carts live
+        # this tenant only; its next save moves it to the tenant key and removes
+        # the bare one. Carts live
         # at most the cart store's TTL (10h), so this fallback can be removed one
         # TTL after every replica runs #332.
         legacy = await self.__redis_get_by_key_async(quote(cart_id, safe=""))
         if legacy is not None and legacy.tenant_id == self.terminal_info.tenant_id:
             logger.info(f"Cart {cart_id} read from its pre-#332 key")
+            self._read_from_bare_key.add(cart_id)
             return legacy
         return None
 
@@ -419,8 +445,10 @@ class CartRepository(AbstractRepository[CartDocument]):
         return await _with_retry(get)
 
     async def __redis_delete_async(self, cart_id: str) -> None:
-        # Both keys: a cart read from its pre-#332 key may still have a copy there
-        for key in (self.__cartstore_key(cart_id), quote(cart_id, safe="")):
+        # Both keys, the bare one first: should the second delete fail, what is
+        # left is the cart under its own key, never a stale pre-#332 copy that the
+        # fallback would serve again
+        for key in (quote(cart_id, safe=""), self.__cartstore_key(cart_id)):
             await self.__redis_delete_by_key_async(key)
 
     async def __redis_delete_by_key_async(self, key: str) -> None:

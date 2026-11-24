@@ -109,6 +109,12 @@ echo "y" | ./scripts/update-azure-container-apps.sh -t <VERSION> -s "report"
 echo "y" | ./scripts/update-azure-container-apps.sh -t <VERSION> -s "account,terminal,master-data,cart,journal,stock"
 ```
 
+**Cart and the cart store key (#332).** From the release with #332, cart keeps carts in the cart store under `<tenant_id>:<cart_id>`. It still reads a cart from the old bare `<cart_id>` key, and moves it on its next save, deleting the bare key.
+
+- Switch cart's traffic to the new revision at once. Do not split traffic between an old and a new revision.
+- While both revisions serve, a request that reaches the old revision for a cart created or moved by the new one answers 404 (cart not found). Carts never diverge into two copies.
+- Rolling back cart past #332 has the same effect: the old version cannot read the carts saved under the new key, so carts in flight answer 404 and have to be started again.
+
 ### Step 4: Health Check
 
 ```bash
