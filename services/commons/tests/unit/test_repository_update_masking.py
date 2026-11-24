@@ -42,7 +42,7 @@ class _Collection:
     async def delete_one(self, *args, **kwargs):
         raise self.error
 
-    def aggregate(self, *args, **kwargs):
+    async def aggregate(self, *args, **kwargs):
         raise self.error
 
 
@@ -188,7 +188,8 @@ class _Reads:
 
         return _Result()
 
-    def aggregate(self, *args, **kwargs):
+    async def aggregate(self, *args, **kwargs):
+        # PyMongo async: aggregate() is a coroutine that returns the cursor
         return _Cursor(self.error)
 
 

@@ -46,7 +46,7 @@ if [ ! -f ".env.test" ]; then
 fi
 
 # Service list (default: all)
-ALL_SERVICES=("account" "terminal" "master-data" "cart" "journal" "report" "stock")
+ALL_SERVICES=("commons" "account" "terminal" "master-data" "cart" "journal" "report" "stock")
 if [ $# -gt 0 ]; then
     SERVICES=("$@")
 else

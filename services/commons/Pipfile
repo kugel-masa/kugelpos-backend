@@ -7,7 +7,7 @@ name = "pypi"
 # Runtime dependencies of kugel_common (declared here because they are
 # needed to import the package during tests; kugel_common's pyproject.toml
 # only declares a minimal subset because consuming services pin their own).
-motor = "*"
+pymongo = ">=4.13"
 grpcio = ">=1.60.0"
 grpcio-tools = ">=1.60.0"
 pyjwt = ">=2.0.0"
