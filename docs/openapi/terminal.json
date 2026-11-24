@@ -2445,6 +2445,157 @@
         }
       }
     },
+    "/api/v1/terminals/{terminal_id}/close-preview": {
+      "get": {
+        "summary": "Terminal Close Preview",
+        "description": "What closing now would settle: expected cash, missing transactions and cash\nlogs, and the difference for a counted amount. Nothing is stored (#343).",
+        "operationId": "terminal_close_preview_api_v1_terminals__terminal_id__close_preview_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "terminal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Terminal Id"
+            }
+          },
+          {
+            "name": "seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seq"
+            }
+          },
+          {
+            "name": "physical_amount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Physical Amount"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TerminalClosePreviewResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/terminals/{terminal_id}/close": {
       "post": {
         "summary": "Terminal Close",
@@ -3553,6 +3704,78 @@
         ],
         "title": "ApiResponse[Tenant]"
       },
+      "ApiResponse_TerminalClosePreviewResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TerminalClosePreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[TerminalClosePreviewResponse]"
+      },
       "ApiResponse_TerminalCloseResponse_": {
         "properties": {
           "success": {
@@ -4074,17 +4297,6 @@
           "staffName": {
             "type": "string",
             "title": "Staffname"
-          },
-          "staffPin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Staffpin"
           }
         },
         "type": "object",
@@ -4098,11 +4310,25 @@
       "BaseStore": {
         "properties": {
           "storeCode": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Storecode"
           },
           "storeName": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Storename"
           },
           "status": {
@@ -4142,7 +4368,14 @@
             "title": "Tags"
           },
           "entryDatetime": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Entrydatetime"
           },
           "lastUpdateDatetime": {
@@ -4158,42 +4391,86 @@
           }
         },
         "type": "object",
-        "required": [
-          "storeCode",
-          "storeName",
-          "entryDatetime"
-        ],
         "title": "BaseStore",
         "description": "Base Store Information Model\n\nRepresents store information in API responses.\nContains store code, name, status, business date and other essential store details."
       },
       "BaseTerminal": {
         "properties": {
           "terminalId": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Terminalid"
           },
           "tenantId": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tenantid"
           },
           "storeCode": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Storecode"
           },
           "terminalNo": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Terminalno"
           },
           "description": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Description"
           },
           "functionMode": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Functionmode"
           },
           "status": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Status"
           },
           "businessDate": {
@@ -4208,11 +4485,25 @@
             "title": "Businessdate"
           },
           "openCounter": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Opencounter"
           },
           "businessCounter": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Businesscounter"
           },
           "receiptCounter": {
@@ -4270,7 +4561,14 @@
             "title": "Apikey"
           },
           "entryDatetime": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Entrydatetime"
           },
           "lastUpdateDatetime": {
@@ -4286,18 +4584,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "terminalId",
-          "tenantId",
-          "storeCode",
-          "terminalNo",
-          "description",
-          "functionMode",
-          "status",
-          "openCounter",
-          "businessCounter",
-          "entryDatetime"
-        ],
         "title": "BaseTerminal",
         "description": "Base Terminal Information Model\n\nRepresents terminal information in API responses.\nContains terminal ID, tenant ID, store code, terminal number, function mode,\nstatus, business date and other essential terminal details."
       },
@@ -4600,11 +4886,25 @@
       "Store": {
         "properties": {
           "storeCode": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Storecode"
           },
           "storeName": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Storename"
           },
           "status": {
@@ -4644,7 +4944,14 @@
             "title": "Tags"
           },
           "entryDatetime": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Entrydatetime"
           },
           "lastUpdateDatetime": {
@@ -4660,11 +4967,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "storeCode",
-          "storeName",
-          "entryDatetime"
-        ],
         "title": "Store",
         "description": "Schema for store information"
       },
@@ -4790,18 +5092,39 @@
       "Tenant": {
         "properties": {
           "tenantId": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tenantid"
           },
           "tenantName": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tenantname"
           },
           "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tags"
           },
           "stores": {
@@ -4812,7 +5135,14 @@
             "title": "Stores"
           },
           "entryDatetime": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Entrydatetime"
           },
           "lastUpdateDatetime": {
@@ -4829,11 +5159,7 @@
         },
         "type": "object",
         "required": [
-          "tenantId",
-          "tenantName",
-          "tags",
-          "stores",
-          "entryDatetime"
+          "stores"
         ],
         "title": "Tenant",
         "description": "Schema for tenant information"
@@ -4904,31 +5230,80 @@
       "Terminal": {
         "properties": {
           "terminalId": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Terminalid"
           },
           "tenantId": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tenantid"
           },
           "storeCode": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Storecode"
           },
           "terminalNo": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Terminalno"
           },
           "description": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Description"
           },
           "functionMode": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Functionmode"
           },
           "status": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Status"
           },
           "businessDate": {
@@ -4943,11 +5318,25 @@
             "title": "Businessdate"
           },
           "openCounter": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Opencounter"
           },
           "businessCounter": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Businesscounter"
           },
           "receiptCounter": {
@@ -5005,7 +5394,14 @@
             "title": "Apikey"
           },
           "entryDatetime": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Entrydatetime"
           },
           "lastUpdateDatetime": {
@@ -5021,20 +5417,113 @@
           }
         },
         "type": "object",
-        "required": [
-          "terminalId",
-          "tenantId",
-          "storeCode",
-          "terminalNo",
-          "description",
-          "functionMode",
-          "status",
-          "openCounter",
-          "businessCounter",
-          "entryDatetime"
-        ],
         "title": "Terminal",
         "description": "Schema for terminal information\n\nThis schema represents a terminal device in the POS system, including\nits identification, status, and operational information."
+      },
+      "TerminalClosePreviewResponse": {
+        "properties": {
+          "expectedCashTotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedcashtotal"
+          },
+          "expectedCash": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedcash"
+          },
+          "includedCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includedcount"
+          },
+          "missingCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingcount"
+          },
+          "missingRanges": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingranges"
+          },
+          "missingCashLogCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingcashlogcount"
+          },
+          "physicalAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalamount"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "settled": {
+            "type": "boolean",
+            "title": "Settled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TerminalClosePreviewResponse",
+        "description": "What closing now would settle, from report; nothing is stored (#343)."
       },
       "TerminalCloseRequest": {
         "properties": {
@@ -5048,6 +5537,18 @@
               }
             ],
             "title": "Physicalamount"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
           }
         },
         "type": "object",
@@ -5104,6 +5605,61 @@
               }
             ],
             "title": "Physicalamount"
+          },
+          "expectedCashTotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedcashtotal"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "missingCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingcount"
+          },
+          "missingCashLogCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingcashlogcount"
+          },
+          "settlementId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlementid"
           }
         },
         "type": "object",
@@ -5273,6 +5829,17 @@
           "staffId": {
             "type": "string",
             "title": "Staffid"
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin"
           }
         },
         "type": "object",

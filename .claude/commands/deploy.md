@@ -41,6 +41,7 @@ these does not come up (it fails its health check rather than running open).
 | `PUBSUB_NOTIFY_API_KEY` | all 7 | A secret of your own, the **same** in every service (issue #132) |
 | `APP_API_TOKEN` | report, journal, stock | **Do not set it.** Container Apps injects it (see below) (issue #134) |
 | `TENANT_PROVISIONING_KEY` | account | A secret of your own, held only by whoever onboards tenants: `POST /api/v1/accounts/register` requires it in `X-Provisioning-Key` (issue #138) |
+| `BASE_URL_REPORT` | terminal | report's API base URL (`http://<report-app>/api/v1`). From #343 every close asks report to confirm the settlement; without it the default `localhost:8004` is used and every close answers 503 / `406016` |
 
 - Never set `ALLOW_INSECURE_DEV_SECRETS`: it exists for the development compose
   stack and the tests only, and lets a service start on the published values.
@@ -114,6 +115,12 @@ echo "y" | ./scripts/update-azure-container-apps.sh -t <VERSION> -s "account,ter
 - Switch cart's traffic to the new revision at once. Do not split traffic between an old and a new revision.
 - While both revisions serve, a request that reaches the old revision for a cart created or moved by the new one answers 404 (cart not found). Carts never diverge into two copies.
 - Rolling back cart past #332 has the same effect: the old version cannot read the carts saved under the new key, so carts in flight answer 404 and have to be started again.
+
+**Settlement at close (#343).** From the release with #343, terminal's close asks report to confirm the session's settlement, and daily reports answer from the settled sessions only.
+
+- Update report before terminal (Option B does). A terminal without report's settlement endpoint refuses every close with 503 / `406016`; the terminal stays open, and the close succeeds once report is updated.
+- Sessions settled before this release have no settlement record, so a daily report that covers one answers 403 / `412101` (data.unsettledSessions names them). Print or export the daily reports you need before the release.
+- report adds the settlement collections and indexes to existing tenants at startup (index ensure on startup).
 
 ### Step 4: Health Check
 

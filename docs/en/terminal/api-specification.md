@@ -27,13 +27,6 @@ The following authentication methods are supported:
 - Header: `Authorization: Bearer {token}`
 - Usage: System operations by administrators
 
-Tenant, store and terminal administration takes a user (or service) JWT only:
-- create, update and delete the tenant;
-- add, update and delete stores;
-- create and delete terminals.
-
-A terminal JWT, obtained from `POST /api/v1/auth/token`, is refused there with **403** (issue #331).
-
 ## Common Response Format
 
 ```json
@@ -120,11 +113,11 @@ This operation requires OAuth2 token authentication.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantName` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tags` | array[string] | No | Null when the stored record has none (a record written straight to the database) |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -199,11 +192,11 @@ This operation can be authenticated using either:
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantName` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tags` | array[string] | No | Null when the stored record has none (a record written straight to the database) |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -287,11 +280,11 @@ This operation requires OAuth2 token authentication.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantName` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tags` | array[string] | No | Null when the stored record has none (a record written straight to the database) |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -418,12 +411,12 @@ This operation can be authenticated using either:
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeName` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `storeCode` | string | No | - |
+| `storeName` | string | No | - |
 | `status` | string | No | - |
 | `businessDate` | string | No | - |
 | `tags` | array[string] | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -504,11 +497,11 @@ This operation requires OAuth2 token authentication.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantName` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tags` | array[string] | No | Null when the stored record has none (a record written straight to the database) |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -584,12 +577,12 @@ This operation can be authenticated using either:
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeName` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `storeCode` | string | No | - |
+| `storeName` | string | No | - |
 | `status` | string | No | - |
 | `businessDate` | string | No | - |
 | `tags` | array[string] | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -667,12 +660,12 @@ This operation requires OAuth2 token authentication.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeName` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `storeCode` | string | No | - |
+| `storeName` | string | No | - |
 | `status` | string | No | - |
 | `businessDate` | string | No | - |
 | `tags` | array[string] | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -782,22 +775,22 @@ Optional filtering by store code is supported.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -867,22 +860,22 @@ Requires token authentication (no terminal ID/API key needed since the terminal 
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -939,7 +932,7 @@ POST /terminals/{terminal_id}/api-key.
 
 | Parameter | Type | Required | Default | Description |
 |------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | Deprecated and ignored: the key is stored only as a digest. Issue a new one with `POST /terminals/{terminal_id}/api-key`. |
+| `include_api_key` | boolean | No | False | Ignored. The API key is stored only as a |
 
 **Response:**
 
@@ -947,22 +940,22 @@ POST /terminals/{terminal_id}/api-key.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -1075,22 +1068,22 @@ may not replace itself.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -1288,11 +1281,13 @@ Returns an X-New-Token header with updated JWT reflecting closed state.
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `physicalAmount` | number | No | - |
+| `seq` | integer | No | - |
 
 **Request Example:**
 ```json
 {
-  "physicalAmount": 0.0
+  "physicalAmount": 0.0,
+  "seq": 0
 }
 ```
 
@@ -1313,6 +1308,11 @@ Represents termin |
 | `receiptText` | string | Yes | - |
 | `journalText` | string | Yes | - |
 | `physicalAmount` | number | No | - |
+| `expectedCashTotal` | number | No | - |
+| `difference` | number | No | - |
+| `missingCount` | integer | No | - |
+| `missingCashLogCount` | integer | No | - |
+| `settlementId` | string | No | - |
 
 **Response Example:**
 ```json
@@ -1344,7 +1344,8 @@ Represents termin |
     },
     "receiptText": "string",
     "journalText": "string",
-    "physicalAmount": 0.0
+    "physicalAmount": 0.0,
+    "expectedCashTotal": 0.0
   },
   "metadata": {
     "total": 0,
@@ -1357,7 +1358,77 @@ Represents termin |
 }
 ```
 
-### 20. Update Delivery Status
+### 20. Terminal Close Preview
+
+**GET** `/api/v1/terminals/{terminal_id}/close-preview`
+
+What closing now would settle: expected cash, missing transactions and cash
+logs, and the difference for a counted amount. Nothing is stored (#343).
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `seq` | string | No | - | - |
+| `physical_amount` | string | No | - | - |
+
+**Response:**
+
+**data Field:** `TerminalClosePreviewResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `expectedCashTotal` | number | No | - |
+| `expectedCash` | object | No | - |
+| `includedCount` | integer | No | - |
+| `missingCount` | integer | No | - |
+| `missingRanges` | array[object] | No | - |
+| `missingCashLogCount` | integer | No | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settled` | boolean | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "expectedCashTotal": 0.0,
+    "expectedCash": {},
+    "includedCount": 0,
+    "missingCount": 0,
+    "missingRanges": [
+      {}
+    ],
+    "missingCashLogCount": 0,
+    "physicalAmount": 0.0,
+    "difference": 0.0,
+    "settled": false
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. Update Delivery Status
 
 **POST** `/api/v1/terminals/{terminal_id}/delivery-status`
 
@@ -1429,7 +1500,7 @@ and generates a receipt for the transaction.
 }
 ```
 
-### 21. Update Terminal Description
+### 22. Update Terminal Description
 
 **PATCH** `/api/v1/terminals/{terminal_id}/description`
 
@@ -1462,22 +1533,22 @@ This endpoint updates the description of a specific terminal.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -1513,7 +1584,7 @@ This endpoint updates the description of a specific terminal.
 }
 ```
 
-### 22. Update Terminal Function Mode
+### 23. Update Terminal Function Mode
 
 **PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
 
@@ -1547,22 +1618,22 @@ The function mode determines what operations are available on the terminal.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -1598,7 +1669,7 @@ The function mode determines what operations are available on the terminal.
 }
 ```
 
-### 23. Terminal Open
+### 24. Terminal Open
 
 **POST** `/api/v1/terminals/{terminal_id}/open`
 
@@ -1693,7 +1764,7 @@ Represents termin |
 }
 ```
 
-### 24. Terminal Signin
+### 25. Terminal Signin
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-in`
 
@@ -1714,7 +1785,7 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 | Field | Type | Required | Description |
 |------------|------|------|------|
 | `staffId` | string | Yes | - |
-| `pin` | string | No | Optional (issue #323). Required, and verified by master-data, when the staff member has a PIN; ignored for one without. |
+| `pin` | string | No | - |
 
 **Request Example:**
 ```json
@@ -1724,30 +1795,28 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 }
 ```
 
-A staff member with a PIN signs in only with the right PIN. Any failed verification (staff not found, PIN required, PIN mismatch) answers 401 / `406004` with the same body, so the response does not tell whether a staff member has a PIN. When master-data cannot be reached, sign-in answers 502 / `407201`. A terminal already signed in is not affected when a PIN is set or changed afterwards.
-
 **Response:**
 
 **data Field:** `Terminal`
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -1783,7 +1852,7 @@ A staff member with a PIN signs in only with the right PIN. Any failed verificat
 }
 ```
 
-### 25. Terminal Signout
+### 26. Terminal Signout
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-out`
 
@@ -1805,22 +1874,22 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 | Field | Type | Required | Description |
 |------------|------|------|------|
-| `terminalId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `tenantId` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `storeCode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `terminalNo` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `description` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `functionMode` | string | No | Null when the stored record has none (a record written straight to the database) |
-| `status` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
-| `businessCounter` | integer | No | Null when the stored record has none (a record written straight to the database) |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | Null when the stored record has none (a record written straight to the database) |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **Response Example:**
@@ -1858,7 +1927,7 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 ### Other
 
-### 26. Create Token
+### 27. Create Token
 
 **POST** `/api/v1/auth/token`
 

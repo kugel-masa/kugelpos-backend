@@ -8,7 +8,7 @@
     "/api/v1/tenants/{tenant_id}/stores/{store_code}/reports": {
       "get": {
         "summary": "Get Report For Store",
-        "description": "Get a report for the entire store.\n\nThis endpoint requires either a JWT token or an API key with terminal_id.\nIt provides different types of reports (sales, category, item) at different\nscopes (flash, daily) for the specified store.\n\nArgs:\n    tenant_id: The tenant identifier\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code to generate a report for\n    terminal_id: The terminal ID when using API key authentication\n    report_scope: The time scope of the report (flash or daily)\n    report_type: The type of report to generate (sales, category, item)\n    business_date: The business date in YYYYMMDD format\n    open_counter: Optional counter for the specific terminal session\n    business_counter: Optional business counter for the report\n    limit: Maximum number of records to return\n    page: Page number for pagination\n    sort: Sorting criteria\n    report_service: Injected report service dependency\n\nReturns:\n    ApiResponse[SalesReportResponse]: The report data wrapped in the standard API response\n\nRaises:\n    HTTPException: For various error conditions with appropriate status codes",
+        "description": "Get a report for the entire store.\n\nThis endpoint requires either a JWT token or an API key with terminal_id.\nIt provides different types of reports (sales, category, item) at different\nscopes (flash, daily) for the specified store.\n\nDaily scope (#343): the report is the settled sessions' frozen reports,\nmerged when the scope has more than one session. A session in scope that\nhas a log but no final settlement refuses the report with 403 / 412101,\nand data.unsettledSessions names it. A daily report returns the whole\nfrozen report (limit and page are not applied), carries missingCount and\nmissingRanges, and a date-range daily report carries the cash section.\nFlash is computed live, as before.\n\nArgs:\n    tenant_id: The tenant identifier\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code to generate a report for\n    terminal_id: The terminal ID when using API key authentication\n    report_scope: The time scope of the report (flash or daily)\n    report_type: The type of report to generate (sales, category, item, payment, promotion)\n    business_date: The business date in YYYYMMDD format\n    open_counter: Optional counter for the specific terminal session\n    business_counter: Optional business counter for the report\n    limit: Maximum number of records to return\n    page: Page number for pagination\n    sort: Sorting criteria\n    report_service: Injected report service dependency\n\nReturns:\n    ApiResponse[SalesReportResponse]: The report data wrapped in the standard API response\n\nRaises:\n    HTTPException: For various error conditions with appropriate status codes",
         "operationId": "get_report_for_store_api_v1_tenants__tenant_id__stores__store_code__reports_get",
         "security": [
           {
@@ -72,10 +72,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Type of the report: sales, category, item",
+              "description": "Type of the report: sales, category, item, payment, promotion",
               "title": "Report Type"
             },
-            "description": "Type of the report: sales, category, item"
+            "description": "Type of the report: sales, category, item, payment, promotion"
           },
           {
             "name": "business_date",
@@ -217,7 +217,7 @@
     "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports": {
       "get": {
         "summary": "Get Report For Terminal",
-        "description": "Get a report for a specific terminal.\n\nThis endpoint requires either a JWT token or an API key with terminal_id.\nIt provides different types of reports (sales, category, item) at different\nscopes (flush, daily) for the specified terminal.\n\nArgs:\n    tenant_id: The tenant identifier\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code\n    terminal_no: The terminal number to generate a report for\n    report_scope: The time scope of the report (flash or daily)\n    report_type: The type of report to generate (sales, category, item)\n    business_date: The business date in YYYYMMDD format\n    open_counter: Optional counter for the specific terminal session\n    business_counter: Optional business counter for the report\n    limit: Maximum number of records to return\n    page: Page number for pagination\n    sort: Sorting criteria\n    report_service: Injected report service dependency\n\nReturns:\n    ApiResponse[SalesReportResponse]: The report data wrapped in the standard API response\n\nRaises:\n    HTTPException: For various error conditions with appropriate status codes",
+        "description": "Get a report for a specific terminal.\n\nThis endpoint requires either a JWT token or an API key with terminal_id.\nIt provides different types of reports (sales, category, item) at different\nscopes (flush, daily) for the specified terminal.\n\nDaily scope (#343): the terminal's settled sessions' frozen reports; one\nsession's is returned as frozen, several are merged. A session with a log\nbut no final settlement refuses the report with 403 / 412101, and\ndata.unsettledSessions names it. limit and page are not applied to a daily\nreport, which carries missingCount and missingRanges. Flash is live.\n\nArgs:\n    tenant_id: The tenant identifier\n    tenant_id_with_security: The tenant ID extracted from security credentials\n    store_code: The store code\n    terminal_no: The terminal number to generate a report for\n    report_scope: The time scope of the report (flash or daily)\n    report_type: The type of report to generate (sales, category, item, payment, promotion)\n    business_date: The business date in YYYYMMDD format\n    open_counter: Optional counter for the specific terminal session\n    business_counter: Optional business counter for the report\n    limit: Maximum number of records to return\n    page: Page number for pagination\n    sort: Sorting criteria\n    report_service: Injected report service dependency\n\nReturns:\n    ApiResponse[SalesReportResponse]: The report data wrapped in the standard API response\n\nRaises:\n    HTTPException: For various error conditions with appropriate status codes",
         "operationId": "get_report_for_terminal_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__reports_get",
         "security": [
           {
@@ -290,10 +290,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Type of the report: sales, category, item",
+              "description": "Type of the report: sales, category, item, payment, promotion",
               "title": "Report Type"
             },
-            "description": "Type of the report: sales, category, item"
+            "description": "Type of the report: sales, category, item, payment, promotion"
           },
           {
             "name": "business_date",
@@ -729,6 +729,609 @@
         }
       }
     },
+    "/api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements": {
+      "post": {
+        "summary": "Confirm Settlement",
+        "description": "Confirm a terminal session's settlement from the logs that have arrived.\n\nA provisional settlement is recomputed and replaced; a final one is returned\nas stored. Missing or duplicate transactions never refuse the settlement;\nthey are recorded.",
+        "operationId": "confirm_settlement_api_v1_internal_tenants__tenant_id__stores__store_code__terminals__terminal_no__settlements_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettlementConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettlementConfirmResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlement-preview": {
+      "get": {
+        "summary": "Preview Settlement",
+        "description": "What confirming would record now, without storing anything.",
+        "operationId": "preview_settlement_api_v1_internal_tenants__tenant_id__stores__store_code__terminals__terminal_no__settlement_preview_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "business_counter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Business Counter"
+            }
+          },
+          {
+            "name": "business_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{8}$",
+              "title": "Business Date"
+            }
+          },
+          {
+            "name": "open_counter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Open Counter"
+            }
+          },
+          {
+            "name": "seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seq"
+            }
+          },
+          {
+            "name": "cash_log_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cash Log Count"
+            }
+          },
+          {
+            "name": "physical_amount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Physical Amount"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettlementPreviewResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/settlements": {
+      "get": {
+        "summary": "List Settlements",
+        "description": "The store's settlement records, by business date, terminal and session.",
+        "operationId": "list_settlements_api_v1_tenants__tenant_id__stores__store_code__settlements_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "business_counter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Counter"
+            }
+          },
+          {
+            "name": "business_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{8}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Date From"
+            }
+          },
+          {
+            "name": "business_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{8}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Date To"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(provisional|final)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_SettlementRecordResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/dapr/subscribe": {
       "get": {
         "summary": "Subscribe Topics",
@@ -857,6 +1460,150 @@
         "title": "ApiResponse",
         "description": "Standardized API response model used by all endpoints.\n\nProvides a consistent structure for all API responses, including status information,\nerror details when applicable, and the actual response data. The model is generic\nand can accommodate any data type for the response payload.\n\nAttributes:\n    success: Boolean indicating if the operation was successful\n    code: HTTP status code for the response\n    message: System message typically used for logging or debugging\n    user_error: User-friendly error information when an error occurs\n    data: The actual response payload (generic type)\n    metadata: Additional metadata like pagination info for list responses\n    operation: Name of the operation that was performed (for tracking)"
       },
+      "ApiResponse_SettlementConfirmResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettlementConfirmResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[SettlementConfirmResponse]"
+      },
+      "ApiResponse_SettlementPreviewResponse_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettlementPreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[SettlementPreviewResponse]"
+      },
       "ApiResponse_TranResponse_": {
         "properties": {
           "success": {
@@ -929,6 +1676,98 @@
         ],
         "title": "ApiResponse[TranResponse]"
       },
+      "ApiResponse_list_SettlementRecordResponse__": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "default": 200
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "userError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SettlementRecordResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[list[SettlementRecordResponse]]"
+      },
+      "CashMovementSchema": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "title": "Amount",
+            "default": 0.0
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "CashMovementSchema"
+      },
       "ComponentHealth": {
         "properties": {
           "status": {
@@ -991,6 +1830,36 @@
         ],
         "title": "ComponentHealth",
         "description": "Individual component health status."
+      },
+      "ExpectedCashSchema": {
+        "properties": {
+          "cashSales": {
+            "type": "number",
+            "title": "Cashsales",
+            "default": 0.0
+          },
+          "cashIn": {
+            "$ref": "#/components/schemas/CashMovementSchema",
+            "default": {
+              "amount": 0.0,
+              "count": 0
+            }
+          },
+          "cashOut": {
+            "$ref": "#/components/schemas/CashMovementSchema",
+            "default": {
+              "amount": 0.0,
+              "count": 0
+            }
+          },
+          "total": {
+            "type": "number",
+            "title": "Total",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "ExpectedCashSchema"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1101,6 +1970,632 @@
         ],
         "title": "Metadata",
         "description": "Metadata Model\n\nRepresents metadata for paginated API responses.\nIncludes total count, current page, items per page, sort criteria,\nand filter conditions."
+      },
+      "NumberRangeSchema": {
+        "properties": {
+          "first": {
+            "type": "integer",
+            "title": "First"
+          },
+          "last": {
+            "type": "integer",
+            "title": "Last"
+          }
+        },
+        "type": "object",
+        "required": [
+          "first",
+          "last"
+        ],
+        "title": "NumberRangeSchema"
+      },
+      "SettlementConfirmRequest": {
+        "properties": {
+          "businessCounter": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Businesscounter"
+          },
+          "businessDate": {
+            "type": "string",
+            "pattern": "^\\d{8}$",
+            "title": "Businessdate"
+          },
+          "openCounter": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Opencounter"
+          },
+          "settledAt": {
+            "type": "string",
+            "title": "Settledat"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "cashLogCount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cashlogcount"
+          },
+          "physicalAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalamount"
+          },
+          "settledBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settledby"
+          }
+        },
+        "type": "object",
+        "required": [
+          "businessCounter",
+          "businessDate",
+          "openCounter",
+          "settledAt"
+        ],
+        "title": "SettlementConfirmRequest",
+        "description": "What terminal sends to settle a session at close."
+      },
+      "SettlementConfirmResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "businessCounter": {
+            "type": "integer",
+            "title": "Businesscounter"
+          },
+          "businessDate": {
+            "type": "string",
+            "title": "Businessdate"
+          },
+          "openCounter": {
+            "type": "integer",
+            "title": "Opencounter"
+          },
+          "settledBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settledby"
+          },
+          "settledAt": {
+            "type": "string",
+            "title": "Settledat"
+          },
+          "declaredCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredcount"
+          },
+          "declaredSource": {
+            "type": "string",
+            "title": "Declaredsource"
+          },
+          "includedCount": {
+            "type": "integer",
+            "title": "Includedcount"
+          },
+          "includedRanges": {
+            "items": {
+              "$ref": "#/components/schemas/NumberRangeSchema"
+            },
+            "type": "array",
+            "title": "Includedranges",
+            "default": []
+          },
+          "missingCount": {
+            "type": "integer",
+            "title": "Missingcount"
+          },
+          "missingRanges": {
+            "items": {
+              "$ref": "#/components/schemas/NumberRangeSchema"
+            },
+            "type": "array",
+            "title": "Missingranges",
+            "default": []
+          },
+          "duplicateNumbers": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Duplicatenumbers",
+            "default": []
+          },
+          "serverNumberedCount": {
+            "type": "integer",
+            "title": "Servernumberedcount",
+            "default": 0
+          },
+          "declaredCashLogCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredcashlogcount"
+          },
+          "cashLogCount": {
+            "type": "integer",
+            "title": "Cashlogcount"
+          },
+          "missingCashLogCount": {
+            "type": "integer",
+            "title": "Missingcashlogcount"
+          },
+          "expectedCash": {
+            "$ref": "#/components/schemas/ExpectedCashSchema"
+          },
+          "physicalAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalamount"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "settlementId": {
+            "type": "string",
+            "title": "Settlementid"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "recordedAt": {
+            "type": "string",
+            "title": "Recordedat"
+          },
+          "finalizedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalizedat"
+          },
+          "created": {
+            "type": "boolean",
+            "title": "Created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "businessCounter",
+          "businessDate",
+          "openCounter",
+          "settledAt",
+          "declaredSource",
+          "includedCount",
+          "missingCount",
+          "cashLogCount",
+          "missingCashLogCount",
+          "expectedCash",
+          "settlementId",
+          "state",
+          "recordedAt",
+          "created"
+        ],
+        "title": "SettlementConfirmResponse"
+      },
+      "SettlementPreviewResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "businessCounter": {
+            "type": "integer",
+            "title": "Businesscounter"
+          },
+          "businessDate": {
+            "type": "string",
+            "title": "Businessdate"
+          },
+          "openCounter": {
+            "type": "integer",
+            "title": "Opencounter"
+          },
+          "settledBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settledby"
+          },
+          "settledAt": {
+            "type": "string",
+            "title": "Settledat"
+          },
+          "declaredCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredcount"
+          },
+          "declaredSource": {
+            "type": "string",
+            "title": "Declaredsource"
+          },
+          "includedCount": {
+            "type": "integer",
+            "title": "Includedcount"
+          },
+          "includedRanges": {
+            "items": {
+              "$ref": "#/components/schemas/NumberRangeSchema"
+            },
+            "type": "array",
+            "title": "Includedranges",
+            "default": []
+          },
+          "missingCount": {
+            "type": "integer",
+            "title": "Missingcount"
+          },
+          "missingRanges": {
+            "items": {
+              "$ref": "#/components/schemas/NumberRangeSchema"
+            },
+            "type": "array",
+            "title": "Missingranges",
+            "default": []
+          },
+          "duplicateNumbers": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Duplicatenumbers",
+            "default": []
+          },
+          "serverNumberedCount": {
+            "type": "integer",
+            "title": "Servernumberedcount",
+            "default": 0
+          },
+          "declaredCashLogCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredcashlogcount"
+          },
+          "cashLogCount": {
+            "type": "integer",
+            "title": "Cashlogcount"
+          },
+          "missingCashLogCount": {
+            "type": "integer",
+            "title": "Missingcashlogcount"
+          },
+          "expectedCash": {
+            "$ref": "#/components/schemas/ExpectedCashSchema"
+          },
+          "physicalAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalamount"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "settled": {
+            "type": "boolean",
+            "title": "Settled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "businessCounter",
+          "businessDate",
+          "openCounter",
+          "settledAt",
+          "declaredSource",
+          "includedCount",
+          "missingCount",
+          "cashLogCount",
+          "missingCashLogCount",
+          "expectedCash",
+          "settled"
+        ],
+        "title": "SettlementPreviewResponse"
+      },
+      "SettlementRecordResponse": {
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "title": "Tenantid"
+          },
+          "storeCode": {
+            "type": "string",
+            "title": "Storecode"
+          },
+          "terminalNo": {
+            "type": "integer",
+            "title": "Terminalno"
+          },
+          "businessCounter": {
+            "type": "integer",
+            "title": "Businesscounter"
+          },
+          "businessDate": {
+            "type": "string",
+            "title": "Businessdate"
+          },
+          "openCounter": {
+            "type": "integer",
+            "title": "Opencounter"
+          },
+          "settledBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settledby"
+          },
+          "settledAt": {
+            "type": "string",
+            "title": "Settledat"
+          },
+          "declaredCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredcount"
+          },
+          "declaredSource": {
+            "type": "string",
+            "title": "Declaredsource"
+          },
+          "includedCount": {
+            "type": "integer",
+            "title": "Includedcount"
+          },
+          "includedRanges": {
+            "items": {
+              "$ref": "#/components/schemas/NumberRangeSchema"
+            },
+            "type": "array",
+            "title": "Includedranges",
+            "default": []
+          },
+          "missingCount": {
+            "type": "integer",
+            "title": "Missingcount"
+          },
+          "missingRanges": {
+            "items": {
+              "$ref": "#/components/schemas/NumberRangeSchema"
+            },
+            "type": "array",
+            "title": "Missingranges",
+            "default": []
+          },
+          "duplicateNumbers": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Duplicatenumbers",
+            "default": []
+          },
+          "serverNumberedCount": {
+            "type": "integer",
+            "title": "Servernumberedcount",
+            "default": 0
+          },
+          "declaredCashLogCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declaredcashlogcount"
+          },
+          "cashLogCount": {
+            "type": "integer",
+            "title": "Cashlogcount"
+          },
+          "missingCashLogCount": {
+            "type": "integer",
+            "title": "Missingcashlogcount"
+          },
+          "expectedCash": {
+            "$ref": "#/components/schemas/ExpectedCashSchema"
+          },
+          "physicalAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalamount"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "settlementId": {
+            "type": "string",
+            "title": "Settlementid"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "recordedAt": {
+            "type": "string",
+            "title": "Recordedat"
+          },
+          "finalizedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalizedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenantId",
+          "storeCode",
+          "terminalNo",
+          "businessCounter",
+          "businessDate",
+          "openCounter",
+          "settledAt",
+          "declaredSource",
+          "includedCount",
+          "missingCount",
+          "cashLogCount",
+          "missingCashLogCount",
+          "expectedCash",
+          "settlementId",
+          "state",
+          "recordedAt"
+        ],
+        "title": "SettlementRecordResponse"
       },
       "TenantCreateRequest": {
         "properties": {
