@@ -127,7 +127,7 @@ description: "Task list for 301-pymongo-async-migration"
 - [X] T040 [P] docs/ と各サービスの README などで Motor に触れている記述（`grep -rli motor docs` で約20件）を直す（FR-012）
 - [X] T041 `grep -rn -i motor` をリポジトリ全体（`.venv`、specs、手順書の対応表を除く）で 0 件にする（SC-002）
 - [X] T042 [P] 変更した app のファイルに `pipenv run ruff check app/` を通す（7サービスと commons）
-- [ ] T043 PR の本文に、性能の比較表（T038）、件数の比較（T033）、REQUIRED の確かめ（T031）、手順書へのリンクを載せる。コミットは commons / サービスごと / 依存・ドキュメントに分ける（R-1）
+- [X] T043 PR の本文に、性能の比較表（T038）、件数の比較（T033）、REQUIRED の確かめ（T031）、手順書へのリンクを載せる。コミットは commons / サービスごと / 依存・ドキュメントに分ける（R-1）
 
 ---
 
