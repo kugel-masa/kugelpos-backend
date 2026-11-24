@@ -1,8 +1,8 @@
 # Copyright 2026 masa@kugel
 """cart reaches master-data's gRPC directly by default, or through the local Dapr sidecar when MASTER_DATA_GRPC_APP_ID is set.
 
-The Dapr route mirrors the stpos fork (its #951), so the same code runs in a
-deployment that routes through Dapr and in one that does not.
+The same code runs in a deployment that routes service calls through Dapr
+and in one that does not.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -19,15 +19,15 @@
 - [x] すべての受け入れシナリオが定義されている（US1〜US4）
 - [x] エッジケースが特定されている
 - [x] スコープが明確に定義されている（Out of Scope で device-gateway/能力照会/冪等性を除外）
-- [x] 依存関係が特定されている（stpos #316 流用元、Issue #139）
+- [x] 依存関係が特定されている（流用元の仕様、Issue #139）
 
-## kugelpos 固有の確定事項（stpos #316 からの再スコープ）
+## kugelpos 固有の確定事項（流用元の仕様からの再スコープ）
 
 - [x] **DeviceGW API 契約・frontend パススルー契約はスコープ外**（消費者責務として短く参照）
 - [x] **terminal の開閉店/現金レシートも JSON 化対象**（kugel_common XML 廃止に伴い必須）
 - [x] **report の帳票レシート生成器（4 種）も JSON 化対象**（`AbstractReceiptData` 経由のため連動）
 - [x] **R/J/RJ チャネルは元実装に存在しなかった**が後続合意で導入 → FR-007 は R/J/RJ チャネル（内部ルーティング属性・JSON 非出力・既定 RJ）を導入。`journal_text` は回帰なく維持
-- [x] **spec 番号 = issue 番号（139）** に統一（流用元 stpos の方式に合わせる）
+- [x] **spec 番号 = issue 番号（139）** に統一（流用元の方式に合わせる）
 
 ## 備考
 

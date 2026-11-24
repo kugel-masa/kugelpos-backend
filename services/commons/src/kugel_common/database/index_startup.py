@@ -19,8 +19,8 @@ Bring existing tenants up to the declared collections and indexes at startup.
 `database_setup.execute()` ran only from `POST /api/v1/tenants`. A fixed or new
 index declaration therefore never reached a tenant that already existed, and
 nothing said so: a write keyed on a field whose index never arrived turns into a
-collection scan per request. The stpos fork lost a dev environment for ten hours
-to exactly that (`log_tran` keyed on `cart_id`, the index left behind).
+collection scan per request (for example `log_tran` keyed on `cart_id` with
+that index left behind).
 
 ## Why additive
 

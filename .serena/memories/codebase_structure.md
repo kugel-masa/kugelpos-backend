@@ -2,7 +2,7 @@
 
 ## Root Directory
 ```
-kugelpos-private/
+kugelpos-backend/
 ├── CLAUDE.md           # AI coding assistant instructions
 ├── README.md           # Project documentation (English)
 ├── README_ja.md        # Project documentation (Japanese)

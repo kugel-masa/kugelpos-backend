@@ -5,7 +5,7 @@
 **Status**: Draft
 **SPEC_TYPE**: functional
 **Issue**: [#139](https://github.com/kugel-masa/kugelpos-backend/issues/139)
-**派生元**: stpos-backend `316-device-print-schema`（流用・kugelpos #139 向けに再スコープ）
+**派生元**: 流用元の仕様 `device-print-schema`（流用・kugelpos #139 向けに再スコープ）
 
 ---
 
@@ -30,7 +30,7 @@ POS のレシート/ジャーナル印字において、現在 backend（kugel_c
 
 ### Session 2026-06-07
 
-- Q: stpos #316 の DeviceGW API 契約（文書印字 API・冪等性・状態/能力照会・OPOS エラー正規化）と frontend パススルー契約は本フィーチャーに含めるか？ → A: **スコープ外に整理**。本フィーチャーの成果物は backend の印字データ JSON スキーマ（kugel_common）と生成ロジック（cart/terminal/report 戦略）まで。実機変換・描画・非同期印字ジョブ・冪等性・能力照会は消費者（frontend/device）の責務とし、Out of Scope に記載のうえ短く参照するに留める（Issue #139 の Out of scope に一致）。
+- Q: 流用元の仕様の DeviceGW API 契約（文書印字 API・冪等性・状態/能力照会・OPOS エラー正規化）と frontend パススルー契約は本フィーチャーに含めるか？ → A: **スコープ外に整理**。本フィーチャーの成果物は backend の印字データ JSON スキーマ（kugel_common）と生成ロジック（cart/terminal/report 戦略）まで。実機変換・描画・非同期印字ジョブ・冪等性・能力照会は消費者（frontend/device）の責務とし、Out of Scope に記載のうえ短く参照するに留める（Issue #139 の Out of scope に一致）。
 - Q: terminal の開閉店/現金レシートの JSON 化を本フィーチャーに含めるか？ → A: **含める**。kugel_common の XML 生成廃止（ハードカットオーバー）に伴い必須。cart と同時に JSON 化する。
 - Q: kugelpos に #73 相当の R/J/RJ チャネル振り分けは存在するか？ → A: **元の実装には存在しなかった**（`receipt_text`(XML) と `journal_text`(plain) は同一ツリーから別レンダリングするだけ）。**当初は導入しない方針だったが、後続の合意で R/J/RJ チャネルを導入**（下記 2026-06-07 追補・FR-007 改訂）。
 - 追補（2026-06-07）: **R/J/RJ チャネル（ステーション）指定をサポートする**。各印字要素に `channel`（R=レシートのみ / J=電子ジャーナルのみ / RJ=両方・既定）を持たせ、backend が**内部で**振り分ける（R/RJ→レシート、J/RJ→`journal_text`）。チャネルは内部ルーティング属性で **JSON 出力には現れない**。既定 RJ のため既存戦略の内容は不変（機能追加のみ。production 戦略でのチャネル実利用は後続）。
@@ -288,7 +288,7 @@ POS のレシート/ジャーナル印字において、現在 backend（kugel_c
 
 | 依存先 | 種類 | 理由 |
 |---|---|---|
-| stpos-backend #316 spec | 流用元 | 本仕様の派生元。スキーマ契約・例を再利用 |
+| 流用元の仕様 | 流用元 | 本仕様の派生元。スキーマ契約・例を再利用 |
 | Issue #139 | 要件 | スコープ（backend の形式と生成ロジックに限定）の確定根拠 |
 
 ---

@@ -502,7 +502,7 @@ pydantic 文書など — に対して同じマスクを行う。文書やレス
 一致させ続ける。
 
 ファイルハンドラは `concurrent_log_handler.ConcurrentRotatingFileHandler`
-（`concurrent-log-handler` パッケージ。stpos と同じ）を使う。`UVICORN_WORKERS` の
+（`concurrent-log-handler` パッケージ）を使う。`UVICORN_WORKERS` の
 各プロセスが、同じファイルにそれぞれハンドラを持つためである。標準の
 `RotatingFileHandler` では各ワーカーが別々にローテーションするので、満杯になる前に
 切られ、ローテーションで世代がまるごと落ちることもある。このハンドラは、各ログの隣の

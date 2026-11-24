@@ -1265,7 +1265,7 @@ class TerminalService:
                 # timestamp rule applies. Two ACKs that cross can leave the overall
                 # status behind (each derives it from its own read, and the older
                 # decision can land last), and the warning below would then report a
-                # delivered log as not acknowledged. As the stpos fork does.
+                # delivered log as not acknowledged.
                 all_services_received = bool(status.services) and all(
                     service.status == "received" for service in status.services
                 )
