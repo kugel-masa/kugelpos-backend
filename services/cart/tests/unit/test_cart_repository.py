@@ -1,3 +1,4 @@
+from urllib.parse import unquote
 """Unit tests split out from test_repositories.py.
 
 Shared helpers / imports preserved as-is from the original
@@ -233,7 +234,8 @@ class _Dapr:
         self.calls.append("get")
         if self.down:
             self._fail()
-        key = url.rsplit("/", 1)[-1]
+        # Dapr decodes the key from the URL path
+        key = unquote(url.rsplit("/", 1)[-1])
         if key in self.data:
             return _make_aiohttp_context_manager(_response(200, json_data=self.data[key]))
         return _make_aiohttp_context_manager(_response(204))
@@ -242,7 +244,7 @@ class _Dapr:
         self.calls.append("delete")
         if self.down:
             self._fail()
-        self.data.pop(url.rsplit("/", 1)[-1], None)
+        self.data.pop(unquote(url.rsplit("/", 1)[-1]), None)
         return _make_aiohttp_context_manager(_response(204))
 
 
@@ -296,7 +298,7 @@ class TestWhereANewCartIsCreated:
         cart = _cart()
         await repo.cache_cart_async(cart, isNew=True)
         assert cart.cache_store == "redis"
-        assert "cart-1" in dapr.data and "cart-1" not in mongo.docs
+        assert "T001:cart-1" in dapr.data and "cart-1" not in mongo.docs
 
     @pytest.mark.asyncio
     async def test_in_mongodb_while_the_breaker_is_open(self, stores):
@@ -337,8 +339,8 @@ class TestAmbiguousFirstWrite:
         assert cart.cart_id != "first"
         assert cart.cache_store == "mongodb"
         assert set(mongo.docs) == {cart.cart_id}
-        assert "first" in dapr.data, "precondition: the orphan landed in Redis"
-        assert cart.cart_id not in dapr.data
+        assert "T001:first" in dapr.data, "precondition: the orphan landed in Redis"
+        assert f"T001:{cart.cart_id}" not in dapr.data
 
 
 class TestRollingUpdate:
@@ -350,7 +352,7 @@ class TestRollingUpdate:
         await repo.cache_cart_async(cart, isNew=True)
         dapr.down = False
         # An old replica (no cache_store logic) writes its stale view to Redis.
-        dapr.data[cart.cart_id] = cart.model_dump(mode="json")
+        dapr.data[f"T001:{cart.cart_id}"] = cart.model_dump(mode="json")
         # The real cart moves on in MongoDB.
         newer = await repo.get_cached_cart_async(cart.cart_id)
         newer.line_items = [CartDocument.CartLineItem(item_code="A")]
@@ -375,7 +377,7 @@ class TestACartNeverMoves:
             await repo.cache_cart_async(cart)
 
         assert "cart-1" not in mongo.docs, "a cart in mid-transaction was copied to MongoDB"
-        assert dapr.data["cart-1"]["line_items"] == [], "the previous version must be what Redis keeps"
+        assert dapr.data["T001:cart-1"]["line_items"] == [], "the previous version must be what Redis keeps"
 
     @pytest.mark.asyncio
     async def test_a_redis_cart_is_refused_while_the_breaker_is_open(self, stores):
@@ -403,7 +405,7 @@ class TestACartNeverMoves:
         cart.line_items = [CartDocument.CartLineItem(item_code="A")]
         await repo.cache_cart_async(cart)
 
-        assert cart.cart_id not in dapr.data, "a MongoDB cart was written to Redis"
+        assert f"T001:{cart.cart_id}" not in dapr.data, "a MongoDB cart was written to Redis"
         assert mongo.docs[cart.cart_id].line_items[0].item_code == "A"
 
 
@@ -560,7 +562,7 @@ class TestDeleteFailure:
         repo.delete_async = AsyncMock(side_effect=RuntimeError("mongo down"))
 
         await repo.delete_cart_async("cart-1", "redis")
-        assert "cart-1" not in dapr.data
+        assert "T001:cart-1" not in dapr.data
 
     @pytest.mark.asyncio
     async def test_a_redis_outage_does_not_stop_removing_a_mongodb_cart(self, stores):
@@ -581,7 +583,7 @@ class TestDeleteFailure:
 
         with pytest.raises(RuntimeError):
             await repo.delete_cart_async("cart-1")
-        assert "cart-1" in dapr.data
+        assert "T001:cart-1" in dapr.data
 
     @pytest.mark.asyncio
     async def test_a_mongodb_delete_failure_is_not_reported_as_success(self, stores):
@@ -686,8 +688,74 @@ class TestRedisPayload:
         ]
         await repo.cache_cart_async(cart, isNew=True)
 
-        json.dumps(dapr.data["cart-1"])
-        rebuilt = CartDocument(**dapr.data["cart-1"])
+        json.dumps(dapr.data["T001:cart-1"])
+        rebuilt = CartDocument(**dapr.data["T001:cart-1"])
         assert rebuilt.created_at == cart.created_at
         assert rebuilt.masters.promotions[0].start_datetime == datetime(2024, 6, 1)
         assert rebuilt.cache_store == "redis"
+
+
+class TestTenantKey:
+    """The cart store key carries the tenant, so another tenant's cart cannot be addressed (issue #332)."""
+
+    @pytest.mark.asyncio
+    async def test_a_cart_is_stored_under_its_tenant(self, stores):
+        repo, dapr, _ = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        assert list(dapr.data) == ["T001:cart-1"]
+
+    @pytest.mark.asyncio
+    async def test_another_tenant_cannot_address_the_cart(self, stores):
+        repo, dapr, mongo = stores
+        await repo.cache_cart_async(_cart(), isNew=True)
+        other = CartRepository(_make_mock_db(), _make_terminal_info(tenant_id="T002"))
+        _Mongo(other)
+
+        with pytest.raises(NotFoundException):
+            await other.get_cached_cart_async("cart-1")
+
+    @pytest.mark.asyncio
+    async def test_a_cart_saved_before_the_tenant_key_is_still_read(self, stores):
+        repo, dapr, _ = stores
+        dapr.data["cart-1"] = _cart(cache_store="redis").model_dump(mode="json")
+
+        cart = await repo.get_cached_cart_async("cart-1")
+
+        assert cart.cart_id == "cart-1"
+        await repo.cache_cart_async(cart)
+        assert "T001:cart-1" in dapr.data, "it moves to the tenant key on its next save"
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_cart_of_another_tenant_is_not_found(self, stores):
+        repo, dapr, _ = stores
+        legacy = _cart(cache_store="redis")
+        legacy.tenant_id = "T002"
+        dapr.data["cart-1"] = legacy.model_dump(mode="json")
+
+        with pytest.raises(NotFoundException):
+            await repo.get_cached_cart_async("cart-1")
+
+    @pytest.mark.asyncio
+    async def test_a_finished_cart_leaves_neither_key(self, stores):
+        repo, dapr, _ = stores
+        dapr.data["cart-1"] = _cart(cache_store="redis").model_dump(mode="json")
+        dapr.data["T001:cart-1"] = _cart(cache_store="redis").model_dump(mode="json")
+
+        await repo.delete_cart_async("cart-1", "redis")
+
+        assert dapr.data == {}
+
+    @pytest.mark.asyncio
+    async def test_a_cart_id_cannot_leave_its_path_segment(self, stores):
+        repo, dapr, _ = stores
+        seen = []
+        original = dapr.get
+
+        def get(url):
+            seen.append(url)
+            return original(url)
+
+        dapr.get = get
+        with pytest.raises(NotFoundException):
+            await repo.get_cached_cart_async("../T002:cart-1")
+        assert all(url.rsplit("/", 1)[0].endswith("/state/cartstore") for url in seen), seen

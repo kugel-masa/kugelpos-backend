@@ -115,7 +115,7 @@ The receipt prints all four fields needed to identify the original (store code /
 | `401512` | 400 | Carried snapshot addresses a different cart than the URL |
 | `401513` | 409 | `transaction_no` matches more than one open session (`business_counter` required) |
 | `401514` | 400 | Void is limited to the current business date and open session |
-| `401517` | 403 | A cached cart used by a terminal of another tenant or store |
+| `401517` | 403 | A cached cart used by a terminal of another store of the same tenant. The cart store key carries the tenant (#332), so another tenant's cart is not found (404, `401002`) |
 | `401518` | 422 | A bill or cancel carried a snapshot but not its numbering (refused in every mode) |
 
 ## Idempotency

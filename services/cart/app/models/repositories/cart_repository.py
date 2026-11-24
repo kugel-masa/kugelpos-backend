@@ -1,5 +1,6 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from logging import getLogger
+from urllib.parse import quote
 import asyncio
 import uuid
 import aiohttp
@@ -158,6 +159,16 @@ class CartRepository(AbstractRepository[CartDocument]):
         self.terminal_info = terminal_info
 
     base_url_cartstore = f"{settings.BASE_URL_DAPR}/state/cartstore"
+
+    def __cartstore_key(self, cart_id: str) -> str:
+        """
+        The cart's key in the cart store: the tenant, then the cart_id (issue #332).
+
+        A cart of another tenant cannot be addressed at all, rather than read and
+        then refused (#254). The cart_id is percent-encoded so it stays one path
+        segment of the Dapr URL whatever a caller sends.
+        """
+        return quote(f"{self.terminal_info.tenant_id}:{cart_id}", safe="")
 
     async def create_cart_async(
         self,
@@ -369,7 +380,7 @@ class CartRepository(AbstractRepository[CartDocument]):
     async def __redis_save_async(self, cart: CartDocument) -> None:
         # mode="json" so datetimes (created_at, the embedded promotion periods)
         # become ISO strings aiohttp's json encoder can write (issue #141).
-        state_post_data = [{"key": cart.cart_id, "value": cart.model_dump(mode="json")}]
+        state_post_data = [{"key": f"{self.terminal_info.tenant_id}:{cart.cart_id}", "value": cart.model_dump(mode="json")}]
 
         async def post():
             session = await get_dapr_statestore_session()
@@ -381,9 +392,23 @@ class CartRepository(AbstractRepository[CartDocument]):
         await _with_retry(post)
 
     async def __redis_get_async(self, cart_id: str) -> CartDocument | None:
+        cart = await self.__redis_get_by_key_async(self.__cartstore_key(cart_id))
+        if cart is not None:
+            return cart
+        # A cart saved before #332 sits under its bare cart_id. Read it there, for
+        # this tenant only; it moves to the tenant key on its next save. Carts live
+        # at most the cart store's TTL (10h), so this fallback can be removed one
+        # TTL after every replica runs #332.
+        legacy = await self.__redis_get_by_key_async(quote(cart_id, safe=""))
+        if legacy is not None and legacy.tenant_id == self.terminal_info.tenant_id:
+            logger.info(f"Cart {cart_id} read from its pre-#332 key")
+            return legacy
+        return None
+
+    async def __redis_get_by_key_async(self, key: str) -> CartDocument | None:
         async def get():
             session = await get_dapr_statestore_session()
-            async with session.get(f"{self.base_url_cartstore}/{cart_id}") as response:
+            async with session.get(f"{self.base_url_cartstore}/{key}") as response:
                 if response.status == 200:
                     return CartDocument(**(await response.json()))
                 # Dapr answers a missing key with 204 No Content.
@@ -394,9 +419,14 @@ class CartRepository(AbstractRepository[CartDocument]):
         return await _with_retry(get)
 
     async def __redis_delete_async(self, cart_id: str) -> None:
+        # Both keys: a cart read from its pre-#332 key may still have a copy there
+        for key in (self.__cartstore_key(cart_id), quote(cart_id, safe="")):
+            await self.__redis_delete_by_key_async(key)
+
+    async def __redis_delete_by_key_async(self, key: str) -> None:
         async def delete():
             session = await get_dapr_statestore_session()
-            async with session.delete(f"{self.base_url_cartstore}/{cart_id}") as response:
+            async with session.delete(f"{self.base_url_cartstore}/{key}") as response:
                 if response.status in (200, 204):
                     return
                 raise _unexpected_status("delete", response.status, await response.text())

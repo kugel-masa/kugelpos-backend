@@ -306,10 +306,13 @@ def test_cart_is_used_only_within_its_tenant_and_store():
                       headers={"X-API-KEY": owner_key})
         assert resp.status_code == 201, resp.text
         cart_id = resp.json()["data"]["cartId"]
-        for terminal_id, api_key in ((other_store, other_store_key), (stranger, stranger_key)):
+        # Another store of the tenant finds the cart and is refused (#254); another
+        # tenant cannot address it at all, since the cart store key carries the
+        # tenant (#332)
+        for terminal_id, api_key, expected in ((other_store, other_store_key, 403), (stranger, stranger_key, 404)):
             resp = c.post(f"/api/v1/carts/{cart_id}/lineItems", params={"terminal_id": terminal_id},
                           json=line, headers={"X-API-KEY": api_key})
-            assert resp.status_code == 403, resp.text
+            assert resp.status_code == expected, resp.text
         resp = c.post(f"/api/v1/carts/{cart_id}/lineItems", params={"terminal_id": owner},
                       json=line, headers={"X-API-KEY": owner_key})
         assert resp.status_code == 200, resp.text
