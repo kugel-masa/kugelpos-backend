@@ -19,7 +19,7 @@ It implements the repository pattern for the RequestLog document model.
 """
 from typing import Type
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from kugel_common.models.documents.request_log_document import RequestLog
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
@@ -37,7 +37,7 @@ class RequestLogRepository(AbstractRepository[RequestLog]):
     and response information to the database for auditing and debugging purposes.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: AsyncDatabase):
         """
         Initialize a new RequestLogRepository instance
         

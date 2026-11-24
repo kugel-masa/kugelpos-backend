@@ -4,7 +4,8 @@ from typing import Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from kugel_common.database.database import get_client_async
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.config.settings import settings
 from app.models.documents.snapshot_schedule_document import SnapshotScheduleDocument
@@ -199,10 +200,9 @@ class MultiTenantSnapshotScheduler:
         # In production, this would query a central tenant registry
         # For now, we'll get unique tenant_ids from all databases
         try:
-            # Get admin database connection
-            from motor.motor_asyncio import AsyncIOMotorClient
-
-            client = AsyncIOMotorClient(settings.MONGODB_URI)
+            # The process-wide client: a client made here on every call was
+            # never closed, and each one kept its own pool open (#301).
+            client = await get_client_async()
 
             # List all databases
             db_list = await client.list_database_names()

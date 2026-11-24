@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from kugel_common.utils.misc import get_app_time
 
@@ -26,11 +26,11 @@ TENANT = "TEST_TENANT_230"
 @pytest_asyncio.fixture
 async def db():
     uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/?replicaSet=rs0&directConnection=true")
-    client = AsyncIOMotorClient(uri)
+    client = AsyncMongoClient(uri)
     database = client[f"{settings.DB_NAME_PREFIX}_{TENANT}"]
     yield database
     await client.drop_database(database.name)
-    client.close()
+    await client.close()
 
 
 def _terminal_info():

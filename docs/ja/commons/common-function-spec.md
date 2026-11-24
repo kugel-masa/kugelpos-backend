@@ -120,13 +120,13 @@ kugel_common/
 class AbstractRepository(ABC, Generic[Tdocument]):
     """型安全なCRUD操作を提供する汎用リポジトリ"""
 
-    def __init__(self, collection_name: str, document_class: Type[Tdocument], db: AsyncIOMotorDatabase)
+    def __init__(self, collection_name: str, document_class: Type[Tdocument], db: AsyncDatabase)
 
     # トランザクション管理
-    async def start_transaction(self) -> AsyncIOMotorClientSession
+    async def start_transaction(self) -> AsyncClientSession
     async def commit_transaction(self)
     async def abort_transaction(self)
-    def set_session(self, session: AsyncIOMotorClientSession)
+    def set_session(self, session: AsyncClientSession)
 
     # CRUD操作
     async def create_async(self, document: Tdocument) -> bool
@@ -710,12 +710,12 @@ Kugel Commonsライブラリは、マイクロサービスアーキテクチャ�
 ```python
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.models.documents.item_store_master_document import ItemStoreMasterDocument
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
     """店舗別商品マスタのリポジトリ実装例"""
 
-    def __init__(self, db: AsyncIOMotorDatabase, tenant_id: str, store_code: str):
+    def __init__(self, db: AsyncDatabase, tenant_id: str, store_code: str):
         # AbstractRepositoryのコンストラクタにコレクション名、ドキュメントクラス、DBインスタンスを渡す
         super().__init__("item_store_master", ItemStoreMasterDocument, db)
         self.tenant_id = tenant_id

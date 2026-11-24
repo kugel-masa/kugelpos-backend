@@ -8,7 +8,7 @@ Stores and manages electronic journal and transaction logs.
 
 - **Port**: 8005
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

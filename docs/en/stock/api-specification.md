@@ -8,7 +8,7 @@ Manages inventory tracking. Provides snapshot functionality and reorder point ma
 
 - **Port**: 8006
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

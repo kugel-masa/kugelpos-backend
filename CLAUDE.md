@@ -21,7 +21,7 @@ Kugelpos is a microservices-based Point of Sale (POS) backend system built with 
 
 ### Key Technologies
 - **Python 3.12+** with FastAPI for REST APIs
-- **MongoDB** (Motor async driver) for persistence
+- **MongoDB** (PyMongo async API) for persistence
 - **Redis** for caching and state management
 - **RabbitMQ** for pub/sub messaging (via Dapr)
 - **Dapr** for service mesh, state management, and pub/sub
@@ -132,7 +132,7 @@ Format: XXYYZZ (`kugel_common/exceptions/error_codes.py`, `docs/en/general/error
 ### Database
 - Collections: snake_case
 - Documents inherit from `BaseDocumentModel`
-- Repository pattern, async operations with Motor
+- Repository pattern, async operations with the PyMongo async API
 
 ### API
 - Versioned: `/api/v1/`
@@ -185,17 +185,19 @@ Format: XXYYZZ (`kugel_common/exceptions/error_codes.py`, `docs/en/general/error
 - Dapr HTTP port: Default 3500 (configurable via `DAPR_HTTP_PORT`)
 
 ## Active Technologies
-- Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (through the existing `DaprClientHelper` wrapper) (072-master-data-cache)
-- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (state store `cartstore`). Signing uses only the standard library (`hmac` / `hashlib` / `json`) — **no new external dependency** (148-cart-snapshot-restore)
+- Python 3.12+ + FastAPI, Pydantic v2, PyMongo async API, Dapr (through the existing `DaprClientHelper` wrapper) (072-master-data-cache)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo async API, Dapr (state store `cartstore`). Signing uses only the standard library (`hmac` / `hashlib` / `json`) — **no new external dependency** (148-cart-snapshot-restore)
 - New `log_cart_restore` collection in the per-tenant MongoDB database (`db_cart_{tenant_id}`). The cart cache (Redis, falling back to `cache_cart`) is unchanged (148-cart-snapshot-restore)
-- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (pub/sub `pubsub-tranlog-report` / topic `topic-tranlog`, state store). Signing reuses phase 1's `kugel_common.utils.hmac_signer` (standard library only). Request decompression uses the standard library `gzip`/`zlib` plus the `brotli` package (.NET 8 clients support `br`/`gzip` out of the box) (156-stateless-cart)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo async API, Dapr (pub/sub `pubsub-tranlog-report` / topic `topic-tranlog`, state store). Signing reuses phase 1's `kugel_common.utils.hmac_signer` (standard library only). Request decompression uses the standard library `gzip`/`zlib` plus the `brotli` package (.NET 8 clients support `br`/`gzip` out of the box) (156-stateless-cart)
 - Per-tenant MongoDB databases. The tranlog (report/journal) and stock_update indexes are reworked around `cart_id`. Auditing generalises phase 1's `log_cart_restore` (156-stateless-cart)
-- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (master-data cache in `masterstore`). No new external dependency (311-payment-variants)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo async API, Dapr (master-data cache in `masterstore`). No new external dependency (311-payment-variants)
 - Payment variants are embedded in the `master_payment` document (`variants[]`, no index change). Transaction payment lines gain `variant_code` / `builtin_description` (311-payment-variants)
-- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), `HttpClientHelper` (`get_service_client`), PyJWT (the existing service-account token). No new external dependency; the PIN comparison uses the standard library's `secrets` (323-staff-pin-verification)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo async API, `HttpClientHelper` (`get_service_client`), PyJWT (the existing service-account token). No new external dependency; the PIN comparison uses the standard library's `secrets` (323-staff-pin-verification)
 - `master_staff` and `info_terminal` keep their shape; the staff PIN is compared only inside master-data, behind an internal service-to-service endpoint (323-staff-pin-verification)
-- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, Motor (async MongoDB), commons' `AbstractRepository`. No new external dependency (324-master-logical-delete)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo async API, commons' `AbstractRepository`. No new external dependency (324-master-logical-delete)
 - Every deletable master (category, item common, item store, item book, payment, promotion, settings, staff) gains an optional `is_deleted`; reads filter `{"is_deleted": {"$ne": True}}` so documents without the field stay visible. Unique indexes unchanged (324-master-logical-delete)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo 4.20 async API (declared `>=4.13`). Motor is removed. No new external dependency: PyMongo was already installed as Motor's dependency (301-pymongo-async-migration)
+- Per-tenant MongoDB databases, unchanged: no data format or index change (301-pymongo-async-migration)
 
 ## Recent Changes
 - 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (through the existing `DaprClientHelper` wrapper)

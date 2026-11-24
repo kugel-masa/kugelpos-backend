@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "4ec32fd68548ca918475dbe86dfc404b8f305e2a2ddba8d8fd658f37eb511a32"
+            "sha256": "edfff58f96e7923948bb08e5126e722253bb407c087b31f00b6bcb79d0e9326e"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -624,19 +624,10 @@
             "version": "==3.20"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.121-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.122-py3-none-any.whl",
             "hashes": [
-                "sha256:84cc5e6500792ebea57e4c15ce57f1de907aee790ad5f2f0760b87abe3fc429c"
+                "sha256:50f428d732248ee2d9ddd8f2d9a023dbf87be7f3f17661d204fc00035a4f6a7c"
             ]
-        },
-        "motor": {
-            "hashes": [
-                "sha256:27b4d46625c87928f331a6ca9d7c51c2f518ba0e270939d395bc1ddc89d64526",
-                "sha256:8a63b9049e38eeeb56b4fdd57c3312a6d1f25d01db717fe7d82222393c410298"
-            ],
-            "index": "pypi",
-            "markers": "python_version >= '3.9'",
-            "version": "==3.7.1"
         },
         "multidict": {
             "hashes": [
@@ -1216,6 +1207,7 @@
                 "sha256:fb1fb84e12da0e259595812c0cf7199877744c9775daeb241f2bd4fd819f8dc2",
                 "sha256:ffea4011a5cbadeb7d11cf6fdf237867ef4f32933d38b18fac242efef1d1bef0"
             ],
+            "index": "pypi",
             "markers": "python_version >= '3.11'",
             "version": "==4.20.0"
         },

@@ -6,21 +6,21 @@ using atomic MongoDB operations.
 """
 import pytest
 import pytest_asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from kugel_common.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.repositories.terminal_counter_repository import TerminalCounterRepository
 from app.config.settings import settings
 
 
 @pytest_asyncio.fixture
-async def motor_client():
+async def mongo_client():
     """Create a MongoDB client for testing."""
     import os
     # Use localhost with directConnection for local testing to avoid replica set hostname resolution
     mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/?replicaSet=rs0&directConnection=true")
-    client = AsyncIOMotorClient(mongodb_uri)
+    client = AsyncMongoClient(mongodb_uri)
     yield client
-    client.close()
+    await client.close()
 
 
 @pytest_asyncio.fixture
@@ -45,9 +45,9 @@ async def terminal_info():
 
 
 @pytest_asyncio.fixture
-async def counter_repo(motor_client, terminal_info):
+async def counter_repo(mongo_client, terminal_info):
     """Create a terminal counter repository for testing."""
-    db = motor_client[f"{settings.DB_NAME_PREFIX}_TEST_TENANT"]
+    db = mongo_client[f"{settings.DB_NAME_PREFIX}_TEST_TENANT"]
     repo = TerminalCounterRepository(db=db, terminal_info=terminal_info)
     await repo.initialize()
 

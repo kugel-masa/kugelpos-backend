@@ -309,24 +309,24 @@ def test_create_cron_trigger_exception(scheduler):
 @pytest.mark.asyncio
 async def test_get_all_tenant_ids_exception(scheduler):
     """_get_all_tenant_ids should return [] on exception."""
-    with patch("motor.motor_asyncio.AsyncIOMotorClient") as MockClient:
-        MockClient.side_effect = Exception("connection refused")
+    with patch("app.services.multi_tenant_snapshot_scheduler.get_client_async", new=AsyncMock(side_effect=Exception("connection refused"))) as get_client:
         result = await scheduler._get_all_tenant_ids()
         assert result == []
+        get_client.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_get_all_tenant_ids_filters_system_dbs(scheduler):
     """_get_all_tenant_ids should filter out admin/config/local suffixes."""
-    with patch("motor.motor_asyncio.AsyncIOMotorClient") as MockClient:
-        mock_client = AsyncMock()
-        MockClient.return_value = mock_client
+    mock_client = AsyncMock()
+    with patch("app.services.multi_tenant_snapshot_scheduler.get_client_async", new=AsyncMock(return_value=mock_client)) as get_client:
         mock_client.list_database_names.return_value = [
             "db_stock_admin", "db_stock_config", "db_stock_local",
             "db_stock_real_tenant", "unrelated_db",
         ]
         result = await scheduler._get_all_tenant_ids()
         assert result == ["real_tenant"]
+        get_client.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

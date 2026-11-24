@@ -211,17 +211,17 @@ async def async_client(set_env_vars):
         yield client
 
 
-# Motor client fixture for direct database access
+# MongoDB client fixture for direct database access
 @pytest_asyncio.fixture
 async def db_client(set_env_vars):
     """Create a test database client"""
-    from motor.motor_asyncio import AsyncIOMotorClient
+    from pymongo import AsyncMongoClient
 
     # Use the MongoDB URI directly from environment variable
     mongodb_uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/")
-    client = AsyncIOMotorClient(mongodb_uri)
+    client = AsyncMongoClient(mongodb_uri)
     yield client
-    client.close()
+    await client.close()
 
 
 # Export test constants for use in other test files  # Load .env.test to get values

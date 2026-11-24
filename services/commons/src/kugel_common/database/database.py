@@ -15,19 +15,31 @@
 MongoDB database utility module for async operations
 
 This module provides a set of asynchronous utilities for interacting with MongoDB
-using the Motor driver. It handles connection management, database and collection
-operations, and provides unified error handling.
+using the PyMongo async API. It handles connection management, database and
+collection operations, and provides unified error handling.
+
+The shared client belongs to the event loop that created it: a PyMongo async
+client can be used, and closed, only on that loop. The module remembers the loop
+with the client, closes the client there, and drops (with a warning) a client
+that is asked to close from any other loop, since closing it there would raise.
+
+One event loop at a time per process is assumed: services run one loop per
+(worker) process, and loops change only between tests. The per-loop lock
+serialises callers within a loop; it does not make the module safe for several
+loops running concurrently in different threads.
 """
 
 # database.py
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from logging import getLogger
 from typing import Optional, TypeVar, Callable
 import asyncio
 import contextlib
 import contextvars
 import re
+import weakref
 from functools import wraps
+from pymongo import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import CollectionInvalid, ConnectionFailure, ServerSelectionTimeoutError
 from kugel_common.database.database_exceptions import DatabaseException
 from kugel_common.config.settings import settings
@@ -61,8 +73,52 @@ def redact_uri(uri: str) -> str:
 
 
 # Initialize global variables
-client: AsyncIOMotorClient = None
-_client_lock = asyncio.Lock()
+client: Optional[AsyncMongoClient] = None
+# The event loop `client` was created on, the only loop it may be used or closed on.
+_client_loop: Optional[asyncio.AbstractEventLoop] = None
+# One lock per event loop. An asyncio.Lock binds to the first loop that waits on
+# it, so a single module-level lock would refuse every later loop (per-test loops
+# in the integration tests). Weak keys, so a closed loop does not keep its lock.
+_client_locks: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _client_lock() -> asyncio.Lock:
+    """The client lock for the running event loop."""
+    loop = asyncio.get_running_loop()
+    lock = _client_locks.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _client_locks[loop] = lock
+    return lock
+
+
+async def _release_client() -> None:
+    """
+    Forget the shared client, closing it if this is the loop that created it.
+
+    Awaiting `close()` from another loop raises, so a client that belongs to
+    another loop is dropped without closing, with a warning: it means a client
+    outlived the loop it was made for (usually a teardown that ran too late).
+
+    Raises:
+        Whatever `close()` raises on the client's own loop. The reference is
+        cleared first either way.
+    """
+    global client, _client_loop
+    old_client, old_loop = client, _client_loop
+    client, _client_loop = None, None
+    if old_client is None:
+        return
+    if old_loop is asyncio.get_running_loop():
+        await old_client.close()
+        logger.info("Database connection closed")
+    else:
+        logger.warning(
+            "MongoDB client was created on another event loop and cannot be closed from this one; "
+            "dropping the reference without closing it"
+        )
 
 # Type variable for generic return type
 T = TypeVar("T")
@@ -118,7 +174,7 @@ def with_connection_retry(func: Callable[..., T]) -> Callable[..., T]:
     return wrapper
 
 
-async def get_client_async() -> AsyncIOMotorClient:
+async def get_client_async() -> AsyncMongoClient:
     """
     Create and get MongoDB client instance asynchronously
 
@@ -126,17 +182,22 @@ async def get_client_async() -> AsyncIOMotorClient:
     the existing client if already connected. Connection validation is
     done lazily when actual operations are performed.
 
+    A client left over from another event loop cannot be used on this one; it
+    is dropped (see _release_client) and a new client is made for this loop.
+
     Returns:
-        AsyncIOMotorClient: MongoDB client instance
+        AsyncMongoClient: MongoDB client instance
 
     Raises:
         DatabaseException: If connection to MongoDB fails
     """
-    global client
-    async with _client_lock:
+    global client, _client_loop
+    async with _client_lock():
+        if client is not None and _client_loop is not asyncio.get_running_loop():
+            await _release_client()
         if client is None:
             try:
-                client = AsyncIOMotorClient(
+                client = AsyncMongoClient(
                     # Connection string
                     host=MONGODB_URI,
                     # Connection pool management
@@ -148,6 +209,7 @@ async def get_client_async() -> AsyncIOMotorClient:
                     connectTimeoutMS=settings.DB_CONNECT_TIMEOUT_MS,
                     socketTimeoutMS=settings.DB_SOCKET_TIMEOUT_MS,
                 )
+                _client_loop = asyncio.get_running_loop()
                 # Initial connection test
                 info = await client.server_info()
                 logger.info(f"Connected to MongoDB {info}")
@@ -157,7 +219,11 @@ async def get_client_async() -> AsyncIOMotorClient:
                     f"maxIdleTimeMS={settings.DB_MAX_IDLE_TIME_MS}"
                 )
             except Exception as e:
-                client = None
+                failed_client = client
+                client, _client_loop = None, None
+                if failed_client is not None:
+                    with contextlib.suppress(Exception):
+                        await failed_client.close()
                 message = f"Failed to connect to MongoDB: uri->{redact_uri(MONGODB_URI)}"
                 raise DatabaseException(message, logger, e) from e
         return client
@@ -168,20 +234,19 @@ async def close_client_async():
     Close the MongoDB client connection asynchronously
 
     Properly closes the MongoDB client connection to release resources.
+    Call it on the event loop that created the client: from another loop the
+    client cannot be closed and is only dropped, with a warning.
 
     Raises:
         DatabaseException: If closing the connection fails
     """
-    global client
     try:
-        if client is not None:
-            client.close()
-            logger.info("Database connection closed")
+        async with _client_lock():
+            await _release_client()
     except Exception as e:
         message = "Failed to close database connection"
         raise DatabaseException(message, logger, e) from e
     finally:
-        client = None
         logger.info("MongoDB client set to None")
 
 
@@ -190,21 +255,20 @@ async def reset_client_async():
     Reset the MongoDB client connection
 
     Closes the existing client connection and resets it to None,
-    forcing a new connection to be created on the next access.
+    forcing a new connection to be created on the next access. A failure to
+    close is logged, not raised: the reset is what the caller needs.
     """
-    global client
-    async with _client_lock:
+    async with _client_lock():
         if client is not None:
             try:
-                client.close()
-            except Exception:
-                pass
-            client = None
+                await _release_client()
+            except Exception as e:
+                logger.warning(f"Closing the MongoDB client during reset failed: {e}")
             logger.info("MongoDB client reset")
 
 
 @with_connection_retry
-async def get_db_async(db_name: str) -> AsyncIOMotorDatabase:
+async def get_db_async(db_name: str) -> AsyncDatabase:
     """
     Get MongoDB database instance asynchronously
 
@@ -215,7 +279,7 @@ async def get_db_async(db_name: str) -> AsyncIOMotorDatabase:
         db_name: Name of the database to connect to
 
     Returns:
-        AsyncIOMotorDatabase: MongoDB database instance
+        AsyncDatabase: MongoDB database instance
 
     Raises:
         DatabaseException: If getting the database instance fails
@@ -292,7 +356,7 @@ BLOCKING_DUPLICATE_TIMEOUT_MS = 10_000
 
 
 async def find_blocking_duplicates_async(
-    db: AsyncIOMotorDatabase,
+    db: AsyncDatabase,
     collection_name: str,
     index_keys: dict,
     partial_filter_expression: Optional[dict] = None,
@@ -338,7 +402,7 @@ async def find_blocking_duplicates_async(
             {"$sort": {"n": -1}},
             {"$limit": limit},
         ]
-        cursor = db[collection_name].aggregate(
+        cursor = await db[collection_name].aggregate(
             pipeline,
             allowDiskUse=True,
             maxTimeMS=BLOCKING_DUPLICATE_TIMEOUT_MS,
@@ -880,7 +944,7 @@ async def create_collection_with_indexes_async(
         raise DatabaseException(message, logger, e) from e
 
 
-async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
+async def create_collection_async(collection_name: str, db: AsyncDatabase):
     """
     Create a collection asynchronously
 
@@ -926,7 +990,7 @@ async def create_collection_async(collection_name: str, db: AsyncIOMotorDatabase
     return True
 
 
-async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
+async def drop_collection_async(collection_name: str, db: AsyncDatabase):
     """
     Drop a collection asynchronously
 
@@ -960,7 +1024,7 @@ async def drop_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
     return True
 
 
-async def execute_command_async(command: dict, db: AsyncIOMotorDatabase):
+async def execute_command_async(command: dict, db: AsyncDatabase):
     """
     Execute a MongoDB command asynchronously
 
@@ -1044,7 +1108,7 @@ def create_indexes_command(
     return {"createIndexes": collection_name, "indexes": indexes}
 
 
-async def get_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
+async def get_collection_async(collection_name: str, db: AsyncDatabase):
     """
     Get a MongoDB collection instance asynchronously
 
@@ -1053,7 +1117,7 @@ async def get_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
         db: Database instance
 
     Returns:
-        AsyncIOMotorCollection: Collection instance
+        AsyncCollection: Collection instance
 
     Raises:
         DatabaseException: If getting the collection fails
@@ -1065,7 +1129,7 @@ async def get_collection_async(collection_name: str, db: AsyncIOMotorDatabase):
         raise DatabaseException(message, logger, e) from e
 
 
-async def get_collection_names_async(db: AsyncIOMotorDatabase):
+async def get_collection_names_async(db: AsyncDatabase):
     """
     Get a list of collection names in a database asynchronously
 

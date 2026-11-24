@@ -2,7 +2,7 @@
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.models.documents import StockDocument, StockUpdateDocument
 from app.models.repositories import StockRepository, StockUpdateRepository
@@ -16,7 +16,7 @@ logger = getLogger(__name__)
 
 
 class StockService:
-    def __init__(self, database: AsyncIOMotorDatabase, alert_service: Optional[AlertService] = None):
+    def __init__(self, database: AsyncDatabase, alert_service: Optional[AlertService] = None):
         self._database = database
         self._stock_repository = StockRepository(database)
         self._stock_update_repository = StockUpdateRepository(database)

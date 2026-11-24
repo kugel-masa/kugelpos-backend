@@ -8,7 +8,7 @@ Manages reference data including product master, payment methods, tax settings, 
 
 - **Port**: 8002
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

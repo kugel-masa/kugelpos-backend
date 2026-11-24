@@ -142,9 +142,8 @@ async def test_remove_tenant_schedule(scheduler):
 @pytest.mark.asyncio
 async def test_get_all_tenant_ids(scheduler):
     """Test getting all tenant IDs from database."""
-    with patch("motor.motor_asyncio.AsyncIOMotorClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value = mock_client
+    mock_client = AsyncMock()
+    with patch("app.services.multi_tenant_snapshot_scheduler.get_client_async", new=AsyncMock(return_value=mock_client)) as get_client:
         mock_client.list_database_names.return_value = [
             "admin",
             "config",
@@ -158,6 +157,9 @@ async def test_get_all_tenant_ids(scheduler):
         assert len(tenant_ids) == 2
         assert "tenant1" in tenant_ids
         assert "tenant2" in tenant_ids
+        # The shared client, not one made per call (#301)
+        get_client.assert_awaited_once()
+        mock_client.close.assert_not_called()
 
 
 @pytest.mark.asyncio

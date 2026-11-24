@@ -15,11 +15,12 @@ the tenant database before it finishes — leaving a blocked collection behind
 would block every later run, which is the whole point of the issue.
 """
 
+import contextlib
 import os
 
 import pytest
 from fastapi import status
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,12 +35,18 @@ DUPLICATE = {
 }
 
 
-def _client():
-    return AsyncIOMotorClient(os.environ.get("MONGODB_URI"))
-
-
 def _db_name():
     return f"{os.environ.get('DB_NAME_PREFIX')}_{os.environ.get('TENANT_ID')}"
+
+
+@contextlib.asynccontextmanager
+async def _tenant_db():
+    """The tenant database through a client of its own, closed on the way out."""
+    client = AsyncMongoClient(os.environ.get("MONGODB_URI"))
+    try:
+        yield client[_db_name()]
+    finally:
+        await client.close()
 
 
 async def _block_a_collection(copies=3):
@@ -50,12 +57,13 @@ async def _block_a_collection(copies=3):
     been created, deliveries arrive with no index to refuse them, and setup then
     tries to build one over data that cannot satisfy it.
     """
-    collection = _client()[_db_name()]["log_open_close"]
-    for name, info in (await collection.index_information()).items():
-        if name != "_id_" and info.get("unique"):
-            await collection.drop_index(name)
-    doc = dict(DUPLICATE, tenant_id=os.environ.get("TENANT_ID"))
-    await collection.insert_many([dict(doc) for _ in range(copies)])
+    async with _tenant_db() as db:
+        collection = db["log_open_close"]
+        for name, info in (await collection.index_information()).items():
+            if name != "_id_" and info.get("unique"):
+                await collection.drop_index(name)
+        doc = dict(DUPLICATE, tenant_id=os.environ.get("TENANT_ID"))
+        await collection.insert_many([dict(doc) for _ in range(copies)])
 
 
 async def _unblock():
@@ -64,7 +72,8 @@ async def _unblock():
     The index itself is rebuilt by the next successful setup - which is exactly
     what the last test asserts.
     """
-    await _client()[_db_name()]["log_open_close"].delete_many({"store_code": DUPLICATE["store_code"]})
+    async with _tenant_db() as db:
+        await db["log_open_close"].delete_many({"store_code": DUPLICATE["store_code"]})
 
 
 async def test_the_failure_names_the_collection_and_the_documents(http_client, admin_header):
@@ -85,20 +94,20 @@ async def test_the_failure_names_the_collection_and_the_documents(http_client, a
 async def test_the_collections_that_can_be_set_up_still_are(http_client, admin_header):
     """One blocked collection used to stop every collection after it."""
     tenant_id = os.environ.get("TENANT_ID")
-    db = _client()[_db_name()]
-    await db["log_tran"].drop()
-    await _block_a_collection()
-    try:
-        response = await http_client.post("/api/v1/tenants", json={"tenant_id": tenant_id}, headers=admin_header)
-        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        assert "1 of" in response.text, f"expected exactly one blocked step: {response.text[:300]}"
+    async with _tenant_db() as db:
+        await db["log_tran"].drop()
+        await _block_a_collection()
+        try:
+            response = await http_client.post("/api/v1/tenants", json={"tenant_id": tenant_id}, headers=admin_header)
+            assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+            assert "1 of" in response.text, f"expected exactly one blocked step: {response.text[:300]}"
 
-        names = await db.list_collection_names()
-        assert "log_tran" in names, "a blocked collection stopped the healthy ones from being created"
-        indexes = await db["log_tran"].index_information()
-        assert len(indexes) > 1, "the healthy collection was created without its indexes"
-    finally:
-        await _unblock()
+            names = await db.list_collection_names()
+            assert "log_tran" in names, "a blocked collection stopped the healthy ones from being created"
+            indexes = await db["log_tran"].index_information()
+            assert len(indexes) > 1, "the healthy collection was created without its indexes"
+        finally:
+            await _unblock()
 
 
 async def test_setup_succeeds_once_the_documents_are_resolved(http_client, admin_header):

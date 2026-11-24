@@ -2,7 +2,7 @@
 from typing import List, Optional, Tuple
 from datetime import datetime
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from kugel_common.utils.misc import get_app_time_str
 
 from app.models.documents import StockSnapshotDocument, StockSnapshotItem
@@ -13,7 +13,7 @@ logger = getLogger(__name__)
 
 
 class SnapshotService:
-    def __init__(self, database: AsyncIOMotorDatabase):
+    def __init__(self, database: AsyncDatabase):
         self._database = database
         self._stock_repository = StockRepository(database)
         self._snapshot_repository = StockSnapshotRepository(database)

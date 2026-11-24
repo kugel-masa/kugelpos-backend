@@ -112,7 +112,7 @@ async def seal_legacy_api_key_async(collection, terminal_dict: Mapping[str, Any]
     is retried on the next verification.
 
     Args:
-        collection: The terminal info collection (Motor)
+        collection: The terminal info collection (PyMongo async)
         terminal_dict: The document as read
 
     Returns:

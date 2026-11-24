@@ -238,7 +238,7 @@ async def test_a_jwt_request_is_attributed_in_the_request_log(http_client):
     """
     import asyncio
 
-    from motor.motor_asyncio import AsyncIOMotorClient
+    from pymongo import AsyncMongoClient
 
     tenant_id = os.environ.get("TENANT_ID")
 
@@ -276,11 +276,14 @@ async def test_a_jwt_request_is_attributed_in_the_request_log(http_client):
         # a single request, which is the defect #180 fixed.
         await asyncio.sleep(8)
 
-        client = AsyncIOMotorClient(os.environ.get("MONGODB_URI"))
-        db = client[f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"]
-        row = await db["log_request"].find_one(
-            {"request_info.url": {"$regex": terminal_id}}, sort=[("request_info.accept_time", -1)]
-        )
+        client = AsyncMongoClient(os.environ.get("MONGODB_URI"))
+        try:
+            db = client[f"{os.environ.get('DB_NAME_PREFIX')}_{tenant_id}"]
+            row = await db["log_request"].find_one(
+                {"request_info.url": {"$regex": terminal_id}}, sort=[("request_info.accept_time", -1)]
+            )
+        finally:
+            await client.close()
 
         assert row is not None, "the JWT request never reached the request log"
         info = row["terminal_info"]

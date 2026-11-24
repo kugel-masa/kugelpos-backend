@@ -122,5 +122,13 @@ async def republish_undelivered_messages(terminal_service: TerminalService):
     await terminal_service.republish_undelivered_terminallog_async()
 
 
+async def _run_once() -> None:
+    """Standalone run: republish once, then close the client on this loop."""
+    try:
+        await republish_undelivered_terminallog_async()
+    finally:
+        await db_helper.close_client_async()
+
+
 if __name__ == "__main__":
-    asyncio.run(republish_undelivered_terminallog_async())
+    asyncio.run(_run_once())

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from app.models.documents.snapshot_schedule_document import SnapshotScheduleDocument
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
@@ -9,7 +9,7 @@ from kugel_common.models.repositories.abstract_repository import AbstractReposit
 class SnapshotScheduleRepository(AbstractRepository[SnapshotScheduleDocument]):
     """Repository for managing snapshot schedule documents."""
 
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: AsyncDatabase):
         super().__init__("snapshot_schedules", SnapshotScheduleDocument, db)
 
     async def get_by_tenant_id(self, tenant_id: str) -> Optional[SnapshotScheduleDocument]:

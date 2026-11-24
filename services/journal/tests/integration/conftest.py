@@ -37,7 +37,7 @@ async def _setup_journal_db(set_env_vars):
     seed the journal entries that read-side tests query.
 
     Closes the session-loop client at session start so per-test loops can
-    create their own clients (motor is loop-bound).
+    create their own clients (the client is loop-bound).
     """
     from kugel_common.database import database as db_helper
     from app.database import database_setup

@@ -22,7 +22,7 @@ Kugelposは、マイクロサービスアーキテクチャに基づいて構築
 
 **フレームワーク・ライブラリ:**
 - Python 3.12+ with FastAPI
-- MongoDB (Motor非同期ドライバー)
+- MongoDB (PyMongo 非同期 API)
 - Redis (キャッシュ・ステート管理)
 - RabbitMQ (pub/subメッセージング、Dapr経由)
 - Dapr (サービスメッシュ・ステート管理・pub/sub)
@@ -191,7 +191,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### 非同期処理
 
 **非同期I/O:**
-- Motor（MongoDB非同期ドライバー）
+- PyMongo 非同期 API（MongoDB ドライバー）
 - httpx（HTTP非同期クライアント）
 - FastAPI非同期エンドポイント
 

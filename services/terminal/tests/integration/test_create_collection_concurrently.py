@@ -22,7 +22,7 @@ import uuid
 import pytest
 import pytest_asyncio
 from kugel_common.database.database import create_collection_async
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 
 class _GapAfterTheCheck:
@@ -42,11 +42,11 @@ class _GapAfterTheCheck:
 
 @pytest_asyncio.fixture
 async def db():
-    client = AsyncIOMotorClient(os.getenv("MONGODB_URI", "mongodb://localhost:27017/?replicaSet=rs0&directConnection=true"))
+    client = AsyncMongoClient(os.getenv("MONGODB_URI", "mongodb://localhost:27017/?replicaSet=rs0&directConnection=true"))
     database = client[f"test_create_collection_{uuid.uuid4().hex[:8]}"]
     yield database
     await client.drop_database(database.name)
-    client.close()
+    await client.close()
 
 
 @pytest.mark.asyncio

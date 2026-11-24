@@ -21,7 +21,7 @@ from logging import getLogger
 from typing import Optional, Tuple
 
 import httpx
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from kugel_common.schemas.health import ComponentHealth, HealthStatus
 from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
@@ -36,7 +36,7 @@ class HealthChecker:
     """Health check utilities for common service dependencies."""
     
     @staticmethod
-    async def check_mongodb(client: AsyncIOMotorClient, timeout: float = 5.0) -> ComponentHealth:
+    async def check_mongodb(client: AsyncMongoClient, timeout: float = 5.0) -> ComponentHealth:
         """Check MongoDB connectivity.
         
         Args:

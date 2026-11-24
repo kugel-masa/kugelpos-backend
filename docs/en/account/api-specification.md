@@ -8,7 +8,7 @@ Provides user authentication and JWT token management.
 
 - **Port**: 8000
 - **Framework**: FastAPI
-- **Database**: MongoDB (Motor async driver)
+- **Database**: MongoDB (PyMongo async API)
 
 ## Base URL
 

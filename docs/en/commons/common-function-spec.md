@@ -697,12 +697,12 @@ This library effectively abstracts common concerns while maintaining flexibility
 ```python
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from app.models.documents.item_store_master_document import ItemStoreMasterDocument
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 class ItemStoreMasterRepository(AbstractRepository[ItemStoreMasterDocument]):
     """Example repository implementation for store-specific item master"""
     
-    def __init__(self, db: AsyncIOMotorDatabase, tenant_id: str, store_code: str):
+    def __init__(self, db: AsyncDatabase, tenant_id: str, store_code: str):
         # Pass collection name, document class, and DB instance to AbstractRepository constructor
         super().__init__("item_store_master", ItemStoreMasterDocument, db)
         self.tenant_id = tenant_id

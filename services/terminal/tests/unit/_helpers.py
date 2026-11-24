@@ -12,7 +12,7 @@ from app.models.documents.terminal_info_document import TerminalInfoDocument
 
 
 def _mock_db():
-    """Return a MagicMock that stands in for AsyncIOMotorDatabase."""
+    """Return a MagicMock that stands in for AsyncDatabase."""
     return MagicMock()
 
 

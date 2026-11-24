@@ -6,7 +6,7 @@ This module provides repository classes for managing transaction log delivery st
 It handles storing, retrieving, and updating the delivery status of transaction logs.
 """
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
@@ -28,7 +28,7 @@ class TranlogDeliveryStatusRepository(AbstractRepository[TranlogDeliveryStatus])
     for MongoDB operations related to transaction log delivery tracking.
     """
 
-    def __init__(self, db: AsyncIOMotorDatabase, terminal_info: TerminalInfoDocument):
+    def __init__(self, db: AsyncDatabase, terminal_info: TerminalInfoDocument):
         """
         Initialize the repository
 

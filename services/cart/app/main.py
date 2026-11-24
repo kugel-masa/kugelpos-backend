@@ -329,11 +329,13 @@ async def close_event():
 
     await get_request_log_buffer().shutdown()
 
-    logger.info("Closing the database connection")
-    await db_helper.close_client_async()
-
+    # Stop the job before closing the client: a run in between would open a
+    # new client that nothing closes.
     logger.info("Stopping the scheduler for republishing undelivered tranlog messages")
     await shutdown_republish_undelivered_tranlog_job()
+
+    logger.info("Closing the database connection")
+    await db_helper.close_client_async()
 
     # Close all HTTP client pools to prevent resource leaks
     logger.info("Closing all HTTP client pools")

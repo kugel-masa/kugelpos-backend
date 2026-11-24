@@ -2,7 +2,7 @@
 from logging import getLogger
 
 from kugel_common.exceptions import RepositoryException
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 
 from kugel_common.utils.misc import get_app_time
 from app.config.settings import settings
@@ -24,7 +24,7 @@ class ItemCommonMasterRepository(AbstractRepository[ItemCommonMasterDocument]):
     """
 
     def __init__(
-        self, db: AsyncIOMotorDatabase, tenant_id: str, item_master_documents: list[ItemCommonMasterDocument] = None
+        self, db: AsyncDatabase, tenant_id: str, item_master_documents: list[ItemCommonMasterDocument] = None
     ):
         """
         Initialize a new ItemCommonMasterRepository instance.

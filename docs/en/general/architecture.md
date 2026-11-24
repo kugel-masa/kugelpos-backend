@@ -22,7 +22,7 @@ Kugelpos is a POS backend system built on microservices architecture, utilizing 
 
 **Frameworks & Libraries:**
 - Python 3.12+ with FastAPI
-- MongoDB (Motor async driver)
+- MongoDB (PyMongo async API)
 - Redis (caching & state management)
 - RabbitMQ (pub/sub messaging, via Dapr)
 - Dapr (service mesh, state management & pub/sub)
@@ -191,7 +191,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
 ### Asynchronous Processing
 
 **Async I/O:**
-- Motor (MongoDB async driver)
+- PyMongo async API (MongoDB driver)
 - httpx (HTTP async client)
 - FastAPI async endpoints
 

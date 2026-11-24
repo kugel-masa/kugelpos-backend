@@ -21,7 +21,8 @@ for document models used throughout the application.
 from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, Type
 from logging import getLogger
-from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorClientSession
+from pymongo.asynchronous.client_session import AsyncClientSession
+from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError, OperationFailure
 import asyncio
 from kugel_common.models.documents.abstract_document import AbstractDocument
@@ -51,7 +52,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
         self,
         collection_name: str,
         document_class: Type[Tdocument],
-        db: AsyncIOMotorDatabase,
+        db: AsyncDatabase,
     ):
         """
         Initialize a new repository instance
@@ -65,7 +66,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
         self.dbcollection = None
         self.document_class = document_class
         self.db = db
-        self.session: AsyncIOMotorClientSession = None
+        self.session: AsyncClientSession = None
 
     async def initialize(self):
         """
@@ -83,7 +84,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
             message = f"initialize failed: collection_name->{self.collection_name}"
             raise RepositoryException(message, self.collection_name, logger, e) from e
 
-    async def start_transaction(self) -> AsyncIOMotorClientSession:
+    async def start_transaction(self) -> AsyncClientSession:
         """
         Start a new database transaction
         
@@ -91,15 +92,18 @@ class AbstractRepository(ABC, Generic[Tdocument]):
         for performing atomic operations across multiple documents.
         
         Returns:
-            AsyncIOMotorClientSession: The newly created session object
+            AsyncClientSession: The newly created session object
             
         Raises:
             RepositoryException: If a transaction is already in progress
         """
         logger.debug(f"Starting transaction for collection: {self.collection_name}")
         if self.session is None:
-            self.session = await self.db.client.start_session()
-            self.session.start_transaction()
+            # start_session() is synchronous and start_transaction() is a
+            # coroutine. Without the await no transaction opens and every
+            # write commits on its own.
+            self.session = self.db.client.start_session()
+            await self.session.start_transaction()
             return self.session
         else:
             raise RepositoryException(
@@ -166,7 +170,7 @@ class AbstractRepository(ABC, Generic[Tdocument]):
                 )
             self.session = None
 
-    def set_session(self, session: AsyncIOMotorClientSession):
+    def set_session(self, session: AsyncClientSession):
         """
         Set an external transaction session for this repository
         
@@ -555,7 +559,8 @@ class AbstractRepository(ABC, Generic[Tdocument]):
         if self.dbcollection is None:
             await self.initialize()
         try:
-            result_set = await self.dbcollection.aggregate(pipeline).to_list(None)
+            cursor = await self.dbcollection.aggregate(pipeline)
+            result_set = await cursor.to_list(None)
             if result_set is None:
                 logger.info(
                     f"No documents found in database for pipeline: {mask_loggable(pipeline)} of collection: {self.collection_name}"

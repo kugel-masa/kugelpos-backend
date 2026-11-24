@@ -42,15 +42,21 @@ def test_uri_without_credentials_is_unchanged(uri):
 
 @pytest.mark.asyncio
 async def test_failed_connection_message_has_no_credentials(monkeypatch):
+    created = []
+
     class _FailingClient:
         def __init__(self, *args, **kwargs):
-            pass
+            created.append(self)
+            self.closed = False
 
         async def server_info(self):
             raise RuntimeError("unreachable")
 
+        async def close(self):
+            self.closed = True
+
     monkeypatch.setattr(database, "MONGODB_URI", "mongodb://kugel:s3cr3t@db.example.com:27017/")
-    monkeypatch.setattr(database, "AsyncIOMotorClient", _FailingClient)
+    monkeypatch.setattr(database, "AsyncMongoClient", _FailingClient)
     monkeypatch.setattr(database, "client", None)
 
     with pytest.raises(DatabaseException) as exc:
@@ -61,3 +67,6 @@ async def test_failed_connection_message_has_no_credentials(monkeypatch):
     assert "kugel:" not in message
     assert "db.example.com" in message
     assert "db_test" in message
+    # The stand-in was the client actually used, and the failed client was closed
+    assert created and all(c.closed for c in created)
+    assert database.client is None
