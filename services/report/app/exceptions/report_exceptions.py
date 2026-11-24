@@ -2,6 +2,7 @@
 """
 reportサービス固有の例外クラスの定義
 """
+import logging
 from fastapi import status
 from logging import getLogger
 
@@ -359,5 +360,54 @@ class ItemMasterDataNotFoundException(ServiceException):
             original_exception,
             ReportErrorCode.EXTERNAL_SERVICE_ERROR,
             ReportErrorMessage.get_message(ReportErrorCode.EXTERNAL_SERVICE_ERROR),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+class SessionNotSettledException(ServiceException):
+    """
+    A daily report covers a session with no final settlement record (#343).
+
+    Carries the unsettled sessions; report's own exception handler puts them in
+    the response's ``data`` (the shared handler always sends ``data: null``).
+    """
+
+    def __init__(self, message, unsettled_sessions: list[dict], logger=None):
+        super().__init__(
+            message,
+            logger,
+            None,
+            ReportErrorCode.TERMINAL_NOT_CLOSED,
+            ReportErrorMessage.get_message(ReportErrorCode.TERMINAL_NOT_CLOSED),
+            status_code=status.HTTP_403_FORBIDDEN,
+            log_level=logging.INFO,
+        )
+        self.unsettled_sessions = unsettled_sessions
+
+
+class SettlementNotFoundException(ServiceException):
+    """No settlement record for the session (#343)."""
+
+    def __init__(self, message, logger=None):
+        super().__init__(
+            message,
+            logger,
+            None,
+            ReportErrorCode.SETTLEMENT_NOT_FOUND,
+            ReportErrorMessage.get_message(ReportErrorCode.SETTLEMENT_NOT_FOUND),
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class SettlementAggregationException(ServiceException):
+    """A daily report could not be frozen; nothing was stored (#343, R-15)."""
+
+    def __init__(self, message, logger=None, original_exception=None):
+        super().__init__(
+            message,
+            logger,
+            original_exception,
+            ReportErrorCode.SETTLEMENT_AGGREGATION_FAILED,
+            ReportErrorMessage.get_message(ReportErrorCode.SETTLEMENT_AGGREGATION_FAILED),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

@@ -7,3 +7,7 @@ class DBCollectionSettings(BaseSettings):
     DB_COLLECTION_NAME_CASH_IN_OUT_LOG: str = "log_cash_in_out"
     DB_COLLECTION_NAME_OPEN_CLOSE_LOG: str = "log_open_close"
     DB_COLLECTION_NAME_DAILY_INFO: str = "info_daily"
+    # A terminal session's settlement, frozen at close (#343)
+    DB_COLLECTION_NAME_SETTLEMENT_RECORD: str = "settlement_record"
+    # The daily reports a settlement froze, one document per report type (#343)
+    DB_COLLECTION_NAME_SETTLEMENT_DAILY_REPORT: str = "settlement_daily_report"
