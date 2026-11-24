@@ -22,6 +22,11 @@ The shared client belongs to the event loop that created it: a PyMongo async
 client can be used, and closed, only on that loop. The module remembers the loop
 with the client, closes the client there, and drops (with a warning) a client
 that is asked to close from any other loop, since closing it there would raise.
+
+One event loop at a time per process is assumed: services run one loop per
+(worker) process, and loops change only between tests. The per-loop lock
+serialises callers within a loop; it does not make the module safe for several
+loops running concurrently in different threads.
 """
 
 # database.py

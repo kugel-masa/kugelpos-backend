@@ -36,18 +36,26 @@ Exceptions stay in `pymongo.errors`. `find()` still returns a cursor without
 | `collection.aggregate(...)` | returns the cursor | **awaited**, then returns the cursor |
 | `collection.list_indexes()` | returns the cursor | **awaited**, then returns the cursor |
 | `client.close()` | synchronous | **awaited** |
-| `cursor.to_list(0)` | 0 means "no limit" | **raises `ValueError`**; pass `None` |
+| `cursor.to_list(0)` | returns an empty list | **raises `ValueError`** |
 
 A missing `await` on these does not always fail loudly:
 
 - `client.close()` without `await` only warns (`coroutine ... was never
   awaited`); the client stays open.
-- `aggregate()` without `await` raises a `TypeError` when iterated. Code that
-  wraps the call in a broad `except` turns that into an empty result.
+- `aggregate()` without `await` gives a coroutine instead of a cursor:
+  `async for` over it raises `TypeError`, and a chained `.to_list()` raises
+  `AttributeError`. Code that wraps the call in a broad `except` turns either
+  into an empty result.
 - `session.start_transaction()` without `await` opens no transaction. Every
-  write then commits on its own, and an abort leaves them in place. A test that
-  only checks "commit keeps the write" will not notice; check that an abort
-  leaves nothing.
+  write then commits on its own. A later `commit_transaction()` fails with
+  `InvalidOperation: No transaction started`, but the writes are already in
+  the database; an abort guarded by `session.in_transaction` passes silently
+  and leaves them in place. Check that an abort leaves nothing.
+- For `to_list(0)`, decide what the call meant. Motor returned an empty list;
+  if the code relied on that, keep it explicit. If it meant "no limit" (as this
+  tree's repositories do, mapping 0 to an unlimited fetch before the cursor),
+  pass `None`. Swapping 0 for `None` blindly turns a call that returned nothing
+  into one that returns the whole collection.
 
 `session.commit_transaction()`, `abort_transaction()` and `end_session()` are
 awaited in both drivers. `async with session:` works in both.
@@ -152,7 +160,7 @@ the reverse) does not work part way without a compatibility layer.
 |---|---|
 | No Motor left | `grep -rn -i motor` over code, Pipfiles, locks and `pyproject.toml` returns nothing |
 | Tests | Unit, integration and e2e counts equal the baseline (plus new tests), with no failures. In this tree the cart e2e runs under `DUAL` and `REQUIRED`: restart after setting the mode and confirm it with `docker exec services-cart-1 printenv CART_REQUEST_SNAPSHOT_MODE` |
-| Missing `await` | Run unit and integration with `-W error::RuntimeWarning`; read every hit of the shape-change search |
+| Missing `await` | Run unit and integration with `-W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning`. A never-awaited coroutine warns from its finaliser, which pytest reports as `PytestUnraisableExceptionWarning`, so the first flag alone does not fail the run. Then read every hit of the shape-change search |
 | Sessions | On a real MongoDB, each code path that opens a transaction is in one right after `start_transaction()` (`session.in_transaction`), and an abort leaves no write |
 | Old data | On the new build, with the old volume, the tenant from step 2 answers the same (only generated-on-request fields such as a flash report's timestamp differ), and a void of the old sale, a new sale and a close all succeed |
 | Indexes | Collections and `index_information()` per service database equal the baseline |

@@ -3,8 +3,9 @@
 
 Under the PyMongo async API `start_session()` is not awaited and
 `start_transaction()` is. A missing `await` on the latter leaves no transaction
-open, and the writes then commit on their own - so "abort leaves nothing" is the
-check that catches it, not "commit keeps the write".
+open and the writes commit on their own. The commit then fails loudly, but an
+abort (guarded by `in_transaction`) passes silently with the writes kept - so
+"abort leaves nothing" is the check that matters.
 
 Both ways the services use a session are covered: cart commits explicitly;
 journal and terminal also run inside `async with await repo.start_transaction()`.

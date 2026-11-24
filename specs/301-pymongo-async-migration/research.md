@@ -41,7 +41,7 @@
 | `collection.aggregate(...)` | カーソルを返す（同期） | **`await` が要る**（カーソルを返すコルーチン） | commons `AbstractRepository.execute_pipeline`、`database.find_blocking_duplicates` 系の補助 |
 | `collection.list_indexes()` | カーソルを返す（同期） | **`await` が要る** | stock `stock_snapshot_repository.py:113` |
 | `client.close()` | 同期 | **`await` が要る** | commons `close_client_async` / `reset_client_async`、テストの後始末 |
-| `cursor.to_list(0)` | 0 = 上限なし | **`ValueError`** | 今のコードはすべて 0 を `None` に振り替えてから呼ぶ（R-5） |
+| `cursor.to_list(0)` | 空のリストを返す | **`ValueError`** | 今のコードは、リポジトリの「0 = 上限なし」を、カーソルに渡す前に `None`（上限なしの取得）に振り替えている（R-5） |
 | `collection.find(...)` | 同期でカーソル | 同期でカーソル（変わらない） | 多数 |
 | `find_one` / `insert_*` / `update_*` / `delete_*` / `count_documents` / `distinct` / `create_index` / `index_information` / `list_collection_names` / `command` / `drop_database` / `server_info` | `await` | `await`（変わらない） | 多数 |
 | `async for doc in cursor` | 可 | 可（変わらない） | 多数 |
@@ -51,8 +51,8 @@
 
 **`await` の付け忘れの壊れ方**（R-10 で検出する）:
 - `client.close()` の付け忘れ: `RuntimeWarning: coroutine ... was never awaited` が出るだけで、接続は閉じない
-- `aggregate()` の付け忘れ: コルーチンに `async for` して `TypeError` になるが、呼び出し元の広い `except` に飲まれて「空の結果」に化ける
-- `session.start_transaction()` の付け忘れ: トランザクションが始まらず、書き込みがトランザクションの外で確定する（abort しても残る）。テストが「commit で残る」しか見ていないと気づかない
+- `aggregate()` の付け忘れ: `async for` で `TypeError`、`.to_list()` をつなぐと `AttributeError` になるが、呼び出し元の広い `except` に飲まれて「空の結果」に化ける
+- `session.start_transaction()` の付け忘れ: トランザクションが始まらず、書き込みがトランザクションの外で確定する。commit は `No transaction started` で失敗するが、書き込みは残る。`in_transaction` を見てから abort する経路は黙って通る（PR #339 のレビューで実際の MongoDB で確かめた）
 
 **セッションの使い方は2通り**（どちらも commons を直せばそのまま動くが、両方を実際の MongoDB で通す）:
 - cart `tran_service.py:334,779,1077`: `start_transaction()` で受け取ったセッションを明示的に commit / abort する
@@ -173,7 +173,7 @@
 ## R-10: `await` の付け忘れと終了の順番を、警告で終わらせない
 
 **Decision**:
-- 7サービスと commons の unit / integration を、移行後に一度 `-W error::RuntimeWarning` を付けて走らせる（`pipenv run pytest -W error::RuntimeWarning tests/unit tests/integration`）。`coroutine ... was never awaited` を失敗にする
+- 7サービスと commons の unit / integration を、移行後に一度 `-W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning` を付けて走らせる。`coroutine ... was never awaited` は後始末の中で出るため、pytest は `PytestUnraisableExceptionWarning` として扱う。`RuntimeWarning` だけでは失敗にならない
 - 付け忘れを検索する: `grep -rn -E "\.(aggregate|list_indexes|close|start_transaction)\(" services/*/app services/*/tests services/commons/src services/commons/tests` の結果を1行ずつ見て、PyMongo の接続・コレクション・セッションに対する呼び出しに `await` があることを確かめる
 - R-6 の「別のループから閉じようとした」警告のログが、統合テストの出力に出ないことを確かめる
 - e2e のスタックを止めたとき（`./scripts/stop.sh`）の各サービスのログに、閉じ忘れの警告（`Unclosed AsyncMongoClient` など）、`RuntimeError`、`DatabaseException` が出ないことを確かめる。lifespan の停止の順番は、統合テストでは通らない

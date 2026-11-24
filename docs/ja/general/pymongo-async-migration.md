@@ -27,13 +27,14 @@ Motor は 2026-05-14 に非推奨になり、重大な不具合の修正も **20
 | `collection.aggregate(...)` | カーソルを返す | **`await` して**カーソルを受け取る |
 | `collection.list_indexes()` | カーソルを返す | **`await` して**カーソルを受け取る |
 | `client.close()` | 同期 | **`await` する** |
-| `cursor.to_list(0)` | 0 は「上限なし」 | **`ValueError`**。`None` を渡す |
+| `cursor.to_list(0)` | 空のリストを返す | **`ValueError`** |
 
 これらの `await` を付け忘れても、いつも分かりやすく失敗するとは限りません。
 
 - `client.close()` の付け忘れ: 警告（`coroutine ... was never awaited`）が出るだけで、接続は閉じません。
-- `aggregate()` の付け忘れ: 結果を回すときに `TypeError` になります。呼び出しを広い `except` で包んでいるコードでは、「空の結果」に化けます。
-- `session.start_transaction()` の付け忘れ: トランザクションが始まりません。書き込みは1つずつその場で確定し、abort しても残ります。「commit で書き込みが残る」だけを見るテストでは気づかないので、「abort で何も残らない」ことを確かめてください。
+- `aggregate()` の付け忘れ: カーソルではなくコルーチンが返ります。`async for` で回すと `TypeError`、`.to_list()` をつなぐと `AttributeError` になります。呼び出しを広い `except` で包んでいるコードでは、どちらも「空の結果」に化けます。
+- `session.start_transaction()` の付け忘れ: トランザクションが始まりません。書き込みは1つずつその場で確定します。あとの `commit_transaction()` は `InvalidOperation: No transaction started` で失敗しますが、書き込みはもうデータベースに入っています。`session.in_transaction` を見てから abort するコードでは、abort は何も言わずに通り、書き込みは残ります。「abort で何も残らない」ことを確かめてください。
+- `to_list(0)` は、その呼び出しが何を意図していたかを判断します。Motor は空のリストを返していました。それに頼っていたなら、その意図をはっきり書きます。「上限なし」のつもりなら（このツリーのリポジトリは、カーソルに渡す前に 0 を上限なしの取得に振り替えています）`None` を渡します。機械的に 0 を `None` に替えると、何も返さなかった呼び出しが全件を返すようになります。
 
 `session.commit_transaction()`、`abort_transaction()`、`end_session()` は、どちらのドライバでも `await` します。`async with session:` もどちらでも使えます。
 
@@ -98,7 +99,7 @@ Motor を差し替えているテストは、Motor が無くなっても落ち�
 |---|---|
 | Motor が残っていない | コード、Pipfile、ロック、`pyproject.toml` を `grep -rn -i motor` して何も出ない |
 | テスト | unit / 統合 / e2e の件数が基準と同じ（足したテストの分だけ多い）で、失敗が無い。このツリーでは cart の e2e を `DUAL` と `REQUIRED` で走らせる。モードを設定したら再起動し、`docker exec services-cart-1 printenv CART_REQUEST_SNAPSHOT_MODE` で確かめる |
-| `await` の付け忘れ | unit と統合テストを `-W error::RuntimeWarning` で走らせる。書き方が変わる呼び出しの検索結果を全部読む |
+| `await` の付け忘れ | unit と統合テストを `-W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning` で走らせる。`await` されなかったコルーチンの警告は後始末の中で出るので、pytest は `PytestUnraisableExceptionWarning` として扱い、1つ目の設定だけでは失敗にならない。そのうえで、書き方が変わる呼び出しの検索結果を全部読む |
 | セッション | 実際の MongoDB で、トランザクションを開く各経路が `start_transaction()` の直後にトランザクションの中にいる（`session.in_transaction`）。abort すると書き込みが残らない |
 | 移行前のデータ | 新しいイメージで、古いボリュームのまま、段階 2 のテナントが同じ応答を返す（速報のレポートの作成時刻のように、リクエストのたびに作るものだけが違う）。古い販売の取消、新しい販売、締めができる |
 | インデックス | サービスのデータベースごとのコレクションと `index_information()` が基準と同じ |

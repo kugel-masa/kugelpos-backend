@@ -11,7 +11,6 @@ import os
 from datetime import datetime, timezone
 
 import pytest
-from pymongo import AsyncMongoClient
 
 from kugel_common.models.documents.base_tranlog import BaseTransaction
 from app.models.repositories.tranlog_repository import TranlogRepository

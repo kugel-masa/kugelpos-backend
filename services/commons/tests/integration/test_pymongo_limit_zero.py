@@ -1,9 +1,10 @@
 # Copyright 2026 masa@kugel
 """`max=0` still means "no limit" (#301, FR-004, C-4).
 
-The PyMongo async cursor refuses `to_list(0)` with ValueError, where the
-previous driver read 0 as "no limit". The repository maps 0 to an unlimited fetch before it reaches
-the cursor; these tests pin both halves.
+The PyMongo async cursor refuses `to_list(0)` with ValueError (the previous
+driver returned an empty list). The repository's own `max=0` means "no limit"
+and is mapped to an unlimited fetch before it reaches the cursor; these tests
+pin both halves.
 """
 import pytest
 

@@ -115,5 +115,13 @@ async def republish_undelivered_tranlog_async():
         await tran_service.close()
 
 
+async def _run_once() -> None:
+    """Standalone run: republish once, then close the client on this loop."""
+    try:
+        await republish_undelivered_tranlog_async()
+    finally:
+        await db_helper.close_client_async()
+
+
 if __name__ == "__main__":
-    asyncio.run(republish_undelivered_tranlog_async())
+    asyncio.run(_run_once())
