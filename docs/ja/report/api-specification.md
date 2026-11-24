@@ -162,7 +162,9 @@ What confirming would record now, without storing anything.
 | `businessCounter` | integer | Yes | - |
 | `businessDate` | string | Yes | - |
 | `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
 | `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
 | `settledAt` | string | Yes | - |
 | `declaredCount` | integer | No | - |
 | `declaredSource` | string | Yes | - |
@@ -197,10 +199,10 @@ What confirming would record now, without storing anything.
     "businessCounter": 0,
     "businessDate": "string",
     "openCounter": 0,
+    "settledKind": "close",
     "settledBy": "string",
-    "settledAt": "string",
-    "declaredCount": 0,
-    "declaredSource": "string"
+    "adminReason": "string",
+    "settledAt": "string"
   },
   "metadata": {
     "total": 0,
@@ -270,7 +272,9 @@ they are recorded.
 | `businessCounter` | integer | Yes | - |
 | `businessDate` | string | Yes | - |
 | `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
 | `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
 | `settledAt` | string | Yes | - |
 | `declaredCount` | integer | No | - |
 | `declaredSource` | string | Yes | - |
@@ -309,10 +313,10 @@ they are recorded.
     "businessCounter": 0,
     "businessDate": "string",
     "openCounter": 0,
+    "settledKind": "close",
     "settledBy": "string",
-    "settledAt": "string",
-    "declaredCount": 0,
-    "declaredSource": "string"
+    "adminReason": "string",
+    "settledAt": "string"
   },
   "metadata": {
     "total": 0,
@@ -429,7 +433,9 @@ The store's settlement records, by business date, terminal and session.
 | `businessCounter` | integer | Yes | - |
 | `businessDate` | string | Yes | - |
 | `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
 | `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
 | `settledAt` | string | Yes | - |
 | `declaredCount` | integer | No | - |
 | `declaredSource` | string | Yes | - |
@@ -468,10 +474,10 @@ The store's settlement records, by business date, terminal and session.
       "businessCounter": 0,
       "businessDate": "string",
       "openCounter": 0,
+      "settledKind": "close",
       "settledBy": "string",
-      "settledAt": "string",
-      "declaredCount": 0,
-      "declaredSource": "string"
+      "adminReason": "string",
+      "settledAt": "string"
     }
   ],
   "metadata": {
@@ -550,9 +556,122 @@ report, which carries missingCount and missingRanges. Flash is live.
 }
 ```
 
+### 9. Settle Session By Admin
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
+
+Settle a session whose terminal will never close it: a terminal deleted
+while open, an offline session, a close log that never arrived.
+
+The settlement is made from the logs that have reached report and is final
+at once, so the daily reports that cover the session can be produced. A
+session already settled is returned as stored. Do not use it for a terminal
+that is still selling: its later sales would be left out of the daily report.
+User or service JWT of the tenant only.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `businessCounter` | integer | Yes | - |
+| `reason` | string | Yes | - |
+| `physicalAmount` | number | No | - |
+
+**リクエスト例:**
+```json
+{
+  "businessCounter": 0,
+  "reason": "string",
+  "physicalAmount": 0.0
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `SettlementConfirmResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
+| `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settlementId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `recordedAt` | string | Yes | - |
+| `finalizedAt` | string | No | - |
+| `created` | boolean | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "businessCounter": 0,
+    "businessDate": "string",
+    "openCounter": 0,
+    "settledKind": "close",
+    "settledBy": "string",
+    "adminReason": "string",
+    "settledAt": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
 ### トランザクション
 
-### 9. 取引データ受信
+### 10. 取引データ受信
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
@@ -615,7 +734,7 @@ report, which carries missingCount and missingRanges. Flash is live.
 
 ### イベント処理
 
-### 10. 現金ログ処理
+### 11. 現金ログ処理
 
 **POST** `/api/v1/cashlog`
 
@@ -623,7 +742,7 @@ report, which carries missingCount and missingRanges. Flash is live.
 
 **レスポンス:**
 
-### 11. 開閉店ログ処理
+### 12. 開閉店ログ処理
 
 **POST** `/api/v1/opencloselog`
 
@@ -631,7 +750,7 @@ report, which carries missingCount and missingRanges. Flash is live.
 
 **レスポンス:**
 
-### 12. 取引ログ処理
+### 13. 取引ログ処理
 
 **POST** `/api/v1/tranlog`
 

@@ -42,7 +42,7 @@
 
 ## report への依頼
 
-`close` は、閉設ログを書く前に report の内部の口（report-settlement-api.md §1）を呼ぶ。トークンは `create_service_token(tenant_id, "terminal")`。接続先は `BASE_URL_REPORT`。タイムアウト 30 秒、再試行は 1 回まで。要求には `seq` と、terminal が手元で数えた入出金の件数（`cashLogCount`）を入れる。
+`close` は、閉設ログを書く前に report の内部の口（report-settlement-api.md §1）を呼ぶ。トークンは `create_service_token(tenant_id, "terminal")`。接続先は `BASE_URL_REPORT`。タイムアウト 30 秒、再試行なし（1回だけ試す）。要求には `seq` と、terminal が手元で数えた入出金の件数（`cashLogCount`）を入れる。
 
 | report の結果 | terminal の動き |
 |---|---|

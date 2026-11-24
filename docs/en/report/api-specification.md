@@ -170,7 +170,9 @@ What confirming would record now, without storing anything.
 | `businessCounter` | integer | Yes | - |
 | `businessDate` | string | Yes | - |
 | `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
 | `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
 | `settledAt` | string | Yes | - |
 | `declaredCount` | integer | No | - |
 | `declaredSource` | string | Yes | - |
@@ -205,10 +207,10 @@ What confirming would record now, without storing anything.
     "businessCounter": 0,
     "businessDate": "string",
     "openCounter": 0,
+    "settledKind": "close",
     "settledBy": "string",
-    "settledAt": "string",
-    "declaredCount": 0,
-    "declaredSource": "string"
+    "adminReason": "string",
+    "settledAt": "string"
   },
   "metadata": {
     "total": 0,
@@ -278,7 +280,9 @@ they are recorded.
 | `businessCounter` | integer | Yes | - |
 | `businessDate` | string | Yes | - |
 | `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
 | `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
 | `settledAt` | string | Yes | - |
 | `declaredCount` | integer | No | - |
 | `declaredSource` | string | Yes | - |
@@ -317,10 +321,10 @@ they are recorded.
     "businessCounter": 0,
     "businessDate": "string",
     "openCounter": 0,
+    "settledKind": "close",
     "settledBy": "string",
-    "settledAt": "string",
-    "declaredCount": 0,
-    "declaredSource": "string"
+    "adminReason": "string",
+    "settledAt": "string"
   },
   "metadata": {
     "total": 0,
@@ -437,7 +441,9 @@ The store's settlement records, by business date, terminal and session.
 | `businessCounter` | integer | Yes | - |
 | `businessDate` | string | Yes | - |
 | `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
 | `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
 | `settledAt` | string | Yes | - |
 | `declaredCount` | integer | No | - |
 | `declaredSource` | string | Yes | - |
@@ -476,10 +482,10 @@ The store's settlement records, by business date, terminal and session.
       "businessCounter": 0,
       "businessDate": "string",
       "openCounter": 0,
+      "settledKind": "close",
       "settledBy": "string",
-      "settledAt": "string",
-      "declaredCount": 0,
-      "declaredSource": "string"
+      "adminReason": "string",
+      "settledAt": "string"
     }
   ],
   "metadata": {
@@ -558,9 +564,122 @@ report, which carries missingCount and missingRanges. Flash is live.
 }
 ```
 
+### 9. Settle Session By Admin
+
+**POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
+
+Settle a session whose terminal will never close it: a terminal deleted
+while open, an offline session, a close log that never arrived.
+
+The settlement is made from the logs that have reached report and is final
+at once, so the daily reports that cover the session can be produced. A
+session already settled is returned as stored. Do not use it for a terminal
+that is still selling: its later sales would be left out of the daily report.
+User or service JWT of the tenant only.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `is_terminal_service` | string | No | False | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `businessCounter` | integer | Yes | - |
+| `reason` | string | Yes | - |
+| `physicalAmount` | number | No | - |
+
+**Request Example:**
+```json
+{
+  "businessCounter": 0,
+  "reason": "string",
+  "physicalAmount": 0.0
+}
+```
+
+**Response:**
+
+**data Field:** `SettlementConfirmResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledKind` | string | No | - |
+| `settledBy` | string | No | - |
+| `adminReason` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settlementId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `recordedAt` | string | Yes | - |
+| `finalizedAt` | string | No | - |
+| `created` | boolean | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "businessCounter": 0,
+    "businessDate": "string",
+    "openCounter": 0,
+    "settledKind": "close",
+    "settledBy": "string",
+    "adminReason": "string",
+    "settledAt": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
 ### Transaction
 
-### 9. Receive Transactions
+### 10. Receive Transactions
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
@@ -627,7 +746,7 @@ token or API key.
 
 ### Event Processing
 
-### 10. Handle Cashlog
+### 11. Handle Cashlog
 
 **POST** `/api/v1/cashlog`
 
@@ -638,7 +757,7 @@ to the 'topic-cashlog' topic in the 'pubsub-cashlog-report' component.
 
 **Response:**
 
-### 11. Handle Opencloselog
+### 12. Handle Opencloselog
 
 **POST** `/api/v1/opencloselog`
 
@@ -649,7 +768,7 @@ to the 'topic-opencloselog' topic in the 'pubsub-opencloselog-report' component.
 
 **Response:**
 
-### 12. Handle Tranlog
+### 13. Handle Tranlog
 
 **POST** `/api/v1/tranlog`
 

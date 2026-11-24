@@ -128,7 +128,17 @@ description: "Task list for 343-settlement-snapshot"
 - [X] T043 [P] docs: docs/{en,ja}/general/error_code_spec.md（412101 の意味、413007、413008、406016）、API の文書の生成（scripts/generate-api-docs.py）、report・terminal の api-specification に精算の流れと日報の挙動の変化（daily は limit/page を使わない、期間の日報に現金の欄）
 - [X] T044 [P] 配備の手順（.claude/commands/deploy.md か docs）: report を terminal より先に配備すること、terminal に `BASE_URL_REPORT` が要ること
 - [X] T045 `pipenv run ruff check` を変更した app のファイルに。下流の名前が入っていないこと（`~/.config/kugelpos-public/forbidden-patterns` で検索）
-- [ ] T046 PR（本文も同じ検索で確かめる）
+- [X] T046 PR（本文も同じ検索で確かめる）→ #345
+
+## Phase 9: PR のレビューへの対応（R-20、R-21）
+
+- [X] T047 内部の精算の口を terminal のサービスアカウントだけにする（services/report/app/api/v1/settlement_internal.py）とテスト
+- [X] T048 計算を `_id` の集合で固定する（settlement_service.py、report_scope.py の `cash_extra_match`、sales_report_maker.py）と、書き込みの確定が遅れた取引のテスト
+- [X] T049 [US2] `missingRanges` に `terminalNo`・`businessDate`（report_service.py、schemas.py）と、店舗の日報のテスト
+- [X] T050 同時の精算: terminal の書き込みの衝突を 406003 に（terminal_service.py）、report のトランザクションのやり直し（settlement_record_repository.py）、テスト
+- [X] T051 閉設ログの照合で確定できなければ例外（settlement_service.py）とテスト
+- [X] T052 管理者の精算の口（settlement.py、settlement_service.py `settle_by_admin_async`、settlement_record_document.py）とテスト（test_settlement_admin_api.py）
+- [X] T053 索引に `open_counter`、精算実績の日時、通知の文言、再試行の説明、API の文書の生成、仕様の文書の更新
 
 ---
 

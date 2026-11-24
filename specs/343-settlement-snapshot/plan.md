@@ -5,13 +5,13 @@
 
 ## Summary
 
-端末の精算のとき、terminal が report の内部の口に精算の確定を頼む。report は、その時点で届いている取引・入出金を、締めの時刻で絞った同じ集合として読み（R-12）、精算実績を作って営業ごとに1件保存する。精算実績は、その営業の閉設ログが report に届くまで「仮」で、もう一度精算されたら作り直し、閉設ログが届いたら「確定」して変えない（R-2・R-6）。精算実績には、理論在高（売上レポートと共有する1か所の式・R-3）、取引と入出金の未着・重複（R-13）、5種類の確定集計（営業の番号で絞り、件数の区切りなし・別のコレクション・R-4・R-17）を持たせる。集計に1つでも失敗したら保存せずに断る（R-15）。日報（daily）は確定した精算実績の確定集計から返し、店舗・期間は合算する。未精算の営業があれば `412101` で断り、一覧を返す（R-5・R-14・R-16）。terminal は cart への問い合わせをやめ、report で確定できなければ `406016`（503）で断る（R-7）。照会の一覧と、terminal を通した精算前の確認の口を足す（R-8）。
+端末の精算のとき、terminal が report の内部の口に精算の確定を頼む。report は、その時点で届いている取引・入出金を1回だけ読んでその集合に固定し（R-12）、精算実績を作って営業ごとに1件保存する。精算実績は、その営業の閉設ログが report に届くまで「仮」で、もう一度精算されたら作り直し、閉設ログが届いたら「確定」して変えない（R-2・R-6）。精算実績には、理論在高（売上レポートと共有する1か所の式・R-3）、取引と入出金の未着・重複（R-13）、5種類の確定集計（営業の番号で絞り、件数の区切りなし・別のコレクション・R-4・R-17）を持たせる。集計に1つでも失敗したら保存せずに断る（R-15）。日報（daily）は確定した精算実績の確定集計から返し、店舗・期間は合算する。未精算の営業があれば `412101` で断り、一覧を返す（R-5・R-14・R-16）。terminal は cart への問い合わせをやめ、report で確定できなければ `406016`（503）で断る（R-7）。照会の一覧と、terminal を通した精算前の確認の口を足す（R-8）。
 
 ## Technical Context
 
 **Language/Version**: Python 3.12+（全サービス共通）
 **Primary Dependencies**: FastAPI、Pydantic v2、PyMongo 非同期 API、commons の `AbstractRepository`・`insert_if_absent`・`get_service_account_info`・`create_service_token`・`get_service_client`。新しい外部依存は無い
-**Storage**: テナントごとの MongoDB。report に `settlement_record` と `settlement_daily_report` を新設。`log_tran`・`log_cash_in_out`・`log_open_close` に索引を足す（R-18）。閉設ログに任意の項目を足す。精算の計算は、締めの時刻（届いた時刻 `created_at`）で絞った同じ集合のデータで行う（R-12）
+**Storage**: テナントごとの MongoDB。report に `settlement_record` と `settlement_daily_report` を新設。`log_tran`・`log_cash_in_out`・`log_open_close` に索引を足す（R-18）。閉設ログに任意の項目を足す。精算の計算は、最初に1回だけ読んだログの集合（`_id`）に固定して行う（R-12）
 **Testing**: pytest。unit / integration（実際の MongoDB）/ e2e（スタック）、サービス横断の e2e。cart の e2e は DUAL と REQUIRED
 **Target Platform**: Linux のコンテナ（docker-compose、Azure Container Apps）
 **Project Type**: マイクロサービスのバックエンド

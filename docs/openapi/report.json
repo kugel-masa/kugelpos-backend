@@ -1332,6 +1332,182 @@
         }
       }
     },
+    "/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements": {
+      "post": {
+        "summary": "Settle Session By Admin",
+        "description": "Settle a session whose terminal will never close it: a terminal deleted\nwhile open, an offline session, a close log that never arrived.\n\nThe settlement is made from the logs that have reached report and is final\nat once, so the daily reports that cover the session can be produced. A\nsession already settled is returned as stored. Do not use it for a terminal\nthat is still selling: its later sales would be left out of the daily report.\nUser or service JWT of the tenant only.",
+        "operationId": "settle_session_by_admin_api_v1_tenants__tenant_id__stores__store_code__terminals__terminal_no__settlements_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "name": "store_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Store Code"
+            }
+          },
+          {
+            "name": "terminal_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Terminal No"
+            }
+          },
+          {
+            "name": "is_terminal_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Is Terminal Service"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSettlementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettlementConfirmResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 400,
+                  "message": "Bad request",
+                  "data": "400:Bad request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 401,
+                  "message": "Unauthorized",
+                  "data": "401:Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 403,
+                  "message": "Forbidden",
+                  "data": "403:Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sample not found",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 404,
+                  "message": "Sample not found",
+                  "data": "404:Sample not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 422,
+                  "message": "Unprocessable entity",
+                  "data": "[{'type': 'missing', 'loc': ('body', 'pin'), 'msg': 'Field required', 'input': {'id': '1234', 'name': 'someone'}}]"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "code": 500,
+                  "message": "Internal server error",
+                  "data": "500:Internal server error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/dapr/subscribe": {
       "get": {
         "summary": "Subscribe Topics",
@@ -1388,6 +1564,39 @@
   },
   "components": {
     "schemas": {
+      "AdminSettlementRequest": {
+        "properties": {
+          "businessCounter": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Businesscounter"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "physicalAmount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalamount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "businessCounter",
+          "reason"
+        ],
+        "title": "AdminSettlementRequest",
+        "description": "Back office settling a session its terminal will never close (#343)."
+      },
       "ApiResponse": {
         "properties": {
           "success": {
@@ -2093,6 +2302,11 @@
             "type": "integer",
             "title": "Opencounter"
           },
+          "settledKind": {
+            "type": "string",
+            "title": "Settledkind",
+            "default": "close"
+          },
           "settledBy": {
             "anyOf": [
               {
@@ -2103,6 +2317,17 @@
               }
             ],
             "title": "Settledby"
+          },
+          "adminReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adminreason"
           },
           "settledAt": {
             "type": "string",
@@ -2280,6 +2505,11 @@
             "type": "integer",
             "title": "Opencounter"
           },
+          "settledKind": {
+            "type": "string",
+            "title": "Settledkind",
+            "default": "close"
+          },
           "settledBy": {
             "anyOf": [
               {
@@ -2290,6 +2520,17 @@
               }
             ],
             "title": "Settledby"
+          },
+          "adminReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adminreason"
           },
           "settledAt": {
             "type": "string",
@@ -2441,6 +2682,11 @@
             "type": "integer",
             "title": "Opencounter"
           },
+          "settledKind": {
+            "type": "string",
+            "title": "Settledkind",
+            "default": "close"
+          },
           "settledBy": {
             "anyOf": [
               {
@@ -2451,6 +2697,17 @@
               }
             ],
             "title": "Settledby"
+          },
+          "adminReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adminreason"
           },
           "settledAt": {
             "type": "string",

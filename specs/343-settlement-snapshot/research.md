@@ -92,7 +92,7 @@ total = 現金の支払（支払コード "01"）+ 入金（正の入出金の�
 | 精算実績が無い | 計算して「仮」として保存し、返す |
 | 「仮」がある（前の精算の閉設が失敗した、または閉設ログがまだ届いていない） | 計算し直して置き換え、返す（`settlement_id` は新しくする） |
 | 「確定」がある | 計算せず、保存されている値を返す（`created: false`） |
-| report に、`settlement_id` を持つ閉設ログが届いた | 同じ営業の「仮」で `settlement_id` が一致すれば「確定」にする。一致しない・精算実績が無いときは何もせず、警告をログに残す |
+| report に、`settlement_id` を持つ閉設ログが届いた | 同じ営業の「仮」で `settlement_id` が一致すれば「確定」にする。一致しない・精算実績が無いときは、閉設ログの `settlement_id` で計算し直して確定する（下の「同時に2つの精算」）。確定できなければ例外にして、閉設ログの配信をやり直させる |
 
 書き込みは `(tenant, store, terminal_no, business_counter)` を鍵にした upsert で、条件 `state != final` を付ける。確定したものは二度と書き換わらない。利用者が選んだ（2026-11-24）。
 
@@ -107,7 +107,7 @@ total = 現金の支払（支払コード "01"）+ 入金（正の入出金の�
 **Decision**: `close_terminal_async` を次の順にする。
 
 1. 端末の状態を確かめる（今と同じ。閉設済みは `406003`（端末の状態のエラー。既存の挙動））
-2. report の確定の口を呼ぶ。トークンは `create_service_token(tenant_id, "terminal")`、接続先は `BASE_URL_REPORT`。タイムアウトは 30 秒、再試行は 1 回まで（既定の 3 回の再試行は、集計が重いと 2 分を超える）
+2. report の確定の口を呼ぶ。トークンは `create_service_token(tenant_id, "terminal")`、接続先は `BASE_URL_REPORT`。タイムアウトは 30 秒、再試行なし（1回だけ試す。既定の 3 回は、集計が重いと 2 分を超える）
 3. 結果の扱い:
    - 200: 続ける
    - 接続できない・タイムアウト・5xx・404（口が無い古い report）・401/403（設定の誤り）: `406016`（503）。何も書かない
@@ -161,9 +161,13 @@ terminal に精算前の確認の口 `GET /api/v1/terminals/{terminal_id}/close-
 
 ## R-12: 精算の計算を同じ時点のデータで行う
 
-**Decision**（実装の段で改めた）: 精算の確定と確認の計算を始めるときに、締めの時刻 `cutoff` を1つ決める。件数・番号・入出金・5つの確定集計のすべてのクエリに、「report に届いた時刻（`created_at`）が `cutoff` より後ではない」という条件を足す（`{"created_at": {"$not": {"$gt": cutoff}}}`。`created_at` の無い古い文書も含める）。精算実績に `cutoff` を記録する。
+**Decision**（PR のレビューで改めた、2026-11-25）: 計算の最初に、その営業の取引ログと入出金ログを1回だけ読み、その `_id` の集合を決める。件数・番号・理論在高・5つの確定集計は、すべてその `_id` の集合だけから作る（プラグインには `extra_match: {_id: {$in: …}}` と、入出金には `cash_extra_match` を渡す）。時計を使わないので、書き込みの確定が遅れた文書も、report を複数台で動かしたときの時計のずれも、数字を食い違わせない。`cutoff` は記録のためにだけ残す。
 
-**Rationale**: 計算は複数のクエリに分かれる。そのあいだに取引が届くと、売上には入らず商品には入る、といった食い違いが永久に残る（codex Critical）。report は取引ログ・入出金ログ・開閉ログを `insert_if_absent` で保存し、そのときに `created_at`（届いた時刻）を必ず入れる（`app/models/repositories/insert_if_absent.py`）。締めの時刻で絞れば、どのクエリも同じ集合を見る。
+**前の Decision**（実装の段、レビューで退けた）: 精算の確定と確認の計算を始めるときに、締めの時刻 `cutoff` を1つ決める。件数・番号・入出金・5つの確定集計のすべてのクエリに、「report に届いた時刻（`created_at`）が `cutoff` より後ではない」という条件を足す（`{"created_at": {"$not": {"$gt": cutoff}}}`。`created_at` の無い古い文書も含める）。精算実績に `cutoff` を記録する。
+
+**前の方式の穴**（Fable のレビュー S1）: `created_at` は、書き込みが確定する前にアプリで付ける。締めの時刻より前の `created_at` を持つのに、件数を数えたあとで確定する取引があり、件数では「未着」なのに理論在高には入ったまま凍結された（再現した）。report が複数台なら、時計のずれでこの隙間が広がる。
+
+**Rationale**（前の方式のもの）: 計算は複数のクエリに分かれる。そのあいだに取引が届くと、売上には入らず商品には入る、といった食い違いが永久に残る（codex Critical）。report は取引ログ・入出金ログ・開閉ログを `insert_if_absent` で保存し、そのときに `created_at`（届いた時刻）を必ず入れる（`app/models/repositories/insert_if_absent.py`）。締めの時刻で絞れば、どのクエリも同じ集合を見る。
 
 **Alternatives considered**: MongoDB のトランザクションの中で読み取りの一貫性 `snapshot` で読む（計画の時点の案）: commons の `AbstractRepository` の読み取り（`find`・`count_documents`・`aggregate`）がセッションを渡さないため、commons を変えて全サービスの依存を上げることになる。トランザクションの寿命（60 秒）と、集計の途中の master-data への問い合わせとの兼ね合いも要る。不採用。
 
@@ -217,7 +221,7 @@ terminal に精算前の確認の口 `GET /api/v1/terminals/{terminal_id}/close-
 
 ## R-18: 未精算の判定の索引
 
-**Decision**: `log_tran`・`log_cash_in_out`・`log_open_close` に `(tenant_id, store_code, business_date, terminal_no, business_counter)` の索引を足す。日報のたびに、対象の範囲の営業を集めるため。
+**Decision**: `log_tran`・`log_cash_in_out`・`log_open_close` に `(tenant_id, store_code, business_date, terminal_no, business_counter, open_counter)` の索引を足す。日報のたびに、対象の範囲の営業を集めるため。`open_counter` は集める処理の `$group` が読むので、索引に含めて本体を読まずに済ませる（レビューで足した）。`business_counter` の無いログは、精算できる営業が無いので、未精算の判定から外す。
 
 ---
 
@@ -249,3 +253,29 @@ e2e:
 - report: `412102`〜`412107` と DailyInfo を前提にしたテスト、`ReportService(daily_info_repository=...)` を組み立てる統合テスト
 - terminal: cart の取引の問い合わせを差し替えているテスト（`tran_log_repo`）、閉設の統合テスト（report の口を respx で差し替える）
 - `tests/e2e/test_report_error_codes.py` の `412101` の期待
+
+
+---
+
+## R-20: PR のレビューで直したこと（2026-11-25）
+
+Fable と codex のレビュー（PR #345）の指摘を、確かめた上で直した。
+
+| 指摘 | 直したこと |
+|---|---|
+| 内部の精算の口が、呼び出し元が terminal かを確かめていない（codex P1） | サービスアカウントの `service` が `terminal` でなければ 403。サービスどうしは同じ鍵を共有しているので多層防御の意味だが、最小の権限にそろえる |
+| 締めの時刻だけでは、全部のクエリが同じ集合を見ない（S1） | R-12 を改めた（`_id` の集合で固定する） |
+| 閉設ログが届かない営業が、日報を永久に止める（S2） | 管理者の精算の口を足した（R-21） |
+| 店舗・期間の日報の `missingRanges` で、どの端末の未着か分からない（S3） | 各範囲に `terminalNo` と `businessDate` を足した |
+| 同時に2つ精算したとき、負けた側が 406003 にならない（S4） | terminal: 書き込みの衝突（WriteConflict、112）を「閉設済み」（406003）として扱う。report: 一時的なトランザクションの失敗（TransientTransactionError）は、間を置いて最大 8 回やり直す |
+| 閉設ログの照合が食い違ったとき、2回目の確定の結果を見ていない（S5） | 確定できなければ例外にし、閉設ログの配信をやり直させる |
+| report への依頼の「再試行 1 回」 | `HttpClientHelper` の `max_retries` は試す回数なので、実際は再試行なし。待ち時間を延ばさないよう、そのままにして説明を直した |
+| 精算実績の `created_at`・`updated_at` が空 | 入れる |
+
+## R-21: 管理者の精算
+
+**Decision**: `POST /api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`（利用者またはサービスのトークン、テナントの一致を確かめる）。要求は `businessCounter`、`reason`（必須、500 字まで）、`physicalAmount`（任意）。届いているログからその営業の精算実績を作り、すぐに「確定」にする。精算実績に `settled_kind = "admin"`、`admin_reason`、`settled_by = "admin:<利用者>"` を記録し、警告のログを残す。営業の日付と開設の回数は、その営業のどれかのログから取る。ログが1件も無ければ 404 `413007`。すでに確定していれば、保存されている値を返す（`created: false`）。
+
+**Rationale**: 精算実績を書くのは端末の閉設だけで、閉設済みの端末は 406003 で精算できない。開設中のまま端末を消した・オフラインの営業・配信が死んだ閉設ログの営業は、その営業を含む日報を永久に止める（Fable S2）。利用者が「管理者の精算の口を足す」を選んだ（2026-11-25）。
+
+**注意**: まだ販売している端末の営業に使うと、そのあとの販売が日報から抜ける。API の説明に書いた。

@@ -10,7 +10,7 @@
 
 `POST /api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
 
-**認証**: サービスアカウントのトークン（`get_service_account_info`）。パスのテナントがトークンのテナントと違えば 400（既存の `verify_tenant_id` と同じ）。端末のトークン・利用者のトークン・API キーは 401/403。
+**認証**: terminal のサービスアカウントのトークン（`get_service_account_info`、`service` が `terminal`）。パスのテナントがトークンのテナントと違えば 400（既存の `verify_tenant_id` と同じ）。terminal 以外のサービスのトークンは 403。端末のトークン・利用者のトークン・API キーは 401/403。§2 も同じ。
 
 **要求**:
 
@@ -60,7 +60,7 @@
 
 - `created`: この要求で作った・作り直したなら `true`、確定済みのものを返したなら `false`
 - 「仮」があれば計算し直して置き換える。「確定」があれば計算せずに返す（R-6）
-- 計算はすべて同じ締めの時刻（届いた時刻）で絞ったデータで行う（R-12）
+- 計算はすべて、最初に1回だけ読んだその営業のログの集合から行う（R-12）
 - 確定集計は応答に含めない
 - 未着・重複・件数の不一致では断らない
 
@@ -111,9 +111,27 @@
 | `limit` / `page` | 集計に使う | 使わない（丸ごと返す） |
 | 期間の日報の現金の欄 | 空 | 確定集計の合算の値 |
 
-応答の文書に `missingCount` と `missingRanges`（`[{businessCounter, first, last}]`）が足される。
+応答の文書に `missingCount` と `missingRanges`（`[{terminalNo, businessDate, businessCounter, first, last}]`）が足される。
 
 `report_scope=flash` は変わらない。
+
+---
+
+## 4a. 管理者の精算（R-21）
+
+`POST /api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
+
+**認証**: 利用者またはサービスのトークン（テナントの一致を確かめる）。端末のトークン・API キーは断る。
+
+**要求**:
+
+```json
+{"businessCounter": 77, "reason": "terminal deleted while open", "physicalAmount": null}
+```
+
+**応答** 200: §1 の応答の形に `settledKind: "admin"`、`adminReason`、`settledBy: "admin:<利用者>"`。`state` は `final`。すでに確定していれば保存されている値（`created: false`）。その営業のログが1件も無ければ 404 `413007`。`reason` が無ければ 422。
+
+端末が二度と閉設しない営業のためのもの。まだ販売している端末の営業に使うと、そのあとの販売が日報から抜ける。
 
 ---
 
@@ -126,5 +144,5 @@ report は、`settlement_id` を持つ閉設ログを受け取ったら、同じ
 | コード | 意味 | HTTP |
 |---|---|---|
 | `412101` | 精算していない | 403 |
-| `413007` | 精算実績が見つからない | 404 |
+| `413007` | 精算実績が見つからない（管理者の精算で、その営業のログが無い） | 404 |
 | `413008` | 精算の確定の集計に失敗した・大きすぎて保存できない | 500 |

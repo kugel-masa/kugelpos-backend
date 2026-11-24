@@ -19,7 +19,7 @@
 | `settled_by` | str \| None | 精算した担当者（`staff:<id>`） |
 | `settled_at` | str | 端末が精算した日時（要求の値） |
 | `recorded_at` | str | report が保存した日時 |
-| `cutoff` | datetime | 締めの時刻。この時刻までに report に届いたログだけで計算した（R-12） |
+| `cutoff` | datetime | 計算を始めた時刻（記録のため）。数字は、このとき1回だけ読んだログの集合から作る（R-12） |
 | `finalized_at` | str \| None | 確定した日時（閉設ログを受け取った日時） |
 | `declared_count` | int \| None | 名乗った番号（`seq`） |
 | `declared_source` | str | `pos`（名乗りあり）/ `none`（名乗りなし） |
@@ -33,6 +33,9 @@
 | `cash_log_count` | int | 届いた入出金ログの件数 |
 | `missing_cash_log_count` | int | 入出金の未着の件数（名乗りが無ければ 0） |
 | `expected_cash` | object | 理論在高の内訳: `cash_sales`、`cash_in {amount, count}`、`cash_out {amount, count}`、`total` |
+| `settled_kind` | str | `close`（端末の閉設）か `admin`（管理者の精算、R-21） |
+| `admin_reason` | str \| None | 管理者の精算の理由 |
+| `created_at`・`updated_at` | datetime | 初めて保存した時刻・最後に書いた時刻 |
 | `physical_amount` | float \| None | 数えた現金 |
 | `difference` | float \| None | `physical_amount − expected_cash.total`。数えていなければ `None` |
 
@@ -67,7 +70,7 @@ final（以後変わらない。精算の依頼には保存済みの値を返す
 ## 3. 取引ログ・入出金ログ・開閉ログ（report、既存）
 
 形は変えない。索引を足す:
-- `log_tran`・`log_cash_in_out`・`log_open_close`: `(tenant_id, store_code, business_date, terminal_no, business_counter)` — 未精算の判定（R-18）
+- `log_tran`・`log_cash_in_out`・`log_open_close`: `(tenant_id, store_code, business_date, terminal_no, business_counter, open_counter)` — 未精算の判定（R-18）
 - `log_cash_in_out`: `(tenant_id, store_code, terminal_no, business_counter)` — 精算実績の計算
 
 ## 4. 閉設ログ `log_open_close`（report・terminal・journal、既存）
@@ -96,7 +99,7 @@ final（以後変わらない。精算の依頼には保存済みの値を返す
 | 項目 | 型 | 内容 |
 |---|---|---|
 | `missing_count` | int \| None | 対象の営業の未着の件数の合計 |
-| `missing_ranges` | list[{businessCounter, first, last}] \| None | 営業ごとの未着の範囲 |
+| `missing_ranges` | list[{terminalNo, businessDate, businessCounter, first, last}] \| None | 営業ごとの未着の範囲（店舗・期間の日報で端末が分かるように） |
 
 ## 7. DailyInfo `info_daily`（report、既存）
 
