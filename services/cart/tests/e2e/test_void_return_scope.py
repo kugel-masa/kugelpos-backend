@@ -268,7 +268,7 @@ async def test_void_rejects_another_terminal(http_client, opened_terminal_id):
             json=[{"paymentCode": "01", "amount": 550.0}],
             headers=_api_header(),
         )
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, response.text
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT, response.text
     finally:
         await _cleanup(transaction_no, store_code, cart_id)
 

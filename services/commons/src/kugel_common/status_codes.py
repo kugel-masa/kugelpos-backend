@@ -59,7 +59,7 @@ StatusCodes = {
             }
         }
     },
-    status.HTTP_422_UNPROCESSABLE_ENTITY: {
+    status.HTTP_422_UNPROCESSABLE_CONTENT: {
         "description": "Unprocessable entity", 
         "model": ApiResponse,
         "content": {

@@ -90,7 +90,7 @@ async def test_operations(http_client, admin_header):
     res = response.json()
     print(f"Response: {res}")
     assert res.get("success") is False
-    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert res.get("code") == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     # update staff_master with invalid id (staff not found)
     staff_master = {"name": "ushi", "pin": "8888", "roles": ["staff"]}

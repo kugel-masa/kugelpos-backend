@@ -505,7 +505,7 @@ class SnapshotRequiredException(ServiceException):
             original_exception,
             CartErrorCode.SNAPSHOT_REQUIRED,
             CartErrorMessage.get_message(CartErrorCode.SNAPSHOT_REQUIRED),
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 
@@ -525,7 +525,7 @@ class FinalizeNumberingRequiredException(ServiceException):
             original_exception,
             CartErrorCode.FINALIZE_NUMBERING_REQUIRED,
             CartErrorMessage.get_message(CartErrorCode.FINALIZE_NUMBERING_REQUIRED),
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 

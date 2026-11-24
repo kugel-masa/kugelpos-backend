@@ -15,18 +15,11 @@ class TestStatusCodesShape:
             status.HTTP_401_UNAUTHORIZED,
             status.HTTP_403_FORBIDDEN,
             status.HTTP_404_NOT_FOUND,
-            getattr(
-                status,
-                "HTTP_422_UNPROCESSABLE_ENTITY",
-                getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422),
-            ),
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         ],
     )
     def test_each_entry_has_required_keys(self, code):
-        if code not in StatusCodes:
-            # 422 may register under either name depending on FastAPI version
-            return
         entry = StatusCodes[code]
         assert "description" in entry
         assert entry["model"] is ApiResponse

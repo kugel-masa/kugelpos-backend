@@ -54,7 +54,7 @@ class TestInvalidRequestDataException:
         exc = InvalidRequestDataException("bad data")
         # Either 422 constant works depending on FastAPI version
         assert exc.status_code in (
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422),
             422,
         )

@@ -990,7 +990,7 @@ async def test_unregistered_item_error(http_client):
     )
 
     # Unregistered items must return 404 Not Found or 422 Unprocessable Entity
-    assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_ENTITY]
+    assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_422_UNPROCESSABLE_CONTENT]
     res = response.json()
 
     # Cancel cart to clean up

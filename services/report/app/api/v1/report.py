@@ -97,7 +97,7 @@ def parse_sort(sort: str = Query(default=None, description="?sort=field1:1,field
         status.HTTP_400_BAD_REQUEST: {"description": "Bad Request"},
         status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
         status.HTTP_403_FORBIDDEN: {"description": "Forbidden"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Unprocessable Entity"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Unprocessable Entity"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal Server Error"},
     },
 )
@@ -269,7 +269,7 @@ def make_terminal_id(terminal_no: str = Path(...), store_code: str = Path(...), 
         status.HTTP_400_BAD_REQUEST: {"description": "Bad Request"},
         status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
         status.HTTP_403_FORBIDDEN: {"description": "Forbidden"},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"description": "Unprocessable Entity"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Unprocessable Entity"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal Server Error"},
     },
 )

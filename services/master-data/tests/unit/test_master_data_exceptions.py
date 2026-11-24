@@ -69,7 +69,7 @@ class TestRepositoryExceptions:
 @pytest.mark.parametrize(
     "exc_class,expected_code,expected_status",
     [
-        (MasterDataValidationException, MasterDataErrorCode.MASTER_DATA_VALIDATION_ERROR, status.HTTP_422_UNPROCESSABLE_ENTITY),
+        (MasterDataValidationException, MasterDataErrorCode.MASTER_DATA_VALIDATION_ERROR, status.HTTP_422_UNPROCESSABLE_CONTENT),
         (ProductNotFoundException, MasterDataErrorCode.PRODUCT_NOT_FOUND, status.HTTP_404_NOT_FOUND),
         (ProductCodeDuplicateException, MasterDataErrorCode.PRODUCT_CODE_DUPLICATE, status.HTTP_409_CONFLICT),
         (ProductInvalidPriceException, MasterDataErrorCode.PRODUCT_INVALID_PRICE, status.HTTP_400_BAD_REQUEST),

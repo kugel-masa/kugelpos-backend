@@ -302,7 +302,7 @@ async def test_open_rejects_implausible_carried_counters(http_client, admin_head
         json={"initial_amount": 50000.0, "receipt_no": -1},
         headers=admin_header,
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, response.text
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT, response.text
 
     # The terminal is still openable normally — the rejections changed nothing.
     response = await _open(http_client, admin_header, terminal_id)

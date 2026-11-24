@@ -121,7 +121,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         # location that value IS the credential (issue #211).
         error_response = ApiResponse(
             success=False,
-            code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             message=detail,
             user_error=UserError(
                 code=ErrorCode.VALIDATION_ERROR,
@@ -132,7 +132,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         logger.error(f"RequestValidationError: {error_response}")
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=error_response.to_response_body(),
         )
 
@@ -141,7 +141,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def validation_error_handler(request: Request, exc: ValidationError):
         error_response = ApiResponse(
             success=False,
-            code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             message="Validation error",
             user_error=UserError(
                 code=ErrorCode.VALIDATION_ERROR,
@@ -153,7 +153,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         logger.error(f"ValidationError: {error_response}")
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=error_response.to_response_body(),
         )
 

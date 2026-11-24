@@ -287,4 +287,4 @@ async def test_a_context_carrying_only_a_printed_number_is_refused(http_client, 
         headers=api_header,
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, response.text
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT, response.text
