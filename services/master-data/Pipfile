@@ -9,10 +9,10 @@ uvicorn = "*"
 python-dotenv = "*"
 pydantic = "*"
 pydantic-settings = "*"
-motor = "*"
+pymongo = ">=4.13"
 pytz = "*"
 pyjwt = "*"
-kugel_common = {file = "commons/dist/kugel_common-0.1.121-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.122-py3-none-any.whl"}
 httpx = "*"
 wcwidth = "*"
 debugpy = "*"

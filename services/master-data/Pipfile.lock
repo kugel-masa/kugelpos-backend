@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "cb62062a3b22a1b365abd2ec54439920d709f29c3ffcf27b7a8a5345f95f3e96"
+            "sha256": "167de794bcc8c31894ddbc058d6b22b1a371c3b0a45aab97ded1b04136db3c74"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -287,19 +287,10 @@
             "version": "==3.20"
         },
         "kugel-common": {
-            "file": "commons/dist/kugel_common-0.1.121-py3-none-any.whl",
+            "file": "commons/dist/kugel_common-0.1.122-py3-none-any.whl",
             "hashes": [
-                "sha256:84cc5e6500792ebea57e4c15ce57f1de907aee790ad5f2f0760b87abe3fc429c"
+                "sha256:90d67836b038acca6c002ef634659396669e5a65d608009addce86956fb4d885"
             ]
-        },
-        "motor": {
-            "hashes": [
-                "sha256:27b4d46625c87928f331a6ca9d7c51c2f518ba0e270939d395bc1ddc89d64526",
-                "sha256:8a63b9049e38eeeb56b4fdd57c3312a6d1f25d01db717fe7d82222393c410298"
-            ],
-            "index": "pypi",
-            "markers": "python_version >= '3.9'",
-            "version": "==3.7.1"
         },
         "opentelemetry-api": {
             "hashes": [
@@ -578,6 +569,7 @@
                 "sha256:fb1fb84e12da0e259595812c0cf7199877744c9775daeb241f2bd4fd819f8dc2",
                 "sha256:ffea4011a5cbadeb7d11cf6fdf237867ef4f32933d38b18fac242efef1d1bef0"
             ],
+            "index": "pypi",
             "markers": "python_version >= '3.11'",
             "version": "==4.20.0"
         },
