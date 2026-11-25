@@ -77,7 +77,6 @@ async def _service_with(trans):
         tran_repository=tran_repo,
         cash_in_out_log_repository=CashInOutLogRepository(db, tenant_id),
         open_close_log_repository=OpenCloseLogRepository(db, tenant_id),
-        daily_info_repository=DailyInfoDocumentRepository(db, tenant_id),
         terminal_info_repository=TerminalInfoWebRepository(tenant_id, STORE),
     ), collection
 

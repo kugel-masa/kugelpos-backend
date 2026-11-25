@@ -198,6 +198,8 @@ Format: XXYYZZ (`kugel_common/exceptions/error_codes.py`, `docs/en/general/error
 - Every deletable master (category, item common, item store, item book, payment, promotion, settings, staff) gains an optional `is_deleted`; reads filter `{"is_deleted": {"$ne": True}}` so documents without the field stay visible. Unique indexes unchanged (324-master-logical-delete)
 - Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo 4.20 async API (declared `>=4.13`). Motor is removed. No new external dependency: PyMongo was already installed as Motor's dependency (301-pymongo-async-migration)
 - Per-tenant MongoDB databases, unchanged: no data format or index change (301-pymongo-async-migration)
+- Python 3.12+ (same as the other services) + FastAPI, Pydantic v2, PyMongo async API, commons' `AbstractRepository`, `insert_if_absent`, `get_service_account_info`, `create_service_token` and `get_service_client`. No new external dependency (343-settlement-snapshot)
+- New `settlement_record` (one per terminal session; provisional until its close log reaches report, then final and never rewritten) and `settlement_daily_report` (the frozen daily reports) collections in report's per-tenant database; session-scan indexes on the three log collections; optional settlement fields on the close log (343-settlement-snapshot)
 
 ## Recent Changes
 - 072-master-data-cache: Added Python 3.12+ + FastAPI, Pydantic v2, Motor (async MongoDB), Dapr (through the existing `DaprClientHelper` wrapper)

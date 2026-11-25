@@ -133,15 +133,223 @@ being created. This ensures only authorized users can set up tenant resources.
 
 ### Store
 
-### 4. Get Report For Store
+### 4. Preview Settlement
+
+**GET** `/api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlement-preview`
+
+What confirming would record now, without storing anything.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `business_counter` | integer | Yes | - | - |
+| `business_date` | string | Yes | - | - |
+| `open_counter` | integer | Yes | - | - |
+| `seq` | string | No | - | - |
+| `cash_log_count` | string | No | - | - |
+| `physical_amount` | string | No | - | - |
+
+**Response:**
+
+**data Field:** `SettlementPreviewResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledBy` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settled` | boolean | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "businessCounter": 0,
+    "businessDate": "string",
+    "openCounter": 0,
+    "settledBy": "string",
+    "settledAt": "string",
+    "declaredCount": 0,
+    "declaredSource": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Confirm Settlement
+
+**POST** `/api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
+
+Confirm a terminal session's settlement from the logs that have arrived.
+
+A provisional settlement is recomputed and replaced; a final one is returned
+as stored. Missing or duplicate transactions never refuse the settlement;
+they are recorded.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledAt` | string | Yes | - |
+| `seq` | integer | No | - |
+| `cashLogCount` | integer | No | - |
+| `physicalAmount` | number | No | - |
+| `settledBy` | string | No | - |
+
+**Request Example:**
+```json
+{
+  "businessCounter": 0,
+  "businessDate": "string",
+  "openCounter": 0,
+  "settledAt": "string",
+  "seq": 0,
+  "cashLogCount": 0,
+  "physicalAmount": 0.0,
+  "settledBy": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `SettlementConfirmResponse`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledBy` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settlementId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `recordedAt` | string | Yes | - |
+| `finalizedAt` | string | No | - |
+| `created` | boolean | Yes | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "businessCounter": 0,
+    "businessDate": "string",
+    "openCounter": 0,
+    "settledBy": "string",
+    "settledAt": "string",
+    "declaredCount": 0,
+    "declaredSource": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. Get Report For Store
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/reports`
 
 Get a report for the entire store.
 
 This endpoint requires either a JWT token or an API key with terminal_id.
-It provides different types of reports (sales, category, item, payment, promotion) at different
+It provides different types of reports (sales, category, item) at different
 scopes (flash, daily) for the specified store.
+
+Daily scope (#343): the report is the settled sessions' frozen reports,
+merged when the scope has more than one session. A session in scope that
+has a log but no final settlement refuses the report with 403 / 412101,
+and data.unsettledSessions names it. A daily report returns the whole
+frozen report (limit and page are not applied), carries missingCount and
+missingRanges, and a date-range daily report carries the cash section.
+Flash is computed live, as before.
 
 **Path Parameters:**
 
@@ -156,7 +364,7 @@ scopes (flash, daily) for the specified store.
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
+| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -166,8 +374,6 @@ scopes (flash, daily) for the specified store.
 | `page` | integer | No | 1 | Page number to return |
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
-
-Give `business_date`, or a range by both `business_date_from` and `business_date_to`; when a range and `business_date` are both given, the range is used. A range given by one end is refused with 400 (`412006`), even next to `business_date`.
 
 **Response:**
 
@@ -193,15 +399,115 @@ Give `business_date`, or a range by both `business_date_from` and `business_date
 }
 ```
 
-### 5. Get Report For Terminal
+### 7. List Settlements
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/settlements`
+
+The store's settlement records, by business date, terminal and session.
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `terminal_no` | string | No | - | - |
+| `business_counter` | string | No | - | - |
+| `business_date_from` | string | No | - | - |
+| `business_date_to` | string | No | - | - |
+| `state` | string | No | - | - |
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `is_terminal_service` | string | No | False | - |
+
+**Response:**
+
+**data Field:** `array[SettlementRecordResponse]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledBy` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settlementId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `recordedAt` | string | Yes | - |
+| `finalizedAt` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "businessCounter": 0,
+      "businessDate": "string",
+      "openCounter": 0,
+      "settledBy": "string",
+      "settledAt": "string",
+      "declaredCount": 0,
+      "declaredSource": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. Get Report For Terminal
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports`
 
 Get a report for a specific terminal.
 
 This endpoint requires either a JWT token or an API key with terminal_id.
-It provides different types of reports (sales, category, item, payment, promotion) at different
+It provides different types of reports (sales, category, item) at different
 scopes (flush, daily) for the specified terminal.
+
+Daily scope (#343): the terminal's settled sessions' frozen reports; one
+session's is returned as frozen, several are merged. A session with a log
+but no final settlement refuses the report with 403 / 412101, and
+data.unsettledSessions names it. limit and page are not applied to a daily
+report, which carries missingCount and missingRanges. Flash is live.
 
 **Path Parameters:**
 
@@ -217,7 +523,7 @@ scopes (flush, daily) for the specified terminal.
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
+| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -227,8 +533,6 @@ scopes (flush, daily) for the specified terminal.
 | `page` | integer | No | 1 | Page number to return |
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
-
-Give `business_date`, or a range by both `business_date_from` and `business_date_to`; when a range and `business_date` are both given, the range is used. A range given by one end is refused with 400 (`412006`), even next to `business_date`.
 
 **Response:**
 
@@ -256,7 +560,7 @@ Give `business_date`, or a range by both `business_date_from` and `business_date
 
 ### Transaction
 
-### 6. Receive Transactions
+### 9. Receive Transactions
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
@@ -265,8 +569,6 @@ Direct API endpoint for receiving transaction data.
 This endpoint can be used as an alternative to the Dapr pub/sub mechanism
 when direct REST API calls are preferred. It requires authentication via
 token or API key.
-
-The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store and terminal of the path. One the body leaves out takes the path's value; one that names another is refused with 400 (issue #134).
 
 **Path Parameters:**
 
@@ -325,7 +627,7 @@ The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store 
 
 ### Event Processing
 
-### 7. Handle Cashlog
+### 10. Handle Cashlog
 
 **POST** `/api/v1/cashlog`
 
@@ -336,7 +638,7 @@ to the 'topic-cashlog' topic in the 'pubsub-cashlog-report' component.
 
 **Response:**
 
-### 8. Handle Opencloselog
+### 11. Handle Opencloselog
 
 **POST** `/api/v1/opencloselog`
 
@@ -347,7 +649,7 @@ to the 'topic-opencloselog' topic in the 'pubsub-opencloselog-report' component.
 
 **Response:**
 
-### 9. Handle Tranlog
+### 12. Handle Tranlog
 
 **POST** `/api/v1/tranlog`
 
@@ -357,37 +659,6 @@ This endpoint is called by Dapr when a transaction log message is published
 to the 'topic-tranlog' topic in the 'pubsub-tranlog-report' component.
 
 **Response:**
-
-### Names in reports (issue #326)
-
-| Report field | Source |
-|---|---|
-| Category name (category and item reports) | master-data, every page, logically deleted categories included. Unknown codes show as the code. |
-| Item name (item report) | The transaction log: the newest line item `description` in the period, so the name the item was sold under. master-data is not asked. Without a name, the code. |
-| Payment method name (payment report) | master-data's current name; else the newest `builtin_description` of the method's payment lines in the period; else `Cash` / `Cashless` / `Others` for `01` / `11` / `12`; else `Payment {code}`. |
-
-A master renamed or deleted after the sale therefore keeps its name in past reports, except a category renamed since, which shows its current name.
-
-### Payment and promotion report responses (issue #329)
-
-Like the sales, category and item reports, the payment and promotion reports answer camelCase and leave out the stored document's internal fields (`shard_key`, `etag`, `created_at`, `updated_at`). Before #329 they answered the stored document as-is, in snake_case.
-
-```json
-{
-  "tenantId": "T001", "storeCode": "5678", "storeName": null, "terminalNo": null,
-  "businessDate": "20261123", "businessDateFrom": null, "businessDateTo": null,
-  "openCounter": null, "businessCounter": null, "reportScope": "flash", "reportType": "payment",
-  "paymentSummary": [
-    {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
-     "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
-  ],
-  "total": {"count": 2, "amount": 3300.0},
-  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00.123456+09:00",
-  "staff": null
-}
-```
-
-The promotion report answers `promotions[]` (`promotionCode`, `promotionType`, `grossAmount`, `discountAmount`, `netAmount`, `quantity`, `transactionCount`) and `totalGrossAmount`, `totalDiscountAmount`, `totalNetAmount`, `totalQuantity`, `totalTransactionCount`.
 
 ## Error Codes
 

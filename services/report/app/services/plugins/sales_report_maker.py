@@ -16,7 +16,10 @@ from app.models.documents.open_close_log import OpenCloseLog
 from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
 from app.services.plugins.sales_report_receipt_data import SalesReportReceiptData
+from app.services.expected_cash import cash_difference, cash_sales_of, expected_cash, summarize_cash_logs
 from app.utils.payment_variant_breakdown import add_payment_with_variant, sort_variant_breakdown
+from app.services.plugins.report_scope import cash_scope_of, scope_filter, scope_of, scope_pipeline
+from app.services.report_merge import merge_sales, merged_document
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,14 @@ class SalesReportMaker(IReportPlugin):
         self.tran_repository = tran_repository
         self.cash_in_out_log_repository = cash_in_out_log_repository
         self.open_close_log_repository = open_close_log_repository
+
+    def merge(self, reports: list[dict], **header) -> SalesReportDocument:
+        """Several sessions' frozen daily reports as one (#343)."""
+        return merged_document(SalesReportDocument, merge_sales(reports), header, SalesReportReceiptData("Sales Report", 32))
+
+    def from_saved(self, report: dict) -> SalesReportDocument:
+        """A frozen daily report as it was stored (#343)."""
+        return SalesReportDocument(**report)
 
     async def generate_report(
         self,
@@ -83,6 +94,7 @@ class SalesReportMaker(IReportPlugin):
         Returns:
             Sales report document
         """
+        extra_match, unbounded = scope_of(kwargs)
         
         # Validate date range parameters: must be both-or-neither, and from <= to.
         # Reject half-specified ranges to prevent unbounded queries when only one bound is given.
@@ -109,6 +121,7 @@ class SalesReportMaker(IReportPlugin):
             business_date_from=business_date_from,
             business_date_to=business_date_to,
         )
+        pipeline = scope_pipeline(pipeline, extra_match, unbounded)
         logger.info(f"Sales report pipeline: {pipeline}")
 
         # Retrieve data from transaction log collection using the pipeline
@@ -135,10 +148,11 @@ class SalesReportMaker(IReportPlugin):
                 filter["terminal_no"] = terminal_no
             if open_counter is not None:
                 filter["open_counter"] = open_counter
+            filter = scope_filter(filter, cash_scope_of(kwargs))
 
-            # Retrieve cash in/out logs
+            # Retrieve cash in/out logs (all of them for a settlement, #343)
             cash_results = await self.cash_in_out_log_repository.get_cash_in_out_logs(
-                filter=filter, limit=limit, page=page, sort=sort
+                filter=filter, limit=0 if unbounded else limit, page=1 if unbounded else page, sort=sort
             )
             logger.info(f"Cash in/out log filter: {filter}")
             logger.info(f"Cash in/out log repository tenant_id: {self.cash_in_out_log_repository.tenant_id}")
@@ -240,16 +254,7 @@ class SalesReportMaker(IReportPlugin):
         Returns:
             Aggregated results of cash in/out logs
         """
-        cash_in_count = sum([1 for cash in results if cash.amount > 0])
-        cash_in_amount = sum([cash.amount for cash in results if cash.amount > 0])
-        cash_out_count = sum([1 for cash in results if cash.amount < 0])
-        cash_out_amount = sum([cash.amount for cash in results if cash.amount < 0])
-        return {
-            "cash_in_count": cash_in_count,
-            "cash_in_amount": cash_in_amount,
-            "cash_out_count": cash_out_count,
-            "cash_out_amount": cash_out_amount,
-        }
+        return summarize_cash_logs(cash.amount for cash in results)
 
     def _summarize_open_close_logs(self, results: list[OpenCloseLog]) -> dict[str, Any]:
         """
@@ -292,13 +297,8 @@ class SalesReportMaker(IReportPlugin):
         Returns:
             Aggregated results of payment information (cash and cashless)
         """
-        cash_payments = {"cash": 0, "cashless": 0}
-        for payment in payments:
-            if payment["payment_code"] == "01":  # Cash payment code
-                cash_payments["cash"] += payment["amount"]
-            else:
-                cash_payments["cashless"] += payment["amount"]
-        return cash_payments
+        cash = cash_sales_of(payments)
+        return {"cash": cash, "cashless": sum(p["amount"] for p in payments) - cash}
 
     def _create_pipeline_for_sales_report(
         self,
@@ -1105,22 +1105,16 @@ class SalesReportMaker(IReportPlugin):
             Cash information
         """
 
-        initial_amount = open_close_summary["initial_amount"]
-        payment_amount_by_cash = payment_summary["cash"]
-        cash_in_amount = cash_summary["cash_in_amount"]
-        cash_out_amount = cash_summary["cash_out_amount"]
-        logical_amount = payment_amount_by_cash + cash_in_amount + cash_out_amount  # cash_out_amount is negative
-        pyisical_amount = open_close_summary["physical_amount"]
-        # Nothing counted, no difference: subtracting from zero would report the
-        # whole of the cash takings as missing.
-        difference_amount = None if pyisical_amount is None else pyisical_amount - logical_amount
+        # The one formula, shared with the settlement record (#343).
+        expected = expected_cash(payment_summary["cash"], cash_summary)
+        physical_amount = open_close_summary["physical_amount"]
 
         return {
-            "logical_amount": logical_amount,
-            "physical_amount": pyisical_amount,
-            "difference_amount": difference_amount,
-            "cash_in": {"amount": cash_in_amount, "count": cash_summary["cash_in_count"]},
-            "cash_out": {"amount": cash_out_amount, "count": cash_summary["cash_out_count"]},
+            "logical_amount": expected["total"],
+            "physical_amount": physical_amount,
+            "difference_amount": cash_difference(physical_amount, expected["total"]),
+            "cash_in": expected["cash_in"],
+            "cash_out": expected["cash_out"],
         }
 
     def _get_result_by_transaction_type(self, results: list[dict], transaction_type: int) -> dict[str, Any]:

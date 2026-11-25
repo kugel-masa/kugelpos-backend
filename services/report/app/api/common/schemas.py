@@ -111,6 +111,16 @@ class CashBalanceReportTemplate(BaseSchemaModel):
     cash_out: CashInOutReportTemplate = None  # Cash removed from drawer (payouts, loans)
 
 
+class MissingRangeTemplate(BaseSchemaModel):
+    """Transaction numbers of one session that had not reached report when it was settled (#343)."""
+
+    terminal_no: Optional[int] = None
+    business_date: Optional[str] = None
+    business_counter: Optional[int] = None
+    first: int
+    last: int
+
+
 class BaseSalesReportResponse(BaseSchemaModel):
     """
     Base schema for comprehensive sales report responses.
@@ -137,6 +147,9 @@ class BaseSalesReportResponse(BaseSchemaModel):
     cash: CashBalanceReportTemplate  # Cash balance and movements
     receipt_text: Optional[str] = None  # Formatted receipt text (if available)
     journal_text: Optional[str] = None  # Formatted journal text (if available)
+    # Daily reports only: what had not arrived when the sessions were settled (#343)
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[MissingRangeTemplate]] = None
 
 
 # Tenant management schemas
@@ -197,6 +210,9 @@ class BaseCategoryReportResponse(BaseSchemaModel):
     total_transaction_count: int
     receipt_text: Optional[str] = None
     journal_text: Optional[str] = None
+    # Daily reports only: what had not arrived when the sessions were settled (#343)
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[MissingRangeTemplate]] = None
 
 
 class ItemReportItem(BaseSchemaModel):
@@ -246,6 +262,9 @@ class BaseItemReportResponse(BaseSchemaModel):
     total_transaction_count: int
     receipt_text: Optional[str] = None
     journal_text: Optional[str] = None
+    # Daily reports only: what had not arrived when the sessions were settled (#343)
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[MissingRangeTemplate]] = None
 
 
 class PaymentSummaryItem(BaseSchemaModel):
@@ -286,6 +305,9 @@ class BasePaymentReportResponse(BaseSchemaModel):
     total: PaymentTotal
     receipt_text: Optional[str] = None
     journal_text: Optional[str] = None
+    # Daily reports only: what had not arrived when the sessions were settled (#343)
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[MissingRangeTemplate]] = None
     generate_date_time: Optional[str] = None
     staff: Optional[dict] = None
 
@@ -328,5 +350,8 @@ class BasePromotionReportResponse(BaseSchemaModel):
     total_transaction_count: Optional[int] = 0
     receipt_text: Optional[str] = None
     journal_text: Optional[str] = None
+    # Daily reports only: what had not arrived when the sessions were settled (#343)
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[MissingRangeTemplate]] = None
     generate_date_time: Optional[str] = None
     staff: Optional[dict] = None

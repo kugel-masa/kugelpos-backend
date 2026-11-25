@@ -377,10 +377,13 @@ async def test_payment_report_basic(setup_payment_test_data):
     tran_repo = TranlogRepository(db, test_data["tenant_id"])
     cash_repo = CashInOutLogRepository(db, test_data["tenant_id"])
     open_close_repo = OpenCloseLogRepository(db, test_data["tenant_id"])
-    daily_info_repo = DailyInfoDocumentRepository(db, test_data["tenant_id"])
     terminal_info_repo = TerminalInfoWebRepository(test_data["tenant_id"], test_data["test_store"])
     
-    report_service = ReportService(tran_repo, cash_repo, open_close_repo, daily_info_repo, terminal_info_repo)
+    report_service = ReportService(tran_repo, cash_repo, open_close_repo, terminal_info_repository=terminal_info_repo)
+    # The seeded session has no terminal to close it (#343)
+    from tests.e2e.settle import settle_scope_async
+
+    await settle_scope_async(test_data["test_store"], business_date=test_data["test_date"])
     
     # Generate payment report
     report = await report_service.get_report_for_terminal_async(
@@ -447,10 +450,13 @@ async def test_payment_report_empty_data(set_env_vars):
     await collection.delete_many({})
     
     # Initialize service
-    daily_info_repo = DailyInfoDocumentRepository(db, os.environ.get("TENANT_ID"))
     terminal_info_repo = TerminalInfoWebRepository(os.environ.get("TENANT_ID"), "STORE001")
     
-    report_service = ReportService(tran_repo, cash_repo, open_close_repo, daily_info_repo, terminal_info_repo)
+    report_service = ReportService(tran_repo, cash_repo, open_close_repo, terminal_info_repository=terminal_info_repo)
+    # The seeded session has no terminal to close it (#343)
+    from tests.e2e.settle import settle_scope_async
+
+    await settle_scope_async("STORE001", business_date="2024-12-31")
     
     # Generate payment report
     report = await report_service.get_report_for_terminal_async(

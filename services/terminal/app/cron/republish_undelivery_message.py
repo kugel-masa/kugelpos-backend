@@ -102,7 +102,6 @@ async def republish_undelivered_terminallog_async():
         store_info_repo=None,
         cash_in_out_log_repo=None,
         open_close_log_repo=None,
-        tran_log_repo=None,
         terminal_log_delivery_status_repo=terminallog_delivery_status_repo,
         terminal_id=None,
     )

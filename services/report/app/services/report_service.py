@@ -1,5 +1,5 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.  # report_service.py
-from typing import Any
+from typing import Any, Optional
 from collections import defaultdict
 from logging import getLogger
 
@@ -16,8 +16,9 @@ from app.models.repositories.terminal_info_web_repository import TerminalInfoWeb
 from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
-from app.models.repositories.daily_info_document_repository import DailyInfoDocumentRepository
-from app.models.documents.daily_info_document import DailyInfoDocument
+from app.models.repositories.settlement_record_repository import SettlementRecordRepository
+from app.exceptions.report_exceptions import SessionNotSettledException
+from app.services.report_merge import MERGERS
 from app.services.report_plugin_manager import ReportPluginManager
 from app.exceptions import (
     ReportNotFoundException,
@@ -27,14 +28,6 @@ from app.exceptions import (
     ReportScopeException,
     ReportDateException,
     ReportDataException,
-    TerminalNotClosedException,
-    LogsMissingException,
-    LogCountMismatchException,
-    TransactionMissingException,
-    CashInOutMissingException,
-    OpenCloseLogMissingException,
-    VerificationFailedException,
-    DailyInfoException,
 )
 
 
@@ -66,8 +59,9 @@ class ReportService:
         tran_repository: TranlogRepository,
         cash_in_out_log_repository: CashInOutLogRepository,
         open_close_log_repository: OpenCloseLogRepository,
-        daily_info_repository: DailyInfoDocumentRepository,
-        terminal_info_repository: TerminalInfoWebRepository,
+        *,
+        terminal_info_repository: TerminalInfoWebRepository = None,
+        settlement_repository: SettlementRecordRepository = None,
     ):
         """
         Initialize the ReportService with required repositories.
@@ -76,13 +70,17 @@ class ReportService:
             tran_repository: Repository for transaction logs
             cash_in_out_log_repository: Repository for cash in/out operation logs
             open_close_log_repository: Repository for terminal open/close logs
-            daily_info_repository: Repository for daily information documents
             terminal_info_repository: Repository for terminal information
+            settlement_repository: Settlement records, whose frozen daily reports
+                the daily scope answers from (#343); built from the transaction
+                repository's database when not given
         """
         self.tran_repository = tran_repository
         self.cash_in_out_log_repository = cash_in_out_log_repository
         self.open_close_log_repository = open_close_log_repository
-        self.daily_info_repository = daily_info_repository
+        self.settlement_repository = settlement_repository or SettlementRecordRepository(
+            tran_repository.db, tran_repository.tenant_id
+        )
         self.terminal_repository = terminal_info_repository
         self.tenant_id = self.tran_repository.tenant_id
         self.plugin_manager = ReportPluginManager()
@@ -138,7 +136,7 @@ class ReportService:
 
         Raises:
             ReportDateException: If the date range is given by one end only
-            TerminalNotClosedException: If any terminal in the store is not closed (single date mode only)
+            SessionNotSettledException: If a session in scope is not settled (daily, #343)
             ReportGenerationException: If an error occurs during report generation
             ReportNotFoundException: If the requested report type does not exist
         """
@@ -151,24 +149,24 @@ class ReportService:
         if report_scope == "flush":
             report_scope = "flash"
 
-        # check if conditions are met for daily report
-        # Skip terminal closed check if date range is specified
-        if report_scope == "daily" and not (business_date_from and business_date_to):
-            # check if all terminals in the store are closed (single date mode only)
-            try:
-                await self._check_if_terminal_closed(
-                    store_code=store_code, business_date=business_date, open_counter=open_counter
-                )
-            except ServiceException as e:
-                message = f"check_if_terminal_closed->false. store_code->{store_code}, business_date->{business_date}, open_counter->{open_counter}"
-                raise TerminalNotClosedException(message, logger, e) from e
-
         if report_type in self.report_makers:
             try:
                 maker = self.report_makers[report_type]
                 
                 # Check if the maker supports date range parameters
-                if hasattr(maker.generate_report, '__code__') and 'business_date_from' in maker.generate_report.__code__.co_varnames:
+                if report_scope == "daily":
+                    # From the settled sessions' frozen reports (#343)
+                    report_data = await self._daily_report_async(
+                        store_code=store_code,
+                        report_type=report_type,
+                        terminal_no=None,
+                        business_date=business_date,
+                        open_counter=open_counter,
+                        business_counter=business_counter,
+                        business_date_from=business_date_from,
+                        business_date_to=business_date_to,
+                    )
+                elif hasattr(maker.generate_report, '__code__') and 'business_date_from' in maker.generate_report.__code__.co_varnames:
                     # Maker supports date range parameters
                     report_data = await maker.generate_report(
                         store_code=store_code,
@@ -218,6 +216,8 @@ class ReportService:
                     )
 
                 return report_data
+            except SessionNotSettledException:
+                raise
             except Exception as e:
                 import traceback
                 logger.error(f"Detailed error in report generation: {str(e)}")
@@ -276,7 +276,7 @@ class ReportService:
 
         Raises:
             ReportDateException: If the date range is given by one end only
-            TerminalNotClosedException: If the terminal is not closed
+            SessionNotSettledException: If a session in scope is not settled (daily, #343)
             ReportGenerationException: If an error occurs during report generation
             ReportNotFoundException: If the requested report type does not exist
         """
@@ -289,27 +289,24 @@ class ReportService:
         if report_scope == "flush":
             report_scope = "flash"
 
-        # check if conditions are met for daily report
-        # Skip terminal closed check if date range is specified
-        if report_scope == "daily" and not (business_date_from and business_date_to):
-            # check if all transactions are received for the business date and open counter (single date mode only)
-            try:
-                await self._check_if_terminal_closed(
-                    store_code=store_code,
-                    business_date=business_date,
-                    open_counter=open_counter,
-                    terminal_no=terminal_no,
-                )
-            except ServiceException as e:
-                message = f"check_if_terminal_closed->false. store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-                raise TerminalNotClosedException(message, logger, e) from e
-
         if report_type in self.report_makers:
             try:
                 maker = self.report_makers[report_type]
                 
                 # Check if the maker supports date range parameters
-                if hasattr(maker.generate_report, '__code__') and 'business_date_from' in maker.generate_report.__code__.co_varnames:
+                if report_scope == "daily":
+                    # From the settled sessions' frozen reports (#343)
+                    report_data = await self._daily_report_async(
+                        store_code=store_code,
+                        report_type=report_type,
+                        terminal_no=terminal_no,
+                        business_date=business_date,
+                        open_counter=open_counter,
+                        business_counter=business_counter,
+                        business_date_from=business_date_from,
+                        business_date_to=business_date_to,
+                    )
+                elif hasattr(maker.generate_report, '__code__') and 'business_date_from' in maker.generate_report.__code__.co_varnames:
                     # Maker supports date range parameters
                     report_data = await maker.generate_report(
                         store_code=store_code,
@@ -359,6 +356,8 @@ class ReportService:
                     )
 
                 return report_data
+            except SessionNotSettledException:
+                raise
             except Exception as e:
                 if business_date_from and business_date_to:
                     message = f"Error occurred during report generation: report_type->{report_type}, store_code->{store_code}, terminal_no->{terminal_no}, date_range->{business_date_from} to {business_date_to}"
@@ -369,268 +368,152 @@ class ReportService:
             message = f"Invalid report type: {report_type}"
             raise ReportNotFoundException(message, logger)
 
-    async def _create_daily_info(self, daily_info: DailyInfoDocument, verified: bool, verified_message: str):
+    async def _sessions_in_scope_async(
+        self,
+        store_code: str,
+        terminal_no: int = None,
+        business_date: str = None,
+        open_counter: int = None,
+        business_counter: int = None,
+        business_date_from: str = None,
+        business_date_to: str = None,
+    ) -> dict[tuple, dict]:
         """
-        Create or update a daily information document with verification status.
+        Every session with a log in a daily report's scope (#343, R-5).
 
-        Args:
-            daily_info: The daily information document to create/update
-            verified: Boolean indicating if the terminal data is verified
-            verified_message: Message describing the verification status
+        A session is (terminal_no, business_counter). Any open log, transaction
+        log or cash log puts it in scope: such a session must be settled before
+        a daily report can include it.
+
+        Returns:
+            (terminal_no, business_counter) -> {business_date, open_counter}
+        """
+        match: dict = {"tenant_id": self.tenant_id, "store_code": store_code}
+        if business_date_from and business_date_to:
+            match["business_date"] = {"$gte": business_date_from, "$lte": business_date_to}
+        elif business_date:
+            match["business_date"] = business_date
+        if terminal_no is not None:
+            match["terminal_no"] = terminal_no
+        if open_counter is not None:
+            match["open_counter"] = open_counter
+        if business_counter is not None:
+            match["business_counter"] = business_counter
+        pipeline = [
+            {"$match": match},
+            {
+                "$group": {
+                    "_id": {"terminal_no": "$terminal_no", "business_counter": "$business_counter"},
+                    "business_date": {"$first": "$business_date"},
+                    "open_counter": {"$first": "$open_counter"},
+                }
+            },
+        ]
+        sessions: dict[tuple, dict] = {}
+        for repo in (self.open_close_log_repository, self.tran_repository, self.cash_in_out_log_repository):
+            for row in await repo.execute_pipeline(pipeline):
+                key = (row["_id"].get("terminal_no"), row["_id"].get("business_counter"))
+                sessions.setdefault(key, {"business_date": row.get("business_date"), "open_counter": row.get("open_counter")})
+        return sessions
+
+    async def _daily_report_async(
+        self,
+        store_code: str,
+        report_type: str,
+        terminal_no: int = None,
+        business_date: str = None,
+        open_counter: int = None,
+        business_counter: int = None,
+        business_date_from: str = None,
+        business_date_to: str = None,
+    ) -> Any:
+        """
+        A daily report from the frozen reports of the settled sessions in scope (#343).
 
         Raises:
-            CannotCreateException: If the daily info document cannot be created
+            SessionNotSettledException: A session in scope has no final settlement
         """
-        try:
-            daily_info.verified = verified
-            daily_info.verified_message = verified_message
-            daily_info.verified_update_time = get_app_time_str()
-            await self.daily_info_repository.create_daily_info_document(daily_info)
-        except Exception as e:
-            message = f"Cannot create daily info document: {daily_info}"
-            raise CannotCreateException(
-                message, self.daily_info_repository.collection_name, daily_info, logger, e
-            ) from e
-
-    async def _check_if_terminal_closed(
-        self, store_code: str, business_date: str, open_counter: int, terminal_no: int = None
-    ) -> None:
-        """
-        Verify if specified terminal(s) are properly closed and all logs are present.
-
-        This method checks if a specific terminal or all terminals in a store are
-        properly closed and if all required logs (transactions, cash operations) have been
-        correctly recorded for the business date and open counter.
-
-        Args:
-            store_code: Identifier for the store
-            business_date: Date to check for terminal closure
-            open_counter: Counter for terminal open/close cycles
-            terminal_no: Specific terminal to check, or None for all terminals
-
-        Raises:
-            ServiceException: If terminal verification fails
-        """
-        try:
-            if terminal_no:
-                await self._commit_terminal_report_async(
-                    tenant_id=self.tenant_id,
-                    store_code=store_code,
-                    terminal_no=terminal_no,
-                    business_date=business_date,
-                    open_counter=open_counter,
-                )
-            else:
-                await self._commit_store_report_async(
-                    store_code=store_code, business_date=business_date, open_counter=open_counter
-                )
-
-        except ServiceException as e:
-            # terminal is not verified
-            message = f"Terminal verification failed. tenant_id->{self.tenant_id}, store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-            raise ServiceException(message, logger, e) from e
-
-        # terminal is verified
-        logger.info(
-            f"Terminal verification successful. tenant_id->{self.tenant_id}, store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-        )
-
-    async def _commit_store_report_async(self, store_code: str, business_date: str, open_counter: int) -> None:
-        """
-        Verify all terminals in a store for report generation.
-
-        This method attempts to verify each terminal in the store to ensure all
-        are properly closed and have complete logs for the specified business date
-        and open counter.
-
-        Args:
-            store_code: Identifier for the store
-            business_date: Date to verify terminal data for
-            open_counter: Counter for terminal open/close cycles
-
-        Raises:
-            ServiceException: If any terminal in the store fails verification
-        """
-        logger.debug(f"commit_store_report_async: {store_code}, {business_date}, {open_counter}")
-
-        # get all terminals for the store
-        all_verified = True
-        terminals = await self.terminal_repository.get_terminal_info_list_async()
-        for terminal in terminals:
-            try:
-                await self._commit_terminal_report_async(
-                    tenant_id=self.tenant_id,
-                    store_code=store_code,
-                    terminal_no=terminal.terminal_no,
-                    business_date=business_date,
-                    open_counter=open_counter,
-                )
-            except ServiceException as e:
-                message = f"Cannot verify terminal. tenant_id->{self.tenant_id}, store_code->{store_code}, terminal_no->{terminal.terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-                logger.info(message)
-                all_verified = False
-
-        if not all_verified:
-            message = f"Cannot verify some terminals in store. tenant_id->{self.tenant_id}, store_code->{store_code}, business_date->{business_date}, open_counter->{open_counter}"
-            raise ServiceException(message, logger)
-
-        logger.info(
-            f"All terminals are verified. tenant_id->{self.tenant_id}, store_code->{store_code}, business_date->{business_date}, open_counter->{open_counter}"
-        )
-
-    async def _commit_terminal_report_async(
-        self, tenant_id: str, store_code: str, terminal_no: int, business_date: str, open_counter: int
-    ) -> None:
-        """
-        Verify a specific terminal for report generation.
-
-        This method checks if a terminal is properly closed and has complete logs
-        for the specified business date and open counter. It verifies:
-        1. The existence of open/close logs
-        2. The count of cash in/out operations matches the expected count
-        3. The count of transactions matches the expected count
-
-        If verification passes, a daily info document is created with verified=True.
-
-        Args:
-            tenant_id: Tenant identifier
-            store_code: Identifier for the store
-            terminal_no: Terminal number to verify
-            business_date: Date to verify terminal data for
-            open_counter: Counter for terminal open/close cycles
-
-        Raises:
-            OpenCloseLogMissingException: If close logs are missing
-            CashInOutMissingException: If cash operation logs are missing or inconsistent
-            TransactionMissingException: If transaction logs are missing or inconsistent
-        """
-        logger.debug(f"commit_report_async: {tenant_id}, {store_code}, {terminal_no}, {business_date}, {open_counter}")
-
-        # get daily info document
-        daily_info = await self.daily_info_repository.get_daily_info_documents(
-            store_code=store_code,
+        scope = dict(
             terminal_no=terminal_no,
             business_date=business_date,
             open_counter=open_counter,
-            limit=0,
-            page=1,
+            business_counter=business_counter,
+            business_date_from=business_date_from,
+            business_date_to=business_date_to,
         )
-        if daily_info.metadata.total > 0:
-            if daily_info.data[0].verified:
-                logger.debug(
-                    f"Terminal is already verified. tenant_id->{tenant_id}, store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-                )
-                return
-
-        # create daily info document
-        daily_info = DailyInfoDocument(
-            tenant_id=tenant_id,
-            store_code=store_code,
-            terminal_no=terminal_no,
-            business_date=business_date,
-            open_counter=open_counter,
-            verified=None,
-            verified_update_time=None,
-            verified_message=None,
-        )
-
-        # get open log
-        open_log = await self.open_close_log_repository.get_open_close_logs(
-            store_code=store_code,
-            business_date=business_date,
-            terminal_no=terminal_no,
-            open_counter=open_counter,
-            operation="open",
-            limit=1,
-            page=1,
-            sort=[("generate_date_time", -1)],
-        )
-        if open_log.metadata.total == 0:
-            message = f"Terminal not opened. tenant_id->{tenant_id}, store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-            logger.debug(message)
-            # not opened yet
-            return
-
-        # get close log
-        open_close_logs = await self.open_close_log_repository.get_open_close_logs(
-            store_code=store_code,
-            business_date=business_date,
-            terminal_no=terminal_no,
-            open_counter=open_counter,
-            operation="close",
-            limit=1,
-            page=1,
-            sort=[("generate_date_time", -1)],
-        )
-        if open_close_logs.metadata.total == 0:
-            message = f"No close logs found for the given business date and open counter. store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-            await self._create_daily_info(daily_info, False, message)
-            raise OpenCloseLogMissingException(message, logger)
-
-        # set values from open close logs
-        cash_log_count = open_close_logs.data[0].cash_in_out_count
-        cash_log_datetime = open_close_logs.data[0].cash_in_out_last_datetime
-        tran_log_count = open_close_logs.data[0].cart_transaction_count
-        tran_log_no = open_close_logs.data[0].cart_transaction_last_no
-
-        # get cash in/out logs
-        filter = {
-            "store_code": store_code,
-            "business_date": business_date,
-            "terminal_no": terminal_no,
-            "open_counter": open_counter,
-        }
-        cash_in_out_logs = await self.cash_in_out_log_repository.get_cash_in_out_logs(
-            filter=filter, limit=1, page=1, sort=[("generate_date_time", -1)]
-        )
-        # check if cash in/out logs are received
-        if cash_in_out_logs.metadata.total != cash_log_count:
-            message = f"Missing cash in/out logs. Expected count->{cash_log_count}, Actual count->{cash_in_out_logs.metadata.total}"
-            await self._create_daily_info(daily_info, False, message)
-            raise CashInOutMissingException(message, logger)
-        if len(cash_in_out_logs.data) != 0:
-            if cash_in_out_logs.data[0].generate_date_time != cash_log_datetime:
-                message = f"Missing cash in/out logs. Expected datetime->{cash_log_datetime}, Actual datetime->{cash_in_out_logs.data[0].generate_date_time}"
-                await self._create_daily_info(daily_info, False, message)
-                raise CashInOutMissingException(message, logger)
-        logger.info(
-            f"all cash in/out logs are received for the business date and open counter. store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-        )
-
-        # get tran logs
-        # Order by the canonical transaction identity (business_counter, transaction_no)
-        # — the unique key — NOT generate_date_time (client-stamped on the stateless
-        # path, issue #156, so it can tie and pick a non-deterministic last record).
-        # The terminal close-log records its last_no with the SAME ordering, so both
-        # sides agree on the same record when comparing cart_transaction_last_no.
-        tran_logs = await self.tran_repository.get_tranlog_list_by_query_async(
-            store_code=store_code,
-            terminal_no=terminal_no,
-            business_date=business_date,
-            open_counter=open_counter,
-            limit=1,
-            page=1,
-            sort=[("business_counter", -1), ("transaction_no", -1)],
-            include_cancelled=True,
-        )
-        # check if transaction logs are received
-        if tran_logs.metadata.total != tran_log_count:
-            message = (
-                f"Missing transaction logs. Expected count->{tran_log_count}, Actual count->{tran_logs.metadata.total}"
+        sessions = await self._sessions_in_scope_async(store_code, **scope)
+        records = await self.settlement_repository.find_final_async(store_code, **scope)
+        settled = {(r.terminal_no, r.business_counter) for r in records}
+        unsettled = [
+            {"terminalNo": t, "businessCounter": bc, "businessDate": info["business_date"], "openCounter": info["open_counter"]}
+            for (t, bc), info in sorted(sessions.items(), key=lambda kv: (kv[0][0] or 0, kv[0][1] or 0))
+            # A log without a business_counter (from before every writer set it)
+            # has no session to settle; it cannot hold a daily report hostage
+            if (t, bc) not in settled and bc is not None
+        ]
+        if unsettled:
+            raise SessionNotSettledException(
+                f"Daily report refused: {len(unsettled)} session(s) not settled. store_code->{store_code}, scope->{scope}",
+                unsettled,
+                logger,
             )
-            await self._create_daily_info(daily_info, False, message)
-            raise TransactionMissingException(message, logger)
-        if len(tran_logs.data) != 0:
-            if tran_logs.data[0].transaction_no != tran_log_no:
-                message = f"Missing transaction logs. Expected transaction no->{tran_log_no}, Actual transaction no->{tran_logs.data[0].transaction_no}"
-                await self._create_daily_info(daily_info, False, message)
-                raise TransactionMissingException(message, logger)
-        logger.info(
-            f"all transaction logs are received for the business date and open counter. store_code->{store_code}, terminal_no->{terminal_no}, business_date->{business_date}, open_counter->{open_counter}"
-        )
 
-        # create daily info document
-        await self._create_daily_info(daily_info, True, "All logs are received successfully")
+        maker = self.report_makers[report_type]
+        if not records:
+            # Nothing in scope: the empty report, as before
+            return await maker.generate_report(
+                store_code=store_code,
+                report_scope="daily",
+                report_type=report_type,
+                limit=100,
+                page=1,
+                sort=None,
+                **scope,
+            )
+
+        records = sorted(records, key=lambda r: r.settled_at or "")
+        # Folded a batch at a time (oldest first, so the newest names win): a
+        # month of a large store's item reports never sits in memory at once
+        merge = MERGERS[report_type]
+        folded: Optional[dict] = None
+        count = 0
+        try:
+            async for batch in self.settlement_repository.iter_daily_reports_async(
+                [r.settlement_id for r in records], report_type
+            ):
+                count += len(batch)
+                folded = batch[0] if folded is None and len(batch) == 1 else merge(([folded] if folded else []) + batch)
+        except LookupError as e:
+            raise ServiceException(str(e), logger) from e
+
+        is_range = bool(business_date_from and business_date_to)
+        if count == 1 and terminal_no is not None and not is_range:
+            document = maker.from_saved(folded)
+        else:
+            document = maker.merge(
+                [folded],
+                terminal_no=terminal_no,
+                business_date=None if is_range else business_date,
+                business_date_from=business_date_from,
+                business_date_to=business_date_to,
+                open_counter=open_counter,
+                business_counter=business_counter,
+                report_scope="daily",
+                report_type=report_type,
+            )
+        document.missing_count = sum(r.missing_count for r in records)
+        document.missing_ranges = [
+            {
+                "terminal_no": r.terminal_no,
+                "business_date": r.business_date,
+                "business_counter": r.business_counter,
+                "first": m.first,
+                "last": m.last,
+            }
+            for r in records
+            for m in r.missing_ranges
+        ]
+        return document
 
     async def _send_report_to_journal(
         self,

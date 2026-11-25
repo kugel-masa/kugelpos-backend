@@ -156,7 +156,7 @@ async def test_zero_amount_transaction(set_env_vars, clean_test_data):
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
 
     report_service = ReportService(
-        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repo, daily_info_repo
+        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repository=terminal_info_repo
     )
 
     report = await report_service.get_report_for_terminal_async(
@@ -325,7 +325,7 @@ async def test_empty_taxes_array(set_env_vars, clean_test_data):
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
 
     report_service = ReportService(
-        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repo, daily_info_repo
+        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repository=terminal_info_repo
     )
 
     report = await report_service.get_report_for_terminal_async(
@@ -488,7 +488,7 @@ async def test_rounding_one_yen_difference(set_env_vars, clean_test_data):
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
 
     report_service = ReportService(
-        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repo, daily_info_repo
+        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repository=terminal_info_repo
     )
 
     report = await report_service.get_report_for_terminal_async(
@@ -666,7 +666,7 @@ async def test_three_way_payment_split(set_env_vars, clean_test_data):
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
 
     report_service = ReportService(
-        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repo, daily_info_repo
+        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repository=terminal_info_repo
     )
 
     report = await report_service.get_report_for_terminal_async(
@@ -868,7 +868,7 @@ async def test_five_way_payment_split(set_env_vars, clean_test_data):
     daily_info_repo = DailyInfoDocumentRepository(db, tenant_id)
 
     report_service = ReportService(
-        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repo, daily_info_repo
+        tran_repo, cash_in_out_repo, open_close_repo, terminal_info_repository=terminal_info_repo
     )
 
     report = await report_service.get_report_for_terminal_async(

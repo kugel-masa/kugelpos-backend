@@ -275,3 +275,18 @@ class DeliveryStatusUpdateResponse(BaseModel):
     service: str
     status: str
     success: bool
+
+
+class TerminalClosePreviewResponse(BaseSchemmaModel):
+    """What closing now would settle, from report; nothing is stored (#343)."""
+
+    expected_cash_total: Optional[float] = None
+    expected_cash: Optional[dict] = None  # {cashSales, cashIn, cashOut, total}
+    included_count: Optional[int] = None
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[dict]] = None  # [{first, last}]
+    missing_cash_log_count: Optional[int] = None
+    physical_amount: Optional[float] = None
+    difference: Optional[float] = None
+    # True when the session is already settled; the figures are then its own
+    settled: bool = False

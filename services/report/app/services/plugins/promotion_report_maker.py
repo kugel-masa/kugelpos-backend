@@ -10,6 +10,8 @@ from app.models.repositories.open_close_log_repository import OpenCloseLogReposi
 from app.models.documents.promotion_report_document import PromotionReportDocument
 from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
+from app.services.plugins.report_scope import scope_of, scope_pipeline
+from app.services.report_merge import merge_promotion, merged_document
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,14 @@ class PromotionReportMaker(IReportPlugin):
         self.tran_repository = tran_repository
         self.cash_in_out_log_repository = cash_in_out_log_repository
         self.open_close_log_repository = open_close_log_repository
+
+    def merge(self, reports: list[dict], **header) -> PromotionReportDocument:
+        """Several sessions' frozen daily reports as one (#343)."""
+        return merged_document(PromotionReportDocument, merge_promotion(reports), header, None)
+
+    def from_saved(self, report: dict) -> PromotionReportDocument:
+        """A frozen daily report as it was stored (#343)."""
+        return PromotionReportDocument(**report)
 
     async def generate_report(
         self,
@@ -76,6 +86,7 @@ class PromotionReportMaker(IReportPlugin):
         Returns:
             Promotion report document
         """
+        extra_match, unbounded = scope_of(kwargs)
 
         # Validate date range if provided
         if business_date_from and business_date_to:
@@ -97,6 +108,7 @@ class PromotionReportMaker(IReportPlugin):
             business_date_from=business_date_from,
             business_date_to=business_date_to,
         )
+        pipeline = scope_pipeline(pipeline, extra_match, unbounded)
         logger.info(f"Promotion report pipeline: {pipeline}")
 
         # Retrieve data from transaction log collection using the pipeline
@@ -376,8 +388,9 @@ class PromotionReportMaker(IReportPlugin):
             sort_dict = {field: direction for field, direction in sort}
             pipeline.append({"$sort": sort_dict})
         else:
-            # Default sort by discount amount (highest first)
-            pipeline.append({"$sort": {"discount_amount": -1}})
+            # Default sort by discount amount (highest first); ties by code, as
+            # the frozen daily reports are merged (report_merge.merge_promotion)
+            pipeline.append({"$sort": {"discount_amount": -1, "promotion_code": 1, "promotion_type": 1}})
 
         # Add pagination stage
         if page > 1:

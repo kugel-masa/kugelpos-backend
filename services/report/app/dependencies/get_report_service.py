@@ -18,7 +18,6 @@ from app.services.report_service import ReportService
 from app.models.repositories.tranlog_repository import TranlogRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
-from app.models.repositories.daily_info_document_repository import DailyInfoDocumentRepository
 from app.models.repositories.terminal_info_web_repository import TerminalInfoWebRepository
 from app.config.settings import settings
 
@@ -55,7 +54,6 @@ async def get_report_service(
     tran_repo = TranlogRepository(db=db, tenant_id=tenant_id)
     cash_repo = CashInOutLogRepository(db=db, tenant_id=tenant_id)
     open_close_repo = OpenCloseLogRepository(db=db, tenant_id=tenant_id)
-    daily_info_repo = DailyInfoDocumentRepository(db=db, tenant_id=tenant_id)
     terminal_info_repo = TerminalInfoWebRepository(
         tenant_id=tenant_id, store_code=store_code, terminal_id=terminal_id, api_key=api_key, token=token
     )
@@ -64,6 +62,5 @@ async def get_report_service(
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )

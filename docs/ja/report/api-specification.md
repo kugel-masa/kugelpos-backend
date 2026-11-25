@@ -125,11 +125,223 @@
 
 ### 店舗
 
-### 4. 店舗レポート取得
+### 4. Preview Settlement
+
+**GET** `/api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlement-preview`
+
+What confirming would record now, without storing anything.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `business_counter` | integer | Yes | - | - |
+| `business_date` | string | Yes | - | - |
+| `open_counter` | integer | Yes | - | - |
+| `seq` | string | No | - | - |
+| `cash_log_count` | string | No | - | - |
+| `physical_amount` | string | No | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `SettlementPreviewResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledBy` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settled` | boolean | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "businessCounter": 0,
+    "businessDate": "string",
+    "openCounter": 0,
+    "settledBy": "string",
+    "settledAt": "string",
+    "declaredCount": 0,
+    "declaredSource": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 5. Confirm Settlement
+
+**POST** `/api/v1/internal/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/settlements`
+
+Confirm a terminal session's settlement from the logs that have arrived.
+
+A provisional settlement is recomputed and replaced; a final one is returned
+as stored. Missing or duplicate transactions never refuse the settlement;
+they are recorded.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+| `terminal_no` | integer | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledAt` | string | Yes | - |
+| `seq` | integer | No | - |
+| `cashLogCount` | integer | No | - |
+| `physicalAmount` | number | No | - |
+| `settledBy` | string | No | - |
+
+**リクエスト例:**
+```json
+{
+  "businessCounter": 0,
+  "businessDate": "string",
+  "openCounter": 0,
+  "settledAt": "string",
+  "seq": 0,
+  "cashLogCount": 0,
+  "physicalAmount": 0.0,
+  "settledBy": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `SettlementConfirmResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledBy` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settlementId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `recordedAt` | string | Yes | - |
+| `finalizedAt` | string | No | - |
+| `created` | boolean | Yes | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "tenantId": "string",
+    "storeCode": "string",
+    "terminalNo": 0,
+    "businessCounter": 0,
+    "businessDate": "string",
+    "openCounter": 0,
+    "settledBy": "string",
+    "settledAt": "string",
+    "declaredCount": 0,
+    "declaredSource": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 6. 店舗レポート取得
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/reports`
 
-店舗情報を取得します。店舗の詳細と設定を返します。
+Get a report for the entire store.
+
+This endpoint requires either a JWT token or an API key with terminal_id.
+It provides different types of reports (sales, category, item) at different
+scopes (flash, daily) for the specified store.
+
+Daily scope (#343): the report is the settled sessions' frozen reports,
+merged when the scope has more than one session. A session in scope that
+has a log but no final settlement refuses the report with 403 / 412101,
+and data.unsettledSessions names it. A daily report returns the whole
+frozen report (limit and page are not applied), carries missingCount and
+missingRanges, and a date-range daily report carries the cash section.
+Flash is computed live, as before.
 
 **パスパラメータ:**
 
@@ -144,7 +356,7 @@
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
+| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -154,8 +366,6 @@
 | `page` | integer | No | 1 | Page number to return |
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
-
-`business_date` か、`business_date_from` と `business_date_to` の両端で範囲を指定します。範囲と `business_date` の両方を指定したときは、範囲を使います。範囲の片方だけの指定は、`business_date` と一緒でも 400（`412006`）で拒否されます。
 
 **レスポンス:**
 
@@ -181,11 +391,115 @@
 }
 ```
 
-### 5. 端末レポート取得
+### 7. List Settlements
+
+**GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/settlements`
+
+The store's settlement records, by business date, terminal and session.
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `store_code` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `terminal_no` | string | No | - | - |
+| `business_counter` | string | No | - | - |
+| `business_date_from` | string | No | - | - |
+| `business_date_to` | string | No | - | - |
+| `state` | string | No | - | - |
+| `limit` | integer | No | 100 | - |
+| `page` | integer | No | 1 | - |
+| `is_terminal_service` | string | No | False | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[SettlementRecordResponse]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenantId` | string | Yes | - |
+| `storeCode` | string | Yes | - |
+| `terminalNo` | integer | Yes | - |
+| `businessCounter` | integer | Yes | - |
+| `businessDate` | string | Yes | - |
+| `openCounter` | integer | Yes | - |
+| `settledBy` | string | No | - |
+| `settledAt` | string | Yes | - |
+| `declaredCount` | integer | No | - |
+| `declaredSource` | string | Yes | - |
+| `includedCount` | integer | Yes | - |
+| `includedRanges` | array[NumberRangeSchema] | No | - |
+| `missingCount` | integer | Yes | - |
+| `missingRanges` | array[NumberRangeSchema] | No | - |
+| `duplicateNumbers` | array[integer] | No | - |
+| `serverNumberedCount` | integer | No | - |
+| `declaredCashLogCount` | integer | No | - |
+| `cashLogCount` | integer | Yes | - |
+| `missingCashLogCount` | integer | Yes | - |
+| `expectedCash` | ExpectedCashSchema | Yes | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settlementId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `recordedAt` | string | Yes | - |
+| `finalizedAt` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "tenantId": "string",
+      "storeCode": "string",
+      "terminalNo": 0,
+      "businessCounter": 0,
+      "businessDate": "string",
+      "openCounter": 0,
+      "settledBy": "string",
+      "settledAt": "string",
+      "declaredCount": 0,
+      "declaredSource": "string"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 8. 端末レポート取得
 
 **GET** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/reports`
 
-端末情報を取得します。端末の詳細と現在の状態を返します。
+Get a report for a specific terminal.
+
+This endpoint requires either a JWT token or an API key with terminal_id.
+It provides different types of reports (sales, category, item) at different
+scopes (flush, daily) for the specified terminal.
+
+Daily scope (#343): the terminal's settled sessions' frozen reports; one
+session's is returned as frozen, several are merged. A session with a log
+but no final settlement refuses the report with 403 / 412101, and
+data.unsettledSessions names it. limit and page are not applied to a daily
+report, which carries missingCount and missingRanges. Flash is live.
 
 **パスパラメータ:**
 
@@ -201,7 +515,7 @@
 |------------|------|------|------------|------|
 | `terminal_id` | string | No | - | Terminal ID for api_key authentication |
 | `report_scope` | string | Yes | - | Scope of the report: flash, daily |
-| `report_type` | string | Yes | - | Type of the report: sales, category, item, payment, promotion |
+| `report_type` | string | Yes | - | Type of the report: sales, category, ite |
 | `business_date` | string | No | - | Business date for flash and daily (singl |
 | `business_date_from` | string | No | - | Start date for date range (YYYYMMDD form |
 | `business_date_to` | string | No | - | End date for date range (YYYYMMDD format |
@@ -211,8 +525,6 @@
 | `page` | integer | No | 1 | Page number to return |
 | `is_terminal_service` | string | No | False | - |
 | `sort` | string | No | - | ?sort=field1:1,field2:-1 |
-
-`business_date` か、`business_date_from` と `business_date_to` の両端で範囲を指定します。範囲と `business_date` の両方を指定したときは、範囲を使います。範囲の片方だけの指定は、`business_date` と一緒でも 400（`412006`）で拒否されます。
 
 **レスポンス:**
 
@@ -240,13 +552,11 @@
 
 ### トランザクション
 
-### 6. 取引データ受信
+### 9. 取引データ受信
 
 **POST** `/api/v1/tenants/{tenant_id}/stores/{store_code}/terminals/{terminal_no}/transactions`
 
 取引データを受信します。カートサービスからの取引データを処理します。
-
-本文の `tenantId`、`storeCode`、`terminalNo` は、パスのテナント・店舗・端末と同じでなければなりません。本文にない項目はパスの値になり、違う値を書いた本文は 400 で拒否します（issue #134）。
 
 **パスパラメータ:**
 
@@ -305,7 +615,7 @@
 
 ### イベント処理
 
-### 7. 現金ログ処理
+### 10. 現金ログ処理
 
 **POST** `/api/v1/cashlog`
 
@@ -313,7 +623,7 @@
 
 **レスポンス:**
 
-### 8. 開閉店ログ処理
+### 11. 開閉店ログ処理
 
 **POST** `/api/v1/opencloselog`
 
@@ -321,44 +631,13 @@
 
 **レスポンス:**
 
-### 9. 取引ログ処理
+### 12. 取引ログ処理
 
 **POST** `/api/v1/tranlog`
 
 取引ログを処理します。Dapr pub/sub経由で受信した取引ログイベントを処理します。
 
 **レスポンス:**
-
-### レポートの名前（#326）
-
-| レポートの項目 | 出どころ |
-|---|---|
-| 分類名（分類別・商品別レポート） | master-data。全ページを読み、論理削除した分類も含める。見つからないコードはコードのまま |
-| 商品名（商品別レポート） | 取引ログ。期間内でいちばん新しい明細の `description`、つまり売ったときの名前。master-data には問い合わせない。名前がなければコード |
-| 支払方法名（支払レポート） | master-data の今の名前。なければ、期間内でいちばん新しい支払明細の `builtin_description`。それもなければ `01` / `11` / `12` に `Cash` / `Cashless` / `Others`、それ以外は `Payment {code}` |
-
-そのため、売ったあとに名前を変えたり削除したりしたマスタも、過去のレポートで名前が出る。ただし、あとから名前を変えた分類は、今の名前で出る。
-
-### 支払・プロモーションのレポートの応答（#329）
-
-売上・分類別・商品別のレポートと同じく、支払とプロモーションのレポートも camelCase で応答し、保存している文書の内部の項目（`shard_key`・`etag`・`created_at`・`updated_at`）は返さない。#329 より前は、保存している文書をそのまま snake_case で返していた。
-
-```json
-{
-  "tenantId": "T001", "storeCode": "5678", "storeName": null, "terminalNo": null,
-  "businessDate": "20261123", "businessDateFrom": null, "businessDateTo": null,
-  "openCounter": null, "businessCounter": null, "reportScope": "flash", "reportType": "payment",
-  "paymentSummary": [
-    {"paymentCode": "11", "paymentName": "Cashless", "count": 2, "amount": 3300.0, "ratio": 100.0,
-     "variants": [{"variantCode": "VISA", "variantName": "VISA", "amount": 3300.0, "count": 2}]}
-  ],
-  "total": {"count": 2, "amount": 3300.0},
-  "receiptText": "...", "journalText": "...", "generateDateTime": "2026-11-23T18:00:00.123456+09:00",
-  "staff": null
-}
-```
-
-プロモーションのレポートは、`promotions[]`（`promotionCode`・`promotionType`・`grossAmount`・`discountAmount`・`netAmount`・`quantity`・`transactionCount`）と、`totalGrossAmount`・`totalDiscountAmount`・`totalNetAmount`・`totalQuantity`・`totalTransactionCount` を返す。
 
 ## エラーコード
 

@@ -97,9 +97,17 @@ class LogService:
         """
         try:
             log = await self.open_close_log_repository.create_open_close_log(open_close_log)
+            if open_close_log.operation == "close" and open_close_log.settlement_id:
+                # The session's settlement becomes final with its close log (#343).
+                # A failure raises, so the delivery is retried; the log itself is
+                # stored once whatever happens.
+                from app.dependencies.get_settlement_service import get_settlement_service_async
+
+                service = await get_settlement_service_async(self.open_close_log_repository.tenant_id)
+                await service.finalize_from_close_log_async(open_close_log)
             return log
         except Exception as e:
-            message = f"Failed to create open/close log: {describe_exception(e)}"
+            message = f"Failed to store the open/close log or finalize its settlement: {describe_exception(e)}"
             logger.error(message)
             # Notify about the error
             await send_fatal_error_notification(

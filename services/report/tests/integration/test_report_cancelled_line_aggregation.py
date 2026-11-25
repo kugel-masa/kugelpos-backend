@@ -139,7 +139,6 @@ async def test_period_sales_report_aggregates_all_days(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )
 
@@ -147,10 +146,13 @@ async def test_period_sales_report_aggregates_all_days(set_env_vars):
     observed_amounts = set()
     last_report = None
     for _ in range(3):
+        # The live aggregation over a period is what this pins. Since #343 a daily
+        # report reads the settled sessions' frozen reports; flash still runs the
+        # live pipeline over the same range.
         report = await service.get_report_for_terminal_async(
             store_code=test_store,
             terminal_no=test_terminal,
-            report_scope="daily",
+            report_scope="flash",
             report_type="sales",
             business_date_from=business_dates[0],
             business_date_to=business_dates[-1],
@@ -249,7 +251,6 @@ async def test_item_report_excludes_cancelled_line_items(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )
 
@@ -431,7 +432,6 @@ async def test_sales_report_excludes_cancelled_line_item_discounts(set_env_vars)
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )
 
@@ -594,7 +594,6 @@ async def test_sales_report_excludes_cancelled_line_from_subtotal_discount_quant
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )
 
@@ -732,7 +731,6 @@ async def test_promotion_report_excludes_cancelled_line_items(set_env_vars):
         tran_repository=tran_repo,
         cash_in_out_log_repository=cash_repo,
         open_close_log_repository=open_close_repo,
-        daily_info_repository=daily_info_repo,
         terminal_info_repository=terminal_info_repo,
     )
 

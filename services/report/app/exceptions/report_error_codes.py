@@ -29,7 +29,8 @@ class ReportErrorCode:
     REPORT_DATA_ERROR = "412007"  # レポートデータエラー
 
     # レポート検証関連 (4121x)
-    TERMINAL_NOT_CLOSED = "412101"  # 端末がクローズされていない
+    # Since #343: a session in scope has no final settlement record
+    TERMINAL_NOT_CLOSED = "412101"  # 精算していない営業がある
     LOGS_MISSING = "412102"  # ログが欠落している
     LOG_COUNT_MISMATCH = "412103"  # ログ数の不一致
     TRANSACTION_MISSING = "412104"  # トランザクションが欠落している
@@ -44,6 +45,8 @@ class ReportErrorCode:
     IMPORT_ERROR = "413004"  # インポートエラー
     DAILY_INFO_ERROR = "413005"  # 日次情報エラー
     EXTERNAL_SERVICE_ERROR = "413006"  # 外部サービスエラー
+    SETTLEMENT_NOT_FOUND = "413007"  # 精算実績が見つからない (#343)
+    SETTLEMENT_AGGREGATION_FAILED = "413008"  # 精算の確定の集計に失敗した (#343)
 
 
 class ReportErrorMessage:
@@ -64,7 +67,7 @@ class ReportErrorMessage:
             ReportErrorCode.REPORT_DATE_ERROR: "レポート日付に問題があります",
             ReportErrorCode.REPORT_DATA_ERROR: "レポートデータに問題があります",
             # レポート検証関連
-            ReportErrorCode.TERMINAL_NOT_CLOSED: "端末がクローズされていないため、レポートを生成できません",
+            ReportErrorCode.TERMINAL_NOT_CLOSED: "精算していない営業があるため、日報を作成できません",
             ReportErrorCode.LOGS_MISSING: "必要なログが欠落しています",
             ReportErrorCode.LOG_COUNT_MISMATCH: "ログの数が一致しません",
             ReportErrorCode.TRANSACTION_MISSING: "トランザクションログが欠落しています",
@@ -78,6 +81,8 @@ class ReportErrorMessage:
             ReportErrorCode.IMPORT_ERROR: "データのインポートに失敗しました",
             ReportErrorCode.DAILY_INFO_ERROR: "日次情報の処理に失敗しました",
             ReportErrorCode.EXTERNAL_SERVICE_ERROR: "外部サービスエラーが発生しました",
+            ReportErrorCode.SETTLEMENT_NOT_FOUND: "精算実績が見つかりません",
+            ReportErrorCode.SETTLEMENT_AGGREGATION_FAILED: "精算の集計に失敗しました。もう一度精算してください",
         },
         # 英語のエラーメッセージ
         "en": {
@@ -90,7 +95,7 @@ class ReportErrorMessage:
             ReportErrorCode.REPORT_DATE_ERROR: "Issue with report date",
             ReportErrorCode.REPORT_DATA_ERROR: "Issue with report data",
             # レポート検証関連
-            ReportErrorCode.TERMINAL_NOT_CLOSED: "Terminal is not closed, cannot generate report",
+            ReportErrorCode.TERMINAL_NOT_CLOSED: "A session in scope is not settled, cannot generate the daily report",
             ReportErrorCode.LOGS_MISSING: "Required logs are missing",
             ReportErrorCode.LOG_COUNT_MISMATCH: "Log count mismatch",
             ReportErrorCode.TRANSACTION_MISSING: "Transaction logs are missing",
@@ -104,6 +109,8 @@ class ReportErrorMessage:
             ReportErrorCode.IMPORT_ERROR: "Failed to import data",
             ReportErrorCode.DAILY_INFO_ERROR: "Failed to process daily information",
             ReportErrorCode.EXTERNAL_SERVICE_ERROR: "External service error occurred",
+            ReportErrorCode.SETTLEMENT_NOT_FOUND: "Settlement record not found",
+            ReportErrorCode.SETTLEMENT_AGGREGATION_FAILED: "Failed to aggregate the settlement; settle again",
         },
     }
 

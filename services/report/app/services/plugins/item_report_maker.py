@@ -14,6 +14,8 @@ from app.enums.transaction_type import TransactionType
 from app.services.report_plugin_interface import IReportPlugin
 from app.utils.latest_name import latest_name_candidate
 from app.services.plugins.item_report_receipt_data import ItemReportReceiptData
+from app.services.plugins.report_scope import scope_of, scope_pipeline
+from app.services.report_merge import merge_item, merged_document
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,14 @@ class ItemReportMaker(IReportPlugin):
             tenant_id=tran_repository.tenant_id,
             master_data_base_url=settings.BASE_URL_MASTER_DATA
         )
+
+    def merge(self, reports: list[dict], **header) -> ItemReportDocument:
+        """Several sessions' frozen daily reports as one (#343)."""
+        return merged_document(ItemReportDocument, merge_item(reports), header, ItemReportReceiptData("Item Report", 32))
+
+    def from_saved(self, report: dict) -> ItemReportDocument:
+        """A frozen daily report as it was stored (#343)."""
+        return ItemReportDocument(**report)
 
     async def generate_report(
         self,
@@ -87,6 +97,7 @@ class ItemReportMaker(IReportPlugin):
         Returns:
             Item report document
         """
+        extra_match, unbounded = scope_of(kwargs)
         
         # Validate date range if provided
         if business_date_from and business_date_to:
@@ -105,6 +116,7 @@ class ItemReportMaker(IReportPlugin):
             business_date_from=business_date_from,
             business_date_to=business_date_to,
         )
+        pipeline = scope_pipeline(pipeline, extra_match, unbounded)
         logger.info(f"Item report pipeline: {pipeline}")
 
         # Retrieve data from transaction log collection using the pipeline
@@ -113,8 +125,11 @@ class ItemReportMaker(IReportPlugin):
 
         # Fetch category names from master data
         try:
-            logger.info(f"Fetching category names from master data service...")
-            category_names = await self.category_repository.get_categories()
+            # A settlement fetches the names once for all its reports (#343)
+            category_names = kwargs.get("category_names")
+            if category_names is None:
+                logger.info(f"Fetching category names from master data service...")
+                category_names = await self.category_repository.get_categories()
             logger.info(f"Successfully fetched {len(category_names)} categories: {category_names}")
         except Exception as e:
             logger.error(f"Failed to fetch category names: {e}", exc_info=True)

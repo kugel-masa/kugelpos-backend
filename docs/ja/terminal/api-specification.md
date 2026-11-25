@@ -27,13 +27,6 @@
 - ヘッダー: `Authorization: Bearer {token}`
 - 用途: 管理者によるシステム操作
 
-テナント・店舗・端末の管理には、利用者（またはサービス）の JWT だけを受け付ける。
-- テナントの作成・更新・削除
-- 店舗の追加・更新・削除
-- 端末の作成・削除
-
-`POST /api/v1/auth/token` で得た端末の JWT は、ここでは **403** で断る（#331）。
-
 ## 共通レスポンス形式
 
 ```json
@@ -112,11 +105,11 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tags` | array[string] | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -186,11 +179,11 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tags` | array[string] | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -271,11 +264,11 @@ Update Tenantを更新します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tags` | array[string] | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -394,12 +387,12 @@ Delete Tenantを削除します。対象をシステムから削除します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `storeCode` | string | No | - |
+| `storeName` | string | No | - |
 | `status` | string | No | - |
 | `businessDate` | string | No | - |
 | `tags` | array[string] | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -477,11 +470,11 @@ Delete Tenantを削除します。対象をシステムから削除します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tags` | array[string] | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `tenantId` | string | No | - |
+| `tenantName` | string | No | - |
+| `tags` | array[string] | No | - |
 | `stores` | array[BaseStore] | Yes | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -552,12 +545,12 @@ Delete Tenantを削除します。対象をシステムから削除します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `storeCode` | string | No | - |
+| `storeName` | string | No | - |
 | `status` | string | No | - |
 | `businessDate` | string | No | - |
 | `tags` | array[string] | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -632,12 +625,12 @@ Update Storeを更新します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeName` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `storeCode` | string | No | - |
+| `storeName` | string | No | - |
 | `status` | string | No | - |
 | `businessDate` | string | No | - |
 | `tags` | array[string] | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -741,22 +734,22 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -823,22 +816,22 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -890,7 +883,7 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 | パラメータ | 型 | 必須 | デフォルト | 説明 |
 |------------|------|------|------------|------|
-| `include_api_key` | boolean | No | False | 非推奨・無視されます。キーはダイジェストでしか保存されないため、`POST /terminals/{terminal_id}/api-key` で再発行してください。 |
+| `include_api_key` | boolean | No | False | Ignored. The API key is stored only as a |
 
 **レスポンス:**
 
@@ -898,22 +891,22 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -953,7 +946,9 @@ Delete Storeを削除します。対象をシステムから削除します。
 
 **DELETE** `/api/v1/terminals/{terminal_id}`
 
-Delete Terminalを削除します。対象をシステムから削除します。
+端末を削除します。対象をシステムから削除します。
+
+開設中の端末は削除できません（400、406003）。その営業が精算されず、日報が出せなくなるためです。先に精算してください。機器が使えないときは、利用者のトークンで精算できます。
 
 **パスパラメータ:**
 
@@ -1011,22 +1006,22 @@ Delete Terminalを削除します。対象をシステムから削除します�
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -1218,11 +1213,13 @@ Returns an X-New-Token header with updated JWT reflecting closed state.
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `physicalAmount` | number | No | - |
+| `seq` | integer | No | - |
 
 **リクエスト例:**
 ```json
 {
-  "physicalAmount": 0.0
+  "physicalAmount": 0.0,
+  "seq": 0
 }
 ```
 
@@ -1243,6 +1240,11 @@ Represents termin |
 | `receiptText` | string | Yes | - |
 | `journalText` | string | Yes | - |
 | `physicalAmount` | number | No | - |
+| `expectedCashTotal` | number | No | - |
+| `difference` | number | No | - |
+| `missingCount` | integer | No | - |
+| `missingCashLogCount` | integer | No | - |
+| `settlementId` | string | No | - |
 
 **レスポンス例:**
 ```json
@@ -1274,7 +1276,8 @@ Represents termin |
     },
     "receiptText": "string",
     "journalText": "string",
-    "physicalAmount": 0.0
+    "physicalAmount": 0.0,
+    "expectedCashTotal": 0.0
   },
   "metadata": {
     "total": 0,
@@ -1287,7 +1290,77 @@ Represents termin |
 }
 ```
 
-### 20. 配信状態更新
+### 20. Terminal Close Preview
+
+**GET** `/api/v1/terminals/{terminal_id}/close-preview`
+
+What closing now would settle: expected cash, missing transactions and cash
+logs, and the difference for a counted amount. Nothing is stored (#343).
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `terminal_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `seq` | string | No | - | - |
+| `physical_amount` | string | No | - | - |
+
+**レスポンス:**
+
+**dataフィールド:** `TerminalClosePreviewResponse`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `expectedCashTotal` | number | No | - |
+| `expectedCash` | object | No | - |
+| `includedCount` | integer | No | - |
+| `missingCount` | integer | No | - |
+| `missingRanges` | array[object] | No | - |
+| `missingCashLogCount` | integer | No | - |
+| `physicalAmount` | number | No | - |
+| `difference` | number | No | - |
+| `settled` | boolean | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "expectedCashTotal": 0.0,
+    "expectedCash": {},
+    "includedCount": 0,
+    "missingCount": 0,
+    "missingRanges": [
+      {}
+    ],
+    "missingCashLogCount": 0,
+    "physicalAmount": 0.0,
+    "difference": 0.0,
+    "settled": false
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 21. 配信状態更新
 
 **POST** `/api/v1/terminals/{terminal_id}/delivery-status`
 
@@ -1356,7 +1429,7 @@ Represents termin |
 }
 ```
 
-### 21. 端末説明更新
+### 22. 端末説明更新
 
 **PATCH** `/api/v1/terminals/{terminal_id}/description`
 
@@ -1387,22 +1460,22 @@ Represents termin |
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -1438,7 +1511,7 @@ Represents termin |
 }
 ```
 
-### 22. 端末機能モード更新
+### 23. 端末機能モード更新
 
 **PATCH** `/api/v1/terminals/{terminal_id}/function_mode`
 
@@ -1469,22 +1542,22 @@ Represents termin |
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -1520,7 +1593,7 @@ Represents termin |
 }
 ```
 
-### 23. 端末開店
+### 24. 端末開店
 
 **POST** `/api/v1/terminals/{terminal_id}/open`
 
@@ -1615,7 +1688,7 @@ Represents termin |
 }
 ```
 
-### 24. スタッフサインイン
+### 25. スタッフサインイン
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-in`
 
@@ -1636,7 +1709,7 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
 | `staffId` | string | Yes | - |
-| `pin` | string | No | 任意（#323）。PIN ありの従業員では必須で、master-data が照合する。PIN なしの従業員では無視する |
+| `pin` | string | No | - |
 
 **リクエスト例:**
 ```json
@@ -1646,30 +1719,28 @@ Returns an X-New-Token header with updated JWT reflecting the new staff assignme
 }
 ```
 
-PIN ありの従業員は、正しい PIN でだけサインインできる。照合に失敗したとき（従業員なし・PIN が要る・PIN 不一致）は、どれも 401 / `406004` で同じ本文を返すので、応答からは従業員に PIN があるかは分からない。master-data に届かないときは 502 / `407201`。サインインしたあとで PIN が設定・変更されても、すでにサインインしている端末には遡らない。
-
 **レスポンス:**
 
 **dataフィールド:** `Terminal`
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -1705,7 +1776,7 @@ PIN ありの従業員は、正しい PIN でだけサインインできる。�
 }
 ```
 
-### 25. スタッフサインアウト
+### 26. スタッフサインアウト
 
 **POST** `/api/v1/terminals/{terminal_id}/sign-out`
 
@@ -1727,22 +1798,22 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|------|------|------|
-| `terminalId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `tenantId` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `storeCode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `terminalNo` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `description` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `functionMode` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `status` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `terminalId` | string | No | - |
+| `tenantId` | string | No | - |
+| `storeCode` | string | No | - |
+| `terminalNo` | integer | No | - |
+| `description` | string | No | - |
+| `functionMode` | string | No | - |
+| `status` | string | No | - |
 | `businessDate` | string | No | - |
-| `openCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
-| `businessCounter` | integer | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `openCounter` | integer | No | - |
+| `businessCounter` | integer | No | - |
 | `receiptCounter` | integer | No | - |
 | `initialAmount` | number | No | - |
 | `physicalAmount` | number | No | - |
 | `staff` | BaseStaff | No | - |
 | `apiKey` | string | No | - |
-| `entryDatetime` | string | No | 保存されたレコードに無い場合は null（DB に直接書き込まれたレコードなど） |
+| `entryDatetime` | string | No | - |
 | `lastUpdateDatetime` | string | No | - |
 
 **レスポンス例:**
@@ -1780,7 +1851,7 @@ Returns an X-New-Token header with updated JWT reflecting staff removal.
 
 ### その他
 
-### 26. Create Token
+### 27. Create Token
 
 **POST** `/api/v1/auth/token`
 

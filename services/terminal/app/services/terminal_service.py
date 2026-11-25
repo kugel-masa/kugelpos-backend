@@ -18,7 +18,7 @@ from app.models.documents.terminal_info_document import TerminalInfoDocument
 from app.models.repositories.terminal_info_repository import TerminalInfoRepository
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
-from app.models.repositories.tran_log_web_repository import TranlogWebRepository
+from app.models.repositories.settlement_web_repository import SettlementWebRepository
 from app.models.repositories.terminallog_delivery_status_repository import TerminallogDeliveryStatusRepository
 from app.models.documents.terminallog_delivery_status_document import (
     TerminallogDeliveryStatus,
@@ -32,6 +32,7 @@ from app.utils.pubsub_manager import PubsubManager
 from app.exceptions import (
     # Basic exceptions
     NotFoundException,
+    CannotDeleteException,
     AlreadyExistException,
     # Terminal basic operation exceptions
     TerminalNotFoundException,
@@ -110,6 +111,24 @@ def _terminal_info_for_log(terminal: TerminalInfoDocument) -> TerminalInfoDocume
     return redacted
 
 
+def _is_write_conflict(e: BaseException) -> bool:
+    """True if e (or what it wraps) is MongoDB's write conflict between two transactions."""
+    seen = set()
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        if getattr(e, "code", None) == 112:  # WriteConflict
+            return True
+        has_label = getattr(e, "has_error_label", None)
+        if callable(has_label) and has_label("TransientTransactionError"):
+            return True
+        e = getattr(e, "original_exception", None) or e.__cause__ or e.__context__
+    return False
+
+
+class _ClosedElsewhere(Exception):
+    """Another close of the same terminal wrote first (#343)."""
+
+
 class TerminalService:
     """
     Terminal Service class that handles all terminal operations
@@ -123,9 +142,9 @@ class TerminalService:
         store_info_repo: StoreInfoWebRepository,
         cash_in_out_log_repo: CashInOutLogRepository,
         open_close_log_repo: OpenCloseLogRepository,
-        tran_log_repo: TranlogWebRepository,
         terminal_log_delivery_status_repo: TerminallogDeliveryStatusRepository,
         terminal_id: str = None,
+        settlement_repo: Optional[SettlementWebRepository] = None,
     ) -> None:
         """
         Initialize a TerminalService instance with the required repositories
@@ -136,7 +155,8 @@ class TerminalService:
             store_info_repo: Repository for store information
             cash_in_out_log_repo: Repository for cash in/out logs
             open_close_log_repo: Repository for open/close logs
-            tran_log_repo: Repository for transaction logs
+            settlement_repo: Asks report to confirm the settlement at close (#343);
+                built from the terminal document when not given
             terminal_id: Optional terminal ID to associate with this service instance
         """
         self.terminal_id = terminal_id
@@ -145,7 +165,7 @@ class TerminalService:
         self.store_info_repo = store_info_repo
         self.cash_in_out_log_repo = cash_in_out_log_repo
         self.open_close_log_repo = open_close_log_repo
-        self.tran_log_repo = tran_log_repo
+        self.settlement_repo = settlement_repo
         self.terminal_log_delivery_status_repo = terminal_log_delivery_status_repo
         self.pubsub_manager = PubsubManager()
 
@@ -194,11 +214,31 @@ class TerminalService:
         """
         Delete a terminal from the system
 
+        An open terminal is refused (#343): its session would never be closed,
+        so it would never be settled, and every daily report covering it would
+        be refused. Close it first - with the terminal's API key or, for a
+        broken device, a user token.
+
         Returns:
             bool: True if deletion was successful
+
+        Raises:
+            TerminalStatusException: The terminal is open
+            NotFoundException: The terminal does not exist
         """
-        result = await self.terminal_info_repo.delete_terminal_info_async(self.terminal_id)
-        return result
+        # The status is in the delete filter, so an open that commits between a
+        # check and the delete cannot slip through
+        try:
+            return await self.terminal_info_repo.delete_terminal_info_async(
+                self.terminal_id, unless_status=TerminalStatus.Opened.value
+            )
+        except CannotDeleteException:
+            # Not deleted: say why. A terminal that is not there raises NotFoundException
+            terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
+            if terminal.status == TerminalStatus.Opened.value:
+                message = f"Cannot delete an open terminal; close it first: {self.terminal_id}"
+                raise TerminalStatusException(message=message, logger=logger)
+            raise
 
     # Terminal update methods
 
@@ -752,12 +792,16 @@ class TerminalService:
             raise e
         return open_close_log
 
-    async def close_terminal_async(self, physical_amount: float) -> OpenCloseLog:
+    async def close_terminal_async(self, physical_amount: float, seq: Optional[int] = None) -> OpenCloseLog:
         """
         Close a terminal after business operations are complete
 
+        Report confirms the session's settlement first (#343). If it cannot,
+        nothing is written and the terminal stays open.
+
         Args:
             physical_amount: The physical cash amount counted in the drawer
+            seq: The last carried transaction number the terminal issued, if it says
 
         Returns:
             OpenCloseLog: Log entry for the terminal closing
@@ -766,6 +810,7 @@ class TerminalService:
             TerminalNotFoundException: If the terminal is not found
             TerminalStatusException: If the terminal is already closed or not opened
             TerminalCloseException: If the close operation fails
+            SettlementUnavailableException: If report could not confirm the settlement
         """
         terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
 
@@ -783,16 +828,13 @@ class TerminalService:
             message = f"Terminal is not opened: {self.terminal_id}"
             raise TerminalStatusException(message=message, logger=logger)
 
-        terminal.status = TerminalStatus.Closed.value
-        terminal.physical_amount = physical_amount
-
-        # get cash_in_out_log list
+        # get cash_in_out_log list - by business_counter, the session's identity:
+        # open_counter starts again at 1 when a terminal is registered again (#343)
         filter = {
             "tenant_id": terminal.tenant_id,
             "store_code": terminal.store_code,
             "terminal_no": terminal.terminal_no,
-            "business_date": terminal.business_date,
-            "open_counter": terminal.open_counter,
+            "business_counter": terminal.business_counter,
         }
         cash_in_out_log_list = await self.cash_in_out_log_repo.get_cash_in_out_logs(
             filter=filter,
@@ -808,27 +850,28 @@ class TerminalService:
             f"cash_in_out_log_count: {cash_in_out_log_count}, cash_in_out_log_last_datetime: {cash_in_out_log_last_datetime}"
         )
 
-        # get tran_log list
-        # Order by the canonical transaction identity (business_counter, transaction_no)
-        # — the unique key — NOT generate_date_time (client-stamped on the stateless
-        # path, issue #156, so it can tie and pick a non-deterministic last record).
-        # The report-side verification orders identically, so both sides agree on the
-        # same "last transaction" fingerprint (cart_transaction_last_no).
-        paginated_result = await self.tran_log_repo.get_tran_log_list_async(
-            business_date=terminal.business_date,
-            open_counter=terminal.open_counter,
-            limit=1,
-            page=1,
-            sort=[("business_counter", -1), ("transaction_no", -1)],
-            include_cancelled=True,
+        # Report confirms the settlement from what has reached it (#343). Nothing
+        # is written before this: if report cannot confirm, the terminal stays open.
+        settlement = await self._settlement_repo_for(terminal).confirm_async(
+            {
+                "businessCounter": terminal.business_counter,
+                "businessDate": terminal.business_date,
+                "openCounter": terminal.open_counter,
+                "settledAt": get_app_time_str(),
+                "seq": seq,
+                "cashLogCount": cash_in_out_log_count,
+                "physicalAmount": physical_amount,
+                "settledBy": f"staff:{terminal.staff.id}" if terminal.staff is not None else None,
+            }
         )
-        logger.debug(f"paginated_result: {paginated_result}")
-        tran_count = paginated_result.metadata.total
-        if paginated_result.metadata.total > 0:
-            tran_last_no = paginated_result.data[0].transaction_no
-        else:
-            tran_last_no = None
-        logger.debug(f"tran_count: {tran_count}, tran_last_no: {tran_last_no}")
+        logger.info(
+            f"Settlement confirmed by report: terminal_id={self.terminal_id}, "
+            f"settlement_id={settlement.get('settlementId')}, missing={settlement.get('missingCount')}"
+        )
+
+        terminal.status = TerminalStatus.Closed.value
+        # The amount the settlement recorded
+        terminal.physical_amount = settlement.get("physicalAmount")
 
         # make open_close_log
         gen_datetime = get_app_time_str()
@@ -845,8 +888,14 @@ class TerminalService:
         open_close_log.operation = "close"
         open_close_log.generate_date_time = gen_datetime
         open_close_log.terminal_info = _terminal_info_for_log(terminal)
-        open_close_log.cart_transaction_count = tran_count
-        open_close_log.cart_transaction_last_no = tran_last_no
+        # What the terminal says it issued; report holds what actually arrived
+        open_close_log.cart_transaction_count = seq
+        open_close_log.cart_transaction_last_no = seq
+        open_close_log.settlement_id = settlement.get("settlementId")
+        open_close_log.expected_cash = (settlement.get("expectedCash") or {}).get("total")
+        open_close_log.difference = settlement.get("difference")
+        open_close_log.missing_count = settlement.get("missingCount")
+        open_close_log.missing_cash_log_count = settlement.get("missingCashLogCount")
         open_close_log.cash_in_out_count = cash_in_out_log_count
         open_close_log.cash_in_out_last_datetime = cash_in_out_log_last_datetime
         receipt_maker = OpenCloseReceiptData(name="CloseReceiptData", width=32)
@@ -867,13 +916,18 @@ class TerminalService:
         ]
 
         # save open_close_log to database
+        closed_elsewhere = False
         async with await self.open_close_log_repo.start_transaction() as session:
             try:
                 # set session for repositories
                 self.terminal_info_repo.set_session(session)
                 self.terminal_log_delivery_status_repo.set_session(session)
-                # update terminal info
-                await self.terminal_info_repo.replace_terminal_info_async(self.terminal_id, terminal)
+                # update terminal info - only while it is still open (#343): of two
+                # closes that raced, the first to write closes the terminal
+                if not await self.terminal_info_repo.close_terminal_info_async(self.terminal_id, terminal):
+                    closed_elsewhere = True
+                    await self.open_close_log_repo.abort_transaction()
+                    raise _ClosedElsewhere()
                 # create open_close_log
                 await self.open_close_log_repo.create_open_close_log(open_close_log)
                 await self.terminal_log_delivery_status_repo.create_status_async(
@@ -885,19 +939,31 @@ class TerminalService:
                 # commit transaction
                 await self.open_close_log_repo.commit_transaction()
             except Exception as e:
-                # abort transaction
-                await self.open_close_log_repo.abort_transaction()
-                # The log embedded above is redacted; this failure path was not.
-                message = (
-                    f"Cannot close terminal. terminal_id: {self.terminal_id}, "
-                    f"terminal: {mask_loggable(terminal)}"
-                )
-                raise TerminalCloseException(message=message, logger=logger, original_exception=e)
+                if closed_elsewhere:
+                    pass  # aborted above; refused below
+                elif _is_write_conflict(e):
+                    # The other close's transaction wrote the terminal first: it
+                    # closes the terminal, this one is refused as already closed
+                    closed_elsewhere = True
+                    await self.open_close_log_repo.abort_transaction()
+                else:
+                    # abort transaction
+                    await self.open_close_log_repo.abort_transaction()
+                    # The log embedded above is redacted; this failure path was not.
+                    message = (
+                        f"Cannot close terminal. terminal_id: {self.terminal_id}, "
+                        f"terminal: {mask_loggable(terminal)}"
+                    )
+                    raise TerminalCloseException(message=message, logger=logger, original_exception=e)
             finally:
                 # clear session
                 self.terminal_info_repo.set_session(None)
                 self.open_close_log_repo.set_session(None)
                 self.terminal_log_delivery_status_repo.set_session(None)
+
+        if closed_elsewhere:
+            message = f"Terminal is already closed: {self.terminal_id}"
+            raise TerminalStatusException(message=message, logger=logger)
 
         try:
             # publish open_close_log to message queue
@@ -909,6 +975,46 @@ class TerminalService:
             )
             raise TerminalCloseException(message=message, logger=logger, original_exception=e)
         return open_close_log
+
+    async def preview_close_async(self, physical_amount: Optional[float] = None, seq: Optional[int] = None) -> dict:
+        """
+        What closing now would settle, without storing anything (#343, FR-021).
+
+        Raises:
+            TerminalNotFoundException: If the terminal is not found
+            TerminalStatusException: If the terminal is not open
+            SettlementUnavailableException: If report could not answer
+        """
+        terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
+        if terminal is None:
+            raise TerminalNotFoundException(message=f"Terminal not found: {self.terminal_id}", logger=logger)
+        if terminal.status != TerminalStatus.Opened.value:
+            raise TerminalStatusException(message=f"Terminal is not opened: {self.terminal_id}", logger=logger)
+        cash_logs = await self.cash_in_out_log_repo.get_cash_in_out_logs(
+            filter={
+                "tenant_id": terminal.tenant_id,
+                "store_code": terminal.store_code,
+                "terminal_no": terminal.terminal_no,
+                "business_counter": terminal.business_counter,
+            },
+            limit=1,
+            page=1,
+        )
+        return await self._settlement_repo_for(terminal).preview_async(
+            {
+                "business_counter": terminal.business_counter,
+                "business_date": terminal.business_date,
+                "open_counter": terminal.open_counter,
+                "seq": seq,
+                "cash_log_count": cash_logs.metadata.total,
+                "physical_amount": physical_amount,
+            }
+        )
+
+    def _settlement_repo_for(self, terminal) -> SettlementWebRepository:
+        return self.settlement_repo or SettlementWebRepository(
+            tenant_id=terminal.tenant_id, store_code=terminal.store_code, terminal_no=terminal.terminal_no
+        )
 
     # Terminal information retrieval methods
 

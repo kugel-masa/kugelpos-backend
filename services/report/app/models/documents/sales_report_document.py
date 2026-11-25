@@ -124,5 +124,8 @@ class SalesReportDocument(AbstractDocument):
     cash: CashReportTemplate  # Cash drawer data
     receipt_text: Optional[str] = None  # Formatted text for receipt printing
     journal_text: Optional[str] = None  # Formatted text for journal
+    # Daily reports only: what had not arrived when the sessions were settled (#343)
+    missing_count: Optional[int] = None
+    missing_ranges: Optional[list[dict]] = None  # [{terminal_no, business_date, business_counter, first, last}]
     generate_date_time: str  # Date and time when the report was generated
     staff: Optional[StaffMasterDocument] = None  # Staff who generated the report

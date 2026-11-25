@@ -305,6 +305,10 @@ async def delete_terminal(terminal_id: str, tenant_id: str = Depends(get_tenant_
     This endpoint deletes a terminal from the system.
     Requires OAuth2 token authentication.
 
+    An open terminal cannot be deleted (400, 406003): its session would never
+    be settled and would hold back the daily reports. Close it first; a user
+    token can close it when the device itself cannot.
+
     Args:
         terminal_id: ID of the terminal to delete
         tenant_id: Tenant ID extracted from authentication token
@@ -629,6 +633,50 @@ async def terminal_open(
     return response
 
 
+@router.get(
+    "/terminals/{terminal_id}/close-preview",
+    status_code=status.HTTP_200_OK,
+    response_model=ApiResponse[TerminalClosePreviewResponse],
+    responses={
+        status.HTTP_400_BAD_REQUEST: StatusCodes.get(status.HTTP_400_BAD_REQUEST),
+        status.HTTP_401_UNAUTHORIZED: StatusCodes.get(status.HTTP_401_UNAUTHORIZED),
+        status.HTTP_403_FORBIDDEN: StatusCodes.get(status.HTTP_403_FORBIDDEN),
+        status.HTTP_422_UNPROCESSABLE_CONTENT: StatusCodes.get(status.HTTP_422_UNPROCESSABLE_CONTENT),
+        status.HTTP_500_INTERNAL_SERVER_ERROR: StatusCodes.get(status.HTTP_500_INTERNAL_SERVER_ERROR),
+    },
+)
+async def terminal_close_preview(
+    terminal_id: str,
+    seq: Optional[int] = Query(default=None, ge=0),
+    physical_amount: Optional[float] = Query(default=None),
+    tenant_id: str = Depends(get_tenant_id_with_security_wrapper),
+):
+    """
+    What closing now would settle: expected cash, missing transactions and cash
+    logs, and the difference for a counted amount. Nothing is stored (#343).
+    """
+    terminal_service = await get_terminal_service_async(tenant_id, terminal_id)
+    figures = await terminal_service.preview_close_async(physical_amount=physical_amount, seq=seq)
+    preview = TerminalClosePreviewResponse(
+        expected_cash_total=(figures.get("expectedCash") or {}).get("total"),
+        expected_cash=figures.get("expectedCash"),
+        included_count=figures.get("includedCount"),
+        missing_count=figures.get("missingCount"),
+        missing_ranges=figures.get("missingRanges"),
+        missing_cash_log_count=figures.get("missingCashLogCount"),
+        physical_amount=figures.get("physicalAmount"),
+        difference=figures.get("difference"),
+        settled=bool(figures.get("settled")),
+    )
+    return ApiResponse(
+        success=True,
+        code=status.HTTP_200_OK,
+        message=f"Close preview. terminal_id: {terminal_id}",
+        data=preview.model_dump(),
+        operation=f"{inspect.currentframe().f_code.co_name}",
+    )
+
+
 @router.post(
     "/terminals/{terminal_id}/close",
     status_code=status.HTTP_200_OK,
@@ -669,7 +717,9 @@ async def terminal_close(
     try:
         if terminal_close is None:
             terminal_close = TerminalCloseRequest()
-        close_log = await terminal_service.close_terminal_async(terminal_close.physical_amount)
+        close_log = await terminal_service.close_terminal_async(
+            terminal_close.physical_amount, seq=terminal_close.seq
+        )
         return_json = SchemasTransformerV1().transform_close_log(close_log).model_dump()
     except Exception as e:
         raise e

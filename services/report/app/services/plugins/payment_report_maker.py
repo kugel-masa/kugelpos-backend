@@ -20,6 +20,8 @@ from app.config.settings import Settings
 
 from app.utils.latest_name import latest_name_candidate
 from app.utils.master_data_pages import MASTER_DATA_PAGE_SIZE, has_next_page
+from app.services.plugins.report_scope import scope_of, scope_pipeline
+from app.services.report_merge import merge_payment, merged_document
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,14 @@ class PaymentReportMaker(IReportPlugin):
         
         # Initialize settings for master data URL
         self.settings = Settings()
+
+    def merge(self, reports: list[dict], **header) -> PaymentReportDocument:
+        """Several sessions' frozen daily reports as one (#343)."""
+        return merged_document(PaymentReportDocument, merge_payment(reports), header, PaymentReportReceiptData("Payment Report", 32))
+
+    def from_saved(self, report: dict) -> PaymentReportDocument:
+        """A frozen daily report as it was stored (#343)."""
+        return PaymentReportDocument(**report)
 
     async def generate_report(
         self,
@@ -89,6 +99,7 @@ class PaymentReportMaker(IReportPlugin):
         Returns:
             Payment report document with payment summary and totals
         """
+        extra_match, unbounded = scope_of(kwargs)
 
         # A range is given by both ends or not at all; a half range used to be
         # ignored, answering with the single business_date's report (#314).
@@ -99,9 +110,14 @@ class PaymentReportMaker(IReportPlugin):
                 raise ValueError(f"Invalid date range: business_date_from ({business_date_from}) is after business_date_to ({business_date_to})")
 
         # Fetch payment master data from master-data service
-        payment_master_map, variant_name_map = await self._fetch_payment_master(
-            self.tran_repository.tenant_id, store_code
-        )
+        # A settlement fetches the names once for all its reports (#343)
+        prefetched = kwargs.get("payment_names")
+        if prefetched is not None:
+            payment_master_map, variant_name_map = prefetched
+        else:
+            payment_master_map, variant_name_map = await self._fetch_payment_master(
+                self.tran_repository.tenant_id, store_code
+            )
         logger.info(f"Fetched payment master data: {payment_master_map}")
 
         # Create pipeline for retrieving payment report data
@@ -116,6 +132,7 @@ class PaymentReportMaker(IReportPlugin):
             business_date_from=business_date_from,
             business_date_to=business_date_to,
         )
+        pipeline = scope_pipeline(pipeline, extra_match, unbounded)
         logger.info(f"Payment report pipeline: {pipeline}")
 
         # Retrieve data from transaction log collection using the pipeline
@@ -135,6 +152,7 @@ class PaymentReportMaker(IReportPlugin):
             business_date_from=business_date_from,
             business_date_to=business_date_to,
         )
+        variant_pipeline = scope_pipeline(variant_pipeline, extra_match, unbounded)
         variant_results = await self.tran_repository.execute_pipeline(variant_pipeline)
         breakdown = self._summarize_payment_variants(variant_results, variant_name_map)
         for payment in payment_summary:

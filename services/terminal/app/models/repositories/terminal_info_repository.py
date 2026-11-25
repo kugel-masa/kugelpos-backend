@@ -2,6 +2,7 @@
 from logging import getLogger
 from pymongo.asynchronous.database import AsyncDatabase
 import secrets
+from typing import Optional
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import (
@@ -295,20 +296,53 @@ class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
             raise UpdateNotWorkException(message, self.collection_name, terminal_id, logger)
         return result
 
-    async def delete_terminal_info_async(self, terminal_id: str) -> bool:
+    async def close_terminal_info_async(self, terminal_id: str, terminal_info: TerminalInfoDocument) -> bool:
+        """
+        Write back a terminal being closed, only if it is still open (#343).
+
+        Two closes of one terminal can both pass the status check and both get a
+        settlement from report; only the first to write may close it. The other
+        finds the terminal no longer open and is refused as already closed.
+
+        Args:
+            terminal_id: The terminal ID to write
+            terminal_info: Terminal information document as modified by the close
+
+        Returns:
+            True if this call closed the terminal; False if it was no longer open
+        """
+        if self.dbcollection is None:
+            await self.initialize()
+        terminal_info.updated_at = get_app_time()
+        values = terminal_info.model_dump(exclude=set(CREDENTIAL_FIELDS))
+        values.pop("_id", None)
+        result = await self.dbcollection.update_one(
+            {"terminal_id": terminal_id, "status": TerminalStatus.Opened.value},
+            {"$set": values},
+            session=self.session,
+        )
+        return result.matched_count == 1
+
+    async def delete_terminal_info_async(self, terminal_id: str, unless_status: Optional[str] = None) -> bool:
         """
         Delete a terminal information document
 
         Args:
             terminal_id: The terminal ID to delete
+            unless_status: Delete only if the terminal is not in this status.
+                The status is part of the delete filter, so the check and the
+                delete are one atomic operation
 
         Returns:
             True if deletion was successful
 
         Raises:
-            CannotDeleteException: If the delete operation fails
+            CannotDeleteException: If the delete operation fails, or the
+                terminal is in `unless_status`
         """
-        search_dict = {"terminal_id": terminal_id}
+        search_dict: dict = {"terminal_id": terminal_id}
+        if unless_status is not None:
+            search_dict["status"] = {"$ne": unless_status}
         result = await self.delete_async(search_dict)
         if not result:
             message = f"Cannot delete terminal info: {terminal_id}"

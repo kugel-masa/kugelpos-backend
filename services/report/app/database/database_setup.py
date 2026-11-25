@@ -56,6 +56,20 @@ def _db_name(tenant_id: Optional[str]) -> str:
     return f"{settings.DB_NAME_PREFIX}_commons" if tenant_id is None else f"{settings.DB_NAME_PREFIX}_{tenant_id}"
 
 
+# Which sessions a daily report covers: every (terminal, business_counter) with
+# a log in a store and a business-date range, read on each daily report (#343).
+SESSION_SCAN_KEYS = {
+    "tenant_id": 1,
+    "store_code": 1,
+    "business_date": 1,
+    "terminal_no": 1,
+    "business_counter": 1,
+    # Read by the scan's $group, so the index covers it
+    "open_counter": 1,
+}
+SESSION_SCAN_INDEX = {"keys": SESSION_SCAN_KEYS, "unique": False}
+
+
 # create some collection
 async def create_some_collection(
     tenant_id: str,
@@ -112,6 +126,7 @@ async def create_tran_collection(tenant_id: str):
             "unique": True,
             "partialFilterExpression": {"cart_id": {"$type": "string"}},
         },
+        SESSION_SCAN_INDEX,
     ]
     await retire_numbering_index_over_every_record(tenant_id, name)
     await create_some_collection(
@@ -139,6 +154,9 @@ async def create_cash_in_out_log_collection(tenant_id: str):
             },
             "unique": True,
         },
+        SESSION_SCAN_INDEX,
+        # A settlement reads one session's cash logs (#343)
+        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1}, "unique": False},
     ]
     await create_some_collection(
         tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
@@ -165,7 +183,8 @@ async def create_open_close_log_collection(tenant_id: str):
                 "operation": 1,
             },
             "unique": True,
-        }
+        },
+        SESSION_SCAN_INDEX,
     ]
     await create_some_collection(
         tenant_id=tenant_id,
@@ -257,6 +276,36 @@ async def create_request_log_collection(tenant_id: str):
         )
 
 
+# create settlement_record collection (#343)
+async def create_settlement_record_collection(tenant_id: str):
+    name = settings.DB_COLLECTION_NAME_SETTLEMENT_RECORD
+    index_key_list = [
+        {
+            # One settlement per terminal session
+            "keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_counter": 1},
+            "unique": True,
+        },
+        # Store and date-range daily reports, and the settlement list
+        {"keys": {"tenant_id": 1, "store_code": 1, "business_date": 1}, "unique": False},
+        # A terminal's daily report for a date and open counter
+        {"keys": {"tenant_id": 1, "store_code": 1, "terminal_no": 1, "business_date": 1, "open_counter": 1}, "unique": False},
+    ]
+    await create_some_collection(
+        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+    )
+
+
+# create settlement_daily_report collection (#343)
+async def create_settlement_daily_report_collection(tenant_id: str):
+    name = settings.DB_COLLECTION_NAME_SETTLEMENT_DAILY_REPORT
+    index_key_list = [
+        {"keys": {"tenant_id": 1, "settlement_id": 1, "report_type": 1}, "unique": True},
+    ]
+    await create_some_collection(
+        tenant_id=tenant_id, collection_name=name, index_keys_list=index_key_list, index_name=name + "_index"
+    )
+
+
 # create all collections
 async def create_collections(tenant_id: str):
     """Create every collection this service needs for a tenant.
@@ -272,6 +321,8 @@ async def create_collections(tenant_id: str):
             create_cash_in_out_log_collection,
             create_open_close_log_collection,
             create_request_log_collection,
+            create_settlement_record_collection,
+            create_settlement_daily_report_collection,
         ],
     )
 

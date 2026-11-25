@@ -53,7 +53,7 @@ def _service(db):
         store_info_repo=AsyncMock(),
         cash_in_out_log_repo=AsyncMock(),
         open_close_log_repo=AsyncMock(),
-        tran_log_repo=AsyncMock(),
+        settlement_repo=AsyncMock(),
         terminal_log_delivery_status_repo=repo,
     )
     svc.pubsub_manager = AsyncMock()
