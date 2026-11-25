@@ -190,3 +190,13 @@ async def test_an_open_terminal_cannot_be_deleted_until_closed(http_client, admi
     assert closed.status_code == status.HTTP_200_OK, closed.text
     deleted = await http_client.delete(f"/api/v1/terminals/{terminal_id}", headers=admin_header)
     assert deleted.status_code == status.HTTP_200_OK, deleted.text
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_terminal_that_is_not_there_is_404(http_client, admin_header):
+    terminal_id, _ = await _create_terminal(http_client, admin_header)
+    assert (await http_client.delete(f"/api/v1/terminals/{terminal_id}", headers=admin_header)).status_code == 200
+
+    again = await http_client.delete(f"/api/v1/terminals/{terminal_id}", headers=admin_header)
+
+    assert again.status_code == status.HTTP_404_NOT_FOUND, again.text

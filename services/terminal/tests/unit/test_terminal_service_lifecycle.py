@@ -14,6 +14,7 @@ from app.enums.terminal_status import TerminalStatus
 from app.enums.function_mode import FunctionMode
 from app.exceptions import (
     NotFoundException,
+    CannotDeleteException,
     AlreadyExistException,
     TerminalNotFoundException,
     TerminalAlreadyExistsException,
@@ -183,24 +184,53 @@ class TestTerminalServiceDelete:
         assert result is True
 
     @pytest.mark.asyncio
+    async def test_the_delete_itself_refuses_an_open_terminal(self):
+        """#343: the status is in the delete filter, so an open between a check and the delete cannot slip through."""
+        svc, repos = make_service()
+        repos["terminal_info_repo"].delete_terminal_info_async.return_value = True
+
+        await svc.delete_terminal_async()
+
+        repos["terminal_info_repo"].delete_terminal_info_async.assert_awaited_once_with(
+            svc.terminal_id, unless_status=TerminalStatus.Opened.value
+        )
+
+    @pytest.mark.asyncio
     async def test_an_open_terminal_is_not_deleted(self):
         """#343: its session could never be settled and would hold back the daily reports."""
         svc, repos = make_service()
+        repos["terminal_info_repo"].delete_terminal_info_async.side_effect = CannotDeleteException(
+            "not deleted", "info_terminal", "T1", MagicMock()
+        )
         repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = _make_opened_terminal()
 
         with pytest.raises(TerminalStatusException):
             await svc.delete_terminal_async()
 
-        repos["terminal_info_repo"].delete_terminal_info_async.assert_not_called()
+    @pytest.mark.asyncio
+    async def test_a_missing_terminal_is_not_found(self):
+        svc, repos = make_service()
+        repos["terminal_info_repo"].delete_terminal_info_async.side_effect = CannotDeleteException(
+            "not deleted", "info_terminal", "T1", MagicMock()
+        )
+        repos["terminal_info_repo"].get_terminal_info_by_id_async.side_effect = NotFoundException(
+            "not found", "info_terminal", "T1", MagicMock()
+        )
+
+        with pytest.raises(NotFoundException):
+            await svc.delete_terminal_async()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("status_value", [TerminalStatus.Idle.value, TerminalStatus.Closed.value])
-    async def test_a_terminal_not_open_is_deleted(self, status_value):
+    async def test_a_failed_delete_of_a_terminal_not_open_is_reported_as_is(self):
         svc, repos = make_service()
-        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = make_terminal(status=status_value)
-        repos["terminal_info_repo"].delete_terminal_info_async.return_value = True
+        failure = CannotDeleteException("not deleted", "info_terminal", "T1", MagicMock())
+        repos["terminal_info_repo"].delete_terminal_info_async.side_effect = failure
+        repos["terminal_info_repo"].get_terminal_info_by_id_async.return_value = make_terminal(
+            status=TerminalStatus.Idle.value
+        )
 
-        assert await svc.delete_terminal_async() is True
+        with pytest.raises(CannotDeleteException):
+            await svc.delete_terminal_async()
 
 
 # ---------------------------------------------------------------------------

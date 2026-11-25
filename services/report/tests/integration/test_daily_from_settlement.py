@@ -11,7 +11,9 @@ from kugel_common.database import database as db_helper
 
 from app.database import database_setup
 from app.dependencies.get_settlement_service import get_settlement_service_async
+from app.config.settings import settings
 from app.exceptions.report_exceptions import SessionNotSettledException
+from kugel_common.exceptions import ServiceException
 from app.models.documents.open_close_log import OpenCloseLog
 from app.models.repositories.cash_in_out_log_repository import CashInOutLogRepository
 from app.models.repositories.open_close_log_repository import OpenCloseLogRepository
@@ -227,3 +229,45 @@ async def test_a_terminal_with_two_sessions_on_the_day(db):
 
     assert both.sales_gross.amount == 3300
     assert second.sales_gross.amount == 2200
+
+
+@pytest.mark.asyncio
+async def test_more_sessions_than_one_batch_are_all_in_the_store_daily(db):
+    """R-22: the frozen reports are read 20 at a time; 23 sessions cross a batch boundary."""
+    tran = TranlogRepository(db, TENANT)
+    terminals = range(1, 24)
+    for terminal_no in terminals:
+        await _open(db, terminal_no, 7)
+        await tran.create_tranlog_async(_sale(terminal_no, 7, 1, amount=100 * terminal_no))
+        await _settle(db, terminal_no, 7, seq=2)
+
+    sales = await _store_daily(db, business_date=DATE)
+    item = await _store_daily(db, report_type="item", business_date=DATE)
+
+    assert sales.sales_gross.amount == sum(110 * t for t in terminals)
+    assert sales.sales_gross.count == len(terminals)
+    assert item.total_quantity == len(terminals)
+    assert sales.missing_count == len(terminals)
+    # In the order the sessions were settled; every terminal is named once
+    assert sorted(r["terminal_no"] for r in sales.missing_ranges) == list(terminals)
+
+
+@pytest.mark.asyncio
+async def test_a_frozen_report_gone_missing_is_an_error_not_a_smaller_report(db):
+    tran = TranlogRepository(db, TENANT)
+    for terminal_no in (1, 2):
+        await _open(db, terminal_no, 5)
+        await tran.create_tranlog_async(_sale(terminal_no, 5, 1))
+        await _settle(db, terminal_no, 5)
+    await db.get_collection(settings.DB_COLLECTION_NAME_SETTLEMENT_DAILY_REPORT).delete_one(
+        {"terminal_no": 2, "report_type": "sales"}
+    )
+
+    with pytest.raises(ServiceException) as exc_info:
+        await _store_daily(db, business_date=DATE)
+
+    causes, e = [], exc_info.value
+    while e is not None:
+        causes.append(e)
+        e = e.__cause__ or getattr(e, "original_exception", None)
+    assert any(isinstance(c, LookupError) for c in causes)

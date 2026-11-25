@@ -2,6 +2,7 @@
 from logging import getLogger
 from pymongo.asynchronous.database import AsyncDatabase
 import secrets
+from typing import Optional
 
 from kugel_common.models.repositories.abstract_repository import AbstractRepository
 from kugel_common.exceptions import (
@@ -322,20 +323,26 @@ class TerminalInfoRepository(AbstractRepository[TerminalInfoDocument]):
         )
         return result.matched_count == 1
 
-    async def delete_terminal_info_async(self, terminal_id: str) -> bool:
+    async def delete_terminal_info_async(self, terminal_id: str, unless_status: Optional[str] = None) -> bool:
         """
         Delete a terminal information document
 
         Args:
             terminal_id: The terminal ID to delete
+            unless_status: Delete only if the terminal is not in this status.
+                The status is part of the delete filter, so the check and the
+                delete are one atomic operation
 
         Returns:
             True if deletion was successful
 
         Raises:
-            CannotDeleteException: If the delete operation fails
+            CannotDeleteException: If the delete operation fails, or the
+                terminal is in `unless_status`
         """
-        search_dict = {"terminal_id": terminal_id}
+        search_dict: dict = {"terminal_id": terminal_id}
+        if unless_status is not None:
+            search_dict["status"] = {"$ne": unless_status}
         result = await self.delete_async(search_dict)
         if not result:
             message = f"Cannot delete terminal info: {terminal_id}"

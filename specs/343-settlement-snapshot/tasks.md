@@ -140,6 +140,7 @@ description: "Task list for 343-settlement-snapshot"
 - [X] T052 開設中の端末の削除を断る（services/terminal/app/services/terminal_service.py `delete_terminal_async`）とテスト。管理者の精算の口はいったん足したが外した（R-21）
 - [X] T054 期間の日報の確定集計を 20 件ずつ畳み込む（settlement_record_repository.py `iter_daily_reports_async`、report_merge.py `MERGERS`、report_service.py）と、畳み込みと一度の合算が一致するテスト（R-22）
 - [X] T055 テストの追加: 番号を運ぶ経路の e2e、report を止めたときの e2e、閉設ログの配信のやり直し（pub/sub の受け口から）
+- [X] T056 再レビューの指摘: 削除の状態の確認を削除の条件に入れる（terminal_info_repository.py `delete_terminal_info_async(unless_status=)`）、プロモーションの並びにコードの鍵、20 件を超える畳み込みと確定集計の欠けのテスト、端末の API の文書、413007 を予約と書く、外したテストの件数
 - [X] T053 索引に `open_counter`、精算実績の日時、通知の文言、再試行の説明、API の文書の生成、仕様の文書の更新
 
 ---

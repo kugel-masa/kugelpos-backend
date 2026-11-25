@@ -1000,6 +1000,10 @@ Delete a terminal
 This endpoint deletes a terminal from the system.
 Requires OAuth2 token authentication.
 
+An open terminal cannot be deleted (400, 406003): its session would never
+be settled and would hold back the daily reports. Close it first; a user
+token can close it when the device itself cannot.
+
 **Path Parameters:**
 
 | Parameter | Type | Required | Description |

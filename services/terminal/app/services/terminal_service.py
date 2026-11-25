@@ -32,6 +32,7 @@ from app.utils.pubsub_manager import PubsubManager
 from app.exceptions import (
     # Basic exceptions
     NotFoundException,
+    CannotDeleteException,
     AlreadyExistException,
     # Terminal basic operation exceptions
     TerminalNotFoundException,
@@ -223,13 +224,21 @@ class TerminalService:
 
         Raises:
             TerminalStatusException: The terminal is open
+            NotFoundException: The terminal does not exist
         """
-        terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
-        if terminal is not None and terminal.status == TerminalStatus.Opened.value:
-            message = f"Cannot delete an open terminal; close it first: {self.terminal_id}"
-            raise TerminalStatusException(message=message, logger=logger)
-        result = await self.terminal_info_repo.delete_terminal_info_async(self.terminal_id)
-        return result
+        # The status is in the delete filter, so an open that commits between a
+        # check and the delete cannot slip through
+        try:
+            return await self.terminal_info_repo.delete_terminal_info_async(
+                self.terminal_id, unless_status=TerminalStatus.Opened.value
+            )
+        except CannotDeleteException:
+            # Not deleted: say why. A terminal that is not there raises NotFoundException
+            terminal = await self.terminal_info_repo.get_terminal_info_by_id_async(self.terminal_id)
+            if terminal.status == TerminalStatus.Opened.value:
+                message = f"Cannot delete an open terminal; close it first: {self.terminal_id}"
+                raise TerminalStatusException(message=message, logger=logger)
+            raise
 
     # Terminal update methods
 

@@ -388,8 +388,9 @@ class PromotionReportMaker(IReportPlugin):
             sort_dict = {field: direction for field, direction in sort}
             pipeline.append({"$sort": sort_dict})
         else:
-            # Default sort by discount amount (highest first)
-            pipeline.append({"$sort": {"discount_amount": -1}})
+            # Default sort by discount amount (highest first); ties by code, as
+            # the frozen daily reports are merged (report_merge.merge_promotion)
+            pipeline.append({"$sort": {"discount_amount": -1, "promotion_code": 1, "promotion_type": 1}})
 
         # Add pagination stage
         if page > 1:

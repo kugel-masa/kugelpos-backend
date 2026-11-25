@@ -264,3 +264,21 @@ def test_folding_in_batches_is_merging_all_at_once(report_type, batch_size):
         folded = merge(([folded] if folded else []) + batch)
 
     assert folded == merge(reports)
+
+
+def test_tied_promotions_keep_their_order_however_they_are_batched():
+    """Ties in the discount go by code: batching must not reorder the rows."""
+    from app.services.report_merge import merge_promotion
+
+    def report(*rows):
+        promos = [{"promotion_code": c, "promotion_type": "category", "gross_amount": 100, "discount_amount": d,
+                   "net_amount": 100 - d, "quantity": 1, "transaction_count": 1} for c, d in rows]
+        return {**HEADER, "report_type": "promotion", "promotions": promos}
+
+    a, b = report(("P1", 5), ("P2", 10)), report(("P1", 5))
+
+    at_once = merge_promotion([a, b])
+    folded = merge_promotion([merge_promotion([a]), b])
+
+    assert [p["promotion_code"] for p in at_once["promotions"]] == ["P1", "P2"]
+    assert folded["promotions"] == at_once["promotions"]

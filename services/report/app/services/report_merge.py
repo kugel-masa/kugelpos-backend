@@ -232,8 +232,9 @@ def merge_promotion(reports: list[dict]) -> dict:
             key=lambda p: (p.get("promotion_code"), p.get("promotion_type")),
             sum_fields=PROMOTION_ROW_FIELDS,
         ),
-        # As the live report orders them: the biggest discount first
-        key=lambda p: -(p.get("discount_amount") or 0),
+        # As the live report orders them: the biggest discount first. Ties go by
+        # code, so the order is the same however the reports are batched
+        key=lambda p: (-(p.get("discount_amount") or 0), p.get("promotion_code") or "", p.get("promotion_type") or ""),
     )
     merged.update(_totals_of(reports, PROMOTION_TOTAL_FIELDS))
     return merged
