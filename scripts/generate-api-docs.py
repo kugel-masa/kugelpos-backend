@@ -130,6 +130,7 @@ STRINGS = {
         "journal": "ジャーナル",
         "stock": "在庫",
         "event": "イベント処理",
+        "dead_letter": "デッドレター",
         "cache": "キャッシュ",
         "other": "その他",
     },
@@ -190,6 +191,7 @@ STRINGS = {
         "journal": "Journal",
         "stock": "Stock",
         "event": "Event Processing",
+        "dead_letter": "Dead Letters",
         "cache": "Cache",
         "other": "Other",
     }
@@ -517,6 +519,8 @@ def get_group_name(path: str, lang: str) -> str:
         return s["cart"]
     elif "/transactions" in path:
         return s["transaction"]
+    elif "/dead-letters" in path:
+        return s["dead_letter"]
     elif "/tenants" in path and "/stores" not in path and "/staff" not in path:
         return s["tenant"]
     elif "/stores" in path and "/stock" not in path:
@@ -640,7 +644,7 @@ def generate_service_docs(service_name: str, spec: dict, lang: str, translations
         s["cart"], s["transaction"], s["item"], s["staff"],
         s["payment"], s["tax"], s["category"], s["settings"],
         s["report"], s["journal"], s["stock"], s["cache"],
-        s["event"], s["other"]
+        s["event"], s["dead_letter"], s["other"]
     ]
 
     for group_name in group_order:

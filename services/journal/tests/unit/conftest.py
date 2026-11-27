@@ -24,3 +24,22 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if str(item.fspath).startswith(this_dir):
             item.add_marker(pytest.mark.unit)
+
+
+@pytest.fixture(autouse=True)
+def no_dead_letter_writes(request):
+    """Unit tests never write a dead-letter record (#230).
+
+    A failed subscription asks for redelivery, as it did before. The tests of
+    the give-up path patch ``_record_failure`` themselves (marker
+    ``dead_letter_writes``).
+    """
+    if request.node.get_closest_marker("dead_letter_writes"):
+        yield
+        return
+    from unittest.mock import AsyncMock, patch
+
+    with patch("app.api.v1.tran._record_failure", new_callable=AsyncMock, return_value=False), patch(
+        "app.api.v1.tran.notify_unrecordable", new_callable=AsyncMock
+    ):
+        yield

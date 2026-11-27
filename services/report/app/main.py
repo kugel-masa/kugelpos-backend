@@ -36,6 +36,24 @@ from app.api.v1.tenant import router as v1_tenant_router
 from app.api.v1.settlement_internal import router as v1_settlement_internal_router
 from app.api.v1.settlement import router as v1_settlement_router
 from app.config.settings import settings
+from app.api.v1.tran import notify_processed, process_log_event
+from app.exceptions.report_error_codes import ReportErrorCode
+from app.utils.state_store_manager import state_store_manager
+from kugel_common.dead_letter.router import build_dead_letter_router
+from kugel_common.dead_letter.sweep import DeadLetterSweeper
+
+
+async def _event_is_processed(event_id: str):
+    """Whether the state store holds this event id; None when it cannot be asked (#230)."""
+    state, error = await state_store_manager.get_state(event_id)
+    if error:
+        return None
+    return bool(state)
+
+
+dead_letter_sweeper = DeadLetterSweeper(
+    service="report", db_name_prefix=settings.DB_NAME_PREFIX, is_processed=_event_is_processed
+)
 
 # Create a FastAPI instance with API documentation URLs enabled
 # Inter-service URL settings this service actually reads. Verified during
@@ -76,6 +94,17 @@ app.include_router(v1_tran_router, prefix="/api/v1")
 app.include_router(v1_tenant_router, prefix="/api/v1")
 app.include_router(v1_settlement_internal_router, prefix="/api/v1")
 app.include_router(v1_settlement_router, prefix="/api/v1")
+# Records of the events this service could not process: list, replay, discard (#230)
+app.include_router(
+    build_dead_letter_router(
+        service="report",
+        db_name_prefix=settings.DB_NAME_PREFIX,
+        conflict_error_code=ReportErrorCode.DEAD_LETTER_NOT_PENDING,
+        core=process_log_event,
+        on_processed=notify_processed,
+    ),
+    prefix="/api/v1",
+)
 
 # Add middleware to log all HTTP requests with service name "report"
 app.middleware("http")(log_requests("report"))
@@ -250,6 +279,9 @@ async def startup_event():
         logger.error(f"Error connecting to the database: {e}")
         raise e
 
+    # Resolves failing records the redelivery left behind and resends missed notices (#230)
+    dead_letter_sweeper.start()
+
 
 # Application shutdown event handler
 async def close_event():
@@ -264,6 +296,7 @@ async def close_event():
     from kugel_common.database.index_startup import stop_index_ensure_async
 
     await stop_index_ensure_async()
+    await dead_letter_sweeper.stop()
 
     logger.info("Flushing request log buffer")
     from kugel_common.middleware.request_log_buffer import get_request_log_buffer

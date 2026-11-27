@@ -4,6 +4,7 @@ from logging import getLogger
 from pymongo.errors import OperationFailure
 
 from kugel_common.database import database as db_helper
+from kugel_common.dead_letter.repository import create_dead_letter_collections_async
 from app.config.settings import settings
 
 # setup logger
@@ -281,6 +282,11 @@ async def create_request_log_collection(tenant_id: str):
 
 
 # create all collections
+# create the dead-letter collections (#230)
+async def create_dead_letter_collection(tenant_id: str):
+    await create_dead_letter_collections_async(_db_name(tenant_id))
+
+
 async def create_collections(tenant_id: str):
     """Create every collection this service needs for a tenant.
 
@@ -296,6 +302,7 @@ async def create_collections(tenant_id: str):
             create_open_close_log_collection,
             create_journal_collection,
             create_request_log_collection,
+            create_dead_letter_collection,
         ],
     )
 

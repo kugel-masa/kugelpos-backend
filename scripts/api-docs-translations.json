@@ -122,7 +122,12 @@
     "Login For Access Token": "アクセストークン取得",
     "Register Super User": "スーパーユーザー登録",
     "Register User By Superuser": "ユーザー登録",
-    "Reissue Terminal Api Key": "端末APIキー再発行"
+    "Reissue Terminal Api Key": "端末APIキー再発行",
+    "List dead letters": "デッドレター一覧取得",
+    "Get a dead letter": "デッドレター照会",
+    "Replay a dead letter": "デッドレターの流し直し",
+    "Replay several dead letters in the background": "デッドレターのまとめての流し直し（裏で処理）",
+    "Discard a dead letter": "デッドレターの破棄"
   },
   "descriptions": {
     "Authenticate user and provide a JWT access token\n\nThe client_id field in the form is used as the tenant_id for multi-tenant support": "ユーザーを認証し、JWTアクセストークンを発行します。",

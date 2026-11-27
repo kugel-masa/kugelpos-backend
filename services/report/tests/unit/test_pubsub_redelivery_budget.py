@@ -113,3 +113,72 @@ def test_the_retries_end_before_the_broker_times_the_consumer_out():
             f"{name}: the retries can take {longest / 60:.1f} minutes, "
             f"past the broker's {CONSUMER_TIMEOUT_SECONDS / 60:.0f}-minute consumer_timeout"
         )
+
+
+# --- The subscriber gives up before the sidecar does (#230, R-1) -------------
+
+# Deliveries a subscriber may miss and still give up first: a failure whose
+# record could not be written, or a delivery that never reached it.
+GIVE_UP_MARGIN = 2
+
+# The time one delivery may take at the subscriber on top of the back-off: the
+# handler, the record of its failure (capped at 5 s), and once per event the
+# notice (capped at 5 s). With the database unreachable the handler waits for
+# server selection (5 s) and no record is tried (R-4).
+HANDLER_SECONDS = 10
+RECORD_SECONDS = 5
+NOTICE_SECONDS = 5
+SERVER_SELECTION_SECONDS = 5
+
+
+def _longest_wait_before(policy: dict, delivery: int) -> float:
+    """The longest back-off before the given delivery (the first is at 0)."""
+    return _longest_total_wait({**policy, "maxRetries": str(delivery - 1)}) if delivery > 1 else 0.0
+
+
+def _deliveries(policy: dict) -> int:
+    return int(policy["maxRetries"]) + 1
+
+
+def test_the_subscriber_gives_up_two_deliveries_before_the_sidecar():
+    from kugel_common.dead_letter.document import give_up_after_failures
+
+    resiliency = _resiliency()
+    for name in (component["name"] for component in _components()):
+        deliveries = _deliveries(resiliency["policies"][resiliency["targets"][name]])
+        assert give_up_after_failures() <= deliveries - GIVE_UP_MARGIN, (
+            f"{name}: the subscriber gives up on failure {give_up_after_failures()} but the sidecar delivers only "
+            f"{deliveries} times; a missed count would send the event to dlq-* unrecorded"
+        )
+
+
+def test_giving_up_ends_before_the_consumer_timeout():
+    """The usual path: the subscriber acknowledges on the give-up failure."""
+    from kugel_common.dead_letter.document import give_up_after_failures
+
+    resiliency = _resiliency()
+    give_up = give_up_after_failures()
+    for name in (component["name"] for component in _components()):
+        policy = resiliency["policies"][resiliency["targets"][name]]
+        total = _longest_wait_before(policy, give_up) + give_up * (HANDLER_SECONDS + RECORD_SECONDS) + NOTICE_SECONDS
+        assert total < CONSUMER_TIMEOUT_SECONDS, f"{name}: giving up can take {total / 60:.1f} minutes"
+
+
+def test_an_unrecordable_event_reaches_dlq_before_the_consumer_timeout():
+    """The database is down: every delivery fails and none is recorded."""
+    resiliency = _resiliency()
+    for name in (component["name"] for component in _components()):
+        policy = resiliency["policies"][resiliency["targets"][name]]
+        total = _longest_total_wait(policy) + _deliveries(policy) * SERVER_SELECTION_SECONDS + NOTICE_SECONDS
+        assert total < CONSUMER_TIMEOUT_SECONDS, f"{name}: the retries can take {total / 60:.1f} minutes"
+
+
+def test_the_sweep_waits_for_every_redelivery_to_end():
+    from kugel_common.config.settings import settings as common_settings
+
+    resiliency = _resiliency()
+    for name in (component["name"] for component in _components()):
+        policy = resiliency["policies"][resiliency["targets"][name]]
+        assert common_settings.DEAD_LETTER_STALE_FAILING_SECONDS > _longest_total_wait(policy), (
+            f"{name}: the sweep would take a record whose event is still being redelivered for stranded"
+        )

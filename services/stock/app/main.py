@@ -41,6 +41,23 @@ from app.dependencies.get_alert_service import set_alert_service
 from app.dependencies.get_stock_service import get_db_from_tenant
 from app.websocket.connection_manager import ConnectionManager
 from app.services.alert_service import AlertService
+from app.api.v1.stock import notify_processed, process_transaction_event
+from app.exceptions.stock_error_codes import StockErrorCode
+from kugel_common.dead_letter.router import build_dead_letter_router
+from kugel_common.dead_letter.sweep import DeadLetterSweeper
+
+
+async def _event_is_processed(event_id: str):
+    """Whether the state store holds this event id; None when it cannot be asked (#230)."""
+    state, error = await state_store_manager.get_state(event_id)
+    if error:
+        return None
+    return bool(state)
+
+
+dead_letter_sweeper = DeadLetterSweeper(
+    service="stock", db_name_prefix=settings.DB_NAME_PREFIX, is_processed=_event_is_processed
+)
 
 # Create a FastAPI instance with API documentation URLs enabled
 # Inter-service URL settings this service actually reads. Verified during
@@ -80,6 +97,17 @@ if IS_DEBUG:
 # Include API routers with appropriate prefixes for versioning  # Each router handles a specific domain of functionality
 app.include_router(v1_stock_router, prefix="/api/v1")
 app.include_router(v1_tenant_router, prefix="/api/v1")
+# Records of the events this service could not process: list, replay, discard (#230)
+app.include_router(
+    build_dead_letter_router(
+        service="stock",
+        db_name_prefix=settings.DB_NAME_PREFIX,
+        conflict_error_code=StockErrorCode.DEAD_LETTER_NOT_PENDING,
+        core=process_transaction_event,
+        on_processed=notify_processed,
+    ),
+    prefix="/api/v1",
+)
 
 # Add middleware to log all HTTP requests with service name "stock"
 app.middleware("http")(log_requests("stock"))
@@ -259,6 +287,9 @@ async def startup_event():
         logger.error(f"Error connecting to the database: {e}")
         raise e
 
+    # Resolves failing records the redelivery left behind and resends missed notices (#230)
+    dead_letter_sweeper.start()
+
     # Initialize and start the snapshot scheduler
     logger.info("Initializing snapshot scheduler...")
     scheduler = MultiTenantSnapshotScheduler()
@@ -290,6 +321,7 @@ async def close_event():
     from kugel_common.database.index_startup import stop_index_ensure_async
 
     await stop_index_ensure_async()
+    await dead_letter_sweeper.stop()
 
     # Stop the alert service
     logger.info("Stopping alert service...")

@@ -57,14 +57,15 @@ class TestLogServiceReceiveTranlog:
 
     @pytest.mark.asyncio
     async def test_receive_tranlog_error_raises(self):
-        """Repository error is re-raised after notification."""
+        """Repository error is re-raised, with no Slack notice on the attempt (#230)."""
         svc, tran_repo, _, _ = make_service()
         tran = make_tran()
         tran_repo.create_tranlog_async.side_effect = Exception("DB error")
 
-        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock):
+        with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as slack:
             with pytest.raises(Exception, match="DB error"):
                 await svc.receive_tranlog_async(tran)
+        slack.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -85,14 +86,15 @@ class TestLogServiceReceiveCashlog:
 
     @pytest.mark.asyncio
     async def test_receive_cashlog_error_raises(self):
-        """Repository error is re-raised after notification."""
+        """Repository error is re-raised, with no Slack notice on the attempt (#230)."""
         svc, _, cash_repo, _ = make_service()
         cashlog = CashInOutLog()
         cash_repo.create_cash_in_out_log.side_effect = Exception("DB error")
 
-        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock):
+        with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as slack:
             with pytest.raises(Exception, match="DB error"):
                 await svc.receive_cashlog_async(cashlog)
+        slack.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -113,11 +115,12 @@ class TestLogServiceReceiveOpenCloseLog:
 
     @pytest.mark.asyncio
     async def test_receive_open_close_log_error_raises(self):
-        """Repository error is re-raised after notification."""
+        """Repository error is re-raised, with no Slack notice on the attempt (#230)."""
         svc, _, _, oc_repo = make_service()
         oc_log = OpenCloseLog()
         oc_repo.create_open_close_log.side_effect = Exception("DB error")
 
-        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock):
+        with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as slack:
             with pytest.raises(Exception, match="DB error"):
                 await svc.receive_open_close_log_async(oc_log)
+        slack.assert_not_awaited()

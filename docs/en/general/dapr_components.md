@@ -230,7 +230,36 @@ A subscriber that cannot process an event answers `RETRY` with a 500, and the Da
 
 An event that cannot succeed on any delivery (no `event_id`, or a payload that does not match its schema) is answered `DROP` with a 200, and is not retried.
 
-Nothing consumes the dead-letter queues yet (#230).
+#### Giving up and recording the event (#230)
+
+A subscriber does not wait for RabbitMQ's dead-letter queue. Each failure of an event is counted in a `dead_letter` record in the subscriber's tenant database (one per event id), with the last error described without the event's values. On the 17th failure of an episode (`DEAD_LETTER_GIVE_UP_AFTER_FAILURES`), the record becomes **pending**, keeps the CloudEvent, and the subscriber answers `SUCCESS`: the event leaves the queue and the record is its copy. That is about 10 minutes of redelivery (5 to 15 with the jitter), two deliveries short of the sidecar's 19, because a delivery that never reached the subscriber (a restart, a refused token) is not counted. Raising the count is refused by the budget test; lowering it is always safe. A failure of an event whose record is already pending is acknowledged at once.
+
+One Slack notice is sent when a record becomes pending: up to nine one by one in five minutes per tenant and service, then one summary, then nothing until the next window, whose first notice mentions what was held back. The notice carries the summary (store, terminal, business date, counter), the error type and the API path, never the event content. report and journal no longer notify Slack on every failed attempt.
+
+The dead-letter queue `dlq-<app-id>-<topic>` stays as the last resort, for an event that cannot be recorded: the database was unreachable on the failures (the subscriber then announces "Events could not be recorded as dead letters" once per five minutes and keeps asking for redelivery), or the event has no tenant. It has no expiry, since nothing else holds those events.
+
+Every five minutes each subscriber sweeps its tenants:
+
+- A failing record whose last failure is older than 30 minutes is past every redelivery. If its event id is in the state store, the event was processed after all and the record is deleted. Otherwise the sidecar gave up first, and the record becomes pending and is notified ("retries ran out before the subscriber gave up").
+- A pending record whose notice was not sent (Slack failed, the process stopped) is notified again, up to five times. A notice can therefore arrive twice, rarely.
+
+**Handling a dead letter.** List `GET /api/v1/tenants/{tenant_id}/dead-letters` (`state=pending` by default, `notified=false` for the records whose notice did not arrive), look at one (`GET .../{id}`, the content masked), fix the cause, and replay it (`POST .../{id}/replay`): the handler of this subscriber runs in this service, so the other subscribers see nothing, and the answer says `replayed`, `discarded` or `failed`. Several records go to `POST .../replay` (up to 100, accepted with 202 and replayed in the background). A record that needs no replay is discarded with a reason (`POST .../{id}/discard`). Replaying a transaction of a session whose settlement is final adds the log but does not change the frozen daily reports (#343). Signed-in users only; terminal and service-account tokens are refused.
+
+**The dead-letter queues.** They are normally empty. After the "could not be recorded" notice, once the cause is fixed, look for messages:
+
+```bash
+rabbitmqctl list_queues name messages | grep '^dlq-' | awk '$2 > 0'
+```
+
+and move them back to the subscriber's own queue with a dynamic shovel, which only that subscriber reads. Enable the plugin for the occasion (`rabbitmq-plugins enable rabbitmq_shovel rabbitmq_shovel_management`), export the messages first if you want a copy, then:
+
+```bash
+rabbitmqctl set_parameter shovel requeue-<app>-<topic> \
+  '{"src-protocol":"amqp091","src-uri":"amqp://","src-queue":"dlq-<app>-<topic>","src-delete-after":"queue-length",
+    "dest-protocol":"amqp091","dest-uri":"amqp://","dest-queue":"<app>-<topic>"}'
+```
+
+The subscriber retries them and records the ones that still fail. A queue-length alert on `dlq-*` in the deployment's monitoring is recommended. On Azure Container Apps the resiliency is configured on the environment, not by `pubsub-resiliency.yaml`: keep it the same (exponential, `maxInterval: 3m`, `maxRetries: 18`), or every failing event reaches `dlq-*` before the subscriber gives up.
 
 On the publisher side, cart and terminal keep a delivery status per event. It is created as `pending` in the transaction that stores the log, and becomes `published` once the broker takes the event, or `publish_failed` if it refuses it. The republish job (every 5 minutes, for 24 hours) re-sends only `pending` and `publish_failed` events, and a `failed` one without `handed_off_at`: written before this status split, it is a publish the broker refused. Once the broker has taken an event, its durable queue holds it, and a copy would only be redelivered on its own. The exception is an event a consumer has read past: 15 minutes after the hand-off (`handed_off_at`), the consumer has acknowledged an event handed off later but still not this one. It is most likely not in the queue (published before the subscriber's queue existed, or processed with the acknowledgement lost), so it is sent once more (`republished_at`), by whichever worker takes the claim. An event still undelivered after 15 minutes raises one warning, whatever its status. The worker that sets `warning_sent_at` with a conditional update sends it, so the cron running in every uvicorn worker does not multiply it. RabbitMQ keeps its data in the `rabbitmq_data` volume with a fixed hostname, so queued events survive a container recreate (`stop.sh --clean` removes it).
 

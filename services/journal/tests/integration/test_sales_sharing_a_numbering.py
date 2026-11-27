@@ -90,7 +90,7 @@ def _sale(cart_id: str, second: int) -> BaseTransaction:
 async def test_a_sale_reusing_a_numbering_with_another_cart_id_is_journaled():
     db = await _db()
 
-    with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal:
+    with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as fatal:
         await _service(db).receive_tranlog_async(_sale(str(uuid.uuid4()), 1))
         with patch.object(tranlog_repository.logger, "warning") as warning:
             await _service(db).receive_tranlog_async(_sale(str(uuid.uuid4()), 2))

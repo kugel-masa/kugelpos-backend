@@ -9,7 +9,11 @@ import asyncio
 import json
 
 from kugel_common.schemas.api_response import ApiResponse
-from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
+from kugel_common.utils.log_utils import describe_exception, mask_sensitive_data
+from kugel_common.dead_letter.document import describe_failure
+from kugel_common.dead_letter.failure import DeadLetterUnrecordable, FailureDecision, record_failure
+from kugel_common.dead_letter.outcome import HandlerOutcome, OutcomeKind
+from kugel_common.dead_letter.unrecordable import notify_unrecordable
 from kugel_common.schemas.pagination import PaginatedResult
 from kugel_common.schemas.base_schemas import Metadata
 from kugel_common.security import get_tenant_id_with_security_by_query_optional, verify_tenant_id
@@ -648,6 +652,91 @@ async def _notify_pubsub_status(log_type: str, log_dict: dict, status: str, mess
     # Add other log types here if needed in the future
 
 
+async def process_transaction_event(message: dict, topic: str = "topic-tranlog") -> HandlerOutcome:
+    """
+    The handler core: apply one transaction log to stock and say what happened (#230, R-3).
+
+    Shared by the subscription route and the dead-letter replay. It neither
+    records a failure nor tells cart; the caller does. Idempotent by event_id
+    (state store) and per item (stock_service).
+
+    Args:
+        message: The CloudEvent Dapr delivered (``data`` holds the transaction)
+        topic: Always topic-tranlog; taken for the shared core signature
+
+    Returns:
+        HandlerOutcome: processed, already processed, dropped or failed
+    """
+    data = message.get("data") if isinstance(message, dict) else None
+    data = data if isinstance(data, dict) else {}
+    event_id = data.get("event_id")
+    tenant_id = data.get("tenant_id")
+    if not event_id:
+        return HandlerOutcome.dropped("Missing event_id")
+    if not tenant_id:
+        return HandlerOutcome.dropped("Missing tenant_id")
+    try:
+        from kugel_common.database import database as db_helper
+        from app.config.settings import settings
+        from app.dependencies.get_alert_service import get_alert_service
+
+        # Check for duplicate processing
+        existing_state, error_msg = await state_store_manager.get_state(event_id)
+        if existing_state:
+            logger.info(f"Duplicate transaction log received: {event_id}")
+            return HandlerOutcome.already_processed()
+
+        db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+        stock_service = StockService(db, get_alert_service())
+
+        # Process the transaction directly without validation
+        # The cart service sends the full transaction data, not the simplified TransactionLog schema
+        await stock_service.process_transaction_async(data)
+
+        # Save state for idempotency
+        state_saved, save_error = await state_store_manager.save_state(event_id, {"event_id": event_id})
+        if not state_saved:
+            logger.warning(f"Failed to save state for event {event_id}: {save_error}")
+        return HandlerOutcome.processed()
+    except Exception as e:
+        logger.error(f"Error processing transaction log. event_id: {event_id}, Error: {describe_exception(e)}")
+        return HandlerOutcome.failed(e)
+
+
+async def notify_processed(message: dict, topic: str) -> None:
+    """Tell cart a replayed transaction is applied here (best-effort, #230)."""
+    try:
+        await _notify_pubsub_status("tranlog", message.get("data") or {}, "received")
+    except Exception as e:
+        logger.warning(f"Failed to notify cart after a replay ({type(e).__name__})")
+
+
+async def _record_failure(message: dict, topic: str, outcome: HandlerOutcome) -> bool:
+    """
+    Count the failure as a dead-letter candidate (#230, R-4).
+
+    Returns:
+        bool: True to acknowledge (the event is recorded), False to ask for
+            redelivery (still counting, or the record could not be written)
+    """
+    from kugel_common.database import database as db_helper
+    from app.config.settings import settings
+
+    data = message.get("data") or {}
+    tenant_id = data.get("tenant_id")
+    try:
+        db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+        decision = await record_failure(db=db, service="stock", topic=topic, message=message, error=outcome.failure)
+    except DeadLetterUnrecordable:
+        return False
+    except Exception as e:  # noqa: BLE001 - asking for redelivery is always safe
+        await notify_unrecordable(
+            service="stock", topic=topic, tenant_id=tenant_id, event_id=data.get("event_id"), reason=type(e).__name__
+        )
+        return False
+    return decision in (FailureDecision.GAVE_UP, FailureDecision.ALREADY_RECORDED)
+
+
 # PubSub handlers
 @router.post(
     "/tranlog",
@@ -656,9 +745,10 @@ async def _notify_pubsub_status(log_type: str, log_dict: dict, status: str, mess
     description="Process transaction log to update stock quantities",
 )
 async def handle_transaction_log(request: Request):
-    """Handle transaction log from pubsub"""
+    """Handle transaction log from pubsub: run the core and answer Dapr (#230)."""
+    data: dict = {}
+    message: dict = {}
     try:
-        # Get message data
         message = await request.json()
         data = message.get("data", {})
 
@@ -667,72 +757,43 @@ async def handle_transaction_log(request: Request):
             logger.debug("Received health check message, ignoring")
             return JSONResponse(content={"status": "SUCCESS"}, status_code=status.HTTP_200_OK)
 
-        logger.info(f"Received transaction log: {data}")
+        # The transaction carries customer and payment details (#211, R-15)
+        logger.info(f"Received transaction log: {mask_sensitive_data(data)}")
+        outcome = await process_transaction_event(message, "topic-tranlog")
+    except Exception as e:
+        logger.error(f"Error reading transaction log: {describe_exception(e)}")
+        outcome = HandlerOutcome.failed(e)
 
-        # Extract event_id for idempotency
-        event_id = data.get("event_id")
-        if not event_id:
-            logger.error("Missing event_id in transaction log")
-            # 200, not 400: Dapr retries any non-2xx response, so a 400
-            # would redeliver a message that can never succeed. DROP is
-            # honoured only on a 2xx (#135).
-            return JSONResponse(
-                content={"status": "DROP", "message": "Missing event_id"}, status_code=status.HTTP_200_OK
-            )
-
-        # Extract tenant_id to create service instance
-        tenant_id = data.get("tenant_id")
-        if not tenant_id:
-            logger.error(f"Missing tenant_id in transaction log: {data}")
-            return JSONResponse(
-                content={"status": "DROP", "message": "Missing tenant_id"}, status_code=status.HTTP_200_OK
-            )
-
-        # Create stock service instance
-        from kugel_common.database import database as db_helper
-        from app.config.settings import settings
-        from app.dependencies.get_alert_service import get_alert_service
-
-        db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
-        alert_service = get_alert_service()
-        stock_service = StockService(db, alert_service)
-
-        # Check for duplicate processing
-        existing_state, error_msg = await state_store_manager.get_state(event_id)
-        if existing_state:
-            logger.info(f"Duplicate transaction log received: {event_id}")
-            # Still notify cart service about duplicate
-            asyncio.create_task(_notify_pubsub_status("tranlog", data, "received", "Duplicate event"))
-            return JSONResponse(
-                content={"status": "SUCCESS"}, status_code=status.HTTP_200_OK  # Already processed, no need to retry
-            )
-
-        # Process the transaction directly without validation
-        # The cart service sends the full transaction data, not the simplified TransactionLog schema
-        await stock_service.process_transaction_async(data)
-
-        # Save state for idempotency
-        state_saved, save_error = await state_store_manager.save_state(event_id, {"event_id": event_id})
-
-        if not state_saved:
-            logger.warning(f"Failed to save state for event {event_id}: {save_error}")
-
+    if outcome.kind is OutcomeKind.PROCESSED:
         # Notify cart service of successful processing
         asyncio.create_task(_notify_pubsub_status("tranlog", data, "received"))
-
         return JSONResponse(content={"status": "SUCCESS"}, status_code=status.HTTP_200_OK)
-
-    except Exception as e:
-        logger.error(f"Error processing transaction log: {e}")
-        # Notify cart service of failure
-        try:
-            asyncio.create_task(_notify_pubsub_status("tranlog", data, "failed", describe_exception_for_response(e)))
-        except:
-            logger.error("Failed to send failure notification")
-
+    if outcome.kind is OutcomeKind.ALREADY_PROCESSED:
+        # Still notify cart service about duplicate
+        asyncio.create_task(_notify_pubsub_status("tranlog", data, "received", "Duplicate event"))
         return JSONResponse(
-            content={"status": "RETRY", "message": describe_exception_for_response(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            content={"status": "SUCCESS"}, status_code=status.HTTP_200_OK  # Already processed, no need to retry
         )
+    if outcome.kind is OutcomeKind.DROPPED:
+        logger.error(f"Transaction log dropped: {outcome.reason}")
+        # 200, not 400: Dapr retries any non-2xx response, so a 400
+        # would redeliver a message that can never succeed. DROP is
+        # honoured only on a 2xx (#135).
+        return JSONResponse(content={"status": "DROP", "message": outcome.reason}, status_code=status.HTTP_200_OK)
+
+    # Notify cart service of failure
+    try:
+        asyncio.create_task(_notify_pubsub_status("tranlog", data, "failed", describe_failure(outcome.failure)))
+    except Exception:
+        logger.error("Failed to send failure notification")
+    if await _record_failure(message, "topic-tranlog", outcome):
+        return JSONResponse(
+            content={"status": "SUCCESS", "message": "recorded as a dead letter"}, status_code=status.HTTP_200_OK
+        )
+    return JSONResponse(
+        content={"status": "RETRY", "message": describe_failure(outcome.failure)},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
 
 
 # Snapshot Schedule Management endpoints

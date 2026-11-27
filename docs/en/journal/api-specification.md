@@ -158,7 +158,7 @@ the one in the security credentials.
 | `generate_date_time_to` | string | No | - | YYYYMMDDTHHMMSS |
 | `receipt_no_from` | integer | No | - | - |
 | `receipt_no_to` | integer | No | - | - |
-| `keywords` | array | No | - | Search keywords. A journal matches if its text contains any one of them, as a case-sensitive substring; regular-expression syntax is not interpreted and empty keywords are ignored. At most 10 keywords of up to 100 characters each, without NUL. |
+| `keywords` | array | No | - | Search keywords. A journal matches if it |
 | `limit` | integer | No | 100 | - |
 | `page` | integer | No | 1 | - |
 | `terminal_id` | string | No | - | terminal_id should be provided by query  |
@@ -236,8 +236,6 @@ Journal entries represent receipts, cash operations, and other terminal activiti
 
 Authentication is required via token or API key. The tenant ID in the path must match
 the one in the security credentials.
-
-The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store and terminal of the path. A body that names another is refused with 400 (issue #134).
 
 **Path Parameters:**
 
@@ -331,8 +329,6 @@ token or API key.
 
 The function validates the tenant ID from the security credentials,
 processes the transaction data, and generates the corresponding journal entries.
-
-The body's `tenantId`, `storeCode` and `terminalNo` must name the tenant, store and terminal of the path. One the body leaves out takes the path's value; one that names another is refused with 400 (issue #134).
 
 **Path Parameters:**
 
@@ -434,6 +430,323 @@ The journal service uses this data to create human-readable receipt text
 and maintains a searchable record of all transactions.
 
 **Response:**
+
+### Dead Letters
+
+### 10. List dead letters
+
+**GET** `/api/v1/tenants/{tenant_id}/dead-letters`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `state` | string | No | pending | pending / replaying / replayed / discard |
+| `topic` | string | No | - | - |
+| `notified` | string | No | - | - |
+| `dead_from` | string | No | - | - |
+| `dead_to` | string | No | - | - |
+| `limit` | integer | No | 50 | - |
+| `page` | integer | No | 1 | - |
+
+**Response:**
+
+**data Field:** `array[DeadLetterSchema]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "id": "string",
+      "service": "string",
+      "topic": "string",
+      "eventId": "string",
+      "state": "string",
+      "summary": {
+        "storeCode": "string",
+        "terminalNo": "string",
+        "transactionNo": "string",
+        "businessDate": "string",
+        "businessCounter": "string"
+      },
+      "lastError": "string",
+      "failureCount": 0,
+      "deadCount": 0,
+      "firstDeadAt": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 11. Replay several dead letters in the background
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/replay`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `ids` | array[string] | Yes | - |
+
+**Request Example:**
+```json
+{
+  "ids": [
+    "string"
+  ]
+}
+```
+
+### 12. Get a dead letter
+
+**GET** `/api/v1/tenants/{tenant_id}/dead-letters/{id}`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `DeadLetterDetailSchema`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+| `message` | object | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "service": "string",
+    "topic": "string",
+    "eventId": "string",
+    "state": "string",
+    "summary": {
+      "storeCode": "string",
+      "terminalNo": "string",
+      "transactionNo": "string",
+      "businessDate": "string",
+      "businessCounter": "string"
+    },
+    "lastError": "string",
+    "failureCount": 0,
+    "deadCount": 0,
+    "firstDeadAt": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 13. Discard a dead letter
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/{id}/discard`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `reason` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "reason": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `DeadLetterSchema`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "service": "string",
+    "topic": "string",
+    "eventId": "string",
+    "state": "string",
+    "summary": {
+      "storeCode": "string",
+      "terminalNo": "string",
+      "transactionNo": "string",
+      "businessDate": "string",
+      "businessCounter": "string"
+    },
+    "lastError": "string",
+    "failureCount": 0,
+    "deadCount": 0,
+    "firstDeadAt": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. Replay a dead letter
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/{id}/replay`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `ReplayResultSchema`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `outcome` | string | Yes | - |
+| `error` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "outcome": "string",
+    "error": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
 
 ## Error Codes
 

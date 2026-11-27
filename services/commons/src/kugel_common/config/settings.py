@@ -27,6 +27,7 @@ from kugel_common.config.settings_tax import TaxSettings
 from kugel_common.config.settings_stamp_duty import StampDutySettings
 from kugel_common.config.settings_web import WebServiceSettings
 from kugel_common.config.settings_database import DBCollectionCommonSettings, DBSettings
+from kugel_common.config.settings_dead_letter import DeadLetterSettings
 
 class Settings(
     AppSettings,
@@ -36,7 +37,8 @@ class Settings(
     AuthSettings,
     WebServiceSettings,
     DBCollectionCommonSettings,
-    DBSettings
+    DBSettings,
+    DeadLetterSettings,
 ):
     """
     Combined settings class that inherits from all specific settings components.
@@ -53,6 +55,7 @@ class Settings(
     - WebServiceSettings: Web service endpoints and connection parameters
     - DBCollectionCommonSettings: Database collection name standardization
     - DBSettings: Database connection and configuration
+    - DeadLetterSettings: When a subscriber gives up on an event, and the sweep (#230)
     """
     model_config = SettingsConfigDict(
         env_file=".env",

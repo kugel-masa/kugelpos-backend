@@ -325,7 +325,7 @@ stock の購読の処理（`handle_transaction_log`）は Slack に通知して�
 ## R-15: 中身と秘密を外に出さない
 
 **Decision**:
-- `last_error` は「例外の型: メッセージ」で、メッセージは既存の `mask_sensitive_data` を通し、200 文字で切る。一覧と照会の API はこれを返す
+- `last_error` は `describe_exception_for_response`（#318）で作り、200 文字で切る。アプリ自身の例外はそのメッセージ、ほかの例外は型だけになる。Pydantic の `ValidationError` は、失敗した項目の名前だけにする（マスクは秘密と知られたキーしか伏せないため）。一覧と照会の API はこれを返す
 - Slack の本文には、失敗の理由として**例外の型だけ**を載せる
 - 照会の API が返す `message` は `mask_loggable` を通す（開設精算のログの端末の情報には `api_key` が入っている）。保存は生のまま（流し直しに要る）
 - `dead_letter` のモジュールは、中身をログに出さない。本体の既存のログのうち、中身をマスクせずに出しているもの（stock の `handle_transaction_log`）を直す。流し直しでもこの行が走るため

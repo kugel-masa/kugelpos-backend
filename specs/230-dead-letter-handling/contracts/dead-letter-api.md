@@ -28,7 +28,7 @@
 | `dead_from` / `dead_to` | なし | 「未対応」になった日時の範囲（ISO 8601） |
 | `limit` / `page` | 50 / 1 | `limit` は 1〜200 |
 
-`data` は記録の配列（`message` を除く）。`id` はイベント ID。`lastError` は「例外の型: マスクして 200 文字で切ったメッセージ」（R-15）。`lastDeadAt` の新しい順。`metadata.total` に件数。
+`data` は記録の配列（`message` を除く）。`id` はイベント ID。`lastError` は失敗の理由を値を含まない形で 200 文字に切ったもの（R-15）。`lastDeadAt` の新しい順。`metadata.total` に件数。
 
 ```json
 {

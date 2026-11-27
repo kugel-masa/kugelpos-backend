@@ -20,7 +20,7 @@ report・journal・stock のそれぞれのテナントごとの DB（`db_report
 | `state` | string | `failing` / `pending` / `replaying` / `replayed` / `discarded`（R-7） |
 | `message` | object | 受け手に渡った CloudEvent（`data` を含む）。最初の失敗で保存する（`replayed`・`discarded` からまた失敗したら書き直す）。ログには出さない。照会の API ではマスクして返す（R-15） |
 | `summary` | object | 通知と一覧のための要約。`store_code`、`terminal_no`、`transaction_no`、`business_date`、`business_counter`（あるものだけ） |
-| `last_error` | string \| null | 最後の失敗の理由。「例外の型: マスクして 200 文字で切ったメッセージ」（R-15） |
+| `last_error` | string \| null | 最後の失敗の理由。`describe_exception_for_response` の説明（ほかの例外は型だけ、検証の失敗は項目の名前だけ）を 200 文字で切ったもの（R-15） |
 | `failure_count` | int | 処理が失敗した回数の合計（受け直し・流し直しを含む。二重の配送で多めに数えることがある） |
 | `episode_failure_count` | int | 今回の一続きの失敗の回数。17（`DEAD_LETTER_GIVE_UP_AFTER_FAILURES`）に達したら「未対応」にする。`replayed`・`discarded` になったら 0 に戻す（R-4） |
 | `dead_count` | int | 「未対応」になった回数（正確。R-5b） |
