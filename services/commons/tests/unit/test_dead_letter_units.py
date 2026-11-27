@@ -147,6 +147,27 @@ def test_a_record_notice_has_no_content_and_points_at_the_api():
     swept = alerts.format_record("report", record, via_sweep=True, carried=4)
     assert "retries ran out" in swept and "dlq-report-topic-opencloselog" in swept
     assert "4 more dead letters" in swept
+    # A stranded record points at the sidecar's retries; a give-up does not
+    assert "maxRetries >= 18" in swept
+    assert "maxRetries" not in text
+
+
+def test_the_retries_hint_follows_the_give_up_setting(monkeypatch):
+    monkeypatch.setattr(alerts, "give_up_after_failures", lambda: 2)
+    assert "giving up after 2 failures" in alerts.misconfigured_retries_hint()
+    assert "maxRetries >= 3" in alerts.misconfigured_retries_hint()
+
+
+@pytest.mark.parametrize("webhook, warned", [("", True), ("https://hooks.example.invalid/x", False)])
+def test_the_sweep_warns_at_startup_when_nobody_is_notified(monkeypatch, caplog, webhook, warned):
+    from kugel_common.dead_letter import sweep
+    from kugel_common.utils import slack_notifier
+
+    monkeypatch.setattr(slack_notifier, "SLACK_WEBHOOK_URL", webhook)
+    sweeper = sweep.DeadLetterSweeper(service="report", db_name_prefix="db_report", is_processed=None)
+    with caplog.at_level("WARNING", logger="kugel_common.dead_letter.sweep"):
+        sweeper._warn_if_nobody_is_notified()
+    assert ("SLACK_WEBHOOK_URL is not set" in caplog.text) is warned
 
 
 def test_the_summary_notice_lists_counts_per_topic():

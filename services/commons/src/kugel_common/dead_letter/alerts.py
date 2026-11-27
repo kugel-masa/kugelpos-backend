@@ -29,7 +29,12 @@ from pymongo import ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError
 
-from kugel_common.dead_letter.document import ALERT_COLLECTION, ALERT_WINDOW_ID, SLACK_TIMEOUT_SECONDS
+from kugel_common.dead_letter.document import (
+    ALERT_COLLECTION,
+    ALERT_WINDOW_ID,
+    SLACK_TIMEOUT_SECONDS,
+    give_up_after_failures,
+)
 
 logger = getLogger(__name__)
 
@@ -163,6 +168,7 @@ def format_record(service: str, record: dict, *, via_sweep: bool = False, carrie
             f"retries ran out before the subscriber gave up ({record.get('failure_count', 0)} failures recorded); "
             f"the original is also in dlq-{service}-{record.get('topic')}"
         )
+        lines.append(misconfigured_retries_hint())
     else:
         lines.append(f"gave up after {record.get('failure_count', 0)} failures")
     lines.append(_api_path(tenant_id, record.get("event_id") or record.get("_id")))
@@ -180,6 +186,20 @@ def format_summary(service: str, tenant_id: Any, window: dict) -> str:
     return (
         f"[{service}] Dead letters are piling up for tenant {tenant_id}: {window.get('count')} in 5 minutes "
         f"({breakdown}). Further ones in this window are not notified one by one; see {_api_path(tenant_id)}"
+    )
+
+
+def misconfigured_retries_hint() -> str:
+    """What a stranded record says about the sidecar's retries (#230).
+
+    One stranded record is usually a subscriber that restarted between two
+    deliveries. Many mean the sidecar delivers fewer times than the subscriber
+    counts before giving up, so every failing event ends in dlq-* first.
+    """
+    give_up = give_up_after_failures()
+    return (
+        f"if this keeps happening, the pub/sub retries are too few for giving up after {give_up} failures: "
+        f"the inbound retry policy of the subscription components needs maxRetries >= {give_up + 1}"
     )
 
 

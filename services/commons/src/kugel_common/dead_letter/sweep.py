@@ -115,7 +115,8 @@ class DeadLetterSweeper:
             counts["promoted"] += 1
             logger.warning(
                 f"[{self.service}] Stranded failing record made pending (retries ran out before the subscriber "
-                f"gave up). event_id={event_id} failures={promoted.get('failure_count')}"
+                f"gave up). event_id={event_id} failures={promoted.get('failure_count')}; "
+                f"{alerts.misconfigured_retries_hint()}"
             )
             promoted.pop("message", None)
             if await alerts.notify_new_pending(db, self.service, promoted, via_sweep=True):
@@ -151,8 +152,19 @@ class DeadLetterSweeper:
 
     def start(self) -> asyncio.Task:
         if self._task is None or self._task.done():
+            self._warn_if_nobody_is_notified()
             self._task = asyncio.create_task(self._loop(), name=f"{self.service}-dead-letter-sweep")
         return self._task
+
+    def _warn_if_nobody_is_notified(self) -> None:
+        """Say at startup that dead letters reach nobody without a Slack webhook (#230)."""
+        from kugel_common.utils import slack_notifier
+
+        if not slack_notifier.SLACK_WEBHOOK_URL:
+            logger.warning(
+                f"[{self.service}] SLACK_WEBHOOK_URL is not set: dead letters are recorded but nobody is notified. "
+                f"Set it, or check GET /api/v1/tenants/{{tenant_id}}/dead-letters?notified=false"
+            )
 
     async def stop(self) -> None:
         if self._task is not None and not self._task.done():

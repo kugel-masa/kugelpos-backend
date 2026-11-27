@@ -67,6 +67,59 @@ So:
 - The token can change between revisions; the services read it at startup, so
   a new revision picks up the new one.
 
+### Pub/sub redelivery and dead letters (#230)
+
+Container Apps ignores `services/dapr/components/pubsub-resiliency.yaml`: the
+retries are a resiliency policy on each Dapr component of the environment.
+report, journal and stock give up on an event's 17th failure and record it as a
+dead letter, so the sidecar must deliver at least 19 times; with fewer retries
+every failing event goes to `dlq-*` instead, where nobody sees it.
+
+```bash
+./scripts/azure-pubsub-resiliency.sh -g <RESOURCE_GROUP> -e <ENVIRONMENT>           # check
+./scripts/azure-pubsub-resiliency.sh -g <RESOURCE_GROUP> -e <ENVIRONMENT> --apply   # set what differs
+```
+
+The script reads the budget from `pubsub-resiliency.yaml`, sets it on
+`pubsub-tranlog-report`, `pubsub-cashlog-report` and `pubsub-opencloselog-report`,
+and checks their `requeueInFailure: "false"` and `enableDeadLetter: "true"`
+(it reports those, it does not change the components). It exits 1 when
+something does not match.
+
+- Set `SLACK_WEBHOOK_URL` on report, journal and stock from Key Vault (below),
+  or dead letters are recorded but nobody is notified (each service logs a
+  warning at startup).
+- Leave the `DEAD_LETTER_*` variables unset: the defaults match the budget.
+
+### Slack webhook from Key Vault (#230)
+
+The incoming webhook URL decides which Slack channel the notices reach; use one
+webhook per environment (the development channel for dev). It is a secret: keep
+it in Key Vault, never in this repository or in a script.
+
+```bash
+# Once per environment, or to change the channel / rotate the URL
+az keyvault secret set --vault-name <VAULT> --name slack-webhook-url --value '<WEBHOOK_URL>' -o none
+
+# Every deploy: check; --apply sets what differs
+./scripts/azure-slack-webhook.sh -g <RESOURCE_GROUP> \
+  --secret-uri https://<VAULT>.vault.azure.net/secrets/slack-webhook-url \
+  --apps "<REPORT_APP> <JOURNAL_APP> <STOCK_APP>"
+```
+
+For each app the script gives it a managed identity (system-assigned, or the
+user-assigned one passed with `--identity <resource-id>`), lets the identity read
+the vault's secrets, and sets the secret `slack-webhook-url` as a Key Vault
+reference and `SLACK_WEBHOOK_URL=secretref:slack-webhook-url`. `--apply` needs
+rights to assign roles (or set access policies) on the vault; a role just
+assigned can take a few minutes, so if setting the secret fails right after,
+run it again. With the versionless URI above, a new version of the Key Vault
+secret reaches the apps without running the script again (within about 30
+minutes, or at once with a new revision).
+- If a dead-letter notice says the retries ran out before the subscriber gave
+  up, and it keeps happening, the environment's retries are too few: run the
+  script again.
+
 ## Release Steps
 
 ### Step 1: Pre-Release Verification
@@ -81,6 +134,10 @@ Before deploying, verify:
 - [ ] `APP_API_TOKEN` and `ALLOW_INSECURE_DEV_SECRETS` are **not** set on any
       container app
 - [ ] Dapr is enabled on report, journal and stock
+- [ ] `./scripts/azure-pubsub-resiliency.sh -g <RESOURCE_GROUP> -e <ENVIRONMENT>` passes
+      (see Pub/sub redelivery and dead letters)
+- [ ] `./scripts/azure-slack-webhook.sh ...` passes: report, journal and stock read
+      `SLACK_WEBHOOK_URL` from Key Vault (see Slack webhook from Key Vault)
 
 ### Step 2: Build & Push Docker Images (~35-40 minutes)
 

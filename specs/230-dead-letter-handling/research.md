@@ -339,6 +339,7 @@ stock の購読の処理（`handle_transaction_log`）は Slack に通知して�
 本フィーチャーは Dapr の版にも RabbitMQ の設定にも依存しない。ただし、**受け直しの回数には依存する**。
 
 - **配備の前提**: Azure Container Apps の Dapr の resiliency は、リポジトリの `pubsub-resiliency.yaml` ではなく、環境の側で設定する。3 つのコンポーネントの受け側の再試行が、手元と同じ（exponential、`maxInterval: 3m`、`maxRetries: 18`）であることを、配備のときに確かめる。再試行が 16 回より少ないと、受け手が諦める前に Dapr が使い切り、すべて `dlq-*` に移る（R-14 の掃除が「未対応」に上げるが、30 分遅れる）
+- **自動化（2026-11-27 追記）**: 配備は別の担当者が行うため、人の確認に頼る部分を減らす。`scripts/azure-pubsub-resiliency.sh` が `pubsub-resiliency.yaml` から値を読み、3 つのコンポーネントの受け側の再試行を確かめる（`--apply` で設定する）。コンポーネントの `requeueInFailure`・`enableDeadLetter` は確かめるだけで変えない（接続の秘密を持つため）。`SLACK_WEBHOOK_URL` は Key Vault に置き、`scripts/azure-slack-webhook.sh` が 3 つのコンテナアプリにマネージド ID・Key Vault を読む権限・Key Vault 参照のシークレット・環境変数を設定する（URL はリポジトリにもスクリプトにも書かない。環境ごとに別の Webhook）。アプリの側では、`SLACK_WEBHOOK_URL` が無ければ起動時に警告をログに出し、受け直しが尽きて取り残された記録の通知とログに、受け手に要る `maxRetries` を書く。Container Apps の指数の伸び方（倍率）は文書に無く、1.5 より大きいと 19 回の配送に 16 分より長くかかる
 
 ほかに配備のときに気をつけること（本フィーチャーでは変えない）:
 
