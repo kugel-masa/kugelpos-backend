@@ -1,0 +1,48 @@
+# Overlay for the dead-letter e2e (#230): tests/e2e/test_dead_letter_journey.py.
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.e2e-deadletter.yaml up -d
+#
+# - report, journal and stock give up on the 2nd failure instead of the 17th,
+#   and their sweep runs every 5 seconds, treating a failing record as stranded
+#   after 20 seconds
+# - their sidecars retry a delivery 3 times, 2 seconds apart
+#   (e2e-deadletter/pubsub-resiliency.yaml); the other sidecars are unchanged
+# - Slack notifications go to a local sink (e2e-deadletter/slack_sink.py,
+#   http://localhost:8099/messages) so the tests can count them
+#
+# Without this overlay the journey tests skip themselves. Bring the stack back
+# up without it afterwards: the overlay's settings are not for normal use.
+x-dead-letter-env: &dead-letter-env
+  DEAD_LETTER_GIVE_UP_AFTER_FAILURES: "2"
+  DEAD_LETTER_SWEEP_INTERVAL_SECONDS: "5"
+  DEAD_LETTER_STALE_FAILING_SECONDS: "20"
+  DEAD_LETTER_NOTIFY_RETRY_AFTER_SECONDS: "5"
+  SLACK_WEBHOOK_URL: http://deadletter-slack-sink:8099/hook
+
+x-dead-letter-resiliency: &dead-letter-resiliency
+  - ./e2e-deadletter/pubsub-resiliency.yaml:/dapr/components/pubsub-resiliency.yaml:ro
+
+services:
+  report:
+    environment: *dead-letter-env
+  journal:
+    environment: *dead-letter-env
+  stock:
+    environment: *dead-letter-env
+
+  dapr_report:
+    volumes: *dead-letter-resiliency
+  dapr_journal:
+    volumes: *dead-letter-resiliency
+  dapr_stock:
+    volumes: *dead-letter-resiliency
+
+  deadletter-slack-sink:
+    image: python:3.12-alpine
+    command: ["python", "/sink/slack_sink.py"]
+    volumes:
+      - ./e2e-deadletter/slack_sink.py:/sink/slack_sink.py:ro
+    ports:
+      - "8099:8099"
+    networks:
+      - kugelpos_net

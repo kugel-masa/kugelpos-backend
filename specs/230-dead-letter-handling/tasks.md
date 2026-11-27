@@ -85,7 +85,7 @@
 - [X] T031 [P] [US1] stock の T016 の購読のルートで同じく: `services/stock/app/api/v1/stock.py`（T027 のあと）
 - [X] T032 [US1] report・journal の `get_log_service_from_request` の、`tenant_id` が無くて 400 を返す分岐で `notify_unrecordable`（トピック、イベント ID があれば）を呼ぶ。400 は変えない: `services/report/app/api/v1/tran.py`、`services/journal/app/api/v1/tran.py`（T029・T030 と同じファイルなので、そのあと）
 - [X] T033 [P] [US1] 3 サービスの起動で掃除を始め、停止で止める。状態ストアでイベント ID を確かめる関数（購読の重複の確かめと同じもの）を渡す: `services/report/app/main.py`、`services/journal/app/main.py`、`services/stock/app/main.py`（T028 のあと）
-- [ ] T034 [P] [US1] journal・stock にも T023 と同じ統合テストを置く: `services/journal/tests/integration/test_dead_letter_failure.py`、`services/stock/tests/integration/test_dead_letter_failure.py`
+- [X] T034 [P] [US1] journal・stock にも T023 と同じ統合テストを置く: `services/journal/tests/integration/test_dead_letter_failure.py`、`services/stock/tests/integration/test_dead_letter_failure.py`（記録そのものは commons の統合テストで確かめるので、ここでは購読のルートを通して諦めて記録し、API で流し直すまでを確かめる）
 
 **Checkpoint**: 失敗し続けたイベントが記録され、通知される。数え損ねと送り損ねも掃除が拾う。ここだけで MVP として届けられる
 
@@ -103,7 +103,7 @@
 - [X] T036 [P] [US2] 流し直しのユニットテスト（引き受けの条件、10 分を過ぎた `replaying` の引き受け直しで新しい `replay_claim_id`、`PROCESSED` / `ALREADY_PROCESSED` → `replayed`・`resolved_*`・`episode_failure_count` 0・`purge_at` +90 日、そのあと時間の上限の外で発行した側に伝える、`DROPPED` → `discarded`・`resolved_by = system`・`resolution_note`、`FAILED`・例外・30 秒の時間切れ → `pending` で理由と回数を流し直しが書き通知しない、`record_failure` と `notify_unrecordable` を呼ばない、結果の書き込みは `state = replaying` と自分の claim id が条件、アプリのログに中身を出さない）を `services/commons/tests/unit/test_dead_letter_replay.py` に書く（R-3、R-7、data-model の流し直しの結果）
 - [X] T037 [P] [US2] 流し直しの API のユニットテスト（1 件: 200 の `replayed` / `discarded` / `failed`、`pending` でなければ 409 とサービスのコード、無ければ 404 `100001`。まとめて: 1〜100 件、超えたら 422、重複は 1 件に、202 と `accepted`、裏で 1 件ずつ流れ、`pending` でないものは飛ばす。テナントの違う JWT は 403）を `services/commons/tests/unit/test_dead_letter_replay_api.py` に書く（contracts/dead-letter-api.md）
 - [X] T038 [P] [US2] 実際の MongoDB での統合テスト（原因が残ったままの流し直しで `failed`・記録は `pending`・`replayed` にならない、同時の流し直しで処理は 1 回、引き受け直しのあとの遅れた結果は書かれない、流し直し中に購読から同じイベントが届いて失敗したらすぐ SUCCESS で状態は変わらない、まとめての流し直しの途中でタスクを止めても `replaying` は 10 分で取り直せる）を `services/report/tests/integration/test_dead_letter_replay.py` に書く
-- [ ] T039 [P] [US2] 流し直しがほかの受け手に届かないこと・受け手が二重に数えないこと、stock で複数の品目の途中で止めたあとの流し直しで在庫が二重に動かないことの統合テストを `services/journal/tests/integration/test_dead_letter_replay.py` と `services/stock/tests/integration/test_dead_letter_replay.py` に書く（FR-009、FR-010、SC-004）
+- [X] T039 [P] [US2] 流し直しがほかの受け手に届かないこと・受け手が二重に数えないこと、stock で複数の品目の途中で止めたあとの流し直しで在庫が二重に動かないことの統合テストを `services/journal/tests/integration/test_dead_letter_replay.py` と `services/stock/tests/integration/test_dead_letter_replay.py` に書く（FR-009、FR-010、SC-004）
 
 ### 実装
 
@@ -114,7 +114,7 @@
 - [X] T044 [P] [US2] report にルーターを取り付け、T014 の本体・通知と 413009 を渡す: `services/report/app/main.py`（T033 のあと）
 - [X] T045 [P] [US2] journal に取り付け、T015 の本体・通知と 411007 を渡す: `services/journal/app/main.py`（T033 のあと）
 - [X] T046 [P] [US2] stock に取り付け、T016 の本体・通知と 414404 を渡す: `services/stock/app/main.py`（T033 のあと）
-- [ ] T047 [US2] 精算が確定した営業の取引を流し直しても、確定した精算実績と日報が変わらないことの統合テストを `services/report/tests/integration/test_dead_letter_replay_settled_session.py` に書く（US2-6、#343）
+- [X] T047 [US2] 精算が確定した営業の取引を流し直しても、確定した精算実績と日報が変わらないことの統合テストを `services/report/tests/integration/test_dead_letter_replay_settled_session.py` に書く（US2-6、#343）
 
 **Checkpoint**: 記録から流し直せ、#343 の仮のままの精算実績を直せる
 
@@ -129,7 +129,7 @@
 - [X] T048 [P] [US3] 破棄のユニットテスト（`pending` だけ → `discarded`・`purge_at` +90 日・`resolved_by`・`resolution_note`・`episode_failure_count` 0、ほかは 409、`reason` が空なら 422、破棄したあとに同じイベントが 17 回失敗すると `pending` に戻って通知）を `services/commons/tests/unit/test_dead_letter_discard.py` に書く
 - [X] T049 [US3] `repository.py` に条件付きの破棄を書く
 - [X] T050 [US3] `router.py` に破棄のルート `POST /api/v1/tenants/{tenant_id}/dead-letters/{id}/discard` を足す（3 サービスは T044〜T046 の取り付けでそのまま使える）
-- [ ] T051 [US3] 破棄の統合テスト（流し直しと破棄が同時のとき一方だけ通る）を `services/report/tests/integration/test_dead_letter_discard.py` に書く
+- [X] T051 [US3] 破棄の統合テスト（流し直しと破棄が同時のとき一方だけ通る）を `services/commons/tests/integration/test_dead_letter_discard_and_list.py` に書く（破棄と流し直しは commons のコードだけで決まるため、report ではなく commons に置いた）
 
 **Checkpoint**: 対応の要らないものを片付けられる
 
@@ -144,7 +144,7 @@
 - [X] T052 [P] [US4] 一覧と照会のユニットテスト（既定 `state=pending`、`failing` は出さない、`all`、`topic`、`notified=false`、`dead_from` / `dead_to`（「未対応」になった日時）、`limit` 1〜200・`page`、`lastDeadAt` の新しい順、`metadata.total`、`id` はイベント ID、一覧に `message` を含めない、照会は `mask_loggable` を通した `message` を含める（開設精算のログの端末の `api_key` が伏せられる）、無ければ 404 `100001`、別のテナントは 403）を `services/commons/tests/unit/test_dead_letter_list_api.py` に書く（contracts/dead-letter-api.md、R-15）
 - [X] T053 [US4] `repository.py` に一覧（索引に沿った絞り込みと並び、件数）と照会を書く
 - [X] T054 [US4] `router.py` に一覧 `GET /api/v1/tenants/{tenant_id}/dead-letters` と照会 `GET .../dead-letters/{id}` を足し、応答のスキーマ（camelCase、`ApiResponse`、照会の `message` はマスク）を書く
-- [ ] T055 [US4] 一覧の統合テスト（索引が使われる絞り込み、テナントの分離）を `services/report/tests/integration/test_dead_letter_list.py` に書く
+- [X] T055 [US4] 一覧の統合テスト（索引が使われる絞り込み、テナントの分離）を `services/commons/tests/integration/test_dead_letter_discard_and_list.py` に書く（T051 と同じ理由で commons に置いた）
 
 **Checkpoint**: たまっているものを見て、流し直しと破棄の対象を選べる
 
@@ -169,15 +169,15 @@
 
 ## Phase 8: e2e（ストーリー横断）
 
-- [ ] T060 e2e 用の設定の上書きを置く: 諦める回数と受け直しを小さくした resiliency（`maxRetries: 3`、`maxInterval: 1s`）と `DEAD_LETTER_GIVE_UP_AFTER_FAILURES=2`、掃除の間隔と「取り残し」の時間を短くする環境変数。compose の上書きのファイル（`services/docker-compose.e2e-deadletter.yaml`）と、その上書きでスタックを立てて e2e を流す手順を `scripts/run_e2e_tests.sh` か `tests/e2e/README.md` に書く
-- [ ] T061 テストから入れて戻せる故障の入れ方を決め、`tests/e2e/test_dead_letter_journey.py` の fixture にする（例: journal の保存先に同じキーで型の違う文書を先に入れて失敗させ、あとで消す。report の精算実績の文書を壊して戻す）
-- [ ] T062 T060・T061 の上で、必ず失敗するイベントが記録され（通知 1 回、`dlq-*` は空）、原因を取り除いて流し直すと処理されることの e2e を `tests/e2e/test_dead_letter_journey.py` に書く。次の場面も含める
+- [X] T060 e2e 用の設定の上書きを置く: 諦める回数と受け直しを小さくした resiliency（`maxRetries: 3`、`maxInterval: 1s`）と `DEAD_LETTER_GIVE_UP_AFTER_FAILURES=2`、掃除の間隔と「取り残し」の時間を短くする環境変数。compose の上書きのファイル（`services/docker-compose.e2e-deadletter.yaml`）と、その上書きでスタックを立てて e2e を流す手順を `scripts/run_e2e_tests.sh` か `tests/e2e/README.md` に書く
+- [X] T061 テストから入れて戻せる故障の入れ方を決め、`tests/e2e/test_dead_letter_journey.py` の fixture にする（例: journal の保存先に同じキーで型の違う文書を先に入れて失敗させ、あとで消す。report の精算実績の文書を壊して戻す）
+- [X] T062 T060・T061 の上で、必ず失敗するイベントが記録され（通知 1 回、`dlq-*` は空）、原因を取り除いて流し直すと処理されることの e2e を `tests/e2e/test_dead_letter_journey.py` に書く。次の場面も含める
   - 閉設ログ（#343）: 精算実績が確定になり日報が出る
   - 同じイベントが report と journal の両方で失敗: 記録と通知が受け手ごとに 1 件・1 回ずつ（US1-2）
   - 諦めてから記録と通知までが 1 分以内（SC-001）
   - まとめての流し直しが 202 を返し、結果が一覧に出る
-- [ ] T063 MongoDB に書けないときに「記録できない」の知らせが 1 回届き（5 分に 1 回まで）、`dlq-*` に移り、R-13 の手順（shovel で購読のキューへ）で戻すと記録されることの e2e を `tests/e2e/test_dead_letter_journey.py` に足す。サービスを止めて配送を数え損ねさせ、掃除が「未対応」に上げることも確かめる。スタックで止められないものは、quickstart の手順 5 で手で確かめ、結果を PR に書く
-- [ ] T064 [P] 権限の境界の e2e（端末の JWT・サービスアカウントの JWT・API キーだけでデッドレターの API が断られる、別のテナントは 403）を `tests/e2e/test_auth_boundary.py` に足す
+- [X] T063 MongoDB に書けないときに「記録できない」の知らせが 1 回届き（5 分に 1 回まで）、`dlq-*` に移り、R-13 の手順（shovel で購読のキューへ）で戻すと記録されることの e2e を `tests/e2e/test_dead_letter_journey.py` に足す。サービスを止めて配送を数え損ねさせ、掃除が「未対応」に上げることも確かめる。スタックで止められないものは、quickstart の手順 5 で手で確かめ、結果を PR に書く（サービスを一時停止する方法は使えなかった。report のサイドカーは report のネットワークを共有していて、止まったアプリへの配送は失敗せずに待ち続ける。そこで、最初の失敗を数えたあと記録の保存先が書き込みを断るようにして、残りの配送を数え損ねさせた）
+- [X] T064 [P] 権限の境界の e2e（端末の JWT・サービスアカウントの JWT・API キーだけでデッドレターの API が断られる、別のテナントは 403）を `tests/e2e/test_auth_boundary.py` に足す
 
 ---
 
@@ -192,7 +192,7 @@
   - `dlq-*` の見つけ方と、shovel で受け手の購読のキューに戻す手順（R-13）。配備の側で `dlq-*` の長さに警報を付けることを勧める
 - [X] T067 [P] 3 サービスの API の文書（`docs/{en,ja}/report/api-specification.md`、`docs/{en,ja}/journal/api-specification.md`、`docs/{en,ja}/stock/api-specification.md`）にデッドレターの API を足す（FR-021）
 - [X] T068 `./scripts/build.sh commons` で 3 サービスの Pipfile.lock の commons を更新し、`ruff check` と `ruff format` を commons・report・journal・stock にかける
-- [ ] T069 `./scripts/run_unit_tests.sh`、`./scripts/run_integration_tests.sh`、`./scripts/run_e2e_tests.sh` を通す。quickstart.md の手順で手で確かめる
+- [X] T069 `./scripts/run_unit_tests.sh`、`./scripts/run_integration_tests.sh`、`./scripts/run_e2e_tests.sh` を通す。quickstart.md の手順で手で確かめる
 
 ---
 

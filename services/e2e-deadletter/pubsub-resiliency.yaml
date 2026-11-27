@@ -1,0 +1,29 @@
+# The redelivery budget for the dead-letter e2e (#230), mounted over
+# dapr/components/pubsub-resiliency.yaml by docker-compose.e2e-deadletter.yaml.
+#
+# Four deliveries two seconds apart: the subscriber gives up on the second
+# failure (DEAD_LETTER_GIVE_UP_AFTER_FAILURES=2 in the overlay), two short of
+# the sidecar's limit as in production (17 of 19). The constant interval leaves
+# the test time to pause a service between two deliveries.
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: pubsub-resiliency
+spec:
+  policies:
+    retries:
+      pubsubRetry:
+        policy: constant
+        duration: 2s
+        maxRetries: 3
+  targets:
+    components:
+      pubsub-tranlog-report:
+        inbound:
+          retry: pubsubRetry
+      pubsub-cashlog-report:
+        inbound:
+          retry: pubsubRetry
+      pubsub-opencloselog-report:
+        inbound:
+          retry: pubsubRetry
