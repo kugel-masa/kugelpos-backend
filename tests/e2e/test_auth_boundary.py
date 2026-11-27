@@ -370,3 +370,40 @@ def test_missing_authorization_rejected():
     with _client("URL_TERMINAL") as c:
         resp = c.get("/api/v1/terminals")
     assert resp.status_code == 401, resp.text
+
+
+@pytest.mark.parametrize("url_env", ["URL_REPORT", "URL_JOURNAL", "URL_STOCK"])
+def test_dead_letters_are_for_the_back_office_of_their_tenant(url_env):
+    """The dead-letter API takes a back-office user's JWT only, of its own tenant (#230).
+
+    A register's JWT or API key and a service account's JWT are refused; so is a
+    user of another tenant.
+    """
+    tenant_id = _new_tenant_id()
+    admin_token = _live_admin_token(tenant_id)
+    _setup_tenant(tenant_id, admin_token)
+    terminal_a, _, jwt_a, api_key_a = _terminal_jwts(tenant_id, admin_token, "5678")
+    service_jwt = jwt.encode({
+        "sub": "service:cart", "tenant_id": tenant_id, "service": "cart",
+        "is_service_account": True, "is_superuser": False,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+    }, DEV_SECRET_KEY, algorithm=ALG)
+    other_tenant = _new_tenant_id()
+    other_admin = _live_admin_token(other_tenant)
+    path = f"/api/v1/tenants/{tenant_id}/dead-letters"
+
+    with _client(url_env) as c:
+        assert c.get(path, headers={"Authorization": f"Bearer {admin_token}"}).status_code == 200
+        for headers, params in (
+            ({"Authorization": f"Bearer {jwt_a}"}, {}),
+            ({"Authorization": f"Bearer {service_jwt}"}, {}),
+            ({"Authorization": f"Bearer {other_admin}"}, {}),
+        ):
+            resp = c.get(path, headers=headers, params=params)
+            assert resp.status_code == 403, resp.text
+            resp = c.post(f"{path}/replay", headers=headers, json={"ids": ["e-1"]})
+            assert resp.status_code == 403, resp.text
+        # A register's API key alone is no credential here
+        resp = c.get(path, headers={"X-API-KEY": api_key_a}, params={"terminal_id": terminal_a})
+        assert resp.status_code == 401, resp.text
+        assert c.get(path).status_code == 401

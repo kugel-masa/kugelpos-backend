@@ -3,6 +3,7 @@ from typing import Optional
 from logging import getLogger
 
 from kugel_common.database import database as db_helper
+from kugel_common.dead_letter.repository import create_dead_letter_collections_async
 from app.config.settings import settings
 
 # setup logger
@@ -177,6 +178,11 @@ async def create_request_log_collection(tenant_id: str):
 
 
 # create all collections
+# create the dead-letter collections (#230)
+async def create_dead_letter_collection(tenant_id: str):
+    await create_dead_letter_collections_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+
+
 async def create_collections(tenant_id: str):
     """Create every collection this service needs for a tenant.
 
@@ -191,6 +197,7 @@ async def create_collections(tenant_id: str):
             create_stock_update_collection,
             create_stock_snapshot_collection,
             create_request_log_collection,
+            create_dead_letter_collection,
         ],
     )
 

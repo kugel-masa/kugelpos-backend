@@ -42,6 +42,7 @@ class JournalErrorCode:
     IMPORT_ERROR = "411004"  # インポートエラー
     TRANSACTION_RECEIPT_ERROR = "411005"  # トランザクションレシートエラー
     EXTERNAL_SERVICE_ERROR = "411006"  # 外部サービスエラー
+    DEAD_LETTER_NOT_PENDING = "411007"  # デッドレターの記録が未対応でない (#230)
 
 
 class JournalErrorMessage:
@@ -74,6 +75,7 @@ class JournalErrorMessage:
             JournalErrorCode.IMPORT_ERROR: "データのインポートに失敗しました",
             JournalErrorCode.TRANSACTION_RECEIPT_ERROR: "トランザクションレシートに問題があります",
             JournalErrorCode.EXTERNAL_SERVICE_ERROR: "外部サービスエラーが発生しました",
+            JournalErrorCode.DEAD_LETTER_NOT_PENDING: "デッドレターの記録が未対応ではありません。ほかの人が操作した可能性があります",
         },
         # English error messages
         "en": {
@@ -98,6 +100,7 @@ class JournalErrorMessage:
             JournalErrorCode.IMPORT_ERROR: "Failed to import data",
             JournalErrorCode.TRANSACTION_RECEIPT_ERROR: "Issue with transaction receipt",
             JournalErrorCode.EXTERNAL_SERVICE_ERROR: "External service error occurred",
+            JournalErrorCode.DEAD_LETTER_NOT_PENDING: "The dead letter is not pending; someone else may have handled it",
         },
     }
 

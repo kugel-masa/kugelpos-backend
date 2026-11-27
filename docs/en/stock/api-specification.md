@@ -1201,6 +1201,323 @@ Process transaction log to update stock quantities
 
 **Response:**
 
+### Dead Letters
+
+### 19. List dead letters
+
+**GET** `/api/v1/tenants/{tenant_id}/dead-letters`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|------------|------|------|------------|------|
+| `state` | string | No | pending | pending / replaying / replayed / discard |
+| `topic` | string | No | - | - |
+| `notified` | string | No | - | - |
+| `dead_from` | string | No | - | - |
+| `dead_to` | string | No | - | - |
+| `limit` | integer | No | 50 | - |
+| `page` | integer | No | 1 | - |
+
+**Response:**
+
+**data Field:** `array[DeadLetterSchema]`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "id": "string",
+      "service": "string",
+      "topic": "string",
+      "eventId": "string",
+      "state": "string",
+      "summary": {
+        "storeCode": "string",
+        "terminalNo": "string",
+        "transactionNo": "string",
+        "businessDate": "string",
+        "businessCounter": "string"
+      },
+      "lastError": "string",
+      "failureCount": 0,
+      "deadCount": 0,
+      "firstDeadAt": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 20. Replay several dead letters in the background
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/replay`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `ids` | array[string] | Yes | - |
+
+**Request Example:**
+```json
+{
+  "ids": [
+    "string"
+  ]
+}
+```
+
+### 21. Get a dead letter
+
+**GET** `/api/v1/tenants/{tenant_id}/dead-letters/{id}`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `DeadLetterDetailSchema`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+| `message` | object | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "service": "string",
+    "topic": "string",
+    "eventId": "string",
+    "state": "string",
+    "summary": {
+      "storeCode": "string",
+      "terminalNo": "string",
+      "transactionNo": "string",
+      "businessDate": "string",
+      "businessCounter": "string"
+    },
+    "lastError": "string",
+    "failureCount": 0,
+    "deadCount": 0,
+    "firstDeadAt": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 22. Discard a dead letter
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/{id}/discard`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `reason` | string | Yes | - |
+
+**Request Example:**
+```json
+{
+  "reason": "string"
+}
+```
+
+**Response:**
+
+**data Field:** `DeadLetterSchema`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "service": "string",
+    "topic": "string",
+    "eventId": "string",
+    "state": "string",
+    "summary": {
+      "storeCode": "string",
+      "terminalNo": "string",
+      "transactionNo": "string",
+      "businessDate": "string",
+      "businessCounter": "string"
+    },
+    "lastError": "string",
+    "failureCount": 0,
+    "deadCount": 0,
+    "firstDeadAt": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 23. Replay a dead letter
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/{id}/replay`
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**Response:**
+
+**data Field:** `ReplayResultSchema`
+
+| Field | Type | Required | Description |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `outcome` | string | Yes | - |
+| `error` | string | No | - |
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "outcome": "string",
+    "error": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
 ## Error Codes
 
 Error responses are returned in the following format:

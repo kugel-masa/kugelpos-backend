@@ -214,7 +214,7 @@ class TestLogService:
             tran_repo.create_tranlog_async.side_effect = [wrapped, base_transaction]
 
         with patch("app.services.log_service.asyncio.sleep", new_callable=AsyncMock), patch(
-            "app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock
+            "kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock
         ) as fatal:
             result = await log_service.receive_tranlog_async(base_transaction)
 
@@ -231,12 +231,13 @@ class TestLogService:
         journal_service.receive_journal_async.side_effect = ValueError("bad journal")
         tran_repo.find_stored_async.return_value = None
 
-        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal:
+        with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as fatal:
             with pytest.raises(ValueError):
                 await log_service.receive_tranlog_async(base_transaction)
 
         assert tran_repo.create_tranlog_async.await_count == 1
-        fatal.assert_awaited_once()
+        # Not on every attempt: the dead-letter record notifies once (#230)
+        fatal.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_a_transaction_another_delivery_stored_is_not_a_failure(
@@ -247,7 +248,7 @@ class TestLogService:
         journal_service.receive_journal_async.side_effect = ValueError("journal insert failed")
         tran_repo.find_stored_async.return_value = base_transaction
 
-        with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal:
+        with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as fatal:
             result = await log_service.receive_tranlog_async(base_transaction)
 
         assert result == base_transaction
@@ -266,7 +267,7 @@ class TestLogService:
         tran_repo.find_stored_async.return_value = None
 
         with patch("app.services.log_service.asyncio.sleep", new_callable=AsyncMock), patch(
-            "app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock
+            "kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock
         ):
             with pytest.raises(OperationFailure):
                 await log_service.receive_tranlog_async(base_transaction)

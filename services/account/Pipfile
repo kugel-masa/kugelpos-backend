@@ -13,7 +13,7 @@ pymongo = ">=4.13"
 pytz = "*"
 pyjwt = "*"
 passlib = {extras = ["bcrypt"], version = "*"}
-kugel_common = {file = "commons/dist/kugel_common-0.1.122-py3-none-any.whl"}
+kugel_common = {file = "commons/dist/kugel_common-0.1.124-py3-none-any.whl"}
 
 bcrypt = "==3.2.0"
 python-multipart = "*"

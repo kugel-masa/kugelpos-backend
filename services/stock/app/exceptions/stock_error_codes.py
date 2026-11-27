@@ -48,6 +48,7 @@ class StockErrorCode:
     TRANSACTION_PROCESSING_ERROR = "414401"  # トランザクション処理エラー
     TRANSACTION_VALIDATION_ERROR = "414402"  # トランザクションバリデーションエラー
     TRANSACTION_DUPLICATE = "414403"  # 重複トランザクション
+    DEAD_LETTER_NOT_PENDING = "414404"  # デッドレターの記録が未対応でない (#230)
 
 
 class StockErrorMessage:
@@ -83,6 +84,7 @@ class StockErrorMessage:
             StockErrorCode.TRANSACTION_PROCESSING_ERROR: "トランザクション処理エラーが発生しました",
             StockErrorCode.TRANSACTION_VALIDATION_ERROR: "トランザクションのバリデーションエラーが発生しました",
             StockErrorCode.TRANSACTION_DUPLICATE: "重複したトランザクションです",
+            StockErrorCode.DEAD_LETTER_NOT_PENDING: "デッドレターの記録が未対応ではありません。ほかの人が操作した可能性があります",
         },
         # 英語のエラーメッセージ
         "en": {
@@ -110,6 +112,7 @@ class StockErrorMessage:
             StockErrorCode.TRANSACTION_PROCESSING_ERROR: "Transaction processing error occurred",
             StockErrorCode.TRANSACTION_VALIDATION_ERROR: "Transaction validation error occurred",
             StockErrorCode.TRANSACTION_DUPLICATE: "Duplicate transaction",
+            StockErrorCode.DEAD_LETTER_NOT_PENDING: "The dead letter is not pending; someone else may have handled it",
         },
     }
 

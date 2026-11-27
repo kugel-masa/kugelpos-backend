@@ -63,6 +63,18 @@ Business rule errors are a category for defining service-specific errors. Subcat
 
 **Note:** Specific business rule error codes are defined in each service.
 
+#### Dead-letter API (#230)
+
+report, journal and stock answer the same conflict, each with a code from its own range.
+
+| Code | Service | HTTP | English Message | Japanese Message |
+|------|---------|------|-----------------|------------------|
+| 413009 | report | 409 | The dead letter is not pending; someone else may have handled it | デッドレターの記録が未対応ではありません。ほかの人が操作した可能性があります |
+| 411007 | journal | 409 | (same) | (same) |
+| 414404 | stock | 409 | (same) | (same) |
+
+A record that does not exist answers 404 with `100001`.
+
 ### Database/Repository Errors (50XXXX)
 
 | Code | English Message | Japanese Message | Usage |

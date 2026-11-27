@@ -73,7 +73,7 @@ async def test_concurrent_copies_store_the_transaction_once_and_none_fails(trans
     services = [await _log_service(db, tenant_id) for _ in range(COPIES)]
     tran = _tranlog(tenant_id, transaction_no)
 
-    with patch("app.services.log_service.send_fatal_error_notification", new_callable=AsyncMock) as fatal:
+    with patch("kugel_common.utils.slack_notifier.send_slack_notification", new_callable=AsyncMock) as fatal:
         results = await asyncio.gather(
             *(service.receive_tranlog_async(tran.model_copy(deep=True)) for service in services),
             return_exceptions=True,

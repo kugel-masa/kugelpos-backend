@@ -1,7 +1,7 @@
 # Copyright 2025 masa@kugel  # # Licensed under the Apache License, Version 2.0 (the "License");  # you may not use this file except in compliance with the License.  # You may obtain a copy of the License at  # #     http://www.apache.org/licenses/LICENSE-2.0  # # Unless required by applicable law or agreed to in writing, software  # distributed under the License is distributed on an "AS IS" BASIS,  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  # See the License for the specific language governing permissions and  # limitations under the License.
 from fastapi import APIRouter, status, Depends, Path, Request, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from logging import getLogger
 import json
 import aiohttp
@@ -32,7 +32,11 @@ from app.models.repositories.open_close_log_repository import OpenCloseLogReposi
 from app.config.settings import settings
 from app.exceptions import ExternalServiceException
 from app.utils.state_store_manager import state_store_manager
-from kugel_common.utils.log_utils import describe_exception, describe_exception_for_response
+from kugel_common.utils.log_utils import describe_exception
+from kugel_common.dead_letter.document import describe_failure
+from kugel_common.dead_letter.failure import DeadLetterUnrecordable, FailureDecision, record_failure
+from kugel_common.dead_letter.outcome import HandlerOutcome, OutcomeKind
+from kugel_common.dead_letter.unrecordable import notify_unrecordable
 
 # Create a router instance for transaction-related endpoints
 router = APIRouter()
@@ -128,6 +132,15 @@ async def get_log_service_from_request(request: Request) -> LogService:
     if not tenant_id:
         # The pub/sub envelope carries whatever the producer sent (issue #211).
         logger.error(f"tenant_id is required. request: {mask_sensitive_data(req_json)}")
+        # Without a tenant there is no database to record it in: announced
+        # instead, and left to the redelivery and dlq-* (#230, R-6)
+        await notify_unrecordable(
+            service="report",
+            topic=LOG_TYPE_TOPICS.get(request.url.path.rsplit("/", 1)[-1]),
+            tenant_id=None,
+            event_id=req_json.get("data", {}).get("event_id"),
+            reason="tenant_id is missing",
+        )
         raise HTTPException(status_code=400, detail="tenant_id is required in request data")
     db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
     return LogService(
@@ -137,23 +150,144 @@ async def get_log_service_from_request(request: Request) -> LogService:
     )
 
 
-async def handle_log(request: Request, log_type: str, log_model: BaseModel, receive_method):
-    """
-    Generic handler for processing log data from Dapr pub/sub events.
+# Which log each subscribed topic carries: (log type, model, LogService method)
+TOPIC_HANDLERS = {
+    "topic-tranlog": ("tranlog", BaseTransaction, "receive_tranlog_async"),
+    "topic-cashlog": ("cashlog", CashInOutLog, "receive_cashlog_async"),
+    "topic-opencloselog": ("opencloselog", OpenCloseLog, "receive_open_close_log_async"),
+}
+LOG_TYPE_TOPICS = {log_type: topic for topic, (log_type, _, _) in TOPIC_HANDLERS.items()}
 
-    This function implements idempotent message processing using the statestore
-    to track processed message IDs.
+
+async def process_log_event(message: dict, topic: str, log_service: Optional[LogService] = None) -> HandlerOutcome:
+    """
+    The handler core: process one CloudEvent and say what happened (#230, R-3).
+
+    Shared by the subscription routes and the dead-letter replay. It neither
+    records a failure nor tells the publisher; the caller does, each its own way.
+    Idempotent by event_id (state store) and by the unique indexes.
+
+    Args:
+        message: The CloudEvent Dapr delivered (``data`` holds the log)
+        topic: The topic it came from
+        log_service: Given by a subscription route; built here for a replay
+
+    Returns:
+        HandlerOutcome: processed, already processed, dropped (with the failing
+            fields) or failed (with the exception)
+    """
+    log_type, log_model, method_name = TOPIC_HANDLERS[topic]
+    data = message.get("data") if isinstance(message, dict) else None
+    data = data if isinstance(data, dict) else {}
+    event_id = data.get("event_id")
+    if not event_id:
+        return HandlerOutcome.dropped("event_id is required")
+    try:
+        try:
+            log_data = log_model(**data)
+        except ValidationError as validation_error:
+            # The same payload fails the same way on every delivery. Only the
+            # names of the failing fields are kept: an open/close log carries a
+            # whole terminal document, secrets included (issue #211).
+            failed_fields = [".".join(str(part) for part in err.get("loc", ())) for err in validation_error.errors()]
+            logger.error(f"{log_type} does not match the schema; dropped. event_id: {event_id}, fields: {failed_fields}")
+            return HandlerOutcome.dropped(f"{log_type} does not match the schema: {failed_fields}")
+        # Masked before serializing: `model_dump_json()` returns a string, and
+        # masking a string does nothing. An open/close log carries a whole
+        # terminal document (issue #211).
+        log_info = json.dumps(mask_loggable(log_data), default=str, ensure_ascii=False)
+        # Check if message already processed (idempotency check) using event_id
+        result, error_msg = await state_store_manager.get_state(event_id)
+        if error_msg:
+            logger.error(
+                f"Error checking for duplicates: {error_msg}. Proceeding with caution for event_id: {event_id}"
+            )
+            # We continue processing since we cannot be sure if this is a duplicate
+            # This could potentially lead to duplicate processing but it's better than failing
+        if result:
+            logger.warning(f"Message already processed. event_id: {event_id}, {log_type}: {log_info}")
+            return HandlerOutcome.already_processed()
+
+        if log_service is None:
+            log_service = await get_log_service(tenant_id=data.get("tenant_id"))
+        logger.debug(f"Received {log_type} new message: {mask_sensitive_data(message)}")
+        await getattr(log_service, method_name)(log_data)
+        logger.info(f"{log_type} received successfully. event_id: {event_id}, {log_type}: {log_info}")
+
+        # Saved before the notification: the log is stored, so from here on a
+        # redelivery must stop at the state-store check.
+        success, error_msg = await state_store_manager.save_state(event_id, {"event_id": event_id})
+        if not success:
+            logger.error(f"Failed to save state: {error_msg}. event_id: {event_id}, {log_type}: {log_info}")
+            # We continue processing since the message has already been handled
+            # This could potentially lead to duplicate processing on subsequent retries
+        return HandlerOutcome.processed()
+
+    except DuplicateKeyException as e:
+        # The state-store idempotency check missed (state evicted, TTL
+        # expired, or store unreachable) and the duplicate slipped through
+        # to the DB layer, where the unique index rejected it. Treat this
+        # as success — the data already exists, no further action needed.
+        # Returning RETRY here would cause Dapr to redeliver indefinitely.
+        logger.warning(
+            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). event_id: {event_id}, error: {describe_exception(e)}"
+        )
+        # Best-effort: persist the state so subsequent retries short-circuit
+        # at the state-store check.
+        try:
+            await state_store_manager.save_state(event_id, {"event_id": event_id})
+        except Exception as save_exc:
+            logger.warning(f"Failed to save state after duplicate detection: {save_exc}")
+        return HandlerOutcome.already_processed()
+    except Exception as e:
+        logger.error(f"Error processing {log_type}. message: {mask_sensitive_data(message)}, Error: {describe_exception(e)}")
+        return HandlerOutcome.failed(e)
+
+
+async def notify_processed(message: dict, topic: str) -> None:
+    """Tell the publisher a replayed event is stored here (best-effort, #230)."""
+    log_type = TOPIC_HANDLERS[topic][0]
+    data = message.get("data") or {}
+    await _notify_received_best_effort(log_type, data, data.get("event_id"), message="")
+
+
+async def _record_failure(message: dict, topic: str, outcome: HandlerOutcome) -> bool:
+    """
+    Count the failure as a dead-letter candidate (#230, R-4).
+
+    Returns:
+        bool: True to acknowledge (the event is recorded), False to ask for
+            redelivery (still counting, or the record could not be written)
+    """
+    data = message.get("data") or {}
+    tenant_id = data.get("tenant_id")
+    try:
+        db = await db_helper.get_db_async(f"{settings.DB_NAME_PREFIX}_{tenant_id}")
+        decision = await record_failure(db=db, service="report", topic=topic, message=message, error=outcome.failure)
+    except DeadLetterUnrecordable:
+        return False
+    except Exception as e:  # noqa: BLE001 - asking for redelivery is always safe
+        await notify_unrecordable(
+            service="report", topic=topic, tenant_id=tenant_id, event_id=data.get("event_id"), reason=type(e).__name__
+        )
+        return False
+    return decision in (FailureDecision.GAVE_UP, FailureDecision.ALREADY_RECORDED)
+
+
+async def handle_log(request: Request, topic: str, log_service: LogService):
+    """
+    The subscription route: run the core and answer Dapr (#230, R-3).
 
     Args:
         request: The FastAPI request containing the pub/sub message
-        log_type: The type of log being processed (tranlog, cashlog, openclose)
-        log_model: The Pydantic model class to deserialize the log data
-        receive_method: The service method to call to process the log data
+        topic: The topic the route subscribes
+        log_service: The tenant's LogService, from the dependency
 
     Returns:
         JSONResponse: The Dapr subscription status (SUCCESS / RETRY / DROP)
             with the HTTP status code Dapr acts on
     """
+    log_type = TOPIC_HANDLERS[topic][0]
     # Bound before the try, so that the error branches can name them even when
     # the body cannot be read.
     message: dict = {}
@@ -176,130 +310,64 @@ async def handle_log(request: Request, log_type: str, log_model: BaseModel, rece
                 content={
                     "status": "DROP",
                     "message": "event_id is required",
-                    "operation": f"{inspect.currentframe().f_code.co_name}",
+                    "operation": "handle_log",
                 },
                 # 200, not 400: Dapr retries any non-2xx response, so a 400
                 # would redeliver a message that can never succeed. DROP is
                 # honoured only on a 2xx.
                 status_code=status.HTTP_200_OK,
             )
-
-        try:
-            log_data = log_model(**message["data"])
-        except ValidationError as validation_error:
-            return await _drop_invalid_log(log_type, message["data"], event_id, validation_error)
-        # Masked before serializing: `model_dump_json()` returns a string, and
-        # masking a string does nothing. An open/close log carries a whole
-        # terminal document (issue #211).
-        log_info = json.dumps(mask_loggable(log_data), default=str, ensure_ascii=False)
-        # Check if message already processed (idempotency check) using event_id
-        result, error_msg = await state_store_manager.get_state(event_id)
-        if error_msg:
-            logger.error(
-                f"Error checking for duplicates: {error_msg}. Proceeding with caution for event_id: {event_id}"
-            )
-            # We continue processing since we cannot be sure if this is a duplicate
-            # This could potentially lead to duplicate processing but it's better than failing
-
-        if result:
-            logger.warning(f"Message already processed. event_id: {event_id}, {log_type}: {log_info}")
-            # The notification of the first delivery may have been lost.
-            await _notify_received_best_effort(log_type, message["data"], event_id)
-            return JSONResponse(
-                content={"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"},
-                status_code=status.HTTP_200_OK,
-            )
-
-        # Save log data to the database
-        logger.debug(f"Received {log_type} new message: {mask_sensitive_data(message)}")
-        await receive_method(log_data)
-        logger.info(f"{log_type} received successfully. event_id: {event_id}, {log_type}: {log_info}")
-
-        # Saved before the notification: the log is stored, so from here on a
-        # redelivery must stop at the state-store check.
-        success, error_msg = await state_store_manager.save_state(event_id, {"event_id": event_id})
-        if not success:
-            logger.error(f"Failed to save state: {error_msg}. event_id: {event_id}, {log_type}: {log_info}")
-            # We continue processing since the message has already been handled
-            # This could potentially lead to duplicate processing on subsequent retries
-
-        # An empty message clears a failure an earlier attempt left with the publisher.
-        await _notify_received_best_effort(log_type, message["data"], event_id, message="")
-
-        # Return a success response
-        logger.debug(f"Processed {log_type} successfully. event_id: {event_id}, {log_type}: {log_info}")
-        return JSONResponse(
-            content={"status": "SUCCESS", "operation": f"{inspect.currentframe().f_code.co_name}"},
-            status_code=status.HTTP_200_OK,
-        )
-
-    except DuplicateKeyException as e:
-        # The state-store idempotency check missed (state evicted, TTL
-        # expired, or store unreachable) and the duplicate slipped through
-        # to the DB layer, where the unique index rejected it. Treat this
-        # as success — the data already exists, no further action needed.
-        # Returning RETRY here would cause Dapr to redeliver indefinitely.
-        logger.warning(
-            f"Duplicate {log_type} caught at DB layer (idempotency state-store miss). event_id: {event_id}, error: {describe_exception(e)}"
-        )
-        # Best-effort: persist the state so subsequent retries short-circuit
-        # at the state-store check.
-        try:
-            await state_store_manager.save_state(event_id, {"event_id": event_id})
-        except Exception as save_exc:
-            logger.warning(f"Failed to save state after duplicate detection: {save_exc}")
-        await _notify_received_best_effort(log_type, message["data"], event_id)
-        return JSONResponse(
-            content={
-                "status": "SUCCESS",
-                "message": "duplicate detected at DB layer; treated as already-processed",
-                "operation": f"{inspect.currentframe().f_code.co_name}",
-            },
-            status_code=status.HTTP_200_OK,
-        )
+        outcome = await process_log_event(message, topic, log_service)
     except Exception as e:
-        err_message = f"Error processing {log_type}. message: {mask_sensitive_data(message)}, Error: {describe_exception(e)}"
-        logger.error(err_message)
-        # Best-effort, like the other notifications: if it raised, the answer
-        # below would never reach Dapr.
-        try:
-            await _notify_pubsub_status(
-                log_type=log_type,
-                data_dict=message.get("data", {}),
-                status="failed",
-                # Sent to the publisher: described for a response, not a log (#318)
-                message=f"Error processing {log_type}: {describe_exception_for_response(e)}",
-            )
-        except Exception as notify_exc:
-            logger.warning(f"Failed to notify the publisher of the failure. event_id={event_id}: {notify_exc}")
-        return JSONResponse(
-            content={
-                "status": "RETRY",
-                "message": describe_exception_for_response(e),
-                "operation": f"{inspect.currentframe().f_code.co_name}",
-            },
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        logger.error(f"Error reading {log_type}. event_id: {event_id}, Error: {describe_exception(e)}")
+        outcome = HandlerOutcome.failed(e)
+
+    data = message.get("data", {}) if isinstance(message, dict) else {}
+    if outcome.kind is OutcomeKind.PROCESSED:
+        # An empty message clears a failure an earlier attempt left with the publisher.
+        await _notify_received_best_effort(log_type, data, event_id, message="")
+        return JSONResponse(content={"status": "SUCCESS", "operation": "handle_log"}, status_code=status.HTTP_200_OK)
+    if outcome.kind is OutcomeKind.ALREADY_PROCESSED:
+        # The notification of the first delivery may have been lost.
+        await _notify_received_best_effort(log_type, data, event_id)
+        return JSONResponse(content={"status": "SUCCESS", "operation": "handle_log"}, status_code=status.HTTP_200_OK)
+    if outcome.kind is OutcomeKind.DROPPED:
+        return await _drop_invalid_log(log_type, data, event_id, outcome.reason)
+
+    # Failed. Best-effort, like the other notifications: if it raised, the
+    # answer below would never reach Dapr.
+    try:
+        await _notify_pubsub_status(
+            log_type=log_type,
+            data_dict=data,
+            status="failed",
+            # Sent to the publisher: described for a response, not a log (#318)
+            message=f"Error processing {log_type}: {describe_failure(outcome.failure)}",
         )
+    except Exception as notify_exc:
+        logger.warning(f"Failed to notify the publisher of the failure. event_id={event_id}: {notify_exc}")
+    if await _record_failure(message, topic, outcome):
+        return JSONResponse(
+            content={"status": "SUCCESS", "message": "recorded as a dead letter", "operation": "handle_log"},
+            status_code=status.HTTP_200_OK,
+        )
+    return JSONResponse(
+        content={"status": "RETRY", "message": describe_failure(outcome.failure), "operation": "handle_log"},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
 
 
-async def _drop_invalid_log(log_type: str, data_dict: dict, event_id: str, error: ValidationError) -> JSONResponse:
+async def _drop_invalid_log(log_type: str, data_dict: dict, event_id: str, reason: Optional[str]) -> JSONResponse:
     """
     Drop a log that does not match its schema, and tell the publisher.
 
     The same payload fails the same way on every delivery, so a RETRY would only
-    spend the redelivery budget before the message reached the dead-letter queue
-    (issue #230). Only the names of the failing fields are reported: an open/close
-    log carries a whole terminal document, secrets included (issue #211).
+    spend the redelivery budget (issue #230). The reason names the failing
+    fields only: an open/close log carries a whole terminal document, secrets
+    included (issue #211).
     """
-    failed_fields = [".".join(str(part) for part in err.get("loc", ())) for err in error.errors()]
-    logger.error(f"{log_type} does not match the schema; dropped. event_id: {event_id}, fields: {failed_fields}")
     try:
-        await _notify_pubsub_status(
-            log_type=log_type,
-            data_dict=data_dict,
-            status="failed",
-            message=f"{log_type} does not match the schema: {failed_fields}",
-        )
+        await _notify_pubsub_status(log_type=log_type, data_dict=data_dict, status="failed", message=reason)
     except Exception as notify_exc:
         logger.warning(f"Failed to notify the publisher of the dropped {log_type}. event_id={event_id}: {notify_exc}")
     return JSONResponse(
@@ -483,7 +551,7 @@ async def handle_tranlog(request: Request, log_service: LogService = Depends(get
             return {"status": "SUCCESS", "operation": "health_check_drop"}
         raise HTTPException(status_code=500, detail="Log service not initialized")
 
-    return await handle_log(request, "tranlog", BaseTransaction, log_service.receive_tranlog_async)
+    return await handle_log(request, "topic-tranlog", log_service)
 
 
 @router.post("/cashlog", dependencies=[Depends(verify_dapr_app_token)])
@@ -509,7 +577,7 @@ async def handle_cashlog(request: Request, log_service: LogService = Depends(get
             return {"status": "SUCCESS", "operation": "health_check_drop"}
         raise HTTPException(status_code=500, detail="Log service not initialized")
 
-    return await handle_log(request, "cashlog", CashInOutLog, log_service.receive_cashlog_async)
+    return await handle_log(request, "topic-cashlog", log_service)
 
 
 @router.post("/opencloselog", dependencies=[Depends(verify_dapr_app_token)])
@@ -535,7 +603,7 @@ async def handle_opencloselog(request: Request, log_service: LogService = Depend
             return {"status": "SUCCESS", "operation": "health_check_drop"}
         raise HTTPException(status_code=500, detail="Log service not initialized")
 
-    return await handle_log(request, "opencloselog", OpenCloseLog, log_service.receive_open_close_log_async)
+    return await handle_log(request, "topic-opencloselog", log_service)
 
 
 @router.post(

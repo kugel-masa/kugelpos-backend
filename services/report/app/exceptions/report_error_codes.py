@@ -47,6 +47,7 @@ class ReportErrorCode:
     EXTERNAL_SERVICE_ERROR = "413006"  # 外部サービスエラー
     SETTLEMENT_NOT_FOUND = "413007"  # 精算実績が見つからない (#343)
     SETTLEMENT_AGGREGATION_FAILED = "413008"  # 精算の確定の集計に失敗した (#343)
+    DEAD_LETTER_NOT_PENDING = "413009"  # デッドレターの記録が未対応でない (#230)
 
 
 class ReportErrorMessage:
@@ -83,6 +84,7 @@ class ReportErrorMessage:
             ReportErrorCode.EXTERNAL_SERVICE_ERROR: "外部サービスエラーが発生しました",
             ReportErrorCode.SETTLEMENT_NOT_FOUND: "精算実績が見つかりません",
             ReportErrorCode.SETTLEMENT_AGGREGATION_FAILED: "精算の集計に失敗しました。もう一度精算してください",
+            ReportErrorCode.DEAD_LETTER_NOT_PENDING: "デッドレターの記録が未対応ではありません。ほかの人が操作した可能性があります",
         },
         # 英語のエラーメッセージ
         "en": {
@@ -111,6 +113,7 @@ class ReportErrorMessage:
             ReportErrorCode.EXTERNAL_SERVICE_ERROR: "External service error occurred",
             ReportErrorCode.SETTLEMENT_NOT_FOUND: "Settlement record not found",
             ReportErrorCode.SETTLEMENT_AGGREGATION_FAILED: "Failed to aggregate the settlement; settle again",
+            ReportErrorCode.DEAD_LETTER_NOT_PENDING: "The dead letter is not pending; someone else may have handled it",
         },
     }
 

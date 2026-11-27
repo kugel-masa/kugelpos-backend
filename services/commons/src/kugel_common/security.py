@@ -815,6 +815,43 @@ async def get_tenant_id_with_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access : No token provided")
     return await _tenant_id_of_non_terminal_token(token)
 
+async def get_user_with_token(token: Optional[str] = Depends(oauth2_scheme)) -> dict:
+    """
+    FastAPI dependency for endpoints only a signed-in user may call (#230).
+
+    The dead-letter API reads event content and replays it, so a register's or
+    a service's credential is refused: a terminal JWT and a service-account JWT
+    answer 403, a missing token 401. The caller checks the tenant.
+
+    Args:
+        token: OAuth token from header
+
+    Returns:
+        ``{"username": ..., "tenant_id": ...}``
+
+    Raises:
+        HTTPException: 401 without a valid token, 403 for a terminal or service-account JWT
+    """
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized access : No token provided")
+    try:
+        terminal_claims = verify_terminal_token(token)
+    except HTTPException:
+        terminal_claims = None
+    if terminal_claims is not None:
+        _refuse_terminal_credential("terminal_jwt", terminal_claims.get("terminal_id"))
+    user = verify_token(token)
+    if user.get("is_service_account"):
+        audit_logger.warning(
+            "Service-account credential used on an endpoint only users may call (service=%s)", user.get("service")
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service-account credentials cannot be used on this endpoint",
+        )
+    return {"username": user["username"], "tenant_id": user["tenant_id"]}
+
+
 async def get_terminal_info_with_api_key(
     terminal_id: str = Query(...),
     api_key: str = Security(api_key_header),

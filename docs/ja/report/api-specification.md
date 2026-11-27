@@ -639,6 +639,323 @@ report, which carries missingCount and missingRanges. Flash is live.
 
 **レスポンス:**
 
+### デッドレター
+
+### 13. デッドレター一覧取得
+
+**GET** `/api/v1/tenants/{tenant_id}/dead-letters`
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**クエリパラメータ:**
+
+| パラメータ | 型 | 必須 | デフォルト | 説明 |
+|------------|------|------|------------|------|
+| `state` | string | No | pending | pending / replaying / replayed / discard |
+| `topic` | string | No | - | - |
+| `notified` | string | No | - | - |
+| `dead_from` | string | No | - | - |
+| `dead_to` | string | No | - | - |
+| `limit` | integer | No | 50 | - |
+| `page` | integer | No | 1 | - |
+
+**レスポンス:**
+
+**dataフィールド:** `array[DeadLetterSchema]`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": [
+    {
+      "id": "string",
+      "service": "string",
+      "topic": "string",
+      "eventId": "string",
+      "state": "string",
+      "summary": {
+        "storeCode": "string",
+        "terminalNo": "string",
+        "transactionNo": "string",
+        "businessDate": "string",
+        "businessCounter": "string"
+      },
+      "lastError": "string",
+      "failureCount": 0,
+      "deadCount": 0,
+      "firstDeadAt": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 14. デッドレターのまとめての流し直し（裏で処理）
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/replay`
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `ids` | array[string] | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "ids": [
+    "string"
+  ]
+}
+```
+
+### 15. デッドレター照会
+
+**GET** `/api/v1/tenants/{tenant_id}/dead-letters/{id}`
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `DeadLetterDetailSchema`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+| `message` | object | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "service": "string",
+    "topic": "string",
+    "eventId": "string",
+    "state": "string",
+    "summary": {
+      "storeCode": "string",
+      "terminalNo": "string",
+      "transactionNo": "string",
+      "businessDate": "string",
+      "businessCounter": "string"
+    },
+    "lastError": "string",
+    "failureCount": 0,
+    "deadCount": 0,
+    "firstDeadAt": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 16. デッドレターの破棄
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/{id}/discard`
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**リクエストボディ:**
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `reason` | string | Yes | - |
+
+**リクエスト例:**
+```json
+{
+  "reason": "string"
+}
+```
+
+**レスポンス:**
+
+**dataフィールド:** `DeadLetterSchema`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `service` | string | No | - |
+| `topic` | string | No | - |
+| `eventId` | string | Yes | - |
+| `state` | string | Yes | - |
+| `summary` | DeadLetterSummarySchema | No | - |
+| `lastError` | string | No | - |
+| `failureCount` | integer | No | - |
+| `deadCount` | integer | No | - |
+| `firstDeadAt` | string | No | - |
+| `lastDeadAt` | string | No | - |
+| `notifiedAt` | string | No | - |
+| `resolvedAt` | string | No | - |
+| `resolvedBy` | string | No | - |
+| `resolutionNote` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "service": "string",
+    "topic": "string",
+    "eventId": "string",
+    "state": "string",
+    "summary": {
+      "storeCode": "string",
+      "terminalNo": "string",
+      "transactionNo": "string",
+      "businessDate": "string",
+      "businessCounter": "string"
+    },
+    "lastError": "string",
+    "failureCount": 0,
+    "deadCount": 0,
+    "firstDeadAt": "2025-01-01T00:00:00Z"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
+### 17. デッドレターの流し直し
+
+**POST** `/api/v1/tenants/{tenant_id}/dead-letters/{id}/replay`
+
+**パスパラメータ:**
+
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tenant_id` | string | Yes | - |
+| `id` | string | Yes | - |
+
+**レスポンス:**
+
+**dataフィールド:** `ReplayResultSchema`
+
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `id` | string | Yes | - |
+| `outcome` | string | Yes | - |
+| `error` | string | No | - |
+
+**レスポンス例:**
+```json
+{
+  "success": true,
+  "code": 200,
+  "message": "string",
+  "userError": {
+    "code": "string",
+    "message": "string"
+  },
+  "data": {
+    "id": "string",
+    "outcome": "string",
+    "error": "string"
+  },
+  "metadata": {
+    "total": 0,
+    "page": 0,
+    "limit": 0,
+    "sort": "string",
+    "filter": {}
+  },
+  "operation": "string"
+}
+```
+
 ## エラーコード
 
 エラーレスポンスは以下の形式で返されます：

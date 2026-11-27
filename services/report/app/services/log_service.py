@@ -3,7 +3,6 @@ from logging import getLogger
 
 # Import removed as the exception classes were not being used
 from kugel_common.models.documents.base_tranlog import BaseTransaction
-from kugel_common.utils.slack_notifier import send_fatal_error_notification
 
 from app.models.documents.cash_in_out_log import CashInOutLog
 from app.models.documents.open_close_log import OpenCloseLog
@@ -59,8 +58,8 @@ class LogService:
         except Exception as e:
             message = f"Failed to create transaction log: {describe_exception(e)}"
             logger.error(message)
-            # Notify about the error
-            await send_fatal_error_notification(message=message, error=e, service="report", context=tran.model_dump())
+            # Not sent to Slack on every attempt: the dead-letter record notifies
+            # once if the failure persists (#230)
             raise e
 
     async def receive_cashlog_async(self, cashlog: CashInOutLog) -> CashInOutLog:
@@ -79,10 +78,8 @@ class LogService:
         except Exception as e:
             message = f"Failed to create cash in/out log: {describe_exception(e)}"
             logger.error(message)
-            # Notify about the error
-            await send_fatal_error_notification(
-                message=message, error=e, service="report", context=cashlog.model_dump()
-            )
+            # Not sent to Slack on every attempt: the dead-letter record notifies
+            # once if the failure persists (#230)
             raise e
 
     async def receive_open_close_log_async(self, open_close_log: OpenCloseLog) -> OpenCloseLog:
@@ -109,8 +106,6 @@ class LogService:
         except Exception as e:
             message = f"Failed to store the open/close log or finalize its settlement: {describe_exception(e)}"
             logger.error(message)
-            # Notify about the error
-            await send_fatal_error_notification(
-                message=message, error=e, service="report", context=open_close_log.model_dump()
-            )
+            # Not sent to Slack on every attempt: the dead-letter record notifies
+            # once if the failure persists (#230)
             raise e
