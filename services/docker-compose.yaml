@@ -183,6 +183,9 @@ services:
       - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_report
+      # Dead-letter and other Slack notices (#230). Set it in services/.env, which
+      # compose reads and git ignores; empty means notices are logged, not sent.
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - BASE_URL_DAPR=http://localhost:3500/v1.0
       - TOKEN_URL=http://account:8000/api/v1/accounts/token
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
@@ -222,6 +225,9 @@ services:
       - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_journal
+      # Dead-letter and other Slack notices (#230). Set it in services/.env, which
+      # compose reads and git ignores; empty means notices are logged, not sent.
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - BASE_URL_DAPR=http://localhost:3500/v1.0
       - TOKEN_URL=http://account:8000/api/v1/accounts/token
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1
@@ -259,6 +265,9 @@ services:
       - APP_API_TOKEN=${APP_API_TOKEN:-dev-app-api-token-for-development-only}
       - MONGODB_URI=mongodb://mongodb:27017/?replicaSet=rs0&directConnection=true
       - DB_NAME_PREFIX=db_stock
+      # Dead-letter and other Slack notices (#230). Set it in services/.env, which
+      # compose reads and git ignores; empty means notices are logged, not sent.
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - BASE_URL_DAPR=http://localhost:3500/v1.0
       - TOKEN_URL=http://account:8000/api/v1/accounts/token
       - BASE_URL_TERMINAL=http://terminal:8000/api/v1

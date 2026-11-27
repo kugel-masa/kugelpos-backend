@@ -11,8 +11,9 @@ validator nothing passes makes every insert into that collection fail, as a
 handler bug or a broken database would, and taking it off is the fix.
 
 1. A sale both report and journal fail on: one record and one notice per
-   subscriber within a minute, nothing in dlq-*, stock unaffected; after the
-   fix, a single replay (report) and a bulk replay (journal) store it.
+   subscriber within a minute, nothing in dlq-*, stock unaffected, and cart
+   sees it partially delivered; after the fix, a single replay (report) and a
+   bulk replay (journal) store it and cart sees it delivered.
 2. A close log whose settlement cannot be made final (#343): the daily report is
    refused until the replay makes it final.
 3. A failure that cannot be recorded: one "could not be recorded" notice, the
@@ -123,6 +124,18 @@ def _one(url_env, headers, tenant_id, topic, state=None):
     return rows[0] if len(rows) == 1 else None
 
 
+def _delivery(mongo, tenant_id: str, event_id: str, **expected: str):
+    """Cart's delivery status of the event, once each named subscriber reports the expected status."""
+    # Cart keeps every tenant's delivery status in its common database
+    doc = mongo["db_cart_commons"]["status_tran_delivery"].find_one({"event_id": event_id, "tenant_id": tenant_id})
+    if not doc:
+        return None
+    services = {s["service_name"]: s["status"] for s in doc.get("services", [])}
+    if any(services.get(name) != status for name, status in expected.items()):
+        return None
+    return {"status": doc.get("status"), "services": services}
+
+
 def _open_terminal(tenant_id: str):
     headers, terminal_id, api_key = _setup(tenant_id)
     key = {"X-API-KEY": api_key}
@@ -135,7 +148,7 @@ def _open_terminal(tenant_id: str):
 # -- 1. a sale two subscribers fail on --------------------------------------------
 
 
-def test_a_sale_two_subscribers_fail_on_is_recorded_and_notified_once_each_and_replayed(wait_for, fault):
+def test_a_sale_two_subscribers_fail_on_is_recorded_and_notified_once_each_and_replayed(wait_for, fault, mongo):
     tenant_id = _new_tenant_id()
     headers, terminal_id, api_key = _open_terminal(tenant_id)
     dlq = {q: _queue_length(q) for q in ("dlq-report-topic-tranlog", "dlq-journal-topic-tranlog")}
@@ -161,6 +174,12 @@ def test_a_sale_two_subscribers_fail_on_is_recorded_and_notified_once_each_and_r
     assert {q: _queue_length(q) for q in dlq} == dlq
     # Stock took the sale; it has nothing to record
     assert _dead_letters("URL_STOCK", headers, tenant_id) == []
+    # The publisher knows who failed: cart does not republish an event a
+    # subscriber reported failed, and the event is only partially delivered
+    delivery = wait_for(lambda: _delivery(mongo, tenant_id, report["eventId"], report="failed", journal="failed"),
+                        timeout=15.0, description="cart's delivery status with both failures")
+    assert delivery["services"]["stock"] == "received"
+    assert delivery["status"] == "partially_delivered"
 
     fault.remove(f"db_report_{tenant_id}", "log_tran")
     fault.remove(f"db_journal_{tenant_id}", "log_tran")
@@ -184,6 +203,10 @@ def test_a_sale_two_subscribers_fail_on_is_recorded_and_notified_once_each_and_r
     assert any(j.get("transactionNo") == report["summary"]["transactionNo"] for j in journals.json()["data"]), journals.text
     # Replaying told nobody new: still one notice each
     assert len(_about(tenant_id)) == 2
+    # Each replay told cart it is received, so the event is delivered now
+    delivery = wait_for(lambda: _delivery(mongo, tenant_id, report["eventId"], report="received", journal="received"),
+                        timeout=15.0, description="cart's delivery status after the replays")
+    assert delivery["status"] == "delivered"
 
 
 # -- 2. a close log whose settlement cannot be made final (#343) -------------------
